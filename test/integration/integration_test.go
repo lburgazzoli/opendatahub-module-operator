@@ -41,6 +41,8 @@ const (
 	labelPartOf            = "platform.opendatahub.io/part-of"
 	annotationInstanceName = "platform.opendatahub.io/instance.name"
 	annotationInstanceUID  = "platform.opendatahub.io/instance.uid"
+	annotationType         = "platform.opendatahub.io/type"
+	annotationVersion      = "platform.opendatahub.io/version"
 )
 
 var _ = Describe("MyModule", Ordered, func() {
@@ -112,18 +114,26 @@ var _ = Describe("MyModule", Ordered, func() {
 		))
 	})
 
-	It("should set platform labels on workload resources", func() {
-		By("checking the Deployment has the part-of label")
+	It("should set platform labels and annotations on workload resources", func() {
+		By("checking the Deployment has the part-of label and platform annotations")
 		Eventually(k.Get(workloadDeploy)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(And(
 			jq.Match(`.metadata.labels."%s" == "mymodule"`, labelPartOf),
 			jq.Match(`.metadata.annotations."%s" != ""`, annotationInstanceName),
 			jq.Match(`.metadata.annotations."%s" != ""`, annotationInstanceUID),
+			jq.Match(`.metadata.annotations."%s" == "%s"`,
+				annotationType,
+				operatorConfigData[moduleconfig.KeyPlatformType]),
+			jq.Match(`.metadata.annotations."%s" != ""`, annotationVersion),
 		))
 
-		By("checking the Service has the part-of label")
-		Eventually(k.Get(workloadService)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(
+		By("checking the Service has the part-of label and platform annotations")
+		Eventually(k.Get(workloadService)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(And(
 			jq.Match(`.metadata.labels."%s" == "mymodule"`, labelPartOf),
-		)
+			jq.Match(`.metadata.annotations."%s" == "%s"`,
+				annotationType,
+				operatorConfigData[moduleconfig.KeyPlatformType]),
+			jq.Match(`.metadata.annotations."%s" != ""`, annotationVersion),
+		))
 	})
 
 	It("should set owner references on workload resources", func() {

@@ -23,7 +23,11 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/blang/semver/v4"
 	"github.com/spf13/viper"
+
+	"github.com/opendatahub-io/opendatahub-operator/v2/api/common"
+	ofVersion "github.com/operator-framework/api/pkg/lib/version"
 )
 
 const (
@@ -36,6 +40,9 @@ const (
 	KeyApplicationsNS   = "applications-namespace"
 	KeyPlatformType     = "platform-type"
 	KeyPlatformVersion  = "platform-version"
+	KeyWebhooksEnabled  = "webhooks-enabled"
+	KeyWebhookPort      = "webhook-port"
+	KeyWebhookCertDir   = "webhook-cert-dir"
 
 	DefaultMetricsAddr      = ":8080"
 	DefaultHealthProbeAddr  = ":8081"
@@ -44,6 +51,9 @@ const (
 	DefaultApplicationsNS   = "opendatahub"
 	DefaultPlatformType     = "unknown"
 	DefaultPlatformVersion  = "unknown"
+	DefaultWebhooksEnabled  = true
+	DefaultWebhookPort      = 9443
+	DefaultWebhookCertDir   = "/tmp/k8s-webhook-server/serving-certs"
 
 	// ConfigPathEnvVar is the environment variable that points to the mounted
 	// ConfigMap directory (or a single config file).
@@ -88,6 +98,34 @@ type Config struct {
 	PlatformType string `mapstructure:"platform-type"`
 	// PlatformVersion is the platform operator version.
 	PlatformVersion string `mapstructure:"platform-version"`
+
+	// WebhooksEnabled controls whether the operator starts the webhook
+	// server and registers admission handlers. Default true for in-cluster
+	// operation. Set to false via env var ODH_MODULE_OPERATOR_WEBHOOKS_ENABLED
+	// when running locally without TLS certs.
+	WebhooksEnabled bool `mapstructure:"webhooks-enabled"`
+	// WebhookPort is the port the webhook server listens on.
+	WebhookPort int `mapstructure:"webhook-port"`
+	// WebhookCertDir is the directory containing TLS certs for the webhook server.
+	WebhookCertDir string `mapstructure:"webhook-cert-dir"`
+}
+
+// Release builds a common.Release from the configured platform type and
+// version. If PlatformVersion is not valid semver, the version defaults
+// to 0.0.0.
+func (c *Config) Release() common.Release {
+	rel := common.Release{
+		Name: common.Platform(c.PlatformType),
+	}
+
+	if c.PlatformVersion != "" {
+		v, err := semver.ParseTolerant(c.PlatformVersion)
+		if err == nil {
+			rel.Version = ofVersion.OperatorVersion{Version: v}
+		}
+	}
+
+	return rel
 }
 
 // Load reads operator configuration from all available sources.
@@ -142,6 +180,9 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault(KeyManifestsPath, "")
 	v.SetDefault(KeyPlatformType, DefaultPlatformType)
 	v.SetDefault(KeyPlatformVersion, DefaultPlatformVersion)
+	v.SetDefault(KeyWebhooksEnabled, DefaultWebhooksEnabled)
+	v.SetDefault(KeyWebhookPort, DefaultWebhookPort)
+	v.SetDefault(KeyWebhookCertDir, DefaultWebhookCertDir)
 }
 
 func bindEnv(v *viper.Viper) error {

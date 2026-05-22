@@ -48,7 +48,7 @@ type PlatformStatus struct {
 // +kubebuilder:object:generate=true
 type ModuleStatus struct {
 	// Version is the module operator version.
-	Version string `json:"version"`
+	Version SemVer `json:"version"`
 	// BuildSource identifies the source the operator was built from
 	// in the format repo@branch/commit (e.g. github.com/org/repo@main/abc1234).
 	BuildSource string `json:"buildSource,omitempty"`

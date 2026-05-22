@@ -81,6 +81,8 @@ func transformResource(
 		return transformRoleBinding(obj)
 	case gvk.MutatingWebhookConfiguration, gvk.ValidatingWebhookConfiguration:
 		return transformWebhook(obj)
+	case gvk.CertManagerCertificate:
+		return transformCertificate(obj)
 	default:
 		return transformGeneric(obj)
 	}
@@ -168,6 +170,56 @@ func transformWebhook(obj *unstructured.Unstructured) (string, error) {
 	raw = replaceWebhookNamespace(raw)
 
 	return raw, nil
+}
+
+// transformCertificate replaces hardcoded namespace references in
+// cert-manager Certificate dnsNames with the Helm release namespace.
+func transformCertificate(obj *unstructured.Unstructured) (string, error) {
+	raw, err := marshalResource(obj)
+	if err != nil {
+		return "", err
+	}
+
+	raw = replaceNamespace(raw)
+	raw = replaceCertificateDNSNames(raw)
+
+	return raw, nil
+}
+
+// replaceCertificateDNSNames replaces hardcoded namespace segments in
+// Certificate dnsNames entries with the Helm release namespace template.
+// dnsNames follow the pattern: <service>.<namespace>.svc[.cluster.local]
+func replaceCertificateDNSNames(raw string) string {
+	lines := strings.Split(raw, "\n")
+	inDNSNames := false
+
+	for i, line := range lines {
+		trimmed := strings.TrimSpace(line)
+
+		if trimmed == "dnsNames:" {
+			inDNSNames = true
+
+			continue
+		}
+
+		// End dnsNames section when we hit a non-list-item line.
+		if inDNSNames && !strings.HasPrefix(trimmed, "-") && trimmed != "" {
+			inDNSNames = false
+		}
+
+		if inDNSNames && strings.HasPrefix(trimmed, "- ") && strings.Contains(trimmed, ".svc") {
+			// Extract the service name (first segment before the first dot).
+			entry := strings.TrimPrefix(trimmed, "- ")
+			parts := strings.SplitN(entry, ".", 3)
+			if len(parts) >= 3 {
+				indent := line[:len(line)-len(strings.TrimLeft(line, " "))]
+				suffix := parts[2] // "svc" or "svc.cluster.local"
+				lines[i] = indent + "- " + parts[0] + ".{{ .Release.Namespace }}." + suffix
+			}
+		}
+	}
+
+	return strings.Join(lines, "\n")
 }
 
 // transformGeneric replaces the namespace for namespaced resources and

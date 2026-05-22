@@ -16,13 +16,8 @@ limitations under the License.
 
 package version
 
-// Build metadata, overridden at build time via ldflags:
-//
-//	go build -ldflags "\
-//	  -X github.com/lburgazzoli/opendatahub-module-operator/pkg/version.Version=1.0.0 \
-//	  -X github.com/lburgazzoli/opendatahub-module-operator/pkg/version.Commit=abc1234 \
-//	  -X github.com/lburgazzoli/opendatahub-module-operator/pkg/version.Branch=main \
-//	  -X github.com/lburgazzoli/opendatahub-module-operator/pkg/version.Repo=github.com/lburgazzoli/opendatahub-module-operator"
+// Build metadata, overridden at build time via ldflags.
+// See Makefile LDFLAGS for the full list of -X flags.
 var (
 	Version = "0.0.0-dev"
 	Commit  = "unknown"

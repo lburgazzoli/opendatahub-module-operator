@@ -1,0 +1,128 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/lburgazzoli/opendatahub-module-operator/cmd/chartgen/values",
+  "$ref": "#/$defs/Values",
+  "$defs": {
+    "ImageSpec": {
+      "properties": {
+        "repository": {
+          "type": "string",
+          "description": "Image repository"
+        },
+        "tag": {
+          "type": "string",
+          "description": "Image tag"
+        },
+        "pullPolicy": {
+          "type": "string",
+          "enum": [
+            "Always",
+            "IfNotPresent",
+            "Never"
+          ],
+          "description": "Image pull policy",
+          "default": "IfNotPresent"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "repository",
+        "tag",
+        "pullPolicy"
+      ]
+    },
+    "ResourceList": {
+      "properties": {
+        "cpu": {
+          "type": "string",
+          "description": "CPU quantity"
+        },
+        "memory": {
+          "type": "string",
+          "description": "Memory quantity"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    },
+    "ResourceSpec": {
+      "properties": {
+        "limits": {
+          "$ref": "#/$defs/ResourceList",
+          "description": "Resource limits"
+        },
+        "requests": {
+          "$ref": "#/$defs/ResourceList",
+          "description": "Resource requests"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    },
+    "ServiceAccountSpec": {
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "ServiceAccount name (defaults to release fullname)"
+        },
+        "annotations": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object",
+          "description": "Additional ServiceAccount annotations"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    },
+    "Values": {
+      "properties": {
+        "image": {
+          "$ref": "#/$defs/ImageSpec",
+          "description": "Container image configuration"
+        },
+        "replicas": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Number of manager replicas",
+          "default": 1
+        },
+        "resources": {
+          "$ref": "#/$defs/ResourceSpec",
+          "description": "Resource requests and limits"
+        },
+        "leaderElect": {
+          "type": "boolean",
+          "description": "Enable leader election",
+          "default": true
+        },
+        "serviceAccount": {
+          "$ref": "#/$defs/ServiceAccountSpec",
+          "description": "ServiceAccount configuration"
+        },
+        "imagePullSecret": {
+          "type": "string",
+          "description": "Image pull secret name (also injected into controller ConfigMap)"
+        },
+        "config": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object",
+          "description": "Additional controller config merged into ConfigMap"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "image",
+        "replicas",
+        "resources",
+        "leaderElect",
+        "serviceAccount"
+      ]
+    }
+  }
+}

@@ -22,7 +22,6 @@ import (
 	"os"
 
 	"github.com/invopop/jsonschema"
-	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"sigs.k8s.io/yaml"
@@ -48,57 +47,57 @@ const (
 // Values defines the Helm chart values structure.
 type Values struct {
 	// Image configures the container image for the manager.
-	Image ImageSpec `json:"image" yaml:"image" jsonschema:"description=Container image configuration"`
+	Image ImageSpec `json:"image"`
 
 	// Replicas is the number of manager pod replicas.
-	Replicas int32 `json:"replicas" yaml:"replicas" jsonschema:"description=Number of manager replicas,default=1,minimum=1"`
+	Replicas int32 `json:"replicas" jsonschema:"default=1,minimum=1"`
 
 	// Resources configures CPU and memory requests/limits for the manager.
-	Resources ResourceSpec `json:"resources" yaml:"resources" jsonschema:"description=Resource requests and limits"`
+	Resources ResourceSpec `json:"resources"`
 
 	// LeaderElect enables leader election for high availability.
-	LeaderElect bool `json:"leaderElect" yaml:"leaderElect" jsonschema:"description=Enable leader election,default=true"`
+	LeaderElect bool `json:"leaderElect" jsonschema:"default=true"`
 
 	// ServiceAccount configures the operator's ServiceAccount.
-	ServiceAccount ServiceAccountSpec `json:"serviceAccount" yaml:"serviceAccount" jsonschema:"description=ServiceAccount configuration"`
+	ServiceAccount ServiceAccountSpec `json:"serviceAccount"`
 
 	// ImagePullSecret is the name of a pull secret for the manager image.
 	// When set it is also injected into the controller ConfigMap so the
 	// operator can propagate it to child resources.
-	ImagePullSecret string `json:"imagePullSecret,omitempty" yaml:"imagePullSecret,omitempty" jsonschema:"description=Image pull secret name (also injected into controller ConfigMap)"`
+	ImagePullSecret string `json:"imagePullSecret,omitempty"`
 
 	// Config provides additional controller configuration entries that are
 	// merged into the controller ConfigMap.
-	Config map[string]string `json:"config,omitempty" yaml:"config,omitempty" jsonschema:"description=Additional controller config merged into ConfigMap"`
+	Config map[string]string `json:"config,omitempty"`
 }
 
 // ImageSpec describes a container image.
 type ImageSpec struct {
-	Repository string `json:"repository" yaml:"repository" jsonschema:"description=Image repository"`
-	Tag        string `json:"tag" yaml:"tag" jsonschema:"description=Image tag"`
-	PullPolicy string `json:"pullPolicy" yaml:"pullPolicy" jsonschema:"description=Image pull policy,enum=Always,enum=IfNotPresent,enum=Never,default=IfNotPresent"`
+	Repository string `json:"repository"`
+	Tag        string `json:"tag"`
+	PullPolicy string `json:"pullPolicy" jsonschema:"enum=Always,enum=IfNotPresent,enum=Never"`
 }
 
 // ResourceSpec mirrors corev1.ResourceRequirements but with simpler
 // serialization for Helm values.
 type ResourceSpec struct {
-	Limits   ResourceList `json:"limits,omitempty" yaml:"limits,omitempty" jsonschema:"description=Resource limits"`
-	Requests ResourceList `json:"requests,omitempty" yaml:"requests,omitempty" jsonschema:"description=Resource requests"`
+	Limits   ResourceList `json:"limits,omitempty"`
+	Requests ResourceList `json:"requests,omitempty"`
 }
 
 // ResourceList maps resource names to quantities.
 type ResourceList struct {
-	CPU    string `json:"cpu,omitempty" yaml:"cpu,omitempty" jsonschema:"description=CPU quantity"`
-	Memory string `json:"memory,omitempty" yaml:"memory,omitempty" jsonschema:"description=Memory quantity"`
+	CPU    string `json:"cpu,omitempty"`
+	Memory string `json:"memory,omitempty"`
 }
 
 // ServiceAccountSpec configures the operator's ServiceAccount.
 type ServiceAccountSpec struct {
 	// Name overrides the ServiceAccount name (defaults to release fullname).
-	Name string `json:"name,omitempty" yaml:"name,omitempty" jsonschema:"description=ServiceAccount name (defaults to release fullname)"`
+	Name string `json:"name,omitempty"`
 
 	// Annotations are additional annotations on the ServiceAccount.
-	Annotations map[string]string `json:"annotations,omitempty" yaml:"annotations,omitempty" jsonschema:"description=Additional ServiceAccount annotations"`
+	Annotations map[string]string `json:"annotations,omitempty"`
 }
 
 // DefaultValues returns a Values instance with sensible defaults.
@@ -236,25 +235,4 @@ func WriteValuesSchema(path string) error {
 	}
 
 	return os.WriteFile(path, data, 0o644)
-}
-
-// corev1ResourceRequirementsToSpec converts the k8s type to our simpler
-// Helm-friendly type. Exported for testing.
-func corev1ResourceRequirementsToSpec(r corev1.ResourceRequirements) ResourceSpec {
-	spec := ResourceSpec{}
-
-	if cpu := r.Limits.Cpu(); cpu != nil && !cpu.IsZero() {
-		spec.Limits.CPU = cpu.String()
-	}
-	if mem := r.Limits.Memory(); mem != nil && !mem.IsZero() {
-		spec.Limits.Memory = mem.String()
-	}
-	if cpu := r.Requests.Cpu(); cpu != nil && !cpu.IsZero() {
-		spec.Requests.CPU = cpu.String()
-	}
-	if mem := r.Requests.Memory(); mem != nil && !mem.IsZero() {
-		spec.Requests.Memory = mem.String()
-	}
-
-	return spec
 }

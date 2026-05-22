@@ -40,7 +40,7 @@ import (
 	k8sm "github.com/lburgazzoli/gomega-matchers/pkg/matchers/k8s"
 
 	componentsv1alpha1 "github.com/lburgazzoli/opendatahub-module-operator/api/components/v1alpha1"
-	"github.com/lburgazzoli/opendatahub-module-operator/internal/controller/components/mymodule"
+	"github.com/lburgazzoli/opendatahub-module-operator/internal/controller/mymodule"
 	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/pkg/config"
 	"github.com/lburgazzoli/opendatahub-module-operator/test/support"
 	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/cluster"
@@ -101,6 +101,7 @@ var _ = BeforeSuite(func() {
 	moduleCfg := &moduleconfig.Config{
 		PlatformType:    operatorConfigData[moduleconfig.KeyPlatformType],
 		PlatformVersion: operatorConfigData[moduleconfig.KeyPlatformVersion],
+		WebhooksEnabled: false,
 	}
 
 	By("creating the manager")
@@ -116,7 +117,7 @@ var _ = BeforeSuite(func() {
 	mgr := odhmanager.New(ctrlMgr, odhmanager.WithManifestsBasePath(manifestsPath))
 
 	By("registering the controller")
-	Expect(mymodule.NewReconciler(ctx, mgr, moduleCfg)).To(Succeed())
+	Expect(mymodule.NewReconciler(ctx, mgr, moduleCfg, moduleCfg.Release())).To(Succeed())
 
 	By("starting the manager")
 	go func() {

@@ -31,9 +31,10 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
+	webhookserver "sigs.k8s.io/controller-runtime/pkg/webhook"
 
 	componentsv1alpha1 "github.com/lburgazzoli/opendatahub-module-operator/api/components/v1alpha1"
-	"github.com/lburgazzoli/opendatahub-module-operator/internal/controller/components/mymodule"
+	"github.com/lburgazzoli/opendatahub-module-operator/internal/controller/mymodule"
 	libcache "github.com/lburgazzoli/opendatahub-module-operator/pkg/cache"
 	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/pkg/config"
 	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/cluster"
@@ -77,11 +78,15 @@ func run(cmd *cobra.Command, _ []string) error {
 	viper.Set("rhai-applications-namespace", cfg.ApplicationsNamespace)
 	cluster.SetRHAIApplicationNamespace(cfg.ApplicationsNamespace)
 
-	ctrlMgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
+	mgrOpts := ctrl.Options{
 		Scheme: scheme,
 		Metrics: metricsserver.Options{
 			BindAddress: cfg.MetricsAddr,
 		},
+		WebhookServer: webhookserver.NewServer(webhookserver.Options{
+			Port:    cfg.WebhookPort,
+			CertDir: cfg.WebhookCertDir,
+		}),
 		HealthProbeBindAddress:        cfg.HealthProbeAddr,
 		PprofBindAddress:              cfg.PprofAddr,
 		LeaderElection:                cfg.LeaderElect,
@@ -118,7 +123,9 @@ func run(cmd *cobra.Command, _ []string) error {
 				},
 			},
 		},
-	})
+	}
+
+	ctrlMgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), mgrOpts)
 	if err != nil {
 		return fmt.Errorf("creating manager: %w", err)
 	}
@@ -130,8 +137,13 @@ func run(cmd *cobra.Command, _ []string) error {
 		odhmanager.WithManifestsBasePath(cfg.ManifestsPath),
 	)
 
+	// Build the release once — it is constant for the process lifetime.
+	// The reconciler framework's cluster.GetRelease() is not populated
+	// because this standalone operator does not call cluster.Init().
+	rel := cfg.Release()
+
 	// Register controllers.
-	if err := mymodule.NewReconciler(cmd.Context(), mgr, cfg); err != nil {
+	if err := mymodule.NewReconciler(cmd.Context(), mgr, cfg, rel); err != nil {
 		return fmt.Errorf("creating mymodule reconciler: %w", err)
 	}
 

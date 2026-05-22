@@ -67,7 +67,7 @@ func TestLoadFromFS_Defaults(t *testing.T) {
 	g.Expect(cfg.PlatformVersion).To(Equal(config.DefaultPlatformVersion))
 	g.Expect(cfg.MetricsAddr).To(Equal(config.DefaultMetricsAddr))
 	g.Expect(cfg.HealthProbeAddr).To(Equal(config.DefaultHealthProbeAddr))
-	g.Expect(cfg.LeaderElect).To(Equal(config.DefaultLeaderElect))
+	g.Expect(cfg.LeaderElect).To(BeTrue())
 	g.Expect(cfg.LeaderElectionID).To(Equal(config.DefaultLeaderElectionID))
 	g.Expect(cfg.ApplicationsNamespace).To(Equal(config.DefaultApplicationsNS))
 	g.Expect(cfg.ManifestsPath).To(BeEmpty())
@@ -88,7 +88,7 @@ func TestLoadFromFS_FlatFiles(t *testing.T) {
 	g.Expect(cfg.PlatformType).To(Equal(platformTypeSelfManaged))
 	g.Expect(cfg.PlatformVersion).To(Equal(platformVersion225))
 	g.Expect(cfg.MetricsAddr).To(Equal(config.DefaultMetricsAddr))
-	g.Expect(cfg.LeaderElect).To(Equal(config.DefaultLeaderElect))
+	g.Expect(cfg.LeaderElect).To(BeTrue())
 }
 
 func TestLoadFromFS_FlatFilesWithWhitespace(t *testing.T) {

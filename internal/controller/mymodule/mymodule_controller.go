@@ -26,6 +26,7 @@ import (
 
 	componentApi "github.com/lburgazzoli/opendatahub-module-operator/api/components/v1alpha1"
 	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/pkg/config"
+	"github.com/opendatahub-io/opendatahub-operator/v2/api/common"
 	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/controller/actions/deploy"
 	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/controller/actions/gc"
 	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/controller/actions/render/kustomize"
@@ -33,6 +34,7 @@ import (
 	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/controller/actions/status/releases"
 	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/controller/predicates"
 	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/controller/reconciler"
+	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/controller/status"
 	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/metadata/labels"
 )
 
@@ -45,8 +47,18 @@ import (
 
 // NewReconciler sets up the controller with the Manager using the ReconcilerFor
 // builder and the standard action pipeline.
-func NewReconciler(ctx context.Context, mgr ctrl.Manager, cfg *moduleconfig.Config) error {
-	_, err := reconciler.ReconcilerFor(mgr, &componentApi.MyModule{}).
+func NewReconciler(
+	ctx context.Context,
+	mgr ctrl.Manager,
+	cfg *moduleconfig.Config,
+	rel common.Release,
+) error {
+	m, err := NewModule(cfg)
+	if err != nil {
+		return err
+	}
+
+	r, err := reconciler.ReconcilerFor(mgr, &componentApi.MyModule{}).
 		// Owned resources: the controller watches these and reconciles
 		// when they change.
 		Owns(&appsv1.Deployment{}, reconciler.WithPredicates(predicates.DefaultDeploymentPredicate)).
@@ -55,10 +67,14 @@ func NewReconciler(ctx context.Context, mgr ctrl.Manager, cfg *moduleconfig.Conf
 		Owns(&corev1.ConfigMap{}).
 		Owns(&rbacv1.ClusterRole{}).
 		Owns(&rbacv1.ClusterRoleBinding{}).
-		// Action pipeline: initialize -> releases -> reportStatus -> kustomize -> deploy -> deployments -> gc
-		WithAction(newInitializeAction(cfg.PlatformType)).
-		WithAction(releases.NewAction()).
-		WithAction(newReportStatusAction(cfg)).
+		// Action pipeline:
+		//   initialize -> validateEnvironment -> upgrade ->
+		//   kustomize -> deploy ->
+		//   deployments -> releases -> reportStatus ->
+		//   gc
+		WithAction(m.initialize).
+		WithAction(m.validateEnvironment).
+		WithAction(m.upgradeIfNeeded).
 		WithAction(kustomize.NewAction(
 			kustomize.WithLabel(labels.PlatformPartOf, componentName),
 		)).
@@ -66,9 +82,31 @@ func NewReconciler(ctx context.Context, mgr ctrl.Manager, cfg *moduleconfig.Conf
 			deploy.WithCache(),
 		)).
 		WithAction(deployments.NewAction()).
+		WithAction(releases.NewAction()).
+		// reportStatus runs after deployments and releases have populated
+		// their conditions and release info, so it can override or enrich
+		// any previously set status fields.
+		WithAction(m.reportStatus).
 		WithAction(gc.NewAction()).
-		WithConditions(conditionTypes...).
+		WithConditions(status.ConditionDeploymentsAvailable).
 		Build(ctx)
 
-	return err
+	if err != nil {
+		return err
+	}
+
+	// The reconciler framework reads Release from cluster.GetRelease(),
+	// which is only populated by cluster.Init() (called by the main ODH
+	// operator). A standalone module operator must set it explicitly so
+	// the deploy action stamps the correct platform.opendatahub.io/type
+	// and platform.opendatahub.io/version annotations on managed resources.
+	r.Release = rel
+
+	if cfg.WebhooksEnabled {
+		if err := m.RegisterWebhooks(mgr); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }

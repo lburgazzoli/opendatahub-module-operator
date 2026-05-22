@@ -118,11 +118,11 @@ func run(
 	}
 
 	// Write grouped resource templates
-	for gvk, res := range groups {
-		filename := gvkToFilename(gvk)
+	for resourceGVK, res := range groups {
+		filename := gvkToFilename(resourceGVK)
 		path := filepath.Join(templatesDir, filename)
 
-		content, err := renderGroup(gvk, res)
+		content, err := renderGroup(resourceGVK, res)
 		if err != nil {
 			return fmt.Errorf("rendering %s: %w", filename, err)
 		}
@@ -194,15 +194,15 @@ func groupByGVK(resources []unstructured.Unstructured) map[schema.GroupVersionKi
 // gvkToFilename converts a GVK to a template filename.
 // Uses the full unambiguous format: <group>_<version>_<kind>.yaml
 // Core API group (empty string) is rendered as "core".
-func gvkToFilename(gvk schema.GroupVersionKind) string {
-	group := strings.ToLower(gvk.Group)
+func gvkToFilename(resourceGVK schema.GroupVersionKind) string {
+	group := strings.ToLower(resourceGVK.Group)
 	if group == "" {
 		group = coreAPIGroup
 	}
 
 	return fmt.Sprintf("%s_%s_%s.yaml",
 		group,
-		strings.ToLower(gvk.Version),
-		strings.ToLower(gvk.Kind),
+		strings.ToLower(resourceGVK.Version),
+		strings.ToLower(resourceGVK.Kind),
 	)
 }

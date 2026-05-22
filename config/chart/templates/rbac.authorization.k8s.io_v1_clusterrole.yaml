@@ -1,0 +1,169 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: opendatahub-module-operator
+  name: opendatahub-module-operator-components-mymodule-admin-role
+rules:
+- apiGroups:
+  - components.platform.opendatahub.io
+  resources:
+  - mymodules
+  verbs:
+  - '*'
+- apiGroups:
+  - components.platform.opendatahub.io
+  resources:
+  - mymodules/status
+  verbs:
+  - get
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: opendatahub-module-operator
+  name: opendatahub-module-operator-components-mymodule-editor-role
+rules:
+- apiGroups:
+  - components.platform.opendatahub.io
+  resources:
+  - mymodules
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - components.platform.opendatahub.io
+  resources:
+  - mymodules/status
+  verbs:
+  - get
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: opendatahub-module-operator
+  name: opendatahub-module-operator-components-mymodule-viewer-role
+rules:
+- apiGroups:
+  - components.platform.opendatahub.io
+  resources:
+  - mymodules
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - components.platform.opendatahub.io
+  resources:
+  - mymodules/status
+  verbs:
+  - get
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: opendatahub-module-operator-manager-role
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - configmaps
+  - serviceaccounts
+  - services
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - apps
+  resources:
+  - deployments
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - components.platform.opendatahub.io
+  resources:
+  - mymodules
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - components.platform.opendatahub.io
+  resources:
+  - mymodules/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - components.platform.opendatahub.io
+  resources:
+  - mymodules/status
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
+  - rbac.authorization.k8s.io
+  resources:
+  - clusterrolebindings
+  - clusterroles
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: opendatahub-module-operator-metrics-auth-role
+rules:
+- apiGroups:
+  - authentication.k8s.io
+  resources:
+  - tokenreviews
+  verbs:
+  - create
+- apiGroups:
+  - authorization.k8s.io
+  resources:
+  - subjectaccessreviews
+  verbs:
+  - create
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: opendatahub-module-operator-metrics-reader
+rules:
+- nonResourceURLs:
+  - /metrics
+  verbs:
+  - get
