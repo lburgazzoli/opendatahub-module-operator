@@ -41,7 +41,7 @@ type PlatformStatus struct {
 	// Name is the platform identifier (e.g. OpenDataHub, SelfManagedRHOAI).
 	Name string `json:"name"`
 	// Version is the platform operator version.
-	Version string `json:"version,omitempty"`
+	Version SemVer `json:"version,omitempty"`
 }
 
 // ModuleStatus reports the module operator's runtime information.

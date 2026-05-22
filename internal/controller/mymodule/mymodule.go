@@ -43,9 +43,10 @@ const (
 // It is created once at registration time via NewModule and its methods
 // are registered as actions.Fn in the reconciliation pipeline.
 type Module struct {
-	cfg          *moduleconfig.Config
-	version      componentApi.SemVer
-	manifestInfo odhtypes.ManifestInfo
+	cfg             *moduleconfig.Config
+	version         componentApi.SemVer
+	platformVersion componentApi.SemVer
+	manifestInfo    odhtypes.ManifestInfo
 
 	// Webhook fields — set by RegisterWebhooks.
 	decoder   admission.Decoder
@@ -60,6 +61,9 @@ func NewModule(cfg *moduleconfig.Config) (*Module, error) {
 		return nil, fmt.Errorf("parsing module version %q: %w", version.Version, err)
 	}
 
+	// Platform version may be "unknown" or unset; default to zero.
+	pv, _ := componentApi.NewSemVer(cfg.PlatformVersion)
+
 	mi := odhtypes.ManifestInfo{
 		ContextDir: componentName,
 		SourcePath: overlayODH,
@@ -70,9 +74,10 @@ func NewModule(cfg *moduleconfig.Config) (*Module, error) {
 	}
 
 	return &Module{
-		cfg:          cfg,
-		version:      v,
-		manifestInfo: mi,
+		cfg:             cfg,
+		version:         v,
+		platformVersion: pv,
+		manifestInfo:    mi,
 	}, nil
 }
 
@@ -94,32 +99,39 @@ func (m *Module) validateEnvironment(_ context.Context, _ *odhtypes.Reconciliati
 	return nil
 }
 
-// upgradeIfNeeded checks whether the current module version is strictly
-// greater than the version recorded in the CR status. If so, it calls
-// m.Upgrade to run idempotent migrations.
+// upgradeIfNeeded checks whether the module version advanced or the
+// platform version changed since the last reconcile. If so, it calls
+// m.upgrade to run idempotent migrations.
 func (m *Module) upgradeIfNeeded(_ context.Context, rr *odhtypes.ReconciliationRequest) error {
 	obj, ok := rr.Instance.(*componentApi.MyModule)
 	if !ok {
 		return fmt.Errorf("instance is not a MyModule")
 	}
 
-	prev := obj.Status.Module.Version
-	if prev.IsZero() || !m.version.GT(prev) {
+	prev := obj.Status.Module
+
+	moduleVersionChanged := !prev.Version.IsZero() && m.version.GT(prev.Version)
+	platformVersionChanged := !prev.Platform.Version.IsZero() && m.platformVersion.GT(prev.Platform.Version)
+
+	if !moduleVersionChanged && !platformVersionChanged {
 		return nil
 	}
 
 	return m.upgrade(prev, rr)
 }
 
-// upgrade runs idempotent migrations when the module version advances.
-// prev is the version previously recorded in the CR status.
-func (m *Module) upgrade(prev componentApi.SemVer, rr *odhtypes.ReconciliationRequest) error {
+// upgrade runs idempotent migrations when the module version advances
+// or the platform version changes. prev is the module status from the
+// previous reconcile cycle.
+func (m *Module) upgrade(prev componentApi.ModuleStatus, rr *odhtypes.ReconciliationRequest) error {
 	_ = prev
 	_ = rr
 
-	// Idempotent migrations go here, gated by version ranges.
-	// Example:
-	//   if prev.GT(componentApi.SemVer("1.0.0")) { ... }
+	// Idempotent migrations go here, gated by version ranges or
+	// platform version transitions.
+	// Examples:
+	//   if prev.Version.GT("1.0.0") { ... }
+	//   if m.platformVersion.GT(prev.Platform.Version) { ... }
 
 	return nil
 }
@@ -137,7 +149,7 @@ func (m *Module) reportStatus(_ context.Context, rr *odhtypes.ReconciliationRequ
 		BuildSource: version.Repo + "@" + version.Branch + "/" + version.Commit,
 		Platform: componentApi.PlatformStatus{
 			Name:    m.cfg.PlatformType,
-			Version: m.cfg.PlatformVersion,
+			Version: m.platformVersion,
 		},
 	}
 

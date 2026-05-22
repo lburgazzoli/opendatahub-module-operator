@@ -162,6 +162,27 @@ func TestUpgradeIfNeededSameVersion(t *testing.T) {
 	g.Expect(m.upgradeIfNeeded(context.Background(), rr)).To(Succeed())
 }
 
+func TestUpgradeIfNeededPlatformVersionChange(t *testing.T) {
+	g := NewWithT(t)
+
+	m := newTestModule(t, string(cluster.OpenDataHub))
+	obj := newTestMyModule()
+
+	v, err := componentApi.NewSemVer(version.Version)
+	g.Expect(err).NotTo(HaveOccurred())
+
+	prevPV, err := componentApi.NewSemVer("0.9.0")
+	g.Expect(err).NotTo(HaveOccurred())
+
+	// Same module version but older platform version in status.
+	obj.Status.Module.Version = v
+	obj.Status.Module.Platform.Version = prevPV
+	rr := newTestRR(obj)
+
+	// Platform version advanced: upgrade runs (no-op migrations, no error).
+	g.Expect(m.upgradeIfNeeded(context.Background(), rr)).To(Succeed())
+}
+
 func TestUpgradeIfNeededVersionAdvance(t *testing.T) {
 	g := NewWithT(t)
 
@@ -193,7 +214,7 @@ func TestReportStatus(t *testing.T) {
 
 	g.Expect(obj.Status.Module.Version.String()).To(Equal(version.Version))
 	g.Expect(obj.Status.Module.Platform.Name).To(Equal(string(cluster.OpenDataHub)))
-	g.Expect(obj.Status.Module.Platform.Version).To(Equal("1.0.0"))
+	g.Expect(obj.Status.Module.Platform.Version.String()).To(Equal("1.0.0"))
 	g.Expect(obj.Status.Module.Sources).To(HaveLen(1))
 	g.Expect(obj.Status.Module.Sources[0].Renderer).To(Equal(componentApi.SourceRendererKustomize))
 
