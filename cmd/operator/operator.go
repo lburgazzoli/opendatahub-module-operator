@@ -98,6 +98,11 @@ func run(cmd *cobra.Command, _ []string) error {
 				cfg.ApplicationsNamespace: {},
 				cache.AllNamespaces:       {},
 			},
+			// Fail with ErrResourceNotCached if a Get/List is called for a
+			// resource type that has no informer running. This prevents
+			// silent live API calls for types the controller forgot to
+			// Owns() or Watches().
+			ReaderFailOnMissingInformer: true,
 		},
 
 		// Client configuration:

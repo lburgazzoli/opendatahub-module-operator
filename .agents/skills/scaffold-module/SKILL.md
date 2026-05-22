@@ -98,6 +98,10 @@ function for any code that calls `cluster.GetApplicationNamespace()`.
   `last-applied-configuration` from cached objects.
 - **`DisableFor`**: ConfigMaps and Secrets bypass the cache (always read fresh).
 - **`Unstructured: true`**: cache-backed reads for unstructured objects.
+- **`ReaderFailOnMissingInformer: true`**: a `Get` or `List` for a resource
+  type with no running informer returns `ErrResourceNotCached` instead of
+  silently falling through to a live API call. This catches missing `Owns()`
+  or `Watches()` declarations at runtime.
 
 ## Helm Chart Generation
 
@@ -116,6 +120,28 @@ Transformations:
 `values.schema.json` is generated via `invopop/jsonschema` reflection on the
 `Values` struct in `cmd/chartgen/values.go`. Adding a field to `Values`
 automatically updates the schema.
+
+### Maintaining the Chart Generator
+
+The `chartgen` subcommand in `cmd/chartgen/` must be updated when:
+
+- **New Helm values are needed** — add a field to `Values` struct in
+  `values.go`. The schema updates automatically. Add a `jsonschema` struct
+  tag for description/enum/default.
+- **New resource types need special templating** — add a case to
+  `transformResource()` in `chart.go`. Tier-1 resources get value injection,
+  tier-2 resources get namespace templating only.
+- **Namespace templating logic changes** — the `replaceNamespace()`,
+  `replaceSubjectsNamespace()`, and `replaceSubjectsServiceAccount()`
+  functions in `chart.go` handle string-level YAML manipulation. Note:
+  YAML list items starting with `- ` require the list-item check in the
+  subjects section scanner (see the `!strings.HasPrefix(trimmed, "-")`
+  guard).
+- **`_helpers.tpl` or `Chart.yaml` template changes** — edit the constants
+  in `helpers.go`. `Chart.yaml` is only generated if missing (existing
+  files are preserved).
+
+After changes: `make helm` regenerates the chart and verifies it lints.
 
 ## Testing
 
@@ -142,19 +168,28 @@ reflected in test expectations (they are coupled).
 
 ## Extending
 
-### Adding an Owned Resource Type
+### Adding a Workload Resource Type
 
-Both steps are required — missing either causes runtime errors:
+When a manifest in `config/manifests/` introduces a new resource type (e.g.,
+adding a `NetworkPolicy` YAML), three things must be updated in lockstep:
 
-1. Add `Owns()` in the ReconcilerFor builder:
+1. **Manifest** — the kustomize resource in `config/manifests/mymodule/base/`
+2. **`Owns()`** — register on the ReconcilerFor builder so changes to the
+   resource trigger reconciliation:
    ```go
    Owns(&networkingv1.NetworkPolicy{})
    ```
-
-2. Add the RBAC marker on the controller file:
+3. **RBAC marker** — grant permissions so the operator can manage it:
    ```go
    // +kubebuilder:rbac:groups=networking.k8s.io,resources=networkpolicies,verbs=get;list;watch;create;update;patch;delete
    ```
+
+Missing any one of the three causes:
+- No `Owns()` → changes to the resource don't trigger reconciliation
+- No RBAC marker → `Forbidden` errors when deploying or garbage collecting
+- No manifest → the resource is never created (but `Owns` watch is harmless)
+
+After changes: `make manifests generate` to regenerate `config/rbac/role.yaml`.
 
 ### Adding a Config Key
 
