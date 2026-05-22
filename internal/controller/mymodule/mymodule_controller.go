@@ -21,6 +21,7 @@ import (
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	networkingv1 "k8s.io/api/networking/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
 	ctrl "sigs.k8s.io/controller-runtime"
 
@@ -32,7 +33,10 @@ import (
 	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/controller/actions/render/kustomize"
 	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/controller/actions/status/deployments"
 	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/controller/actions/status/releases"
+	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/controller/handlers"
+	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/controller/precondition"
 	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/controller/predicates"
+	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/controller/predicates/resources"
 	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/controller/reconciler"
 	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/controller/status"
 	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/metadata/labels"
@@ -43,10 +47,18 @@ import (
 // +kubebuilder:rbac:groups=components.platform.opendatahub.io,resources=mymodules/finalizers,verbs=update
 // +kubebuilder:rbac:groups=apps,resources=deployments,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups="",resources=services;serviceaccounts;configmaps,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=networking.k8s.io,resources=ingresses,verbs=get;list;watch
 // +kubebuilder:rbac:groups=rbac.authorization.k8s.io,resources=clusterroles;clusterrolebindings,verbs=get;list;watch;create;update;patch;delete
 
 // NewReconciler sets up the controller with the Manager using the ReconcilerFor
 // builder and the standard action pipeline.
+//
+// This is an example implementation that demonstrates the framework's
+// capabilities: preconditions, lifecycle actions on a Module struct,
+// watches on external resources, webhooks, and condition management.
+// Developers are free to implement controllers in whatever way suits
+// their module — the framework imposes no particular structure beyond
+// the actions.Fn signature.
 func NewReconciler(
 	ctx context.Context,
 	mgr ctrl.Manager,
@@ -67,13 +79,26 @@ func NewReconciler(
 		Owns(&corev1.ConfigMap{}).
 		Owns(&rbacv1.ClusterRole{}).
 		Owns(&rbacv1.ClusterRoleBinding{}).
+		// Watch the required Ingress in the application namespace.
+		// When it is created, updated, or deleted the singleton MyModule
+		// CR is re-enqueued so the precondition re-evaluates.
+		Watches(&networkingv1.Ingress{},
+			reconciler.WithPredicates(resources.CreatedOrUpdatedOrDeletedNamed(IngressName)),
+			reconciler.WithEventHandler(handlers.ToNamed(componentApi.MyModuleInstanceName)),
+		).
+		// Preconditions: halt the pipeline if the required Ingress is
+		// missing. Nothing is deployed until it exists.
+		WithPreCondition(precondition.NewPreCondition(
+			m.checkIngress,
+			precondition.WithConditionType(ConditionIngressAvailable),
+			precondition.WithStopReconciliation(),
+		)).
 		// Action pipeline:
-		//   initialize -> validateEnvironment -> upgrade ->
+		//   initialize -> upgrade ->
 		//   kustomize -> deploy ->
 		//   deployments -> releases -> reportStatus ->
 		//   gc
 		WithAction(m.initialize).
-		WithAction(m.validateEnvironment).
 		WithAction(m.upgradeIfNeeded).
 		WithAction(kustomize.NewAction(
 			kustomize.WithLabel(labels.PlatformPartOf, componentName),
@@ -87,8 +112,13 @@ func NewReconciler(
 		// their conditions and release info, so it can override or enrich
 		// any previously set status fields.
 		WithAction(m.reportStatus).
-		WithAction(gc.NewAction()).
-		WithConditions(status.ConditionDeploymentsAvailable).
+		WithAction(gc.NewAction(
+			gc.InNamespace(cfg.ApplicationsNamespace),
+		)).
+		WithConditions(
+			status.ConditionDeploymentsAvailable,
+			ConditionIngressAvailable,
+		).
 		Build(ctx)
 
 	if err != nil {

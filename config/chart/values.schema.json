@@ -6,12 +6,10 @@
     "ImageSpec": {
       "properties": {
         "repository": {
-          "type": "string",
-          "description": "Image repository"
+          "type": "string"
         },
         "tag": {
-          "type": "string",
-          "description": "Image tag"
+          "type": "string"
         },
         "pullPolicy": {
           "type": "string",
@@ -19,9 +17,7 @@
             "Always",
             "IfNotPresent",
             "Never"
-          ],
-          "description": "Image pull policy",
-          "default": "IfNotPresent"
+          ]
         }
       },
       "additionalProperties": false,
@@ -35,12 +31,10 @@
     "ResourceList": {
       "properties": {
         "cpu": {
-          "type": "string",
-          "description": "CPU quantity"
+          "type": "string"
         },
         "memory": {
-          "type": "string",
-          "description": "Memory quantity"
+          "type": "string"
         }
       },
       "additionalProperties": false,
@@ -49,12 +43,10 @@
     "ResourceSpec": {
       "properties": {
         "limits": {
-          "$ref": "#/$defs/ResourceList",
-          "description": "Resource limits"
+          "$ref": "#/$defs/ResourceList"
         },
         "requests": {
-          "$ref": "#/$defs/ResourceList",
-          "description": "Resource requests"
+          "$ref": "#/$defs/ResourceList"
         }
       },
       "additionalProperties": false,
@@ -63,15 +55,13 @@
     "ServiceAccountSpec": {
       "properties": {
         "name": {
-          "type": "string",
-          "description": "ServiceAccount name (defaults to release fullname)"
+          "type": "string"
         },
         "annotations": {
           "additionalProperties": {
             "type": "string"
           },
-          "type": "object",
-          "description": "Additional ServiceAccount annotations"
+          "type": "object"
         }
       },
       "additionalProperties": false,
@@ -80,38 +70,31 @@
     "Values": {
       "properties": {
         "image": {
-          "$ref": "#/$defs/ImageSpec",
-          "description": "Container image configuration"
+          "$ref": "#/$defs/ImageSpec"
         },
         "replicas": {
           "type": "integer",
           "minimum": 1,
-          "description": "Number of manager replicas",
           "default": 1
         },
         "resources": {
-          "$ref": "#/$defs/ResourceSpec",
-          "description": "Resource requests and limits"
+          "$ref": "#/$defs/ResourceSpec"
         },
         "leaderElect": {
           "type": "boolean",
-          "description": "Enable leader election",
           "default": true
         },
         "serviceAccount": {
-          "$ref": "#/$defs/ServiceAccountSpec",
-          "description": "ServiceAccount configuration"
+          "$ref": "#/$defs/ServiceAccountSpec"
         },
         "imagePullSecret": {
-          "type": "string",
-          "description": "Image pull secret name (also injected into controller ConfigMap)"
+          "type": "string"
         },
         "config": {
           "additionalProperties": {
             "type": "string"
           },
-          "type": "object",
-          "description": "Additional controller config merged into ConfigMap"
+          "type": "object"
         }
       },
       "additionalProperties": false,

@@ -20,11 +20,14 @@ import (
 	"context"
 	"fmt"
 
+	networkingv1 "k8s.io/api/networking/v1"
+	k8serr "k8s.io/apimachinery/pkg/api/errors"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
 	"github.com/opendatahub-io/opendatahub-operator/v2/api/common"
 	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/cluster"
+	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/controller/precondition"
 	odhtypes "github.com/opendatahub-io/opendatahub-operator/v2/pkg/controller/types"
 
 	componentApi "github.com/lburgazzoli/opendatahub-module-operator/api/components/v1alpha1"
@@ -37,6 +40,15 @@ const (
 
 	overlayRhoai = "overlays/rhoai"
 	overlayODH   = "overlays/odh"
+
+	// IngressName is the name of the Ingress that must exist in the
+	// application namespace before the module can reconcile. This
+	// demonstrates a precondition that validates an external dependency.
+	IngressName = "mymodule"
+
+	// ConditionIngressAvailable is the condition type set by the ingress
+	// precondition. True when the required Ingress exists, False otherwise.
+	ConditionIngressAvailable = "IngressAvailable"
 )
 
 // Module holds process-lifetime state for the mymodule controller.
@@ -92,11 +104,31 @@ func (m *Module) initialize(_ context.Context, rr *odhtypes.ReconciliationReques
 	return nil
 }
 
-// validateEnvironment performs config and cluster-shape checks before
-// the reconciliation pipeline renders and deploys resources. Returns an
-// error to halt the pipeline.
-func (m *Module) validateEnvironment(_ context.Context, _ *odhtypes.ReconciliationRequest) error {
-	return nil
+// checkIngress is a precondition check that verifies the required Ingress
+// exists in the application namespace. Used with precondition.NewPreCondition
+// and WithStopReconciliation so the pipeline halts when missing.
+func (m *Module) checkIngress(ctx context.Context, rr *odhtypes.ReconciliationRequest) (precondition.CheckResult, error) {
+	ingress := &networkingv1.Ingress{}
+	key := client.ObjectKey{
+		Namespace: m.cfg.ApplicationsNamespace,
+		Name:      IngressName,
+	}
+
+	switch err := rr.Client.Get(ctx, key, ingress); {
+	case k8serr.IsNotFound(err):
+		return precondition.CheckResult{
+			Pass: false,
+			Message: fmt.Sprintf(
+				"Ingress %q not found in namespace %q",
+				IngressName,
+				m.cfg.ApplicationsNamespace,
+			),
+		}, nil
+	case err != nil:
+		return precondition.CheckResult{}, fmt.Errorf("checking ingress: %w", err)
+	default:
+		return precondition.CheckResult{Pass: true}, nil
+	}
 }
 
 // upgradeIfNeeded checks whether the module version advanced or the

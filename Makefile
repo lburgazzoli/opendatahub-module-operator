@@ -138,7 +138,7 @@ kind-create: ## Create a Kind cluster with podman provider and install cert-mana
 
 .PHONY: kind-delete
 kind-delete: ## Delete the Kind cluster.
-	$(KIND) delete cluster --name $(KIND_CLUSTER)
+	KIND_EXPERIMENTAL_PROVIDER="$(CONTAINER_TOOL)" $(KIND) delete cluster --name $(KIND_CLUSTER)
 
 ##@ Deployment
 

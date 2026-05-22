@@ -126,15 +126,6 @@ func TestInitializeUnknownPlatformFallsBackToODH(t *testing.T) {
 	g.Expect(rr.Manifests[0].SourcePath).To(Equal(overlayODH))
 }
 
-func TestValidateEnvironment(t *testing.T) {
-	g := NewWithT(t)
-
-	m := newTestModule(t, string(cluster.OpenDataHub))
-	rr := newTestRR(newTestMyModule())
-
-	g.Expect(m.validateEnvironment(context.Background(), rr)).To(Succeed())
-}
-
 func TestUpgradeIfNeededFreshInstall(t *testing.T) {
 	g := NewWithT(t)
 
