@@ -110,12 +110,14 @@ make helm-uninstall
 | Target | Purpose |
 |---|---|
 | `make build` | Build manager binary |
-| `make test` | Run tests (envtest + Ginkgo) |
+| `make test` | Run unit tests |
+| `make test-integration` | Integration tests (Kind cluster) |
+| `make test-e2e` | E2E tests (deployed operator) |
 | `make manifests generate` | Regenerate CRDs, RBAC, deepcopy |
 | `make container-build` | Build container image |
 | `make container-push` | Push container image |
-| `make deploy` | Deploy to cluster via kustomize |
-| `make undeploy` | Remove from cluster |
+| `make deploy-kustomize` | Deploy via kustomize |
+| `make deploy-helm` | Deploy via Helm |
 | `make helm` | Generate Helm chart |
 | `make helm-deploy` | Deploy via Helm |
 | `make kind-create` | Create Kind cluster (podman) |
