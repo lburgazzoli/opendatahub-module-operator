@@ -1,0 +1,114 @@
+name: E2E Tests
+
+on:
+  push:
+  pull_request:
+
+permissions: {}
+
+env:
+  # Kubernetes versions to test against (Kind node images from kind v0.31.0).
+  # Update these when a new Kind release ships newer images.
+  K8S_VERSIONS: '["v1.33.7", "v1.34.3", "v1.35.0"]'
+
+jobs:
+  build:
+    permissions:
+      contents: read
+    name: Build image
+    runs-on: ubuntu-latest
+    outputs:
+      img: ${{ steps.img.outputs.img }}
+      k8s-versions: ${{ steps.versions.outputs.k8s-versions }}
+    steps:
+      - name: Clone the code
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Setup Go
+        uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6.3.0
+        with:
+          go-version-file: go.mod
+
+      - name: Compute image reference
+        id: img
+        run: |
+          IMG="ttl.sh/opendatahub-module-operator-$(git rev-parse --short HEAD):1h"
+          echo "img=${IMG}" >> "$GITHUB_OUTPUT"
+          echo "Using image: ${IMG}"
+
+      - name: Export Kubernetes versions
+        id: versions
+        run: |
+          echo "k8s-versions=${K8S_VERSIONS}" >> "$GITHUB_OUTPUT"
+
+      - name: Build and push image
+        run: |
+          make container-build container-push IMG=${{ steps.img.outputs.img }}
+
+  e2e-kustomize:
+    permissions:
+      contents: read
+    name: e2e kustomize (k8s ${{ matrix.k8s-version }})
+    needs: build
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        k8s-version: ${{ fromJson(needs.build.outputs.k8s-versions) }}
+    steps:
+      - name: Clone the code
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Setup Go
+        uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6.3.0
+        with:
+          go-version-file: go.mod
+
+      - name: Create Kind cluster
+        run: |
+          make kind-create KIND_NODE_IMAGE=kindest/node:${{ matrix.k8s-version }}
+
+      - name: Deploy via kustomize
+        run: |
+          make deploy-kustomize IMG=${{ needs.build.outputs.img }}
+
+      - name: Run e2e tests
+        run: |
+          make test-e2e
+
+  e2e-helm:
+    permissions:
+      contents: read
+    name: e2e helm (k8s ${{ matrix.k8s-version }})
+    needs: build
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        k8s-version: ${{ fromJson(needs.build.outputs.k8s-versions) }}
+    steps:
+      - name: Clone the code
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Setup Go
+        uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6.3.0
+        with:
+          go-version-file: go.mod
+
+      - name: Create Kind cluster
+        run: |
+          make kind-create KIND_NODE_IMAGE=kindest/node:${{ matrix.k8s-version }}
+
+      - name: Deploy via Helm
+        run: |
+          make deploy-helm IMG=${{ needs.build.outputs.img }}
+
+      - name: Run e2e tests
+        run: |
+          make test-e2e

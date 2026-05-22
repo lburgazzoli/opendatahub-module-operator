@@ -1,0 +1,44 @@
+# Build artifacts
+bin/
+vendor/
+*.test
+cover.out
+covmeta*
+covcounters*
+
+# IDE
+.vscode/
+.idea/
+.cursor/
+
+# OS
+.DS_Store
+*~
+*.swp
+*.swo
+
+# Generated (controller-gen)
+config/crd/bases/
+config/rbac/role.yaml
+
+# Generated (kustomize edit)
+config/manager/kustomization.yaml
+
+# Generated (helm chart)
+config/chart/
+
+# Kubeconfig (local dev)
+.kube/
+
+# OpenCode
+.opencode/
+
+# Devcontainer
+.devcontainer/
+
+# Custom golangci-lint plugin config
+.custom-gcl.yml
+
+# Makefile overrides
+local.mk
+*.mktmp.*

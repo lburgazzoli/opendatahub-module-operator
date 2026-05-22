@@ -1,0 +1,31 @@
+# Build the manager binary
+FROM registry.access.redhat.com/ubi10/go-toolset:latest AS builder
+ARG TARGETOS
+ARG TARGETARCH
+ARG LDFLAGS=""
+
+USER 0
+WORKDIR /workspace
+
+# Copy the Go Modules manifests
+COPY go.mod go.mod
+COPY go.sum go.sum
+# Cache deps before building and copying source so that we don't need to
+# re-download as much and so that source changes don't invalidate our
+# downloaded layer.
+RUN go mod download
+
+# Copy the Go source (relies on .containerignore to filter)
+COPY . .
+
+# Build
+RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -a -ldflags "${LDFLAGS}" -o manager ./cmd/main.go
+
+# Use UBI 10 micro as minimal runtime image
+FROM registry.access.redhat.com/ubi10/ubi-micro:latest
+WORKDIR /
+COPY --from=builder /workspace/manager .
+COPY config/manifests/ /manifests/
+USER 65532:65532
+
+ENTRYPOINT ["/manager"]

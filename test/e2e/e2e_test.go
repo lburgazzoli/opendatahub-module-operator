@@ -1,0 +1,191 @@
+//go:build e2e
+
+/*
+Copyright 2026.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
+package e2e
+
+import (
+	"time"
+
+	. "github.com/onsi/ginkgo/v2"
+	. "github.com/onsi/gomega"
+
+	appsv1 "k8s.io/api/apps/v1"
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
+	"github.com/lburgazzoli/gomega-matchers/pkg/matchers/jq"
+
+	componentsv1alpha1 "github.com/lburgazzoli/opendatahub-module-operator/api/components/v1alpha1"
+	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/pkg/config"
+)
+
+const (
+	operatorNamespace = "opendatahub-module-operator-system"
+	timeout           = 2 * time.Minute
+	interval          = 2 * time.Second
+
+	labelPartOf            = "platform.opendatahub.io/part-of"
+	annotationInstanceName = "platform.opendatahub.io/instance.name"
+	annotationInstanceUID  = "platform.opendatahub.io/instance.uid"
+
+	// operatorConfigMapName is the name of the operator ConfigMap after
+	// kustomize applies the namePrefix.
+	operatorConfigMapName = "opendatahub-module-operator-config"
+)
+
+var _ = Describe("MyModule", Ordered, func() {
+	module := &componentsv1alpha1.MyModule{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: componentsv1alpha1.MyModuleInstanceName,
+		},
+	}
+
+	operatorDeploy := &appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "opendatahub-module-operator-controller-manager",
+			Namespace: operatorNamespace,
+		},
+	}
+
+	operatorConfigMap := &corev1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      operatorConfigMapName,
+			Namespace: operatorNamespace,
+		},
+	}
+
+	workloadDeploy := &appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "mymodule-workload",
+			Namespace: operatorNamespace,
+		},
+	}
+
+	workloadService := &corev1.Service{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "mymodule-workload",
+			Namespace: operatorNamespace,
+		},
+	}
+
+	BeforeAll(func() {
+		By("verifying the operator is running")
+		Eventually(k.Get(operatorDeploy)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(
+			jq.Match(`.status.readyReplicas >= 1`),
+		)
+	})
+
+	AfterAll(func() {
+		By("deleting the MyModule CR")
+		Eventually(k.Delete(module)).WithContext(ctx).Should(Succeed())
+	})
+
+	Context("Operator Deployment", func() {
+		It("should have the ConfigMap volume mounted", func() {
+			By("checking the controller Deployment has a config volume")
+			Eventually(k.Get(operatorDeploy)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(
+				jq.Match(`.spec.template.spec.volumes[] | select(.name == "config") | .configMap.name != ""`),
+			)
+
+			By("checking the controller container has the config volume mount")
+			Eventually(k.Get(operatorDeploy)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(
+				jq.Match(`.spec.template.spec.containers[0].volumeMounts[] | select(.name == "config") | .mountPath == "/etc/controller/config"`),
+			)
+
+			By("checking the ODH_MODULE_OPERATOR_CONFIGURATION_PATH env var is set")
+			Eventually(k.Get(operatorDeploy)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(
+				jq.Match(`.spec.template.spec.containers[0].env[] | select(.name == "ODH_MODULE_OPERATOR_CONFIGURATION_PATH") | .value == "/etc/controller/config"`),
+			)
+		})
+
+		It("should have the operator ConfigMap deployed", func() {
+			Eventually(k.Get(operatorConfigMap)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(And(
+				jq.Match(`.data."%s" != ""`, moduleconfig.KeyPlatformType),
+				jq.Match(`.data."%s" != ""`, moduleconfig.KeyPlatformVersion),
+			))
+		})
+	})
+
+	Context("Reconciliation", func() {
+		It("should reconcile the MyModule CR and deploy the workload", func() {
+			By("ensuring the MyModule CR does not already exist")
+			_ = k8sClient.Delete(ctx, module)
+
+			By("creating the MyModule CR")
+			module.ResourceVersion = ""
+			Expect(k8sClient.Create(ctx, module)).To(Succeed())
+
+			By("waiting for MyModule to become Ready")
+			Eventually(k.Get(module)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(And(
+				jq.Match(`.status.phase == "Ready"`),
+				jq.Match(`.status.conditions[] | select(.type == "Ready") | .status == "True"`),
+				jq.Match(`.status.conditions[] | select(.type == "ProvisioningSucceeded") | .status == "True"`),
+			))
+
+			By("verifying the workload Deployment is available")
+			Eventually(k.Get(workloadDeploy)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(
+				jq.Match(`.status.readyReplicas >= 1`),
+			)
+		})
+
+		It("should expose config values matching the deployed ConfigMap", func() {
+			By("verifying configValues keys are present in status")
+			Eventually(k.Get(module)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(And(
+				jq.Match(`.status.configValues."%s" != ""`, moduleconfig.KeyPlatformType),
+				jq.Match(`.status.configValues."%s" != ""`, moduleconfig.KeyPlatformVersion),
+			))
+		})
+
+		It("should report module version and platform in status", func() {
+			Eventually(k.Get(module)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(And(
+				jq.Match(`.status.module.version != ""`),
+				jq.Match(`.status.module.platform.name != ""`),
+				jq.Match(`.status.module.sources | length > 0`),
+				jq.Match(`.status.module.sources[0].renderer == "kustomize"`),
+			))
+		})
+
+		It("should set platform labels on workload resources", func() {
+			By("checking the Deployment has the part-of label")
+			Eventually(k.Get(workloadDeploy)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(And(
+				jq.Match(`.metadata.labels."%s" == "mymodule"`, labelPartOf),
+				jq.Match(`.metadata.annotations."%s" != ""`, annotationInstanceName),
+				jq.Match(`.metadata.annotations."%s" != ""`, annotationInstanceUID),
+			))
+
+			By("checking the Service has the part-of label")
+			Eventually(k.Get(workloadService)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(
+				jq.Match(`.metadata.labels."%s" == "mymodule"`, labelPartOf),
+			)
+		})
+
+		It("should set owner references on workload resources", func() {
+			By("checking the Deployment has an owner reference to the MyModule CR")
+			Eventually(k.Get(workloadDeploy)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(
+				jq.Match(`.metadata.ownerReferences[] | select(.kind == "MyModule") | .name == "%s"`,
+					componentsv1alpha1.MyModuleInstanceName),
+			)
+
+			By("checking the Service has an owner reference to the MyModule CR")
+			Eventually(k.Get(workloadService)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(
+				jq.Match(`.metadata.ownerReferences[] | select(.kind == "MyModule") | .name == "%s"`,
+					componentsv1alpha1.MyModuleInstanceName),
+			)
+		})
+	})
+})
