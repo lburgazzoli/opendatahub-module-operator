@@ -4,7 +4,6 @@ metadata:
   labels:
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: opendatahub-module-operator
-    control-plane: controller-manager
   name: opendatahub-module-operator-controller-manager-metrics-service
   namespace: {{ .Release.Namespace }}
 spec:
@@ -15,7 +14,6 @@ spec:
     targetPort: 8443
   selector:
     app.kubernetes.io/name: opendatahub-module-operator
-    control-plane: controller-manager
 ---
 apiVersion: v1
 kind: Service
@@ -29,4 +27,3 @@ spec:
     targetPort: 9443
   selector:
     app.kubernetes.io/name: opendatahub-module-operator
-    control-plane: controller-manager

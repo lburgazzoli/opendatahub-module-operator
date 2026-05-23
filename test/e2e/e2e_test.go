@@ -323,7 +323,7 @@ func (mt *myModuleE2ETest) testUpgradeViaConfigMapRestart(t *testing.T) {
 	// Delete operator pods to trigger restart.
 	g.Expect(k8sClient.DeleteAllOf(ctx, &corev1.Pod{},
 		client.InNamespace(operatorNamespace),
-		client.MatchingLabels{"control-plane": "controller-manager"},
+		client.MatchingLabels{"app.kubernetes.io/name": "opendatahub-module-operator"},
 	)).To(Succeed())
 
 	// Wait for the operator to be running again.
@@ -366,7 +366,7 @@ func (mt *myModuleE2ETest) testUpgradeFaultInjection(t *testing.T) {
 	pods := &corev1.PodList{}
 	g.Expect(k8sClient.List(ctx, pods,
 		client.InNamespace(operatorNamespace),
-		client.MatchingLabels{"control-plane": "controller-manager"},
+		client.MatchingLabels{"app.kubernetes.io/name": "opendatahub-module-operator"},
 	)).To(Succeed())
 
 	for i := range pods.Items {

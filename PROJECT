@@ -9,8 +9,8 @@ layout:
 multigroup: true
 plugins:
   dev-kubebuilder.lburgazzoli.github.io/v1:
-    testEnvironment: envtest
-    testStyle: ginkgo
+    testEnvironment: kind
+    testStyle: gomega
 projectName: opendatahub-module-operator
 repo: github.com/lburgazzoli/opendatahub-module-operator
 resources:

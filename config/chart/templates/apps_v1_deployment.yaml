@@ -4,7 +4,6 @@ metadata:
   labels:
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: opendatahub-module-operator
-    control-plane: controller-manager
   name: opendatahub-module-operator-controller-manager
   namespace: {{ .Release.Namespace }}
 spec:
@@ -12,14 +11,12 @@ spec:
   selector:
     matchLabels:
       app.kubernetes.io/name: opendatahub-module-operator
-      control-plane: controller-manager
   template:
     metadata:
       annotations:
         kubectl.kubernetes.io/default-container: manager
       labels:
         app.kubernetes.io/name: opendatahub-module-operator
-        control-plane: controller-manager
     spec:
       containers:
       - command:
