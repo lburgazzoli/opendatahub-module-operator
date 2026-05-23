@@ -36,6 +36,7 @@ func newTestModule(t *testing.T, platformType string) *Module {
 	cfg := &moduleconfig.Config{
 		PlatformType:    platformType,
 		PlatformVersion: "1.0.0",
+		ManifestsPath:   "/manifests",
 	}
 
 	m, err := NewModule(cfg)
@@ -71,6 +72,7 @@ func TestNewModule(t *testing.T) {
 	g.Expect(err).NotTo(HaveOccurred())
 	g.Expect(m.version.String()).To(Equal(version.Version))
 	g.Expect(m.cfg).To(Equal(cfg))
+	g.Expect(m.manifestInfo.Path).To(Equal(cfg.ManifestsPath))
 	g.Expect(m.manifestInfo.ContextDir).To(Equal(componentName))
 }
 

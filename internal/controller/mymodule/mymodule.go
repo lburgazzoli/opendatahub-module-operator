@@ -77,6 +77,7 @@ func NewModule(cfg *moduleconfig.Config) (*Module, error) {
 	pv, _ := componentApi.NewSemVer(cfg.PlatformVersion)
 
 	mi := odhtypes.ManifestInfo{
+		Path:       cfg.ManifestsPath,
 		ContextDir: componentName,
 		SourcePath: overlayODH,
 	}
@@ -93,13 +94,9 @@ func NewModule(cfg *moduleconfig.Config) (*Module, error) {
 	}, nil
 }
 
-// initialize sets the manifest base path from the reconciliation request
-// and appends the pre-resolved manifest info to the pipeline.
+// initialize appends the pre-resolved manifest info to the pipeline.
 func (m *Module) initialize(_ context.Context, rr *odhtypes.ReconciliationRequest) error {
-	info := m.manifestInfo
-	info.Path = rr.ManifestsBasePath
-
-	rr.Manifests = append(rr.Manifests, info)
+	rr.Manifests = append(rr.Manifests, m.manifestInfo)
 
 	return nil
 }
