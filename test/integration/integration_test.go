@@ -53,6 +53,7 @@ import (
 	"github.com/lburgazzoli/opendatahub-module-operator/test/support"
 	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/cluster"
 	odhmanager "github.com/opendatahub-io/opendatahub-operator/v2/pkg/manager"
+	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/resources"
 )
 
 const (
@@ -120,6 +121,7 @@ func TestMain(m *testing.M) {
 		PlatformType:          operatorCfgData[moduleconfig.KeyPlatformType],
 		PlatformVersion:       operatorCfgData[moduleconfig.KeyPlatformVersion],
 		ApplicationsNamespace: testNamespace,
+		ManifestsPath:         support.MustProjectFile("config", "manifests"),
 		WebhooksEnabled:       false,
 	}
 
@@ -245,6 +247,9 @@ func TestMyModule(t *testing.T) {
 	t.Run("should report module version and platform", mt.testModuleStatus)
 	t.Run("should set platform labels and annotations", mt.testPlatformLabels)
 	t.Run("should set owner references", mt.testOwnerReferences)
+	t.Run("should not annotate ingress on fresh install", mt.testUpgradeAnnotationAbsentOnFreshInstall)
+	t.Run("should annotate ingress on upgrade", mt.testUpgradeAnnotatesIngress)
+	t.Run("should not update version on upgrade fault", mt.testUpgradeFaultInjection)
 }
 
 func (mt *myModuleTest) testIngressBlocks(t *testing.T) {
@@ -340,5 +345,91 @@ func (mt *myModuleTest) testOwnerReferences(t *testing.T) {
 	g.Eventually(k.Get(mt.workloadService)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(
 		jq.Match(`.metadata.ownerReferences[] | select(.kind == "MyModule") | .name == "%s"`,
 			componentsv1alpha1.MyModuleInstanceName),
+	)
+}
+
+func (mt *myModuleTest) testUpgradeAnnotationAbsentOnFreshInstall(t *testing.T) {
+	g := NewWithT(t)
+
+	g.Eventually(k.Get(mt.ingress)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(And(
+		jq.Match(`.metadata.annotations // {} | has("%s") | not`, mymodule.AnnotationManagedVersion),
+		jq.Match(`.metadata.annotations // {} | has("%s") | not`, mymodule.AnnotationUpgradedFrom),
+	))
+}
+
+func (mt *myModuleTest) testUpgradeAnnotatesIngress(t *testing.T) {
+	g := NewWithT(t)
+
+	// Re-read the module to get the latest resourceVersion.
+	g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(mt.module), mt.module)).To(Succeed())
+
+	// Patch the module status to simulate a previous lower version.
+	patch := client.MergeFrom(mt.module.DeepCopy())
+	mt.module.Status.Module.Version = "0.0.0-0"
+	g.Expect(k8sClient.Status().Patch(ctx, mt.module, patch)).To(Succeed())
+
+	// Re-read after status patch changed resourceVersion, then trigger reconcile
+	// by touching an annotation.
+	g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(mt.module), mt.module)).To(Succeed())
+
+	annPatch := client.MergeFrom(mt.module.DeepCopy())
+	resources.SetAnnotation(mt.module, "test-trigger", time.Now().String())
+	g.Expect(k8sClient.Patch(ctx, mt.module, annPatch)).To(Succeed())
+
+	// Wait for the Ingress to get both upgrade annotations.
+	g.Eventually(k.Get(mt.ingress)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(And(
+		jq.Match(`.metadata.annotations."%s" != ""`, mymodule.AnnotationManagedVersion),
+		jq.Match(`.metadata.annotations."%s" == "0.0.0-0"`, mymodule.AnnotationUpgradedFrom),
+	))
+}
+
+func (mt *myModuleTest) testUpgradeFaultInjection(t *testing.T) {
+	g := NewWithT(t)
+
+	// Record the current module version from status before injecting the fault.
+	g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(mt.module), mt.module)).To(Succeed())
+	versionBefore := mt.module.Status.Module.Version.String()
+
+	// Add the fault injection annotation to the Ingress.
+	g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(mt.ingress), mt.ingress)).To(Succeed())
+
+	ingressPatch := client.MergeFrom(mt.ingress.DeepCopy())
+	resources.SetAnnotation(mt.ingress, mymodule.AnnotationInjectUpgradeFault, "true")
+	g.Expect(k8sClient.Patch(ctx, mt.ingress, ingressPatch)).To(Succeed())
+
+	// Patch the module status to simulate a lower version, triggering upgrade.
+	g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(mt.module), mt.module)).To(Succeed())
+
+	statusPatch := client.MergeFrom(mt.module.DeepCopy())
+	mt.module.Status.Module.Version = "0.0.0-0"
+	g.Expect(k8sClient.Status().Patch(ctx, mt.module, statusPatch)).To(Succeed())
+
+	// Trigger a reconcile.
+	g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(mt.module), mt.module)).To(Succeed())
+
+	annPatch := client.MergeFrom(mt.module.DeepCopy())
+	resources.SetAnnotation(mt.module, "test-trigger", time.Now().String())
+	g.Expect(k8sClient.Patch(ctx, mt.module, annPatch)).To(Succeed())
+
+	// Give the controller time to attempt the upgrade. The upgrade will
+	// fail because of the fault annotation, so the status version should
+	// remain at "0.0.1" (the patched value) rather than being updated
+	// to the current operator version.
+	g.Consistently(k.Get(mt.module)).WithContext(ctx).WithTimeout(10*time.Second).WithPolling(interval).Should(
+		jq.Match(`.status.module.version == "0.0.0-0"`),
+	)
+
+	// Clean up: remove the fault annotation so subsequent tests are not affected.
+	g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(mt.ingress), mt.ingress)).To(Succeed())
+
+	cleanPatch := client.MergeFrom(mt.ingress.DeepCopy())
+	ann := mt.ingress.GetAnnotations()
+	delete(ann, mymodule.AnnotationInjectUpgradeFault)
+	mt.ingress.SetAnnotations(ann)
+	g.Expect(k8sClient.Patch(ctx, mt.ingress, cleanPatch)).To(Succeed())
+
+	// After removing the fault, the upgrade should succeed and version should update.
+	g.Eventually(k.Get(mt.module)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(
+		jq.Match(`.status.module.version == "%s"`, versionBefore),
 	)
 }

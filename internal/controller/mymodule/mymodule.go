@@ -29,6 +29,7 @@ import (
 	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/cluster"
 	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/controller/precondition"
 	odhtypes "github.com/opendatahub-io/opendatahub-operator/v2/pkg/controller/types"
+	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/resources"
 
 	componentApi "github.com/lburgazzoli/opendatahub-module-operator/api/components/v1alpha1"
 	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/pkg/config"
@@ -49,6 +50,18 @@ const (
 	// ConditionIngressAvailable is the condition type set by the ingress
 	// precondition. True when the required Ingress exists, False otherwise.
 	ConditionIngressAvailable = "IngressAvailable"
+
+	// AnnotationManagedVersion is set on the Ingress during upgrade to
+	// record the module version that last managed it.
+	AnnotationManagedVersion = "mymodule.opendatahub.io/managed-version"
+
+	// AnnotationUpgradedFrom is set on the Ingress during upgrade to
+	// record the previous module version before the upgrade.
+	AnnotationUpgradedFrom = "mymodule.opendatahub.io/upgraded-from"
+
+	// AnnotationInjectUpgradeFault causes the upgrade to fail when present
+	// on the Ingress. Used for testing fault injection.
+	AnnotationInjectUpgradeFault = "mymodule.opendatahub.io/inject-upgrade-fault"
 )
 
 // Module holds process-lifetime state for the mymodule controller.
@@ -131,7 +144,7 @@ func (m *Module) checkIngress(ctx context.Context, rr *odhtypes.ReconciliationRe
 // upgradeIfNeeded checks whether the module version advanced or the
 // platform version changed since the last reconcile. If so, it calls
 // m.upgrade to run idempotent migrations.
-func (m *Module) upgradeIfNeeded(_ context.Context, rr *odhtypes.ReconciliationRequest) error {
+func (m *Module) upgradeIfNeeded(ctx context.Context, rr *odhtypes.ReconciliationRequest) error {
 	obj, ok := rr.Instance.(*componentApi.MyModule)
 	if !ok {
 		return fmt.Errorf("instance is not a MyModule")
@@ -146,21 +159,37 @@ func (m *Module) upgradeIfNeeded(_ context.Context, rr *odhtypes.ReconciliationR
 		return nil
 	}
 
-	return m.upgrade(prev, rr)
+	return m.upgrade(ctx, prev, rr)
 }
 
 // upgrade runs idempotent migrations when the module version advances
-// or the platform version changes. prev is the module status from the
-// previous reconcile cycle.
-func (m *Module) upgrade(prev componentApi.ModuleStatus, rr *odhtypes.ReconciliationRequest) error {
-	_ = prev
-	_ = rr
+// or the platform version changes. It amends existing resources before
+// the new manifests are applied by the deploy action.
+func (m *Module) upgrade(ctx context.Context, prev componentApi.ModuleStatus, rr *odhtypes.ReconciliationRequest) error {
+	existing := &networkingv1.Ingress{}
+	key := client.ObjectKey{
+		Namespace: m.cfg.ApplicationsNamespace,
+		Name:      IngressName,
+	}
 
-	// Idempotent migrations go here, gated by version ranges or
-	// platform version transitions.
-	// Examples:
-	//   if prev.Version.GT("1.0.0") { ... }
-	//   if m.platformVersion.GT(prev.Platform.Version) { ... }
+	if err := rr.Client.Get(ctx, key, existing); err != nil {
+		return fmt.Errorf("checking ingress for upgrade: %w", err)
+	}
+
+	if _, ok := existing.Annotations[AnnotationInjectUpgradeFault]; ok {
+		return fmt.Errorf("upgrade fault injected via annotation on ingress %q", IngressName)
+	}
+
+	ingress := &networkingv1.Ingress{}
+	ingress.SetName(IngressName)
+	ingress.SetNamespace(m.cfg.ApplicationsNamespace)
+
+	resources.SetAnnotation(ingress, AnnotationManagedVersion, m.version.String())
+	resources.SetAnnotation(ingress, AnnotationUpgradedFrom, prev.Version.String())
+
+	if err := resources.Apply(ctx, rr.Client, ingress, client.FieldOwner(componentName+"-upgrade"), client.ForceOwnership); err != nil {
+		return fmt.Errorf("applying ingress during upgrade: %w", err)
+	}
 
 	return nil
 }

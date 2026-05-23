@@ -21,7 +21,11 @@ import (
 	"testing"
 
 	. "github.com/onsi/gomega"
+	networkingv1 "k8s.io/api/networking/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
 	componentApi "github.com/lburgazzoli/opendatahub-module-operator/api/components/v1alpha1"
 	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/pkg/config"
@@ -30,13 +34,31 @@ import (
 	odhtypes "github.com/opendatahub-io/opendatahub-operator/v2/pkg/controller/types"
 )
 
+const (
+	testVersionOld = "1.0.0"
+	testVersionNew = "2.0.0"
+)
+
+func newTestScheme(t *testing.T) *runtime.Scheme {
+	t.Helper()
+
+	s := runtime.NewScheme()
+
+	g := NewWithT(t)
+	g.Expect(networkingv1.AddToScheme(s)).To(Succeed())
+	g.Expect(componentApi.AddToScheme(s)).To(Succeed())
+
+	return s
+}
+
 func newTestModule(t *testing.T, platformType string) *Module {
 	t.Helper()
 
 	cfg := &moduleconfig.Config{
-		PlatformType:    platformType,
-		PlatformVersion: "1.0.0",
-		ManifestsPath:   "/manifests",
+		PlatformType:          platformType,
+		PlatformVersion:       "1.0.0",
+		ManifestsPath:         "/manifests",
+		ApplicationsNamespace: "test-ns",
 	}
 
 	m, err := NewModule(cfg)
@@ -49,6 +71,23 @@ func newTestRR(obj *componentApi.MyModule) *odhtypes.ReconciliationRequest {
 	return &odhtypes.ReconciliationRequest{
 		Instance:          obj,
 		ManifestsBasePath: "/manifests",
+	}
+}
+
+func newTestRRWithClient(obj *componentApi.MyModule, cl client.Client) *odhtypes.ReconciliationRequest {
+	return &odhtypes.ReconciliationRequest{
+		Client:            cl,
+		Instance:          obj,
+		ManifestsBasePath: "/manifests",
+	}
+}
+
+func newTestIngress(namespace string) *networkingv1.Ingress {
+	return &networkingv1.Ingress{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      IngressName,
+			Namespace: namespace,
+		},
 	}
 }
 
@@ -133,10 +172,18 @@ func TestUpgradeIfNeededFreshInstall(t *testing.T) {
 
 	m := newTestModule(t, string(cluster.OpenDataHub))
 	obj := newTestMyModule()
-	rr := newTestRR(obj)
+	ingress := newTestIngress(m.cfg.ApplicationsNamespace)
+	cl := fake.NewClientBuilder().WithScheme(newTestScheme(t)).WithObjects(ingress).Build()
+	rr := newTestRRWithClient(obj, cl)
 
-	// Fresh install: status version is zero.
+	// Fresh install: status version is zero, upgrade skipped.
 	g.Expect(m.upgradeIfNeeded(context.Background(), rr)).To(Succeed())
+
+	// Ingress must not have upgrade annotations.
+	got := &networkingv1.Ingress{}
+	g.Expect(cl.Get(context.Background(), client.ObjectKeyFromObject(ingress), got)).To(Succeed())
+	g.Expect(got.Annotations).NotTo(HaveKey(AnnotationManagedVersion))
+	g.Expect(got.Annotations).NotTo(HaveKey(AnnotationUpgradedFrom))
 }
 
 func TestUpgradeIfNeededSameVersion(t *testing.T) {
@@ -149,10 +196,19 @@ func TestUpgradeIfNeededSameVersion(t *testing.T) {
 	g.Expect(err).NotTo(HaveOccurred())
 
 	obj.Status.Module.Version = v
-	rr := newTestRR(obj)
+
+	ingress := newTestIngress(m.cfg.ApplicationsNamespace)
+	cl := fake.NewClientBuilder().WithScheme(newTestScheme(t)).WithObjects(ingress).Build()
+	rr := newTestRRWithClient(obj, cl)
 
 	// Same version: no upgrade.
 	g.Expect(m.upgradeIfNeeded(context.Background(), rr)).To(Succeed())
+
+	// Ingress must not have upgrade annotations.
+	got := &networkingv1.Ingress{}
+	g.Expect(cl.Get(context.Background(), client.ObjectKeyFromObject(ingress), got)).To(Succeed())
+	g.Expect(got.Annotations).NotTo(HaveKey(AnnotationManagedVersion))
+	g.Expect(got.Annotations).NotTo(HaveKey(AnnotationUpgradedFrom))
 }
 
 func TestUpgradeIfNeededPlatformVersionChange(t *testing.T) {
@@ -170,27 +226,92 @@ func TestUpgradeIfNeededPlatformVersionChange(t *testing.T) {
 	// Same module version but older platform version in status.
 	obj.Status.Module.Version = v
 	obj.Status.Module.Platform.Version = prevPV
-	rr := newTestRR(obj)
 
-	// Platform version advanced: upgrade runs (no-op migrations, no error).
+	ingress := newTestIngress(m.cfg.ApplicationsNamespace)
+	cl := fake.NewClientBuilder().WithScheme(newTestScheme(t)).WithObjects(ingress).Build()
+	rr := newTestRRWithClient(obj, cl)
+
+	// Platform version advanced: upgrade runs.
 	g.Expect(m.upgradeIfNeeded(context.Background(), rr)).To(Succeed())
+
+	// Ingress must have both upgrade annotations.
+	// upgraded-from records the previous module version, not the platform version.
+	got := &networkingv1.Ingress{}
+	g.Expect(cl.Get(context.Background(), client.ObjectKeyFromObject(ingress), got)).To(Succeed())
+	g.Expect(got.Annotations).To(HaveKeyWithValue(AnnotationManagedVersion, version.Version))
+	g.Expect(got.Annotations).To(HaveKeyWithValue(AnnotationUpgradedFrom, version.Version))
 }
 
 func TestUpgradeIfNeededVersionAdvance(t *testing.T) {
 	g := NewWithT(t)
 
 	orig := version.Version
-	version.Version = "2.0.0"
+	version.Version = testVersionNew
 
 	t.Cleanup(func() { version.Version = orig })
 
 	m := newTestModule(t, string(cluster.OpenDataHub))
 	obj := newTestMyModule()
-	obj.Status.Module.Version = "1.0.0"
-	rr := newTestRR(obj)
+	obj.Status.Module.Version = testVersionOld
 
-	// Version advanced: upgrade runs (no-op migrations, no error).
+	ingress := newTestIngress(m.cfg.ApplicationsNamespace)
+	cl := fake.NewClientBuilder().WithScheme(newTestScheme(t)).WithObjects(ingress).Build()
+	rr := newTestRRWithClient(obj, cl)
+
+	// Version advanced: upgrade runs.
 	g.Expect(m.upgradeIfNeeded(context.Background(), rr)).To(Succeed())
+
+	// Ingress must have both upgrade annotations.
+	got := &networkingv1.Ingress{}
+	g.Expect(cl.Get(context.Background(), client.ObjectKeyFromObject(ingress), got)).To(Succeed())
+	g.Expect(got.Annotations).To(HaveKeyWithValue(AnnotationManagedVersion, testVersionNew))
+	g.Expect(got.Annotations).To(HaveKeyWithValue(AnnotationUpgradedFrom, testVersionOld))
+}
+
+func TestUpgradeIngressNotFound(t *testing.T) {
+	g := NewWithT(t)
+
+	orig := version.Version
+	version.Version = testVersionNew
+
+	t.Cleanup(func() { version.Version = orig })
+
+	m := newTestModule(t, string(cluster.OpenDataHub))
+	obj := newTestMyModule()
+	obj.Status.Module.Version = testVersionOld
+
+	// No Ingress in the fake client.
+	cl := fake.NewClientBuilder().WithScheme(newTestScheme(t)).Build()
+	rr := newTestRRWithClient(obj, cl)
+
+	err := m.upgradeIfNeeded(context.Background(), rr)
+	g.Expect(err).To(HaveOccurred())
+	g.Expect(err.Error()).To(ContainSubstring("checking ingress for upgrade"))
+}
+
+func TestUpgradeFaultInjection(t *testing.T) {
+	g := NewWithT(t)
+
+	orig := version.Version
+	version.Version = testVersionNew
+
+	t.Cleanup(func() { version.Version = orig })
+
+	m := newTestModule(t, string(cluster.OpenDataHub))
+	obj := newTestMyModule()
+	obj.Status.Module.Version = testVersionOld
+
+	ingress := newTestIngress(m.cfg.ApplicationsNamespace)
+	ingress.Annotations = map[string]string{
+		AnnotationInjectUpgradeFault: "true",
+	}
+
+	cl := fake.NewClientBuilder().WithScheme(newTestScheme(t)).WithObjects(ingress).Build()
+	rr := newTestRRWithClient(obj, cl)
+
+	err := m.upgradeIfNeeded(context.Background(), rr)
+	g.Expect(err).To(HaveOccurred())
+	g.Expect(err.Error()).To(ContainSubstring("upgrade fault injected"))
 }
 
 func TestReportStatus(t *testing.T) {

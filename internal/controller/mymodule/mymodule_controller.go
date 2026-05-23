@@ -47,7 +47,7 @@ import (
 // +kubebuilder:rbac:groups=components.platform.opendatahub.io,resources=mymodules/finalizers,verbs=update
 // +kubebuilder:rbac:groups=apps,resources=deployments,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups="",resources=services;serviceaccounts;configmaps,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=networking.k8s.io,resources=ingresses,verbs=get;list;watch
+// +kubebuilder:rbac:groups=networking.k8s.io,resources=ingresses,verbs=get;list;watch;patch;update
 // +kubebuilder:rbac:groups=rbac.authorization.k8s.io,resources=clusterroles;clusterrolebindings,verbs=get;list;watch;create;update;patch;delete
 
 // NewReconciler sets up the controller with the Manager using the ReconcilerFor

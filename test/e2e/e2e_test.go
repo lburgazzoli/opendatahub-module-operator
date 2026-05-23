@@ -166,6 +166,9 @@ func TestMyModule(t *testing.T) {
 	t.Run("should set platform labels and annotations", mt.testPlatformLabels)
 	t.Run("should have webhook-injected labels", mt.testWebhookLabels)
 	t.Run("should set owner references", mt.testOwnerReferences)
+	t.Run("should not annotate ingress on fresh deploy", mt.testUpgradeAnnotationAbsentOnFreshDeploy)
+	t.Run("should annotate ingress on upgrade via configmap restart", mt.testUpgradeViaConfigMapRestart)
+	t.Run("should not update version on upgrade fault", mt.testUpgradeFaultInjection)
 }
 
 func (mt *myModuleE2ETest) testOperatorRunning(t *testing.T) {
@@ -294,5 +297,105 @@ func (mt *myModuleE2ETest) testOwnerReferences(t *testing.T) {
 	g.Eventually(k.Get(mt.workloadService)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(
 		jq.Match(`.metadata.ownerReferences[] | select(.kind == "MyModule") | .name == "%s"`,
 			componentsv1alpha1.MyModuleInstanceName),
+	)
+}
+
+func (mt *myModuleE2ETest) testUpgradeAnnotationAbsentOnFreshDeploy(t *testing.T) {
+	g := NewWithT(t)
+
+	g.Eventually(k.Get(mt.ingress)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(And(
+		jq.Match(`.metadata.annotations // {} | has("%s") | not`, mymodule.AnnotationManagedVersion),
+		jq.Match(`.metadata.annotations // {} | has("%s") | not`, mymodule.AnnotationUpgradedFrom),
+	))
+}
+
+func (mt *myModuleE2ETest) testUpgradeViaConfigMapRestart(t *testing.T) {
+	g := NewWithT(t)
+
+	// Get a fresh copy of the operator ConfigMap.
+	g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(mt.operatorCfgMap), mt.operatorCfgMap)).To(Succeed())
+
+	// Patch the ConfigMap to set platform-version to "1.0.0".
+	patch := client.MergeFrom(mt.operatorCfgMap.DeepCopy())
+	mt.operatorCfgMap.Data[moduleconfig.KeyPlatformVersion] = "1.0.0"
+	g.Expect(k8sClient.Patch(ctx, mt.operatorCfgMap, patch)).To(Succeed())
+
+	// Delete operator pods to trigger restart.
+	g.Expect(k8sClient.DeleteAllOf(ctx, &corev1.Pod{},
+		client.InNamespace(operatorNamespace),
+		client.MatchingLabels{"control-plane": "controller-manager"},
+	)).To(Succeed())
+
+	// Wait for the operator to be running again.
+	g.Eventually(k.Get(mt.operatorDeploy)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(
+		jq.Match(`.status.readyReplicas >= 1`),
+	)
+
+	// Wait for the Ingress to get both upgrade annotations after upgrade.
+	g.Eventually(k.Get(mt.ingress)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(And(
+		jq.Match(`.metadata.annotations."%s" != ""`, mymodule.AnnotationManagedVersion),
+		jq.Match(`.metadata.annotations."%s" != ""`, mymodule.AnnotationUpgradedFrom),
+	))
+}
+
+func (mt *myModuleE2ETest) testUpgradeFaultInjection(t *testing.T) {
+	g := NewWithT(t)
+
+	// Record the current platform version from module status.
+	g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(mt.module), mt.module)).To(Succeed())
+	platformVersionBefore := mt.module.Status.Module.Platform.Version.String()
+
+	// Add the fault injection annotation to the Ingress.
+	g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(mt.ingress), mt.ingress)).To(Succeed())
+
+	ingressPatch := client.MergeFrom(mt.ingress.DeepCopy())
+	if mt.ingress.Annotations == nil {
+		mt.ingress.Annotations = map[string]string{}
+	}
+	mt.ingress.Annotations[mymodule.AnnotationInjectUpgradeFault] = "true"
+	g.Expect(k8sClient.Patch(ctx, mt.ingress, ingressPatch)).To(Succeed())
+
+	// Bump platform version in ConfigMap and restart the operator.
+	g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(mt.operatorCfgMap), mt.operatorCfgMap)).To(Succeed())
+
+	cfgPatch := client.MergeFrom(mt.operatorCfgMap.DeepCopy())
+	mt.operatorCfgMap.Data[moduleconfig.KeyPlatformVersion] = "2.0.0"
+	g.Expect(k8sClient.Patch(ctx, mt.operatorCfgMap, cfgPatch)).To(Succeed())
+
+	// Delete operator pod to restart with new config.
+	pods := &corev1.PodList{}
+	g.Expect(k8sClient.List(ctx, pods,
+		client.InNamespace(operatorNamespace),
+		client.MatchingLabels{"control-plane": "controller-manager"},
+	)).To(Succeed())
+
+	for i := range pods.Items {
+		g.Expect(k8sClient.Delete(ctx, &pods.Items[i])).To(Succeed())
+	}
+
+	// Wait for the operator to restart.
+	g.Eventually(k.Get(mt.operatorDeploy)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(
+		jq.Match(`.status.readyReplicas >= 1`),
+	)
+
+	// The upgrade should fail because of the fault annotation. The platform
+	// version in status should remain unchanged.
+	g.Consistently(k.Get(mt.module)).WithContext(ctx).WithTimeout(10*time.Second).WithPolling(interval).Should(
+		jq.Match(`.status.module.platform.version == "%s"`, platformVersionBefore),
+	)
+
+	// Clean up: remove the fault annotation.
+	g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(mt.ingress), mt.ingress)).To(Succeed())
+
+	cleanPatch := client.MergeFrom(mt.ingress.DeepCopy())
+	ann := mt.ingress.GetAnnotations()
+	delete(ann, mymodule.AnnotationInjectUpgradeFault)
+	mt.ingress.SetAnnotations(ann)
+	g.Expect(k8sClient.Patch(ctx, mt.ingress, cleanPatch)).To(Succeed())
+
+	// After removing the fault, the upgrade should succeed and platform version
+	// should update to 2.0.0.
+	g.Eventually(k.Get(mt.module)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(
+		jq.Match(`.status.module.platform.version == "2.0.0"`),
 	)
 }
