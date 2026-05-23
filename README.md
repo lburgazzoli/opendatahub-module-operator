@@ -89,6 +89,25 @@ make deploy
 make kind-delete          # Tear down the cluster
 ```
 
+### Avoiding image cache issues
+
+When iterating locally, Kubernetes may serve a cached image even after a
+rebuild if the tag hasn't changed. Two approaches:
+
+**Unique tags with `uuidgen`** (recommended):
+
+```sh
+IMG=ttl.sh/opendatahub-module-operator-$(uuidgen):1h \
+  make container-build container-push deploy-helm
+```
+
+**Force pull via Helm value** (the chart defaults to `Always`, but if
+overridden):
+
+```sh
+make deploy-helm HELM_EXTRA_ARGS="--set image.pullPolicy=Always"
+```
+
 ## Helm Chart
 
 Generate the Helm chart from kustomize output:

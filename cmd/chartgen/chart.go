@@ -33,6 +33,7 @@ const (
 	yamlFieldSubjects           = "subjects:"
 	yamlFieldName               = "name:"
 	yamlFieldImage              = "image:"
+	yamlFieldImagePullPolicy    = "imagePullPolicy:"
 	yamlFieldReplicas           = "replicas:"
 	yamlFieldResources          = "resources:"
 	yamlFieldData               = "data:"
@@ -263,19 +264,28 @@ func replaceNamespace(raw string) string {
 	return strings.Join(lines, "\n")
 }
 
-// replaceImageField replaces the container image value with Helm template references.
+// replaceImageField replaces the container image value and imagePullPolicy
+// with Helm template references.
 func replaceImageField(raw string) string {
 	lines := strings.Split(raw, "\n")
+	var result []string
 
-	for i, line := range lines {
+	for _, line := range lines {
 		trimmed := strings.TrimSpace(line)
-		if strings.HasPrefix(trimmed, yamlFieldImage) && !strings.Contains(trimmed, "{{") {
+
+		switch {
+		case strings.HasPrefix(trimmed, yamlFieldImage) && !strings.Contains(trimmed, "{{"):
 			indent := line[:len(line)-len(strings.TrimLeft(line, " "))]
-			lines[i] = indent + `image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"`
+			result = append(result, indent+`image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"`)
+			result = append(result, indent+"imagePullPolicy: {{ .Values.image.pullPolicy }}")
+		case strings.HasPrefix(trimmed, yamlFieldImagePullPolicy):
+			// Drop the original — the templated version is injected above.
+		default:
+			result = append(result, line)
 		}
 	}
 
-	return strings.Join(lines, "\n")
+	return strings.Join(result, "\n")
 }
 
 // replaceReplicas replaces the replicas field with a Helm template reference.

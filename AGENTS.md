@@ -131,6 +131,17 @@ Tests use Ginkgo BDD style (`Describe`/`It`) with `gomega-matchers`
 Integration tests derive expected values from `config/manager/configmap.yaml`
 via `support.MustReadConfigMapData()` — no hardcoded assertion values.
 
+## Image Caching
+
+Both the kustomize and Helm deploy paths set `imagePullPolicy: Always`.
+When iterating locally with the same tag, Kubernetes still re-pulls. For
+extra safety (or if the policy is overridden), use a unique tag per build:
+
+```sh
+IMG=ttl.sh/opendatahub-module-operator-$(uuidgen):1h \
+  make container-build container-push deploy-helm
+```
+
 ## Make Targets
 
 All tools use `go run <module>@<version>` — no local binary downloads.

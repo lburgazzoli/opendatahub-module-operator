@@ -32,7 +32,7 @@ import (
 const (
 	defaultImageRepository = "controller"
 	defaultImageTag        = "latest"
-	defaultImagePullPolicy = "IfNotPresent"
+	defaultImagePullPolicy = "Always"
 	defaultLimitsCPU       = "500m"
 	defaultLimitsMemory    = "128Mi"
 	defaultRequestsCPU     = "10m"
@@ -147,6 +147,10 @@ func ExtractDefaults(resources []unstructured.Unstructured) Values {
 					parts := splitImageTag(img)
 					values.Image.Repository = parts[0]
 					values.Image.Tag = parts[1]
+				}
+
+				if policy, exists := c["imagePullPolicy"].(string); exists {
+					values.Image.PullPolicy = policy
 				}
 
 				if res, exists := c["resources"].(map[string]any); exists {
