@@ -1,0 +1,86 @@
+name: Module Test Workflow
+
+on:
+  workflow_call:
+    inputs:
+      module_name:
+        required: true
+        type: string
+      module_path:
+        required: true
+        type: string
+      image_name:
+        required: true
+        type: string
+
+permissions: {}
+
+jobs:
+  test-module:
+    permissions:
+      contents: read
+    name: ${{ inputs.module_name }}
+    runs-on: ubuntu-latest
+    env:
+      KUBECONFIG: ${{ runner.temp }}/kubeconfig
+      ODH_PLATFORM_TYPE: OpenDataHub
+    steps:
+      - name: Clone the code
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Setup Go
+        uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6.3.0
+        with:
+          go-version-file: ${{ inputs.module_path }}/go.mod
+
+      - name: Write OpenShift kubeconfig
+        if: ${{ false }}
+        env:
+          OPENSHIFT_KUBECONFIG: ${{ secrets.KUBECONFIG }}
+        run: |
+          test -n "${OPENSHIFT_KUBECONFIG}" || {
+            echo "Missing KUBECONFIG secret"
+            exit 1
+          }
+          printf '%s\n' "${OPENSHIFT_KUBECONFIG}" > "${KUBECONFIG}"
+          chmod 600 "${KUBECONFIG}"
+
+      - name: Run unit tests
+        working-directory: ${{ inputs.module_path }}
+        run: |
+          make test
+
+      - name: Run integration tests
+        if: ${{ false }}
+        working-directory: ${{ inputs.module_path }}
+        run: |
+          make test-integration
+
+      - name: Compute image reference
+        id: img
+        if: ${{ false }}
+        run: |
+          IMG="ttl.sh/${{ inputs.image_name }}-${GITHUB_SHA::7}:1h"
+          echo "img=${IMG}" >> "$GITHUB_OUTPUT"
+          echo "Using image: ${IMG}"
+
+      - name: Build and push image
+        if: ${{ false }}
+        working-directory: ${{ inputs.module_path }}
+        run: |
+          make container-build IMG=${{ steps.img.outputs.img }}
+          make container-push IMG=${{ steps.img.outputs.img }}
+
+      - name: Generate Helm chart
+        if: ${{ false }}
+        working-directory: ${{ inputs.module_path }}
+        run: |
+          make helm
+
+      - name: Run e2e tests
+        if: ${{ false }}
+        working-directory: ${{ inputs.module_path }}
+        run: |
+          make test-e2e IMG=${{ steps.img.outputs.img }}
