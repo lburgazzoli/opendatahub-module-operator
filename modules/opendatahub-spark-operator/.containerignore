@@ -38,3 +38,10 @@ covcounters*
 
 # Exclude test files
 **/*_test.go
+
+# Include files required by make-based container builds
+!Makefile
+!hack/
+!hack/boilerplate.go.txt
+!hack/scripts/
+!hack/scripts/get_manifests.sh

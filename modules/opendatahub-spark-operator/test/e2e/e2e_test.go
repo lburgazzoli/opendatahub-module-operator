@@ -45,7 +45,7 @@ import (
 
 const (
 	operatorNamespace = "opendatahub-spark-operator-system"
-	timeout           = 2 * time.Minute
+	timeout           = 90 * time.Second
 	interval          = 2 * time.Second
 
 	labelPartOf            = "platform.opendatahub.io/part-of"
@@ -125,6 +125,10 @@ func TestSparkOperator(t *testing.T) {
 			},
 		},
 	}
+
+	// Clean up any leftover CR from a previous run.
+	_ = k8sClient.Delete(ctx, rt.module)
+	rt.module.ResourceVersion = ""
 
 	t.Cleanup(func() {
 		_ = k8sClient.Delete(ctx, rt.module)

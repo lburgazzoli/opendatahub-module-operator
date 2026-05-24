@@ -65,13 +65,19 @@ deps: ## Tidy and verify Go module dependencies.
 test: manifests generate fmt vet ## Run unit tests.
 	go test $$(go list ./... | grep -v /e2e | grep -v /integration) -coverprofile cover.out
 
+.PHONY: test-integration-run
+test-integration-run: ## Run integration tests only (cluster must be prepared).
+	go test ./test/integration/ -tags=integration -v -timeout 5m -failfast
+
 .PHONY: test-integration
-test-integration: manifests generate ## Run integration tests (assumes cluster is available, starts in-process manager).
-	go test ./test/integration/ -tags=integration -v -timeout 30m -failfast
+test-integration: manifests generate cleanup-integration test-integration-run ## Run integration tests (assumes cluster is available, starts in-process manager).
+
+.PHONY: test-e2e-run
+test-e2e-run: ## Run e2e tests only (operator must already be deployed).
+	go test ./test/e2e/ -tags=e2e -v -timeout 5m -failfast
 
 .PHONY: test-e2e
-test-e2e: ## Run e2e tests (assumes controller is already deployed).
-	go test ./test/e2e/ -tags=e2e -v -timeout 30m -failfast
+test-e2e: cleanup-e2e deploy-helm test-e2e-run ## Run e2e tests (cleans cluster, deploys operator, then tests).
 
 .PHONY: cleanup-integration
 cleanup-integration: ## Clean up integration test resources from the cluster.

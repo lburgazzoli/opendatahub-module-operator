@@ -9,7 +9,7 @@ NAMESPACE="${1:-integration-test}"
 echo "Cleaning up integration test resources..."
 
 # Delete component CRs
-kubectl delete rays.components.platform.opendatahub.io --all --ignore-not-found 2>/dev/null || true
+kubectl delete sparkoperators.components.platform.opendatahub.io --all --ignore-not-found 2>/dev/null || true
 
 # Delete workload resources in test namespace
 kubectl delete deployments --all -n "${NAMESPACE}" --ignore-not-found 2>/dev/null || true
@@ -21,14 +21,14 @@ kubectl delete roles --all -n "${NAMESPACE}" --ignore-not-found 2>/dev/null || t
 kubectl delete rolebindings --all -n "${NAMESPACE}" --ignore-not-found 2>/dev/null || true
 
 # Delete cluster-scoped resources created by the controller
-kubectl delete clusterroles -l platform.opendatahub.io/part-of=ray --ignore-not-found 2>/dev/null || true
-kubectl delete clusterrolebindings -l platform.opendatahub.io/part-of=ray --ignore-not-found 2>/dev/null || true
+kubectl delete clusterroles -l platform.opendatahub.io/part-of=sparkoperator --ignore-not-found 2>/dev/null || true
+kubectl delete clusterrolebindings -l platform.opendatahub.io/part-of=sparkoperator --ignore-not-found 2>/dev/null || true
 
 # Delete test RBAC
 kubectl delete clusterrole integration-test-role --ignore-not-found 2>/dev/null || true
 kubectl delete clusterrolebinding integration-test-binding --ignore-not-found 2>/dev/null || true
 
 # Delete CRD (so next run installs fresh)
-kubectl delete crd rays.components.platform.opendatahub.io --ignore-not-found 2>/dev/null || true
+kubectl delete crd sparkoperators.components.platform.opendatahub.io --ignore-not-found 2>/dev/null || true
 
 echo "Integration test cleanup complete."

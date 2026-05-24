@@ -10,7 +10,7 @@ HELM_RELEASE="${2:-opendatahub-spark-operator}"
 echo "Cleaning up e2e test resources..."
 
 # Delete component CRs
-kubectl delete rays.components.platform.opendatahub.io --all --ignore-not-found 2>/dev/null || true
+kubectl delete sparkoperators.components.platform.opendatahub.io --all --ignore-not-found 2>/dev/null || true
 
 # Uninstall Helm release (removes operator Deployment, RBAC, CRD, etc.)
 go run helm.sh/helm/v4/cmd/helm@v4.2.0 uninstall "${HELM_RELEASE}" \
@@ -22,10 +22,10 @@ go run helm.sh/helm/v4/cmd/helm@v4.2.0 uninstall "${HELM_RELEASE}" \
 kubectl delete namespace "${NAMESPACE}" --ignore-not-found 2>/dev/null || true
 
 # Delete any leftover cluster-scoped resources
-kubectl delete clusterroles -l platform.opendatahub.io/part-of=ray --ignore-not-found 2>/dev/null || true
-kubectl delete clusterrolebindings -l platform.opendatahub.io/part-of=ray --ignore-not-found 2>/dev/null || true
+kubectl delete clusterroles -l platform.opendatahub.io/part-of=sparkoperator --ignore-not-found 2>/dev/null || true
+kubectl delete clusterrolebindings -l platform.opendatahub.io/part-of=sparkoperator --ignore-not-found 2>/dev/null || true
 
 # Delete CRD if still present (Helm should have removed it)
-kubectl delete crd rays.components.platform.opendatahub.io --ignore-not-found 2>/dev/null || true
+kubectl delete crd sparkoperators.components.platform.opendatahub.io --ignore-not-found 2>/dev/null || true
 
 echo "E2E test cleanup complete."
