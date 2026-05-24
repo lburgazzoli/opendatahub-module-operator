@@ -57,7 +57,7 @@ const (
 	annotationVersion      = "platform.opendatahub.io/version"
 
 	operatorConfigMapName = "opendatahub-mlflow-operator-config"
-	moduleCRDName         = "ogxs.components.platform.opendatahub.io"
+	moduleCRDName = "mlflowoperators.components.platform.opendatahub.io"
 )
 
 var (
@@ -100,7 +100,7 @@ func runTestMain(m *testing.M) int {
 	return m.Run()
 }
 
-type rayE2ETest struct {
+type mlflowE2ETest struct {
 	module         *componentsv1alpha1.MLflowOperator
 	moduleCRD      *apiextensionsv1.CustomResourceDefinition
 	operatorDeploy *appsv1.Deployment
@@ -108,11 +108,11 @@ type rayE2ETest struct {
 	workloadDeploy *appsv1.Deployment
 }
 
-func TestOGX(t *testing.T) {
-	rt := &rayE2ETest{
+func TestMLflowOperator(t *testing.T) {
+	rt := &mlflowE2ETest{
 		module: &componentsv1alpha1.MLflowOperator{
 			ObjectMeta: metav1.ObjectMeta{
-				Name: componentsv1alpha1.OGXInstanceName,
+				Name: componentsv1alpha1.MLflowOperatorInstanceName,
 			},
 		},
 		moduleCRD: &apiextensionsv1.CustomResourceDefinition{
@@ -132,8 +132,8 @@ func TestOGX(t *testing.T) {
 		},
 		workloadDeploy: &appsv1.Deployment{
 			ObjectMeta: metav1.ObjectMeta{
-				Name:      "mlflowoperator-k8s-operator-controller-manager",
-				Namespace: operatorNamespace,
+				Name:      "mlflow-operator-controller-manager",
+				Namespace: "opendatahub",
 			},
 		},
 	}
@@ -167,7 +167,7 @@ func TestOGX(t *testing.T) {
 	t.Run("should set owner references", rt.testOwnerReferences)
 }
 
-func (rt *rayE2ETest) testModuleCRDInstalled(t *testing.T) {
+func (rt *mlflowE2ETest) testModuleCRDInstalled(t *testing.T) {
 	g := NewWithT(t)
 
 	g.Eventually(k.Get(rt.moduleCRD)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(
@@ -175,7 +175,7 @@ func (rt *rayE2ETest) testModuleCRDInstalled(t *testing.T) {
 	)
 }
 
-func (rt *rayE2ETest) testOperatorRunning(t *testing.T) {
+func (rt *mlflowE2ETest) testOperatorRunning(t *testing.T) {
 	g := NewWithT(t)
 
 	g.Eventually(k.Get(rt.operatorDeploy)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(
@@ -183,7 +183,7 @@ func (rt *rayE2ETest) testOperatorRunning(t *testing.T) {
 	)
 }
 
-func (rt *rayE2ETest) testOperatorConfigMap(t *testing.T) {
+func (rt *mlflowE2ETest) testOperatorConfigMap(t *testing.T) {
 	g := NewWithT(t)
 
 	g.Eventually(k.Get(rt.operatorCfgMap)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(And(
@@ -192,7 +192,7 @@ func (rt *rayE2ETest) testOperatorConfigMap(t *testing.T) {
 	))
 }
 
-func (rt *rayE2ETest) testBecomesReady(t *testing.T) {
+func (rt *mlflowE2ETest) testBecomesReady(t *testing.T) {
 	g := NewWithT(t)
 
 	rt.module.ResourceVersion = ""
@@ -209,7 +209,7 @@ func (rt *rayE2ETest) testBecomesReady(t *testing.T) {
 	)
 }
 
-func (rt *rayE2ETest) testModuleStatus(t *testing.T) {
+func (rt *mlflowE2ETest) testModuleStatus(t *testing.T) {
 	g := NewWithT(t)
 
 	g.Eventually(k.Get(rt.module)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(And(
@@ -220,7 +220,7 @@ func (rt *rayE2ETest) testModuleStatus(t *testing.T) {
 	))
 }
 
-func (rt *rayE2ETest) testPlatformLabels(t *testing.T) {
+func (rt *mlflowE2ETest) testPlatformLabels(t *testing.T) {
 	g := NewWithT(t)
 
 	g.Eventually(k.Get(rt.workloadDeploy)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(And(
@@ -232,11 +232,11 @@ func (rt *rayE2ETest) testPlatformLabels(t *testing.T) {
 	))
 }
 
-func (rt *rayE2ETest) testOwnerReferences(t *testing.T) {
+func (rt *mlflowE2ETest) testOwnerReferences(t *testing.T) {
 	g := NewWithT(t)
 
 	g.Eventually(k.Get(rt.workloadDeploy)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(
 		jq.Match(`.metadata.ownerReferences[] | select(.kind == "MLflowOperator") | .name == "%s"`,
-			componentsv1alpha1.OGXInstanceName),
+			componentsv1alpha1.MLflowOperatorInstanceName),
 	)
 }

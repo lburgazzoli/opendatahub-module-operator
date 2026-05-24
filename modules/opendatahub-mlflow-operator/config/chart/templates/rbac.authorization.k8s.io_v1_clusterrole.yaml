@@ -74,10 +74,16 @@ kind: ClusterRole
 metadata:
   name: opendatahub-mlflow-operator-manager-role
 rules:
+- nonResourceURLs:
+  - /metrics
+  verbs:
+  - get
 - apiGroups:
   - ""
   resources:
   - configmaps
+  - persistentvolumeclaims
+  - secrets
   - serviceaccounts
   - services
   verbs:
@@ -98,33 +104,11 @@ rules:
 - apiGroups:
   - ""
   resources:
-  - persistentvolumeclaims
-  verbs:
-  - create
-  - get
-  - list
-  - patch
-  - update
-  - watch
-- apiGroups:
-  - ""
-  resources:
+  - namespaces
   - pods
   verbs:
   - get
   - list
-  - watch
-- apiGroups:
-  - admissionregistration.k8s.io
-  resources:
-  - validatingwebhookconfigurations
-  verbs:
-  - create
-  - delete
-  - get
-  - list
-  - patch
-  - update
   - watch
 - apiGroups:
   - apiextensions.k8s.io
@@ -159,9 +143,10 @@ rules:
   verbs:
   - create
 - apiGroups:
-  - autoscaling
+  - batch
   resources:
-  - horizontalpodautoscalers
+  - cronjobs
+  - jobs
   verbs:
   - create
   - delete
@@ -173,7 +158,7 @@ rules:
 - apiGroups:
   - components.platform.opendatahub.io
   resources:
-  - ogxs
+  - mlflowoperators
   verbs:
   - create
   - delete
@@ -185,17 +170,29 @@ rules:
 - apiGroups:
   - components.platform.opendatahub.io
   resources:
-  - ogxs/finalizers
+  - mlflowoperators/finalizers
   verbs:
   - update
 - apiGroups:
   - components.platform.opendatahub.io
   resources:
-  - ogxs/status
+  - mlflowoperators/status
   verbs:
   - get
   - patch
   - update
+- apiGroups:
+  - console.openshift.io
+  resources:
+  - consolelinks
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
 - apiGroups:
   - coordination.k8s.io
   resources:
@@ -209,36 +206,75 @@ rules:
   - update
   - watch
 - apiGroups:
+  - gateway.networking.k8s.io
+  resources:
+  - httproutes
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - mlflow.kubeflow.org
+  resources:
+  - datasets
+  - experiments
+  - gatewayendpoints
+  - gatewaymodeldefinitions
+  - gatewaysecrets
+  - mlflowconfigs
+  - registeredmodels
+  verbs:
+  - create
+  - delete
+  - deletecollection
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - mlflow.kubeflow.org
+  resources:
+  - gatewayendpoints/use
+  - gatewaymodeldefinitions/use
+  - gatewaysecrets/use
+  verbs:
+  - create
+- apiGroups:
+  - mlflow.opendatahub.io
+  resources:
+  - mlflows
+  - mlflows/finalizers
+  - mlflows/status
+  verbs:
+  - create
+  - delete
+  - deletecollection
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - monitoring.coreos.com
+  resources:
+  - servicemonitors
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
   - networking.k8s.io
   resources:
-  - ingresses
   - networkpolicies
-  verbs:
-  - create
-  - delete
-  - get
-  - list
-  - patch
-  - update
-  - watch
-- apiGroups:
-  - mlflowoperator.io
-  resources:
-  - ogxservers
-  - ogxservers/finalizers
-  - ogxservers/status
-  verbs:
-  - create
-  - delete
-  - get
-  - list
-  - patch
-  - update
-  - watch
-- apiGroups:
-  - policy
-  resources:
-  - poddisruptionbudgets
   verbs:
   - create
   - delete
@@ -262,12 +298,6 @@ rules:
   - patch
   - update
   - watch
-- apiGroups:
-  - security.openshift.io
-  resources:
-  - securitycontextconstraints
-  verbs:
-  - use
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole

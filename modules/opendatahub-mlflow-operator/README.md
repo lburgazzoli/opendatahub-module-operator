@@ -29,3 +29,18 @@ monolithic opendatahub-operator.
 ## Architecture
 
 See `docs/index.md` in the root of this repository for the full split plan.
+
+## Testing namespace
+
+Integration and e2e tests must use `opendatahub` as the applications namespace.
+The mlflow operator workload is configured to watch and list resources in that
+namespace, so using a different namespace (e.g. `integration-test`) will cause
+the deployed mlflow-operator pod to fail with RBAC watch errors.
+
+The `--namespace` flag passed to the mlflow-operator binary is hardcoded in
+the overlay patch files (`overlays/odh/manager_patch.yaml` → `opendatahub`,
+`overlays/rhoai/manager_patch.yaml` → `redhat-ods-applications`). Integration
+tests must therefore set `ApplicationsNamespace=opendatahub` (ODH) or
+`redhat-ods-applications` (RHOAI) to match. Tests using a custom namespace
+like `integration-test` will see RBAC watch errors from the mlflow-operator
+pod because it hardcodes the target namespace in its startup args.

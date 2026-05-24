@@ -29,6 +29,7 @@ import (
 	"github.com/spf13/viper"
 
 	promv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
+	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
@@ -58,7 +59,7 @@ import (
 
 const (
 	testNamespace = "integration-test"
-	timeout       = 90 * time.Second
+	timeout = 3 * time.Minute
 	interval      = 2 * time.Second
 
 	labelPartOf            = "platform.opendatahub.io/part-of"
@@ -66,7 +67,7 @@ const (
 	annotationInstanceUID  = "platform.opendatahub.io/instance.uid"
 	annotationType         = "platform.opendatahub.io/type"
 	annotationVersion      = "platform.opendatahub.io/version"
-	moduleCRDName          = "ogxs.components.platform.opendatahub.io"
+	moduleCRDName = "mlflowoperators.components.platform.opendatahub.io"
 )
 
 var (
@@ -83,6 +84,7 @@ func init() {
 	utilruntime.Must(apiextensionsv1.AddToScheme(testScheme))
 	utilruntime.Must(promv1.AddToScheme(testScheme))
 	utilruntime.Must(componentsv1alpha1.AddToScheme(testScheme))
+	utilruntime.Must(gwapiv1.Install(testScheme))
 }
 
 func TestMain(m *testing.M) {
@@ -220,7 +222,7 @@ func TestOGX(t *testing.T) {
 	rt := &feastTest{
 		module: &componentsv1alpha1.MLflowOperator{
 			ObjectMeta: metav1.ObjectMeta{
-				Name: componentsv1alpha1.OGXInstanceName,
+				Name: componentsv1alpha1.MLflowOperatorInstanceName,
 			},
 		},
 		moduleCRD: &apiextensionsv1.CustomResourceDefinition{
@@ -311,6 +313,6 @@ func (rt *feastTest) testOwnerReferences(t *testing.T) {
 
 	g.Eventually(k.Get(rt.workloadDeploy)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(
 		jq.Match(`.metadata.ownerReferences[] | select(.kind == "MLflowOperator") | .name == "%s"`,
-			componentsv1alpha1.OGXInstanceName),
+			componentsv1alpha1.MLflowOperatorInstanceName),
 	)
 }

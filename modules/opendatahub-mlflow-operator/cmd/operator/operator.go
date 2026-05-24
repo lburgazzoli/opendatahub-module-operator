@@ -20,6 +20,7 @@ import (
 	"fmt"
 
 	promv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
+	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	corev1 "k8s.io/api/core/v1"
@@ -54,6 +55,7 @@ func init() {
 	utilruntime.Must(apiextensionsv1.AddToScheme(scheme))
 	utilruntime.Must(promv1.AddToScheme(scheme))
 	utilruntime.Must(componentsv1alpha1.AddToScheme(scheme))
+	utilruntime.Must(gwapiv1.Install(scheme))
 }
 
 // NewCommand returns the cobra command for the operator subcommand.
