@@ -32,7 +32,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
-	webhookserver "sigs.k8s.io/controller-runtime/pkg/webhook"
 
 	componentsv1alpha1 "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-ray-operator/api/components/v1alpha1"
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-ray-operator/internal/controller/ray"
@@ -85,10 +84,6 @@ func run(cmd *cobra.Command, _ []string) error {
 		Metrics: metricsserver.Options{
 			BindAddress: cfg.MetricsAddr,
 		},
-		WebhookServer: webhookserver.NewServer(webhookserver.Options{
-			Port:    cfg.WebhookPort,
-			CertDir: cfg.WebhookCertDir,
-		}),
 		HealthProbeBindAddress:        cfg.HealthProbeAddr,
 		PprofBindAddress:              cfg.PprofAddr,
 		LeaderElection:                cfg.LeaderElect,

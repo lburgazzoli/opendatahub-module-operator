@@ -134,7 +134,6 @@ func runTestMain(m *testing.M) int {
 		PlatformVersion:       operatorCfgData[moduleconfig.KeyPlatformVersion],
 		ApplicationsNamespace: testNamespace,
 		ManifestsPath:         support.MustProjectFile("config", "manifests"),
-		WebhooksEnabled:       false,
 	}
 
 	ctrlMgr, err := ctrl.NewManager(cfg, ctrl.Options{
