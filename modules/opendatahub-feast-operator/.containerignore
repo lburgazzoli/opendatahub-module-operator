@@ -1,0 +1,47 @@
+# Ignore build artifacts and non-source files
+bin/
+vendor/
+dist/
+config/chart/
+config/crd/
+config/default/
+config/manager/
+config/network-policy/
+config/prometheus/
+config/rbac/
+config/samples/
+hack/
+test/
+.git/
+.github/
+.devcontainer/
+.agents/
+*.md
+*.yaml
+*.yml
+*.json
+*.sh
+*.swp
+*.swo
+*~
+.DS_Store
+.envrc
+.gitignore
+.golangci.yml
+.custom-gcl.yml
+Makefile
+Containerfile
+PROJECT
+cover.out
+covmeta*
+covcounters*
+
+# Exclude test files
+**/*_test.go
+
+# Include files required by make-based container builds
+!Makefile
+!hack/
+!hack/boilerplate.go.txt
+!hack/scripts/
+!hack/scripts/get-manifests.sh
