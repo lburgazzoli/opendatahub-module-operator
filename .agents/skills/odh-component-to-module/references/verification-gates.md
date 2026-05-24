@@ -41,6 +41,7 @@ Target names must appear in `go.mod`, `PROJECT`, `Makefile`, and
 ## Build (step 8)
 
 ```bash
+pwd   # must already be modules/$MODULE_NAME before module build/deploy targets
 go mod tidy
 make manifests generate
 make test
@@ -59,6 +60,10 @@ test -x hack/scripts/cleanup-integration.sh
 test -x hack/scripts/cleanup-e2e.sh
 rg 'ray|opendatahub-ray' hack/scripts/cleanup-*.sh && exit 1 || true
 ```
+
+Before `container-build`, `helm`, or `deploy-helm`, verify you are still in
+`modules/$MODULE_NAME/`. The repo root has the same target names and will build
+the wrong chart if you drift back there.
 
 ## Test timeouts (step 7 / 10)
 

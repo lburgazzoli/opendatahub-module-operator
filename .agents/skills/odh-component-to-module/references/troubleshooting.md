@@ -22,6 +22,7 @@ When the operator fails in-cluster, diagnose before rebuilding:
 | `field not declared in schema` | CRD on cluster doesn't match module's CRD (e.g., missing `.status.module`) | `InstallCRDs` must use Get+Update pattern to replace existing CRDs |
 | `metrics on wrong port` / config ignored | Env var prefix doesn't match `EnvPrefix` in pkg/config | Align all env vars to `ODH_MODULE_OPERATOR_` (see [controller-rules.md](controller-rules.md)) |
 | `tests hang / no output` | Wrong timeout, chained make hiding failure step, or waiting too long before inspecting the pod | Run build/push/deploy/test separately; start with `-timeout 5m -failfast`, then check operator logs immediately; see [testing.md](testing.md) |
+| Logs mention `/mymodule-mutate-deploy` or the root operator when testing a module | `container-build` / `deploy-helm` ran from the repo root, so the root `opendatahub-module-operator` chart was installed instead of the module chart | Return to `modules/$MODULE_NAME/`, rebuild/push the image there, regenerate Helm there, and redeploy from that module directory |
 
 ## RBAC for operator-that-deploys-an-operator
 

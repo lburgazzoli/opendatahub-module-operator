@@ -167,7 +167,10 @@ Spawn **both** subagents per [adversarial-review.md](references/adversarial-revi
 Address all findings from steps 9 and 9b. Run **one command at a time** from
 `modules/$MODULE_NAME/` per [e2e-workflow.md](references/e2e-workflow.md). If
 you are using a tool that supports `working_directory`, set it to the module
-path before running any integration/e2e/deploy target:
+path before running any integration/e2e/deploy target. This is mandatory: the
+repo root exposes the same target names for `opendatahub-module-operator`, so
+running `container-build`, `helm`, or `deploy-helm` from the wrong directory
+can build and install the root chart instead of the module chart:
 
 ```bash
 make test

@@ -4,8 +4,13 @@ Run from `modules/$MODULE_NAME/` against **OpenShift**. If you are using a tool
 that supports `working_directory`, point it at that module path before running
 any integration/e2e/deploy target. The repo root defines the same target names
 for `opendatahub-module-operator`, so running them from the wrong directory can
-build, deploy, or test the wrong operator. Do not chain build, push, deploy,
-and test in one command — run each step separately to inspect failures.
+build, deploy, or test the wrong operator. In particular, a first-time e2e run
+from the repo root can install the root `opendatahub-module-operator` chart
+instead of the module chart. Do not chain build, push, deploy, and test in one
+command — run each step separately to inspect failures.
+
+Before the first `container-build`, `helm`, or `deploy-helm`, verify that the
+current directory is the module directory you intend to test.
 
 ## Compute IMG once
 
@@ -35,6 +40,7 @@ Or all-in-one: `make test-integration` (runs cleanup, installs CRDs, then tests)
 One step at a time after exporting `IMG`:
 
 ```bash
+pwd   # must end with /modules/$MODULE_NAME
 export ODH_PLATFORM_TYPE=OpenDataHub   # when fetching ODH manifests
 make container-prep       # host: manifests + generate + get-manifests
 echo "IMG=${IMG}"
@@ -81,6 +87,7 @@ Every module should define:
 |--------|------------|
 | `IMG=... make container-build container-push deploy-helm test-e2e` | One target per line |
 | `make container-build IMG="$(cat /tmp/img)"` | `make container-build IMG="${IMG}"` |
+| Run `make container-build`, `make helm`, or `make deploy-helm` from the repo root | Run them from `modules/$MODULE_NAME/` with tool `working_directory` set there |
 | `make test-e2e` after manual `deploy-helm` | `make test-e2e-run` |
 | `deploy-helm` without `make helm` | `make helm` first (or after manifest changes) |
 | `make test-integration-run` on a dirty cluster | `make prepare-integration` first |
