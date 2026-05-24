@@ -20,6 +20,7 @@ review, and troubleshooting.
 | Module | Directory | Status |
 |--------|-----------|--------|
 | ray | `modules/opendatahub-ray-operator/` | Unit + integration + e2e pass |
+| sparkoperator | `modules/opendatahub-spark-operator/` | Unit pass; integration + e2e need manifests |
 
 ## Source References
 
@@ -51,7 +52,7 @@ review, and troubleshooting.
 
 **Excluded**: trainingoperator, modelsasservice (maas), kueue (not a component)
 
-**Simple** (do first): ray (DONE), sparkoperator, feastoperator, ogx, mlflowoperator, trustyai, trainer
+**Simple** (do first): ray (DONE), sparkoperator (DONE - needs manifests), feastoperator, ogx, mlflowoperator, trustyai, trainer
 **Medium**: datasciencepipelines, modelregistry, modelcontroller
 **Complex** (needs tuning): kserve, dashboard, workbenches
 
