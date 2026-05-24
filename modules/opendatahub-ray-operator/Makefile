@@ -2,7 +2,7 @@
 -include local.mk
 
 # Image URL to use all building/pushing image targets
-IMG ?= ttl.sh/opendatahub-module-operator-$(shell git rev-parse --short HEAD 2>/dev/null || echo dev):1h
+IMG ?= ttl.sh/opendatahub-ray-operator-$(shell git rev-parse --short HEAD 2>/dev/null || echo dev):1h
 # YEAR defines the year value used for substituting the YEAR placeholder in the boilerplate header.
 YEAR ?= $(shell date +%Y)
 
@@ -66,12 +66,20 @@ test: manifests generate fmt vet ## Run unit tests.
 	go test $$(go list ./... | grep -v /e2e | grep -v /integration) -coverprofile cover.out
 
 .PHONY: test-integration
-test-integration: manifests generate ## Run integration tests (assumes Kind cluster is running, starts in-process manager).
-	go test ./test/integration/ -tags=integration -v -timeout 30m
+test-integration: manifests generate fetch-external-crds ## Run integration tests (assumes cluster is available, starts in-process manager).
+	go test ./test/integration/ -tags=integration -v -timeout 30m -failfast
 
 .PHONY: test-e2e
 test-e2e: ## Run e2e tests (assumes controller is already deployed).
-	go test ./test/e2e/ -tags=e2e -v -timeout 30m
+	go test ./test/e2e/ -tags=e2e -v -timeout 30m -failfast
+
+.PHONY: cleanup-integration
+cleanup-integration: ## Clean up integration test resources from the cluster.
+	./hack/scripts/cleanup-integration.sh
+
+.PHONY: cleanup-e2e
+cleanup-e2e: ## Clean up e2e test resources and uninstall operator from the cluster.
+	./hack/scripts/cleanup-e2e.sh
 
 .PHONY: lint
 lint: ## Run golangci-lint linter.
@@ -81,9 +89,17 @@ lint: ## Run golangci-lint linter.
 lint-fix: ## Run golangci-lint linter and perform fixes.
 	$(GOLANGCI_LINT) run --fix
 
+.PHONY: get-manifests
+get-manifests: ## Download component manifests.
+	./hack/scripts/get_manifests.sh
+
+.PHONY: fetch-external-crds
+fetch-external-crds: ## Fetch external CRDs needed for testing (e.g. SCC).
+	./hack/scripts/fetch_external_crds.sh
+
 ##@ Build
 
-VERSION_PKG    = github.com/lburgazzoli/opendatahub-module-operator/pkg/version
+VERSION_PKG    = github.com/lburgazzoli/opendatahub-module-operator/modules/ray/pkg/version
 VERSION       ?= 0.0.0-dev
 GIT_COMMIT    ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)
 GIT_BRANCH    ?= $(shell git rev-parse --abbrev-ref HEAD 2>/dev/null || echo unknown)
@@ -99,7 +115,7 @@ build: manifests generate fmt vet ## Build manager binary.
 
 .PHONY: run
 run: manifests generate fmt vet ## Run a controller from your host.
-	ODH_MODULE_OPERATOR_MANIFESTS_PATH=config/manifests go run -ldflags "$(LDFLAGS)" ./cmd/main.go operator
+	ODH_RAY_OPERATOR_MANIFESTS_PATH=config/manifests go run -ldflags "$(LDFLAGS)" ./cmd/main.go operator
 
 .PHONY: container-build
 container-build: ## Build container image with the manager.
@@ -111,8 +127,8 @@ container-push: ## Push container image with the manager.
 
 ##@ Helm
 
-HELM_NAMESPACE ?= opendatahub-module-operator-system
-HELM_RELEASE   ?= opendatahub-module-operator
+HELM_NAMESPACE ?= opendatahub-ray-operator-system
+HELM_RELEASE   ?= opendatahub-ray-operator
 HELM_EXTRA_ARGS ?=
 
 .PHONY: helm
@@ -125,7 +141,7 @@ helm-status: ## Show Helm release status.
 
 ##@ Kind
 
-KIND_CLUSTER         ?= opendatahub-module-operator
+KIND_CLUSTER         ?= opendatahub-ray-operator
 KIND_NODE_IMAGE      ?=
 CERT_MANAGER_VERSION ?= v1.17.2
 
@@ -139,7 +155,6 @@ kind-create: ## Create a Kind cluster with podman provider and install cert-mana
 .PHONY: kind-delete
 kind-delete: ## Delete the Kind cluster.
 	KIND_EXPERIMENTAL_PROVIDER="$(CONTAINER_TOOL)" $(KIND) delete cluster --name $(KIND_CLUSTER)
-
 
 ##@ Deployment
 

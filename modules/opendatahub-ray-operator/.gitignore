@@ -17,24 +17,12 @@ covcounters*
 *.swp
 *.swo
 
-# Generated (controller-gen)
-config/crd/bases/
-config/rbac/role.yaml
 
-# Generated (kustomize edit)
-config/manager/kustomization.yaml
-
-# Generated (helm chart)
-config/chart/
+# Downloaded manifests (fetched by get_manifests.sh)
+config/manifests/ray/
 
 # Kubeconfig (local dev)
 .kube/
-
-# OpenCode
-.opencode/
-
-# Devcontainer
-.devcontainer/
 
 # Custom golangci-lint plugin config
 .custom-gcl.yml
@@ -42,4 +30,3 @@ config/chart/
 # Makefile overrides
 local.mk
 *.mktmp.*
-.context/

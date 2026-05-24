@@ -1,5 +1,14 @@
 # AGENTS.md — ODH Module Operator
 
+## Module Split
+
+This repo contains the reference module operator AND the split-out component
+modules under `modules/`. See `docs/index.md` for the full plan, completed
+modules, lessons learned, and links to all reference docs.
+
+To create a new module from a monolith component, use the
+`odh-component-to-module` skill.
+
 ## Architecture
 
 This is an ODH Module Operator — a standalone controller that reconciles a
@@ -130,6 +139,7 @@ Tests use Ginkgo BDD style (`Describe`/`It`) with `gomega-matchers`
 (`github.com/lburgazzoli/gomega-matchers`) for JQ-based k8s assertions.
 Integration tests derive expected values from `config/manager/configmap.yaml`
 via `support.MustReadConfigMapData()` — no hardcoded assertion values.
+
 
 ## Image Caching
 

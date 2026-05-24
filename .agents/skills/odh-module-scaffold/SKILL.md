@@ -1,5 +1,5 @@
 ---
-name: scaffold-module
+name: odh-module-scaffold
 description: >
   Development guide for the ODH Module Operator. Covers the action pipeline,
   config loading, chart generation, manager wrapper, testing patterns, and

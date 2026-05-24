@@ -1,0 +1,216 @@
+# Controller Porting Rules
+
+## Builder Setup — Match the Monolith
+
+The `NewReconciler` function must replicate the monolith's fluent builder
+setup as closely as possible. The only additions are module-specific actions
+(upgradeIfNeeded, reportStatus) inserted at defined positions.
+
+### Example: ray monolith → ray module
+
+**Monolith** (`ray_controller.go`):
+```go
+reconciler.ReconcilerFor(mgr, &componentApi.Ray{}).
+    Owns(&corev1.ConfigMap{}).
+    Owns(&corev1.Secret{}).
+    Owns(&rbacv1.ClusterRoleBinding{}).
+    Owns(&rbacv1.ClusterRole{}).
+    Owns(&rbacv1.Role{}).
+    Owns(&rbacv1.RoleBinding{}).
+    Owns(&corev1.ServiceAccount{}).
+    Owns(&corev1.Service{}).
+    Owns(&appsv1.Deployment{}, reconciler.WithPredicates(predicates.DefaultDeploymentPredicate)).
+    Owns(&securityv1.SecurityContextConstraints{}).
+    Watches(&extv1.CustomResourceDefinition{},
+        reconciler.WithEventHandler(handlers.ToNamed(componentApi.RayInstanceName)),
+        reconciler.WithPredicates(component.ForLabel(labels.ODH.Component(LegacyComponentName), labels.True)),
+    ).
+    WatchesGVK(gvk.CodeFlare, reconciler.Dynamic(reconciler.CrdExists(gvk.CodeFlare))).
+    WithAction(sanitycheck.NewAction(sanitycheck.WithUnwantedResource(gvk.CodeFlare, status.CodeFlarePresentMessage))).
+    WithAction(initialize).
+    WithAction(releases.NewAction()).
+    WithAction(kustomize.NewAction(
+        kustomize.WithLabel(labels.ODH.Component(LegacyComponentName), labels.True),
+        kustomize.WithLabel(labels.K8SCommon.PartOf, LegacyComponentName),
+    )).
+    WithAction(deploy.NewAction(deploy.WithCache())).
+    WithAction(deployments.NewAction()).
+    WithAction(gc.NewAction()).
+    WithConditions(conditionTypes...).
+    Build(ctx)
+```
+
+**Module** — same structure, with module additions marked:
+```go
+reconciler.ReconcilerFor(mgr, &componentApi.Ray{}).
+    // --- Owns: IDENTICAL to monolith ---
+    Owns(&corev1.ConfigMap{}).
+    Owns(&corev1.Secret{}).
+    Owns(&rbacv1.ClusterRoleBinding{}).
+    Owns(&rbacv1.ClusterRole{}).
+    Owns(&rbacv1.Role{}).
+    Owns(&rbacv1.RoleBinding{}).
+    Owns(&corev1.ServiceAccount{}).
+    Owns(&corev1.Service{}).
+    Owns(&appsv1.Deployment{}, reconciler.WithPredicates(predicates.DefaultDeploymentPredicate)).
+    OwnsGVK(gvk.SecurityContextConstraints).  // GVK variant, same effect
+    // --- Watches: IDENTICAL to monolith ---
+    Watches(&extv1.CustomResourceDefinition{},
+        reconciler.WithEventHandler(handlers.ToNamed(componentApi.RayInstanceName)),
+        reconciler.WithPredicates(component.ForLabel(labels.ODH.Component(LegacyComponentName), labels.True)),
+    ).
+    WatchesGVK(gvk.CodeFlare, reconciler.Dynamic(reconciler.CrdExists(gvk.CodeFlare))).
+    // --- Actions: monolith order preserved, module additions inserted ---
+    WithAction(sanitycheck.NewAction(sanitycheck.WithUnwantedResource(gvk.CodeFlare, status.CodeFlarePresentMessage))).
+    WithAction(m.initialize).
+    WithAction(m.upgradeIfNeeded).              // MODULE ADDITION: after initialize
+    WithAction(releases.NewAction()).
+    WithAction(kustomize.NewAction(
+        kustomize.WithLabel(labels.ODH.Component(LegacyComponentName), labels.True),
+        kustomize.WithLabel(labels.K8SCommon.PartOf, LegacyComponentName),
+    )).
+    WithAction(deploy.NewAction(deploy.WithCache())).
+    WithAction(deployments.NewAction()).
+    WithAction(m.reportStatus).                 // MODULE ADDITION: after deployments
+    WithAction(gc.NewAction(gc.InNamespace(cfg.ApplicationsNamespace))).  // MODULE CHANGE: explicit namespace
+    // --- Conditions: IDENTICAL ---
+    WithConditions(status.ConditionDeploymentsAvailable).
+    Build(ctx)
+
+r.Release = rel  // MODULE ADDITION: set release from config
+```
+
+### Rules
+
+1. **Owns order**: preserve the monolith's exact order
+2. **OpenShift types**: use `OwnsGVK(gvk.X)` instead of `Owns(&openshift.X{})`
+   to avoid importing OpenShift API types directly
+3. **Watches**: copy verbatim — same predicates, same event handlers
+4. **Action pipeline**: keep monolith order, insert `m.upgradeIfNeeded` after
+   `m.initialize`, insert `m.reportStatus` after `deployments.NewAction()`
+5. **Kustomize labels**: copy exactly from monolith
+6. **GC**: use `gc.InNamespace(cfg.ApplicationsNamespace)` (not bare `gc.NewAction()`)
+7. **r.Release**: always set after Build
+8. **RBAC markers**: must match every Owns + Watches resource type
+
+### RBAC Marker Checklist
+
+For every `Owns()` or `OwnsGVK()`, add a corresponding RBAC marker:
+```go
+// +kubebuilder:rbac:groups=$GROUP,resources=$RESOURCE,verbs=get;list;watch;create;update;patch;delete
+```
+
+For `Watches(&extv1.CustomResourceDefinition{})`, add:
+```go
+// +kubebuilder:rbac:groups=apiextensions.k8s.io,resources=customresourcedefinitions,verbs=get;list;watch
+```
+
+## File Organization
+
+| File | Contains | Example |
+|------|----------|---------|
+| `ray_controller.go` | `NewReconciler` + RBAC markers | Builder wiring only |
+| `ray.go` | `Module` struct, `NewModule`, `initialize`, `reportStatus` | Lifecycle + status |
+| `ray_actions.go` | Custom actions like `setKustomizedParams` | Business logic |
+| `ray_upgrade.go` | `upgradeIfNeeded`, `upgrade` | Version migrations |
+| `ray_webhook.go` | Webhook registration + handlers | Admission logic |
+| `ray_test.go` | Unit tests | All test functions |
+
+## NewModule — One-Shot Setup
+
+Equivalent to the monolith's `Init(platform, cfg)`:
+```go
+func NewModule(cfg *moduleconfig.Config) (*Module, error) {
+    // 1. Parse versions
+    v, err := componentApi.NewSemVer(version.Version)
+    pv, _ := componentApi.NewSemVer(cfg.PlatformVersion)
+
+    // 2. Compute manifest info ONCE
+    mi := odhtypes.ManifestInfo{
+        Path:       cfg.ManifestsPath,
+        ContextDir: componentName,
+        SourcePath: "openshift",  // from monolith's manifestPath()
+    }
+
+    // 3. Apply image params ONCE (from monolith's Init)
+    if err := odhdeploy.ApplyParams(mi.String(), "params.env", imageParamMap); err != nil {
+        return nil, fmt.Errorf("failed to update images: %w", err)
+    }
+
+    return &Module{cfg: cfg, version: v, platformVersion: pv, manifestInfo: mi}, nil
+}
+```
+
+## Scheme Registration
+
+The operator's scheme must include ALL types the controller watches. If the
+controller watches `CustomResourceDefinition`, add `apiextensionsv1` to the
+scheme in `cmd/operator/operator.go`:
+
+```go
+import apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
+
+func init() {
+    utilruntime.Must(clientgoscheme.AddToScheme(scheme))
+    utilruntime.Must(apiextensionsv1.AddToScheme(scheme))  // required for CRD watches
+    utilruntime.Must(componentsv1alpha1.AddToScheme(scheme))
+}
+```
+
+Without this, the controller fails at startup with:
+`unable to determine GVK for object: no kind is registered for the type v1.CustomResourceDefinition`
+
+## Containerfile — Manifest Permissions
+
+OpenShift assigns arbitrary UIDs to containers. Manifests baked into the image
+must be world-readable so the init container (which copies them to a writable
+emptyDir) can access them regardless of the assigned UID.
+
+In the Containerfile:
+```dockerfile
+# In the builder stage — set permissions before copying to runtime
+RUN chmod -R a+rX config/manifests/
+
+# In the runtime stage — copy from builder (preserves permissions)
+COPY --from=builder /workspace/config/manifests/ /manifests/
+```
+
+The manager Deployment uses an init container to copy manifests to a writable
+volume, because `odhdeploy.ApplyParams` writes to `params.env` in-place:
+
+```yaml
+initContainers:
+- name: copy-manifests
+  image: controller:latest
+  command: ["cp", "-r", "/manifests/.", "/opt/manifests/"]
+  volumeMounts:
+  - name: manifests
+    mountPath: /opt/manifests
+containers:
+- name: manager
+  volumeMounts:
+  - name: manifests
+    mountPath: /opt/manifests
+  env:
+  - name: ODH_OPERATOR_MANIFESTS_PATH
+    value: /opt/manifests
+volumes:
+- name: manifests
+  emptyDir: {}
+```
+
+## initialize — Per-Reconcile
+
+Equivalent to the monolith's `initialize` action:
+```go
+func (m *Module) initialize(_ context.Context, rr *odhtypes.ReconciliationRequest) error {
+    rr.Manifests = append(rr.Manifests, m.manifestInfo)
+
+    // Apply namespace params (imageParamMap is nil — images were set once in NewModule)
+    if err := odhdeploy.ApplyParams(m.manifestInfo.String(), "params.env", nil,
+        map[string]string{"namespace": m.cfg.ApplicationsNamespace}); err != nil {
+        return fmt.Errorf("failed to update params.env: %w", err)
+    }
+    return nil
+}
+```
