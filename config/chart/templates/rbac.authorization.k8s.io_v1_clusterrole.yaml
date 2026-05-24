@@ -74,6 +74,10 @@ kind: ClusterRole
 metadata:
   name: opendatahub-module-operator-manager-role
 rules:
+- nonResourceURLs:
+  - /metrics
+  verbs:
+  - get
 - apiGroups:
   - ""
   resources:
@@ -243,6 +247,7 @@ rules:
   resources:
   - feastoperators
   - mymodules
+  - ogxs
   - rays
   - sparkoperators
   verbs:
@@ -258,6 +263,7 @@ rules:
   resources:
   - feastoperators/finalizers
   - mymodules/finalizers
+  - ogxs/finalizers
   - rays/finalizers
   - sparkoperators/finalizers
   verbs:
@@ -267,6 +273,7 @@ rules:
   resources:
   - feastoperators/status
   - mymodules/status
+  - ogxs/status
   - rays/status
   - sparkoperators/status
   verbs:
@@ -386,6 +393,20 @@ rules:
   - update
   - watch
 - apiGroups:
+  - ogx.io
+  resources:
+  - ogxservers
+  - ogxservers/finalizers
+  - ogxservers/status
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
   - operator.openshift.io
   resources:
   - kubeapiservers
@@ -456,6 +477,17 @@ rules:
   - update
   - watch
 - apiGroups:
+  - rbac.authorization.k8s.io
+  resources:
+  - subjectaccessreviews
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - update
+  - watch
+- apiGroups:
   - route.openshift.io
   resources:
   - routes
@@ -478,6 +510,7 @@ rules:
   - list
   - patch
   - update
+  - use
   - watch
 - apiGroups:
   - sparkoperator.k8s.io
