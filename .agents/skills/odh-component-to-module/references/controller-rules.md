@@ -4,7 +4,7 @@
 
 The `NewReconciler` function must replicate the monolith's fluent builder
 setup as closely as possible. The only additions are module-specific actions
-(upgradeIfNeeded, reportStatus) inserted at defined positions.
+(`upgradeIfNeeded`, `reportStatus`) inserted at defined positions.
 
 ### Example: ray monolith → ray module
 
@@ -63,7 +63,7 @@ reconciler.ReconcilerFor(mgr, &componentApi.Ray{}).
     // --- Actions: monolith order preserved, module additions inserted ---
     WithAction(sanitycheck.NewAction(sanitycheck.WithUnwantedResource(gvk.CodeFlare, status.CodeFlarePresentMessage))).
     WithAction(m.initialize).
-    WithAction(m.upgradeIfNeeded).              // MODULE ADDITION: after initialize
+    WithAction(m.upgradeIfNeeded).              // MODULE ADDITION: immediately after initialize
     WithAction(releases.NewAction()).
     WithAction(kustomize.NewAction(
         kustomize.WithLabel(labels.ODH.Component(LegacyComponentName), labels.True),
@@ -86,8 +86,9 @@ r.Release = rel  // MODULE ADDITION: set release from config
 2. **OpenShift types**: use `OwnsGVK(gvk.X)` instead of `Owns(&openshift.X{})`
    to avoid importing OpenShift API types directly
 3. **Watches**: copy verbatim — same predicates, same event handlers
-4. **Action pipeline**: keep monolith order, insert `m.upgradeIfNeeded` after
-   `m.initialize`, insert `m.reportStatus` after `deployments.NewAction()`
+4. **Action pipeline**: keep monolith order, insert `m.upgradeIfNeeded`
+   **immediately** after `m.initialize` with **nothing in between**; insert
+   `m.reportStatus` after `deployments.NewAction()`
 5. **Kustomize labels**: copy exactly from monolith
 6. **GC**: use `gc.InNamespace(cfg.ApplicationsNamespace)` (not bare `gc.NewAction()`)
 7. **r.Release**: always set after Build

@@ -45,7 +45,8 @@ Compare these dimensions and report ALL differences:
     between pkg/config and manifests (e.g. metrics patch vs config).
 
 EXPECTED differences (do NOT flag these):
-- Module adds upgradeIfNeeded action (after initialize)
+- Module adds upgradeIfNeeded action (immediately after initialize, with
+  nothing in between)
 - Module adds reportStatus action (after deployments)
 - Module sets r.Release from config
 - Module uses m.cfg.ApplicationsNamespace instead of cluster.ApplicationNamespace()

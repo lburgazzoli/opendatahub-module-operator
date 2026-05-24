@@ -86,10 +86,12 @@ Per [controller-rules.md](references/controller-rules.md). Key files:
 - `${name}_upgrade.go` — upgrade placeholder
 - `${name}_webhook.go` — webhooks (if any)
 
-Copy **Watches** and action pipeline from the monolith. **Owns** and RBAC
-markers are a **draft** from the monolith here — **finalize in step 5b**
-against kustomize output (module must own every deployed resource except CRDs,
-and hold RBAC for everything the deployed operand handles).
+Copy **Watches** and action pipeline from the monolith. Insert
+`upgradeIfNeeded` **immediately** after `initialize` with **nothing in
+between**. **Owns** and RBAC markers are a **draft** from the monolith here —
+**finalize in step 5b** against kustomize output (module must own every
+deployed resource except CRDs, and hold RBAC for everything the deployed
+operand handles).
 
 ### 4. Port CRD types
 

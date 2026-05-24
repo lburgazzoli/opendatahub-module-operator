@@ -25,7 +25,9 @@ Creating a new module from a monolith component → use
 Split module operators build a sequential pipeline via `reconciler.ReconcilerFor`.
 Each action is `func(context.Context, *ReconciliationRequest) error`.
 
-**Canonical order** (split modules — match monolith + module additions):
+**Canonical order** (split modules — match monolith + module additions;
+`upgradeIfNeeded` must come immediately after `initialize`, with nothing in
+between):
 
 ```
 [component actions e.g. sanitycheck]
