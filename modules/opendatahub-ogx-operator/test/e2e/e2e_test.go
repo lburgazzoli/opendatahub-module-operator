@@ -132,7 +132,7 @@ func TestOGX(t *testing.T) {
 		},
 		workloadDeploy: &appsv1.Deployment{
 			ObjectMeta: metav1.ObjectMeta{
-				Name:      "feast-operator-controller-manager",
+				Name:      "ogx-k8s-operator-controller-manager",
 				Namespace: operatorNamespace,
 			},
 		},
