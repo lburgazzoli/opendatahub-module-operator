@@ -115,6 +115,7 @@ func NewReconciler(
 		WithAction(m.setKustomizedParams).
 		WithAction(releases.NewAction()).
 		WithAction(kustomize.NewAction()).
+		WithAction(m.fixDeploymentNamespace).
 		WithAction(deploy.NewAction(
 			deploy.WithCache(),
 			deploy.WithLabel(labels.ODH.Component(componentName), labels.True),

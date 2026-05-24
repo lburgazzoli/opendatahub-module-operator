@@ -20,6 +20,7 @@ import (
 	"context"
 	"fmt"
 	"path"
+	"strings"
 
 	k8serr "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
@@ -60,6 +61,65 @@ func getGatewayDomain(ctx context.Context, cli client.Client) (string, error) {
 	}
 
 	return domain, nil
+}
+
+// fixDeploymentNamespace amends the rendered mlflow-operator Deployment in rr.Resources
+// to replace the hardcoded --namespace arg with the configured ApplicationsNamespace.
+//
+// The upstream overlays hardcode --namespace=opendatahub (or redhat-ods-applications)
+// in the manager command args. This action fixes it in-memory after kustomize renders
+// so the deployed binary watches the correct namespace.
+//
+// TODO(module-team): contribute a params.env substitution upstream to remove this.
+// fixDeploymentNamespace amends the rendered mlflow-operator Deployment in rr.Resources
+// to replace any --namespace=<hardcoded> arg with the configured ApplicationsNamespace.
+//
+// The upstream overlays hardcode --namespace=opendatahub (or redhat-ods-applications)
+// in the manager command args. This action fixes it in-memory after kustomize renders
+// so the deployed binary watches the correct namespace without touching the disk.
+//
+// TODO(module-team): contribute a params.env substitution upstream to remove this.
+func (m *Module) fixDeploymentNamespace(_ context.Context, rr *odhtypes.ReconciliationRequest) error {
+	target := "--namespace=" + m.cfg.ApplicationsNamespace
+
+	for i := range rr.Resources {
+		res := rr.Resources[i]
+		if res.GetKind() != "Deployment" {
+			continue
+		}
+
+		containers, found, err := unstructured.NestedSlice(res.Object, "spec", "template", "spec", "containers")
+		if err != nil || !found {
+			continue
+		}
+
+		changed := false
+		for ci, c := range containers {
+			container, ok := c.(map[string]any)
+			if !ok {
+				continue
+			}
+			rawArgs, ok := container["args"].([]any)
+			if !ok {
+				continue
+			}
+			for ai, a := range rawArgs {
+				if s, ok := a.(string); ok && strings.HasPrefix(s, "--namespace=") && s != target {
+					rawArgs[ai] = target
+					changed = true
+				}
+			}
+			containers[ci] = container
+		}
+
+		if changed {
+			if err := unstructured.SetNestedSlice(res.Object, containers, "spec", "template", "spec", "containers"); err != nil {
+				return fmt.Errorf("patching --namespace in Deployment %s: %w", res.GetName(), err)
+			}
+		}
+	}
+
+	return nil
 }
 
 // setKustomizedParams writes runtime-computed variables (mlflow-url, section-title)
