@@ -83,6 +83,9 @@ kustomize build config/manifests/ray/openshift >/dev/null
 
 # Example spark (platform map — match configmap platform-type)
 kustomize build config/manifests/sparkoperator/overlays/odh >/dev/null
+
+# If the module has multiple overlays, build every overlay for RBAC/permission review
+kustomize build config/manifests/sparkoperator/overlays/rhoai >/dev/null
 ```
 
 Full audit procedure: [manifest-rbac-audit.md](manifest-rbac-audit.md).
@@ -93,3 +96,5 @@ Manual checks (or adversarial review):
   (except CRD and documented Namespace exceptions)
 - Every rule in deployed operand ClusterRoles appears in operator
   `+kubebuilder:rbac` markers (escalation rule — see troubleshooting.md)
+- If the module has multiple overlays, the Kind/RBAC audit covers the union of
+  all overlay builds, not only the default overlay

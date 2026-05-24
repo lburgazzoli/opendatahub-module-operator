@@ -1,0 +1,33 @@
+/*
+Copyright 2026.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
+package ogx
+
+import (
+	"context"
+
+	odhtypes "github.com/opendatahub-io/opendatahub-operator/v2/pkg/controller/types"
+)
+
+// checkPreConditions validates that the environment is ready for OGX.
+//
+// In the monolith this checked that LlamaStackOperator was not Managed (via DSC).
+// In the standalone module there is no DSC, so the deprecation constraint is
+// documented at the deployment level. Teams that need this guard can implement
+// it by watching the LlamaStack module CRD.
+func (m *Module) checkPreConditions(_ context.Context, _ *odhtypes.ReconciliationRequest) error {
+	return nil
+}

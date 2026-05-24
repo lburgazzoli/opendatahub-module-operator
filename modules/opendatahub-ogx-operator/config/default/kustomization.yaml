@@ -1,0 +1,14 @@
+namespace: opendatahub-ogx-operator-system
+
+namePrefix: opendatahub-ogx-operator-
+
+resources:
+- ../crd
+- ../rbac
+- ../manager
+- metrics_service.yaml
+
+patches:
+- path: manager_metrics_patch.yaml
+  target:
+    kind: Deployment

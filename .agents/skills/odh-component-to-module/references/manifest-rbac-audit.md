@@ -53,7 +53,7 @@ From step 1 extraction (`manifestPath` / `ManifestsSourcePath` in monolith
 
 ### Platform map (spark, ogx, dsp, …)
 
-Fetched tree contains multiple overlays. At audit time, pick overlay from
+Fetched tree contains multiple overlays. Start with the overlay selected by
 `platform-type` in `config/manager/configmap.yaml` — same mapping as monolith
 `ManifestsSourcePath` / module `NewModule`:
 
@@ -62,8 +62,11 @@ Fetched tree contains multiple overlays. At audit time, pick overlay from
 | `OpenDataHub` | `overlays/odh` |
 | `SelfManagedRhoai`, `ManagedRhoai` | `overlays/rhoai` |
 
-**Optional (adversarial review, not blocking):** run a second
-`kustomize build` for the other overlay and note Kind/RBAC diffs.
+For RBAC/permission review, this is **not enough by itself**. If the module has
+multiple overlays, run `kustomize build` against **every overlay** in the
+fetched tree and audit Kind/RBAC differences across all of them. Do not stop at
+the configmap default overlay; the operator must hold permissions for any
+operand RBAC it may deploy on every supported platform.
 
 ---
 
@@ -79,12 +82,18 @@ KUSTOMIZE_PATH="config/manifests/ray/openshift"
 
 # Spark — platform map (ODH default in configmap)
 KUSTOMIZE_PATH="config/manifests/sparkoperator/overlays/odh"
+
+# Spark — additional overlay(s) that must also be audited for RBAC/permissions
+KUSTOMIZE_PATH_ALT="config/manifests/sparkoperator/overlays/rhoai"
 ```
 
 Gate — build must succeed:
 
 ```bash
 kustomize build "${KUSTOMIZE_PATH}" >/dev/null
+
+# If the module has multiple overlays, every overlay must build cleanly.
+kustomize build "${KUSTOMIZE_PATH_ALT}" >/dev/null
 ```
 
 List deployed kinds:
@@ -128,6 +137,10 @@ make manifests generate
 
 Verify generated `config/rbac/role.yaml` includes operand permissions.
 
+When multiple overlays exist, compare the Kind set and RBAC rules from each
+overlay and size the operator's `Owns` / `+kubebuilder:rbac` markers for the
+union, not just the default overlay.
+
 ---
 
 ## D. Kind → Owns mapping
@@ -157,7 +170,28 @@ Add scheme registration in `cmd/operator/operator.go` for any API group not in
 
 - [ ] `KUSTOMIZE_PATH` derived from extraction (`ContextDir` + `SourcePath`)
 - [ ] `kustomize build "${KUSTOMIZE_PATH}"` succeeds
+- [ ] If the module has multiple overlays, `kustomize build` succeeds for every
+      overlay (for example both `overlays/odh` and `overlays/rhoai`)
 - [ ] Every Kind in output has `Owns` / `OwnsGVK` (except documented CRD/Namespace)
 - [ ] Every ClusterRole rule in output has matching operator `+kubebuilder:rbac`
 - [ ] Monolith Watches ported unchanged
 - [ ] `make manifests generate` run after marker updates
+
+## Multi-overlay audit
+
+When the component has both `overlays/odh` and `overlays/rhoai`, run `kustomize build`
+on **both** and take the union of resource kinds and RBAC rules:
+
+```bash
+OVERLAY_ODH=config/manifests/${COMPONENT}/overlays/odh
+OVERLAY_RHOAI=config/manifests/${COMPONENT}/overlays/rhoai
+
+# Combined kinds
+{ kustomize build "${OVERLAY_ODH}" 2>/dev/null; kustomize build "${OVERLAY_RHOAI}" 2>/dev/null; } \
+  | yq e '.kind' - | sort -u
+
+# Combined RBAC rules (diff to find rhoai additions)
+kustomize build "${OVERLAY_RHOAI}" 2>/dev/null | \
+  yq e 'select(.kind == "ClusterRole" or .kind == "Role") | .rules[] | .apiGroups[] + "/" + .resources[] + " " + (.verbs | join(","))' - 2>/dev/null | \
+  sort -u | diff - <(kustomize build "${OVERLAY_ODH}" 2>/dev/null | yq e 'select(.kind == "ClusterRole" or .kind == "Role") | .rules[] | .apiGroups[] + "/" + .resources[] + " " + (.verbs | join(","))' - 2>/dev/null | sort -u)
+```

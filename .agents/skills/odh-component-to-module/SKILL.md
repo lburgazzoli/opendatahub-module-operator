@@ -120,6 +120,9 @@ After `make get-manifests`, run the full audit in
 
 - Resolve `config/manifests/${ContextDir}/${SourcePath}` from extraction
 - `kustomize build` must succeed
+- If the fetched manifests have multiple overlays, run the RBAC/permissions
+  audit against **every overlay** (for example `overlays/odh` and
+  `overlays/rhoai`), not just the configmap default
 - Add `Owns` / `OwnsGVK` for every Kind in output (except CRD / Namespace)
 - Add operator `+kubebuilder:rbac` for every rule in deployed operand
   ClusterRoles (and Roles)
