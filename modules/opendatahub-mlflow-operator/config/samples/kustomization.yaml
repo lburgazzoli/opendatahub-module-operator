@@ -1,0 +1,4 @@
+## Append samples of your project ##
+resources:
+- components_v1alpha1_mlflowoperator.yaml
+# +kubebuilder:scaffold:manifestskustomizesamples
