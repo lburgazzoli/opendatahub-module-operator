@@ -116,6 +116,25 @@ rules:
 - apiGroups:
   - ""
   resources:
+  - namespaces
+  verbs:
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - ""
+  resources:
+  - pods/exec
+  verbs:
+  - create
+  - get
+  - list
+  - watch
+- apiGroups:
+  - ""
+  resources:
   - pods/proxy
   - services/proxy
   - services/status
@@ -174,8 +193,21 @@ rules:
   verbs:
   - create
 - apiGroups:
+  - autoscaling
+  resources:
+  - horizontalpodautoscalers
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
   - batch
   resources:
+  - cronjobs
   - jobs
   verbs:
   - create
@@ -209,6 +241,7 @@ rules:
 - apiGroups:
   - components.platform.opendatahub.io
   resources:
+  - feastoperators
   - mymodules
   - rays
   - sparkoperators
@@ -223,6 +256,7 @@ rules:
 - apiGroups:
   - components.platform.opendatahub.io
   resources:
+  - feastoperators/finalizers
   - mymodules/finalizers
   - rays/finalizers
   - sparkoperators/finalizers
@@ -231,6 +265,7 @@ rules:
 - apiGroups:
   - components.platform.opendatahub.io
   resources:
+  - feastoperators/status
   - mymodules/status
   - rays/status
   - sparkoperators/status
@@ -255,6 +290,7 @@ rules:
   - leases
   verbs:
   - create
+  - delete
   - get
   - list
   - patch
@@ -264,6 +300,20 @@ rules:
   - extensions
   resources:
   - ingresses
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - feast.dev
+  resources:
+  - featurestores
+  - featurestores/finalizers
+  - featurestores/status
   verbs:
   - create
   - delete
@@ -294,9 +344,18 @@ rules:
   - update
   - watch
 - apiGroups:
+  - kubeflow.org
+  resources:
+  - notebooks
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
   - monitoring.coreos.com
   resources:
   - podmonitors
+  - servicemonitors
   verbs:
   - create
   - delete
@@ -334,6 +393,18 @@ rules:
   verbs:
   - get
   - list
+  - watch
+- apiGroups:
+  - policy
+  resources:
+  - poddisruptionbudgets
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
   - watch
 - apiGroups:
   - ray.io

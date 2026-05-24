@@ -261,3 +261,30 @@ func (m *Module) initialize(_ context.Context, rr *odhtypes.ReconciliationReques
     return nil
 }
 ```
+
+## Webhook Server — Remove for all modules
+
+The monolith registers webhooks on the `DataScienceCluster` and
+`DSCInitialization` resources. These have no equivalent in the module
+operator, so **remove the WebhookServer** from `cmd/operator/operator.go`
+for every module unless the component has its own resource-specific webhooks
+(e.g., a webhook that mutates the component CR itself or its deployed workloads).
+
+For the simple components (ray, sparkoperator, feastoperator, ogx,
+mlflowoperator, trustyai, trainer) — none have such webhooks.
+
+**Remove from `cmd/operator/operator.go`**:
+```go
+// DELETE these lines:
+webhookserver "sigs.k8s.io/controller-runtime/pkg/webhook"
+...
+WebhookServer: webhookserver.NewServer(webhookserver.Options{
+    Port:    cfg.WebhookPort,
+    CertDir: cfg.WebhookCertDir,
+}),
+```
+
+**Also clear** `config/webhook/manifests.yaml` (leave it empty or with a comment)
+and **remove** `- ../webhook` from `config/default/kustomization.yaml`.
+
+Failing to do this causes: `Error: open /tmp/k8s-webhook-server/serving-certs/tls.crt: no such file or directory`
