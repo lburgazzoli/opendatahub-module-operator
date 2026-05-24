@@ -17,24 +17,37 @@ allowed-tools:
 
 # ODH Module Operator — Development Guide
 
+Creating a new module from a monolith component → use
+[odh-component-to-module](../odh-component-to-module/SKILL.md).
+
 ## Action Pipeline
 
-The controller builds a sequential pipeline via `reconciler.ReconcilerFor`.
+Split module operators build a sequential pipeline via `reconciler.ReconcilerFor`.
 Each action is `func(context.Context, *ReconciliationRequest) error`.
 
+**Canonical order** (split modules — match monolith + module additions):
+
 ```
-initialize -> releases -> reportStatus -> kustomize -> deploy -> deployments -> gc
+[component actions e.g. sanitycheck]
+-> initialize -> upgradeIfNeeded -> releases -> kustomize -> deploy
+-> deployments -> reportStatus -> gc
 ```
+
+Full porting rules and monolith diff: [controller-rules.md](../odh-component-to-module/references/controller-rules.md).
+
+The root **mymodule** reference uses a different action order — do **not** copy
+its pipeline when scaffolding split modules under `modules/`.
 
 | Action | What it does |
 |---|---|
-| `initialize` | Sets manifest paths on `rr.Manifests` based on platform overlay (`overlays/odh` or `overlays/rhoai`) |
+| `initialize` | Sets manifest paths on `rr.Manifests` based on platform overlay |
+| `upgradeIfNeeded` | Module-only: version/platform migration hook |
 | `releases` | Reads `component_metadata.yaml` and populates release info in CR status |
-| `reportStatus` | Writes module version, platform, config values, and manifest sources to CR status |
-| `kustomize` | Renders manifests to `rr.Resources`. Calls `cluster.ApplicationNamespace()` for the target namespace |
-| `deploy` | Applies `rr.Resources` via SSA. Sets owner references, platform labels, instance annotations |
-| `deployments` | Checks Deployment readiness. Sets `DeploymentsAvailable` condition |
-| `gc` | Deletes resources with the `platform.opendatahub.io/part-of` label that are no longer in `rr.Resources` |
+| `kustomize` | Renders manifests to `rr.Resources` |
+| `deploy` | Applies `rr.Resources` via SSA |
+| `deployments` | Checks Deployment readiness |
+| `reportStatus` | Writes module version, platform, manifest sources to CR status |
+| `gc` | Deletes orphaned resources with `part-of` label |
 
 The `ReconciliationRequest` is a shared state bag:
 
@@ -65,6 +78,23 @@ Three-layer precedence (later wins):
 1. **Compiled defaults** — `setDefaults()` in `pkg/config/config.go`
 2. **Mounted ConfigMap** — files at `ODH_MODULE_OPERATOR_CONFIGURATION_PATH`
 3. **Environment variables** — `ODH_MODULE_OPERATOR_` prefix
+
+### Env prefix rule
+
+- **Canonical prefix:** `ODH_MODULE_OPERATOR_` (set via `EnvPrefix` in `pkg/config/config.go`)
+- **Forbidden:** `ODH_OPERATOR_`, component-specific prefixes (`ODH_RAY_OPERATOR_*`, etc.)
+- **Must match:** deployment env vars in `config/manager/manager.yaml`, Helm chart
+  templates, `manager_metrics_patch.yaml`, and `Makefile` `run` target must all
+  use the same prefix as `pkg/config`
+
+If the prefix in manifests does not match `EnvPrefix`, viper silently ignores
+env vars during `Unmarshal()` — config appears to load but values stay at defaults.
+
+Verification (from module root):
+
+```bash
+rg 'ODH_OPERATOR[^_M]|ODH_OPERATOR_|ODH_[A-Z]+_OPERATOR_' . && exit 1 || true
+```
 
 Config is loaded once at startup via `moduleconfig.Load()` and passed to
 `NewReconciler(ctx, mgr, cfg)`.
@@ -145,26 +175,57 @@ After changes: `make helm` regenerates the chart and verifies it lints.
 
 ## Testing
 
-Tests use Ginkgo BDD (`Describe`/`It`) with `gomega-matchers`
-(`github.com/lburgazzoli/gomega-matchers`):
+**Target cluster: OpenShift** (CRC, ROSA, dev cluster). Integration and e2e
+tests assume OpenShift APIs (e.g. SCC) are available on the cluster — not a
+vanilla Kind cluster. See [testing.md](../odh-component-to-module/references/testing.md)
+(OpenShift assumptions) and `docs/testing-limitations.md` for Kind caveats.
 
-- `k8sm.New(cli, scheme)` creates a matcher wrapping the k8s client
-- `k.Get(obj)` returns a function for `Eventually()` that fetches and returns `*unstructured.Unstructured`
-- `jq.Match(expr)` evaluates a JQ expression against the result
+Tests use the **Go `testing` package** with **Gomega** and **gomega-matchers**.
+
+| Layer | What we use |
+|-------|-------------|
+| Runner | `testing.T` — `func TestRay(t *testing.T)`, `TestMain(m *testing.M)` |
+| Structure | `t.Run("should become ready", fn)` subtests |
+| Assertions | Gomega via `g := NewWithT(t)` inside each subtest |
+| K8s polling | `g.Eventually(k.Get(obj)).WithContext(ctx).Should(jq.Match(...))` |
+| Matchers | `github.com/lburgazzoli/gomega-matchers` — `k8sm.New`, `jq.Match` |
 
 ```go
 import (
+    . "github.com/onsi/gomega"
+
     k8sm "github.com/lburgazzoli/gomega-matchers/pkg/matchers/k8s"
     "github.com/lburgazzoli/gomega-matchers/pkg/matchers/jq"
 )
 
-k := k8sm.New(k8sClient, scheme)
-Eventually(k.Get(module)).WithContext(ctx).Should(jq.Match(`.status.phase == "Ready"`))
+func TestRay(t *testing.T) {
+    rt := &rayTest{ /* fixtures */ }
+    t.Cleanup(func() { _ = k8sClient.Delete(ctx, rt.module) })
+
+    t.Run("should become ready", rt.testBecomesReady)
+    t.Run("should report module version and platform", rt.testModuleStatus)
+}
+
+func (rt *rayTest) testBecomesReady(t *testing.T) {
+    g := NewWithT(t)
+    g.Expect(k8sClient.Create(ctx, rt.module)).To(Succeed())
+    g.Eventually(k.Get(rt.module)).WithContext(ctx).
+        WithTimeout(timeout).WithPolling(interval).
+        Should(jq.Match(`.status.phase == "Ready"`))
+}
 ```
+
+Match the ray module pattern above. Use `-run TestRay/should_become_ready`
+to isolate a subtest.
 
 **Integration tests** derive expected values from `config/manager/configmap.yaml`
 via `support.MustReadConfigMapData()`. Changes to the ConfigMap must be
 reflected in test expectations (they are coupled).
+
+**Pre-test cleanup:** integration and e2e require a clean OpenShift cluster.
+Module Makefiles define cleanup scripts and `test-integration-run` /
+`test-e2e-run` targets. See
+`.agents/skills/odh-component-to-module/references/e2e-workflow.md`.
 
 ## Extending
 
@@ -197,7 +258,8 @@ After changes: `make manifests generate` to regenerate `config/rbac/role.yaml`.
 2. Add field: `MyField string \`mapstructure:"my-field"\`` in `Config` struct
 3. Add default: `v.SetDefault(KeyMyField, "default-value")` in `setDefaults()`
 4. Add to `config/manager/configmap.yaml` data
-5. Env var becomes `ODH_MODULE_OPERATOR_MY_FIELD` automatically
+5. Env var becomes `ODH_MODULE_OPERATOR_MY_FIELD` automatically — never
+   hand-craft a different prefix
 
 ### Adding a Custom Action
 
@@ -212,6 +274,12 @@ func myAction(ctx context.Context, rr *odhtypes.ReconciliationRequest) error {
 Insert via `WithAction(myAction)` at the desired pipeline position.
 
 ### Adding a New Module Kind
+
+For a **split module** under `modules/`, use
+[odh-component-to-module](../odh-component-to-module/SKILL.md) — do not
+hand-scaffold from mymodule.
+
+To extend the **root reference operator** only:
 
 1. `kubebuilder create api --group components --version v1alpha1 --kind NewModule --namespaced=false`
 2. Replace types with PlatformObject contract (embed `common.Status` + `common.ComponentReleaseStatus`)

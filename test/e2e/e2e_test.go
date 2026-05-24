@@ -47,7 +47,7 @@ import (
 
 const (
 	operatorNamespace = "opendatahub-module-operator-system"
-	timeout           = 2 * time.Minute
+	timeout           = 90 * time.Second
 	interval          = 2 * time.Second
 
 	labelPartOf            = "platform.opendatahub.io/part-of"

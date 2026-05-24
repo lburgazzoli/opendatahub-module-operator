@@ -1,29 +1,36 @@
 # External CRDs
 
+## OpenShift (default test target)
+
+When integration/e2e run on **OpenShift**, OpenShift API types (SCC, Route,
+ConsoleLink, etc.) are **already registered** on the cluster. You do **not**
+need to fetch or install external CRDs for tests.
+
+If the controller `OwnsGVK(gvk.SecurityContextConstraints)` (or Route,
+ConsoleLink):
+
+- **On OpenShift:** no extra setup — reconcile and tests proceed normally.
+- **Do not** add `fetch-external-crds` to `test-integration` for OpenShift-only
+  workflows.
+- **Do not** block on `kind-setup.sh` external CRD install.
+
+Still add `OwnsGVK` + RBAC markers in the controller — the operator manages
+real SCC objects on OpenShift.
+
+## Kind / vanilla Kubernetes (optional, not default)
+
 Some components own OpenShift-specific resource types that don't exist on
-vanilla Kubernetes. These CRDs must be installed for the controller to start
-and for tests to work.
+vanilla Kubernetes. Only if you explicitly test on Kind:
 
-## When needed
-
-If the controller has any of these in its Owns/OwnsGVK list:
 - `SecurityContextConstraints` (security.openshift.io)
 - `Route` (route.openshift.io)
 - `ConsoleLink` (console.openshift.io)
 
-## Script
+### Script (Kind only)
 
-`hack/scripts/fetch_external_crds.sh` — generates CRDs from Go module cache
-using controller-gen.
-
-### Template
-
-Copy from the ray module:
-```
-modules/opendatahub-ray-operator/hack/scripts/fetch_external_crds.sh
-```
-
-Change the `fetch_crds` call at the bottom to match the component's needs:
+`hack/scripts/fetch-external-crds.sh` — generates CRDs from Go module cache
+using controller-gen. Copy from the ray module and customize `fetch_crds`
+calls.
 
 ```bash
 # SecurityContextConstraints (ray, datasciencepipelines)
@@ -36,41 +43,34 @@ fetch_crds "github.com/openshift/api" "route/v1"
 fetch_crds "github.com/openshift/api" "console/v1" "consolelinks"
 ```
 
-## Output
+Output: `config/crd/external/` (tracked in git, not in kustomize deploy).
 
-CRDs are written to `config/crd/external/`. This directory is:
-- **Tracked in git** (NOT gitignored)
-- **Not added to kustomization.yaml** (they're for testing only)
-- **Installed during kind-setup.sh**
+### Kind setup (Kind only)
 
-## Kind Setup Integration
+`kind-setup.sh` can install external CRDs after cert-manager. Skip this path
+when the team standard is OpenShift-only testing.
 
-The `kind-setup.sh` script installs external CRDs after cert-manager:
-
-```bash
-EXTERNAL_CRD_DIR="${SCRIPT_DIR}/../../config/crd/external"
-if [ -d "${EXTERNAL_CRD_DIR}" ] && ls "${EXTERNAL_CRD_DIR}"/*.yaml &>/dev/null; then
-    echo "Installing external CRDs from ${EXTERNAL_CRD_DIR}..."
-    kubectl apply -f "${EXTERNAL_CRD_DIR}/"
-fi
-```
-
-## Makefile
-
-Add a target and make it a dependency of `test-integration`:
+### Makefile (Kind only)
 
 ```makefile
 .PHONY: fetch-external-crds
-fetch-external-crds: ## Fetch external CRDs needed for testing (e.g. SCC).
-	./hack/scripts/fetch_external_crds.sh
+fetch-external-crds: ## Fetch external CRDs for Kind testing (not needed on OpenShift).
+	./hack/scripts/fetch-external-crds.sh
 
-test-integration: manifests generate fetch-external-crds
-	go test ./test/integration/ -tags=integration -v -timeout 30m
+test-integration: manifests generate fetch-external-crds cleanup-integration test-integration-run
 ```
 
-## If not needed
+## Decision table
+
+| Controller owns | OpenShift tests | Kind tests |
+|-----------------|-----------------|------------|
+| SCC / Route / ConsoleLink | Nothing extra | `fetch-external-crds` + kind install |
+| No OpenShift types | Nothing extra | Nothing extra |
+
+## If not needed (any cluster)
 
 If the component doesn't own any OpenShift-specific resources:
-- Don't create `fetch_external_crds.sh`
+
+- Don't create `fetch-external-crds.sh`
 - Don't add `fetch-external-crds` to the Makefile
-- Don't add the external CRD install block to `kind-setup.sh`
+- Don't add external CRD install to `kind-setup.sh`

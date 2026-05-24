@@ -78,11 +78,14 @@ rules:
   - ""
   resources:
   - configmaps
+  - persistentvolumeclaims
+  - pods
   - serviceaccounts
   - services
   verbs:
   - create
   - delete
+  - deletecollection
   - get
   - list
   - patch
@@ -96,20 +99,6 @@ rules:
   - create
   - patch
   - update
-- apiGroups:
-  - ""
-  resources:
-  - persistentvolumeclaims
-  - pods
-  verbs:
-  - create
-  - delete
-  - deletecollection
-  - get
-  - list
-  - patch
-  - update
-  - watch
 - apiGroups:
   - ""
   resources:

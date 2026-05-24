@@ -4,7 +4,7 @@
 
 Each module is a standalone Go project under `modules/$name/` with:
 - Its own `go.mod`, `Makefile`, `Containerfile`
-- A `get_manifests.sh` fetching only its component manifests
+- A `get-manifests.sh` fetching only its component manifests
 - A `cmd/chartgen/` copied from the reference (only reusable piece)
 - Local copy of its CRD types (from opendatahub-operator api/components/v1alpha1)
 - Dependencies only on opendatahub-operator/v2 and odh-platform-utilities
@@ -20,7 +20,7 @@ modules/$name/
   go.mod
   Makefile
   Containerfile
-  get_manifests.sh              # fetches this component's manifests only
+  get-manifests.sh              # fetches this component's manifests only
   api/components/v1alpha1/      # local CRD types (copied + adjusted)
   cmd/
     main.go
@@ -110,7 +110,7 @@ For each simple component, the work is:
 
 1. **Scaffold** — Copy reference module structure to `modules/$name/`
 2. **CRD types** — Copy the component's types from opendatahub-operator, adjust package/imports
-3. **get_manifests.sh** — Extract this component's entry from get_all_manifests.sh
+3. **get-manifests.sh** — Extract this component's entry from get_all_manifests.sh
 4. **Controller** — Port the controller pipeline:
    - Map Owns/Watches from the monolith controller
    - Port action functions (initialize, kustomize params, etc.)
@@ -197,4 +197,5 @@ For each simple component, the work is:
 - Replace `mymodule` naming with the component name throughout
 - The chartgen command is the only code reused from this repo — copy it as-is
 - Each module gets its own CI, image build, Helm chart
-- Test with `make kind-create` + `make test-integration` per module
+- Test on **OpenShift** with `make test-integration` / `make test-e2e` per module
+- Kind is optional for root reference only — see `docs/testing-limitations.md`

@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/lburgazzoli/opendatahub-module-operator/modules/ray/cmd/chartgen/values",
+  "$id": "https://github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-ray-operator/cmd/chartgen/values",
   "$ref": "#/$defs/Values",
   "$defs": {
     "ImageSpec": {

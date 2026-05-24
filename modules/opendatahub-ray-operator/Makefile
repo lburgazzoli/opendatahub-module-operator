@@ -65,13 +65,19 @@ deps: ## Tidy and verify Go module dependencies.
 test: manifests generate fmt vet ## Run unit tests.
 	go test $$(go list ./... | grep -v /e2e | grep -v /integration) -coverprofile cover.out
 
+.PHONY: test-integration-run
+test-integration-run: ## Run integration tests only (cluster must be prepared).
+	go test ./test/integration/ -tags=integration -v -timeout 5m -failfast
+
 .PHONY: test-integration
-test-integration: manifests generate fetch-external-crds ## Run integration tests (assumes cluster is available, starts in-process manager).
-	go test ./test/integration/ -tags=integration -v -timeout 30m -failfast
+test-integration: manifests generate cleanup-integration test-integration-run ## Run integration tests (assumes cluster is available, starts in-process manager).
+
+.PHONY: test-e2e-run
+test-e2e-run: ## Run e2e tests only (operator must already be deployed).
+	go test ./test/e2e/ -tags=e2e -v -timeout 5m -failfast
 
 .PHONY: test-e2e
-test-e2e: ## Run e2e tests (assumes controller is already deployed).
-	go test ./test/e2e/ -tags=e2e -v -timeout 30m -failfast
+test-e2e: cleanup-e2e deploy-helm test-e2e-run ## Run e2e tests (cleans cluster, deploys operator, then tests).
 
 .PHONY: cleanup-integration
 cleanup-integration: ## Clean up integration test resources from the cluster.
@@ -91,19 +97,24 @@ lint-fix: ## Run golangci-lint linter and perform fixes.
 
 .PHONY: get-manifests
 get-manifests: ## Download component manifests.
-	./hack/scripts/get_manifests.sh
+	./hack/scripts/get-manifests.sh
 
 .PHONY: fetch-external-crds
 fetch-external-crds: ## Fetch external CRDs needed for testing (e.g. SCC).
-	./hack/scripts/fetch_external_crds.sh
+	./hack/scripts/fetch-external-crds.sh
 
 ##@ Build
 
-VERSION_PKG    = github.com/lburgazzoli/opendatahub-module-operator/modules/ray/pkg/version
+VERSION_PKG    = github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-ray-operator/pkg/version
 VERSION       ?= 0.0.0-dev
 GIT_COMMIT    ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)
 GIT_BRANCH    ?= $(shell git rev-parse --abbrev-ref HEAD 2>/dev/null || echo unknown)
 GIT_REPO      ?= $(shell git remote get-url origin 2>/dev/null || echo unknown)
+GOOS          ?= $(shell go env GOOS)
+GOARCH        ?= $(shell go env GOARCH)
+CGO_ENABLED   ?= 0
+BIN_DIR       ?= bin
+BIN_NAME      ?= manager
 LDFLAGS        = -X $(VERSION_PKG).Version=$(VERSION) \
                  -X $(VERSION_PKG).Commit=$(GIT_COMMIT) \
                  -X $(VERSION_PKG).Branch=$(GIT_BRANCH) \
@@ -111,14 +122,25 @@ LDFLAGS        = -X $(VERSION_PKG).Version=$(VERSION) \
 
 .PHONY: build
 build: manifests generate fmt vet ## Build manager binary.
-	go build -ldflags "$(LDFLAGS)" -o bin/manager cmd/main.go
+	mkdir -p "$(BIN_DIR)"
+	CGO_ENABLED=$(CGO_ENABLED) GOOS=$(GOOS) GOARCH=$(GOARCH) \
+		go build -ldflags "$(LDFLAGS)" -o "$(BIN_DIR)/$(BIN_NAME)" cmd/main.go
+
+.PHONY: build-bin
+build-bin: ## Build manager binary only (for Containerfile; run container-prep on host first).
+	mkdir -p "$(BIN_DIR)"
+	CGO_ENABLED=$(CGO_ENABLED) GOOS=$(GOOS) GOARCH=$(GOARCH) \
+		go build -ldflags "$(LDFLAGS)" -o "$(BIN_DIR)/$(BIN_NAME)" cmd/main.go
+
+.PHONY: container-prep
+container-prep: manifests generate get-manifests ## On host: regenerate code and fetch manifests before container-build.
 
 .PHONY: run
 run: manifests generate fmt vet ## Run a controller from your host.
-	ODH_RAY_OPERATOR_MANIFESTS_PATH=config/manifests go run -ldflags "$(LDFLAGS)" ./cmd/main.go operator
+	ODH_MODULE_OPERATOR_MANIFESTS_PATH=config/manifests go run -ldflags "$(LDFLAGS)" ./cmd/main.go operator
 
 .PHONY: container-build
-container-build: ## Build container image with the manager.
+container-build: container-prep ## Build container image with the manager.
 	$(CONTAINER_TOOL) build -f Containerfile --build-arg LDFLAGS="$(LDFLAGS)" -t ${IMG} .
 
 .PHONY: container-push
@@ -133,6 +155,7 @@ HELM_EXTRA_ARGS ?=
 
 .PHONY: helm
 helm: manifests generate ## Generate Helm chart from kustomize output.
+	rm -rf config/chart
 	$(KUSTOMIZE) build config/default | go run ./cmd/main.go chartgen --output config/chart
 
 .PHONY: helm-status

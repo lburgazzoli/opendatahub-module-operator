@@ -18,7 +18,7 @@ covcounters*
 *.swo
 
 
-# Downloaded manifests (fetched by get_manifests.sh)
+# Downloaded manifests (fetched by get-manifests.sh)
 config/manifests/sparkoperator/
 
 # Kubeconfig (local dev)

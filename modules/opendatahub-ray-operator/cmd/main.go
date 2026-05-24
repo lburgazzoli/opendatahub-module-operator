@@ -22,8 +22,8 @@ import (
 	"github.com/spf13/cobra"
 	ctrl "sigs.k8s.io/controller-runtime"
 
-	"github.com/lburgazzoli/opendatahub-module-operator/modules/ray/cmd/chartgen"
-	"github.com/lburgazzoli/opendatahub-module-operator/modules/ray/cmd/operator"
+	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-ray-operator/cmd/chartgen"
+	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-ray-operator/cmd/operator"
 )
 
 const operatorName = "opendatahub-ray-operator"

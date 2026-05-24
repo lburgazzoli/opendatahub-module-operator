@@ -38,3 +38,8 @@ covcounters*
 
 # Exclude test files
 **/*_test.go
+
+# Include files required by make build inside the builder image
+!Makefile
+!hack/
+!hack/boilerplate.go.txt

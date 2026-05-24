@@ -15,12 +15,12 @@ with `operator`, split at that boundary and re-join with a dash.
 
 ## Env prefix
 
-The env prefix is **`ODH_OPERATOR_`** for ALL modules — it does NOT contain
-the component name. This keeps env vars consistent across modules:
-- `ODH_OPERATOR_CONFIGURATION_PATH`
-- `ODH_OPERATOR_MANIFESTS_PATH`
-- `ODH_OPERATOR_APPLICATIONS_NAMESPACE`
-- `ODH_OPERATOR_PLATFORM_TYPE`
+The env prefix is **`ODH_MODULE_OPERATOR_`** for ALL modules — same as the
+root reference operator. It does NOT contain the component name:
+- `ODH_MODULE_OPERATOR_CONFIGURATION_PATH`
+- `ODH_MODULE_OPERATOR_MANIFESTS_PATH`
+- `ODH_MODULE_OPERATOR_APPLICATIONS_NAMESPACE`
+- `ODH_MODULE_OPERATOR_PLATFORM_TYPE`
 
 ## What uses the module name
 
@@ -29,3 +29,21 @@ release, Kubernetes namespace, Kind cluster name, ConfigMap name,
 `app.kubernetes.io/name` label, and leader election ID.
 
 The env prefix does NOT use the module name.
+
+## Hack script names
+
+Use **hyphens**, not underscores, under `hack/scripts/`:
+
+| Script | Purpose |
+|--------|---------|
+| `get-manifests.sh` | Fetch component manifests |
+| `fetch-external-crds.sh` | Kind-only external CRD generation |
+| `cleanup-integration.sh` | Pre-integration test cleanup |
+| `cleanup-e2e.sh` | Pre-e2e test cleanup |
+| `kind-setup.sh` | Kind cluster + cert-manager |
+
+Makefile targets may use hyphens too (`get-manifests`, `fetch-external-crds`,
+`container-prep`, `build-bin`).
+
+**Container build:** `container-prep` (host) → `container-build` (image tag;
+only `build-bin` runs inside the Containerfile).

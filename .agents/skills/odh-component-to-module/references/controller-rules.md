@@ -95,6 +95,18 @@ r.Release = rel  // MODULE ADDITION: set release from config
 
 ### RBAC Marker Checklist
 
+Two RBAC surfaces — do not conflate them:
+
+1. **Owns / Watches** — operator needs get/list/watch/create/update/patch/delete
+   on every resource type the reconciler owns or watches.
+2. **Deployed operand** — operator SA must hold every permission granted by
+   ClusterRoles (and Roles) in the kustomize build, or deploy fails with RBAC
+   escalation errors.
+
+After `make get-manifests`, run [manifest-rbac-audit.md](manifest-rbac-audit.md).
+The module must **own every resource the build deploys (except CRDs)** and
+**hold RBAC for everything the deployed operand handles**.
+
 For every `Owns()` or `OwnsGVK()`, add a corresponding RBAC marker:
 ```go
 // +kubebuilder:rbac:groups=$GROUP,resources=$RESOURCE,verbs=get;list;watch;create;update;patch;delete
@@ -160,11 +172,45 @@ func init() {
 Without this, the controller fails at startup with:
 `unable to determine GVK for object: no kind is registered for the type v1.CustomResourceDefinition`
 
+## Env prefix
+
+**Rule:** `ODH_MODULE_OPERATOR_` for every module operator — identical to the
+root reference. Never use `ODH_OPERATOR_`. Never embed the component name
+(e.g. `ODH_RAY_OPERATOR_*`). `pkg/config.EnvPrefix` and `ConfigPathEnvVar`
+must match deployment env vars and `make run`.
+
+Copy from root [`pkg/config/config.go`](../../../../pkg/config/config.go) and
+[`config/manager/manager.yaml`](../../../../config/manager/manager.yaml).
+
+These files must stay in sync:
+
+| File | Required env vars |
+|------|-------------------|
+| `pkg/config/config.go` | `EnvPrefix`, `ConfigPathEnvVar` |
+| `config/manager/manager.yaml` | `_CONFIGURATION_PATH`, `_MANIFESTS_PATH`, `_APPLICATIONS_NAMESPACE` |
+| `config/default/manager_metrics_patch.yaml` | `_METRICS_BIND_ADDRESS` |
+| `config/chart/templates/apps_v1_deployment.yaml` | same as manager |
+| `Makefile` `run` target | `ODH_MODULE_OPERATOR_MANIFESTS_PATH=...` |
+
+`RHAI_APPLICATIONS_NAMESPACE` is separate — set in deployments for
+opendatahub-operator framework compatibility, not part of module config.
+
+Verification grep (run from module root):
+
+```bash
+rg 'ODH_OPERATOR[^_M]|ODH_OPERATOR_|ODH_[A-Z]+_OPERATOR_' . && exit 1 || true
+```
+
 ## Containerfile — Manifest Permissions
 
 OpenShift assigns arbitrary UIDs to containers. Manifests baked into the image
 must be world-readable so the init container (which copies them to a writable
 emptyDir) can access them regardless of the assigned UID.
+
+**Build split:** `make container-prep` runs on the host (`manifests`,
+`generate`, `get-manifests` for fetch modules). The Containerfile only runs
+`make build-bin` to compile the manager — generation and manifest fetch stay
+off the critical path inside the image layer cache.
 
 In the Containerfile:
 ```dockerfile
@@ -192,7 +238,7 @@ containers:
   - name: manifests
     mountPath: /opt/manifests
   env:
-  - name: ODH_OPERATOR_MANIFESTS_PATH
+  - name: ODH_MODULE_OPERATOR_MANIFESTS_PATH
     value: /opt/manifests
 volumes:
 - name: manifests

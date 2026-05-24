@@ -97,11 +97,11 @@ lint-fix: ## Run golangci-lint linter and perform fixes.
 
 .PHONY: get-manifests
 get-manifests: ## Download component manifests.
-	./hack/scripts/get_manifests.sh
+	./hack/scripts/get-manifests.sh
 
 .PHONY: fetch-external-crds
 fetch-external-crds: ## Fetch external CRDs needed for testing (e.g. SCC).
-	./hack/scripts/fetch_external_crds.sh
+	./hack/scripts/fetch-external-crds.sh
 
 ##@ Build
 
@@ -126,12 +126,21 @@ build: manifests generate fmt vet ## Build manager binary.
 	CGO_ENABLED=$(CGO_ENABLED) GOOS=$(GOOS) GOARCH=$(GOARCH) \
 		go build -ldflags "$(LDFLAGS)" -o "$(BIN_DIR)/$(BIN_NAME)" cmd/main.go
 
+.PHONY: build-bin
+build-bin: ## Build manager binary only (for Containerfile; run container-prep on host first).
+	mkdir -p "$(BIN_DIR)"
+	CGO_ENABLED=$(CGO_ENABLED) GOOS=$(GOOS) GOARCH=$(GOARCH) \
+		go build -ldflags "$(LDFLAGS)" -o "$(BIN_DIR)/$(BIN_NAME)" cmd/main.go
+
+.PHONY: container-prep
+container-prep: manifests generate get-manifests ## On host: regenerate code and fetch manifests before container-build.
+
 .PHONY: run
 run: manifests generate fmt vet ## Run a controller from your host.
 	ODH_MODULE_OPERATOR_MANIFESTS_PATH=config/manifests go run -ldflags "$(LDFLAGS)" ./cmd/main.go operator
 
 .PHONY: container-build
-container-build: ## Build container image with the manager.
+container-build: container-prep ## Build container image with the manager.
 	$(CONTAINER_TOOL) build -f Containerfile --build-arg LDFLAGS="$(LDFLAGS)" -t ${IMG} .
 
 .PHONY: container-push

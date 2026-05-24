@@ -46,17 +46,17 @@ import (
 	k8sm "github.com/lburgazzoli/gomega-matchers/pkg/matchers/k8s"
 	"github.com/lburgazzoli/gomega-matchers/pkg/matchers/jq"
 
-	componentsv1alpha1 "github.com/lburgazzoli/opendatahub-module-operator/modules/ray/api/components/v1alpha1"
-	raycontroller "github.com/lburgazzoli/opendatahub-module-operator/modules/ray/internal/controller/ray"
-	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/ray/pkg/config"
-	"github.com/lburgazzoli/opendatahub-module-operator/modules/ray/test/support"
+	componentsv1alpha1 "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-ray-operator/api/components/v1alpha1"
+	raycontroller "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-ray-operator/internal/controller/ray"
+	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-ray-operator/pkg/config"
+	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-ray-operator/test/support"
 	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/cluster"
 	odhmanager "github.com/opendatahub-io/opendatahub-operator/v2/pkg/manager"
 )
 
 const (
 	testNamespace = "integration-test"
-	timeout       = 2 * time.Minute
+	timeout       = 90 * time.Second
 	interval      = 2 * time.Second
 
 	labelPartOf            = "platform.opendatahub.io/part-of"

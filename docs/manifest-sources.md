@@ -1,7 +1,7 @@
 # Manifest Sources per Component
 
 Extracted from `get_all_manifests.sh`. Each module needs its own
-`get_manifests.sh` that fetches only its component's manifests.
+`get-manifests.sh` that fetches only its component's manifests.
 
 Format: `repo-org:repo-name:ref@commit:source-folder`
 
@@ -36,8 +36,19 @@ See `get_all_manifests.sh` for exact refs.
 
 ## Per-Module Script Pattern
 
-Each module's `get_manifests.sh` should:
+Each module's `get-manifests.sh` should:
 1. Define only its own component entry (ODH + RHOAI)
-2. Reuse the same `git_fetch_ref` / `download_repo_content` functions
-3. Download to `opt/manifests/$component/`
-4. Support `--component=org:repo:ref:path` override
+2. Resolve `PROJECT_ROOT` from the script location
+3. Select one pinned source based on `ODH_PLATFORM_TYPE`
+4. Optionally copy from an adjacent checkout when `USE_LOCAL=true`
+5. **`rm -rf config/manifests/$component/`** then copy fetched content (avoids stale YAML)
+
+Because each module downloads only one component, the script can stay linear.
+It does not need the monolith's associative arrays, shared download helpers,
+or `--component=org:repo:ref:path` override handling unless a module has a
+real need for them.
+
+After fetch, run the manifest RBAC audit (skill step 5b /
+`.agents/skills/odh-component-to-module/references/manifest-rbac-audit.md`):
+`kustomize build` on `config/manifests/${ContextDir}/${SourcePath}`, then
+align controller `Owns` and operator RBAC with the build output.

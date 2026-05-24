@@ -34,10 +34,10 @@ import (
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	webhookserver "sigs.k8s.io/controller-runtime/pkg/webhook"
 
-	componentsv1alpha1 "github.com/lburgazzoli/opendatahub-module-operator/modules/ray/api/components/v1alpha1"
-	"github.com/lburgazzoli/opendatahub-module-operator/modules/ray/internal/controller/ray"
-	libcache "github.com/lburgazzoli/opendatahub-module-operator/modules/ray/pkg/cache"
-	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/ray/pkg/config"
+	componentsv1alpha1 "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-ray-operator/api/components/v1alpha1"
+	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-ray-operator/internal/controller/ray"
+	libcache "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-ray-operator/pkg/cache"
+	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-ray-operator/pkg/config"
 	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/cluster"
 	odhmanager "github.com/opendatahub-io/opendatahub-operator/v2/pkg/manager"
 )

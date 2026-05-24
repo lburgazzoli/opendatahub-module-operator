@@ -58,7 +58,7 @@ import (
 
 const (
 	testNamespace = "integration-test"
-	timeout       = 2 * time.Minute
+	timeout       = 90 * time.Second
 	interval      = 2 * time.Second
 
 	labelPartOf            = "platform.opendatahub.io/part-of"
@@ -110,6 +110,12 @@ func TestMain(m *testing.M) {
 		fmt.Fprintf(os.Stderr, "Failed to install CRDs: %v\n", err)
 		os.Exit(1)
 	}
+
+	// Clean up leftovers from previous runs.
+	_ = directClient.DeleteAllOf(ctx, &componentsv1alpha1.MyModule{})
+	_ = directClient.DeleteAllOf(ctx, &appsv1.Deployment{}, client.InNamespace(testNamespace))
+	_ = directClient.DeleteAllOf(ctx, &corev1.Service{}, client.InNamespace(testNamespace))
+	_ = directClient.DeleteAllOf(ctx, &networkingv1.Ingress{}, client.InNamespace(testNamespace))
 
 	viper.Set("rhai-applications-namespace", testNamespace)
 	cluster.SetRHAIApplicationNamespace(testNamespace)

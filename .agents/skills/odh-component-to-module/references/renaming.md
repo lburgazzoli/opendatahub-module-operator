@@ -59,9 +59,30 @@ opendatahub-ray-operator → $MODULE_NAME
 Apply `$MODULE_NAME` to: image name, Helm release, namespace, Kind cluster
 name, leader election ID, ConfigMap name, `app.kubernetes.io/name` label.
 
-The env var prefix is **`ODH_OPERATOR_`** for ALL modules — do NOT include
-the component name. This is already set in the ray module and should NOT
-be renamed when copying.
+The env var prefix is **`ODH_MODULE_OPERATOR_`** for ALL modules — same as
+the root reference. Do NOT include the component name. This should NOT be
+renamed when copying a module to a new component.
+
+**Do-not-rename / forbidden prefixes:**
+
+| Prefix | Action |
+|--------|--------|
+| `ODH_MODULE_OPERATOR_` | DO NOT CHANGE (not part of module rename) |
+| `ODH_OPERATOR_` | FORBIDDEN (legacy drift) |
+| `ODH_RAY_OPERATOR_`, `ODH_SPARK_OPERATOR_`, etc. | FORBIDDEN (component-specific) |
+
+After all renames, verify env prefix and template leftovers per
+[verification-gates.md](verification-gates.md).
+
+Any match means rename is incomplete. Examples of bugs this catches:
+- Spark module still importing `modules/ray/api/...`
+- `PROJECT` repo still pointing at `modules/ray`
+- RBAC or sample files still named `components_ray_*`
+- Test fixtures still using `RayInstanceName` or `default-ray`
+- Cleanup scripts still deleting `rays.components...` or `part-of=ray`
+
+See [adversarial-review.md](adversarial-review.md) step **9b** for the full
+adversarial rename consistency review.
 
 ## PROJECT file
 

@@ -18,6 +18,12 @@ inputs for porting.
 - [ ] **imageParamMap**: the full map contents
 - [ ] **conditionTypes**: the slice contents
 - [ ] **manifestPath function**: overlay path, context dir
+  - [ ] **ContextDir** (e.g. `ray`, `sparkoperator`)
+  - [ ] **SourcePath** (e.g. `openshift` or `overlays/odh`)
+  - [ ] **Overlay type**: fixed vs platform-map
+  - [ ] **ODH/RHOAI fetch pins** from `get_all_manifests.sh`
+  - [ ] **Kustomize audit path** verified after `make get-manifests`:
+        `config/manifests/${ContextDir}/${SourcePath}`
 
 ## From `${component}.go` (the handler)
 
@@ -36,3 +42,13 @@ inputs for porting.
 
 - [ ] **ODH entry**: repo-org:repo-name:ref@commit:source-folder
 - [ ] **RHOAI entry**: same format
+
+## From module scaffold (must not rename)
+
+When copying from the ray module, these values come from the root reference
+and must **not** change during component rename:
+
+- [ ] **EnvPrefix** = `"ODH_MODULE_OPERATOR"` in `pkg/config/config.go`
+- [ ] **ConfigPathEnvVar** = `"ODH_MODULE_OPERATOR_CONFIGURATION_PATH"`
+- [ ] **Deployment env vars** use `ODH_MODULE_OPERATOR_*` prefix
+- [ ] **Makefile `run`** uses `ODH_MODULE_OPERATOR_MANIFESTS_PATH`

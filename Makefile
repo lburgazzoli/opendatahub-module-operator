@@ -65,13 +65,27 @@ deps: ## Tidy and verify Go module dependencies.
 test: manifests generate fmt vet ## Run unit tests.
 	go test $$(go list ./... | grep -v /e2e | grep -v /integration) -coverprofile cover.out
 
+.PHONY: test-integration-run
+test-integration-run: ## Run integration tests only (cluster must be prepared).
+	go test ./test/integration/ -tags=integration -v -timeout 5m -failfast
+
 .PHONY: test-integration
-test-integration: manifests generate ## Run integration tests (assumes Kind cluster is running, starts in-process manager).
-	go test ./test/integration/ -tags=integration -v -timeout 30m
+test-integration: manifests generate cleanup-integration test-integration-run ## Run integration tests (OpenShift; starts in-process manager).
+
+.PHONY: test-e2e-run
+test-e2e-run: ## Run e2e tests only (operator must already be deployed).
+	go test ./test/e2e/ -tags=e2e -v -timeout 5m -failfast
 
 .PHONY: test-e2e
-test-e2e: ## Run e2e tests (assumes controller is already deployed).
-	go test ./test/e2e/ -tags=e2e -v -timeout 30m
+test-e2e: cleanup-e2e deploy-helm test-e2e-run ## Run e2e tests (OpenShift; cleanup, deploy, then test).
+
+.PHONY: cleanup-integration
+cleanup-integration: ## Clean up integration test resources from the cluster.
+	./hack/scripts/cleanup-integration.sh
+
+.PHONY: cleanup-e2e
+cleanup-e2e: ## Clean up e2e test resources and uninstall operator from the cluster.
+	./hack/scripts/cleanup-e2e.sh
 
 .PHONY: lint
 lint: ## Run golangci-lint linter.
@@ -88,6 +102,11 @@ VERSION       ?= 0.0.0-dev
 GIT_COMMIT    ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)
 GIT_BRANCH    ?= $(shell git rev-parse --abbrev-ref HEAD 2>/dev/null || echo unknown)
 GIT_REPO      ?= $(shell git remote get-url origin 2>/dev/null || echo unknown)
+GOOS          ?= $(shell go env GOOS)
+GOARCH        ?= $(shell go env GOARCH)
+CGO_ENABLED   ?= 0
+BIN_DIR       ?= bin
+BIN_NAME      ?= manager
 LDFLAGS        = -X $(VERSION_PKG).Version=$(VERSION) \
                  -X $(VERSION_PKG).Commit=$(GIT_COMMIT) \
                  -X $(VERSION_PKG).Branch=$(GIT_BRANCH) \
@@ -95,14 +114,25 @@ LDFLAGS        = -X $(VERSION_PKG).Version=$(VERSION) \
 
 .PHONY: build
 build: manifests generate fmt vet ## Build manager binary.
-	go build -ldflags "$(LDFLAGS)" -o bin/manager cmd/main.go
+	mkdir -p "$(BIN_DIR)"
+	CGO_ENABLED=$(CGO_ENABLED) GOOS=$(GOOS) GOARCH=$(GOARCH) \
+		go build -ldflags "$(LDFLAGS)" -o "$(BIN_DIR)/$(BIN_NAME)" cmd/main.go
+
+.PHONY: build-bin
+build-bin: ## Build manager binary only (for Containerfile; run container-prep on host first).
+	mkdir -p "$(BIN_DIR)"
+	CGO_ENABLED=$(CGO_ENABLED) GOOS=$(GOOS) GOARCH=$(GOARCH) \
+		go build -ldflags "$(LDFLAGS)" -o "$(BIN_DIR)/$(BIN_NAME)" cmd/main.go
+
+.PHONY: container-prep
+container-prep: manifests generate ## Regenerate CRDs/RBAC and DeepCopy on host before container-build.
 
 .PHONY: run
 run: manifests generate fmt vet ## Run a controller from your host.
 	ODH_MODULE_OPERATOR_MANIFESTS_PATH=config/manifests go run -ldflags "$(LDFLAGS)" ./cmd/main.go operator
 
 .PHONY: container-build
-container-build: ## Build container image with the manager.
+container-build: container-prep ## Build container image with the manager.
 	$(CONTAINER_TOOL) build -f Containerfile --build-arg LDFLAGS="$(LDFLAGS)" -t ${IMG} .
 
 .PHONY: container-push
@@ -117,6 +147,7 @@ HELM_EXTRA_ARGS ?=
 
 .PHONY: helm
 helm: manifests generate ## Generate Helm chart from kustomize output.
+	rm -rf config/chart
 	$(KUSTOMIZE) build config/default | go run ./cmd/main.go chartgen --output config/chart
 
 .PHONY: helm-status

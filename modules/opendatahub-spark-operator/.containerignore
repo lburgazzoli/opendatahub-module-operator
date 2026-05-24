@@ -44,4 +44,4 @@ covcounters*
 !hack/
 !hack/boilerplate.go.txt
 !hack/scripts/
-!hack/scripts/get_manifests.sh
+!hack/scripts/get-manifests.sh

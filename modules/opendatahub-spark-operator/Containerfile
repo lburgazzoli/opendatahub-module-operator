@@ -18,10 +18,10 @@ RUN go mod download
 # Copy the Go source (relies on .containerignore to filter)
 COPY . .
 
-# Fetch manifests and build via Make targets
-RUN make get-manifests
+# Generated code and manifests come from the host (make container-prep).
+# Only compile the manager binary inside the image.
 RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH:-$(go env GOARCH)} \
-    make build BIN_DIR=/workspace/bin BIN_NAME=manager LDFLAGS="${LDFLAGS}"
+    make build-bin BIN_DIR=/workspace/bin BIN_NAME=manager LDFLAGS="${LDFLAGS}"
 
 # Make manifests readable by any user (OpenShift assigns arbitrary UIDs)
 RUN chmod -R a+rX config/manifests/

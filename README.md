@@ -7,7 +7,8 @@ Template project for building ODH Module Operators — standalone Kubernetes con
 - Go 1.25+
 - podman
 - kubectl
-- Access to a Kubernetes cluster
+- Access to an **OpenShift** cluster (CRC, ROSA, or dev) for module integration/e2e tests
+- Optional: Kind for root reference operator local dev only
 
 ## Container Image Configuration
 
@@ -80,7 +81,31 @@ kubectl apply -k config/samples/
 make run
 ```
 
-## Local Development with Kind
+## Local Development
+
+### OpenShift (recommended for module tests)
+
+Module operators under `modules/` expect OpenShift (SCC and other APIs present).
+Use `oc login` or a kubeconfig for your cluster, then from the module directory:
+
+```sh
+make test-integration          # cleanup + in-process manager
+make test-e2e                  # cleanup + deploy + e2e (full cycle)
+```
+
+Root reference operator (this repo):
+
+```sh
+make cleanup-integration
+make test-integration-run
+# e2e: see e2e-workflow skill — export IMG, make helm, deploy-helm, test-e2e-run
+make test-e2e                    # full cycle
+```
+
+For step-by-step debugging (build, push, deploy, test separately), see
+`.agents/skills/odh-component-to-module/references/e2e-workflow.md`.
+
+### Kind (optional — root reference operator only)
 
 ```sh
 make kind-create          # Create a Kind cluster (podman provider)
@@ -130,8 +155,8 @@ make helm-uninstall
 |---|---|
 | `make build` | Build manager binary |
 | `make test` | Run unit tests |
-| `make test-integration` | Integration tests (Kind cluster) |
-| `make test-e2e` | E2E tests (deployed operator) |
+| `make test-integration` | Integration tests (OpenShift; in-process manager) |
+| `make test-e2e` | E2E tests (OpenShift; deployed operator) |
 | `make manifests generate` | Regenerate CRDs, RBAC, deepcopy |
 | `make container-build` | Build container image |
 | `make container-push` | Push container image |

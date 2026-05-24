@@ -39,13 +39,13 @@ import (
 	k8sm "github.com/lburgazzoli/gomega-matchers/pkg/matchers/k8s"
 	"github.com/lburgazzoli/gomega-matchers/pkg/matchers/jq"
 
-	componentsv1alpha1 "github.com/lburgazzoli/opendatahub-module-operator/modules/ray/api/components/v1alpha1"
-	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/ray/pkg/config"
+	componentsv1alpha1 "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-ray-operator/api/components/v1alpha1"
+	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-ray-operator/pkg/config"
 )
 
 const (
 	operatorNamespace = "opendatahub-ray-operator-system"
-	timeout           = 2 * time.Minute
+	timeout           = 90 * time.Second
 	interval          = 2 * time.Second
 
 	labelPartOf            = "platform.opendatahub.io/part-of"

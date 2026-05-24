@@ -1,4 +1,4 @@
-module github.com/lburgazzoli/opendatahub-module-operator/modules/ray
+module github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-ray-operator
 
 go 1.26.0
 

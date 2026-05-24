@@ -18,13 +18,15 @@ RUN go mod download
 # Copy the Go source (relies on .containerignore to filter)
 COPY . .
 
-# Build
-RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -a -ldflags "${LDFLAGS}" -o manager ./cmd/main.go
+# Generated code and manifests come from the host (make container-prep).
+# Only compile the manager binary inside the image.
+RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH:-$(go env GOARCH)} \
+    make build-bin BIN_DIR=/workspace/bin BIN_NAME=manager LDFLAGS="${LDFLAGS}"
 
 # Use UBI 10 micro as minimal runtime image
 FROM registry.access.redhat.com/ubi10/ubi-micro:latest
 WORKDIR /
-COPY --from=builder /workspace/manager .
+COPY --from=builder /workspace/bin/manager .
 COPY config/manifests/ /manifests/
 USER 65532:65532
 

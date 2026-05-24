@@ -72,13 +72,18 @@ Use `local.mk` (gitignored) for local Makefile overrides.
 
 ## Action Pipeline
 
-The controller pipeline in `mymodule_controller.go`:
+Split modules under `modules/` follow the monolith order with module additions
+— see `.agents/skills/odh-component-to-module/references/controller-rules.md`.
+
+The root **mymodule** reference controller uses a different pipeline order;
+do not use it as the template for new split modules.
 
 ```
-initialize -> releases -> reportStatus -> kustomize -> deploy -> deployments -> gc
+[component actions] -> initialize -> upgradeIfNeeded -> releases -> kustomize
+-> deploy -> deployments -> reportStatus -> gc
 ```
 
-See SKILL.md for detailed action descriptions and how to add custom actions.
+See `.agents/skills/odh-module-scaffold/SKILL.md` for action descriptions.
 
 ## RBAC / Owns / Manifests Consistency
 
@@ -129,14 +134,19 @@ wrapper pattern.
 
 ## Testing
 
+Default cluster for module integration/e2e: **OpenShift** (CRC, ROSA, dev).
+Kind is optional — see `docs/testing-limitations.md`.
+
 | Target | Scope | Requires |
 |---|---|---|
 | `make test` | Unit tests (compilation, vet) | Nothing |
-| `make test-integration` | In-process manager against Kind | `make kind-create` |
-| `make test-e2e` | Against deployed operator | Operator deployed via Helm |
+| `make test-integration` | In-process manager against cluster | OpenShift kubeconfig; runs cleanup first |
+| `make test-e2e` | Against deployed operator | OpenShift; `cleanup-e2e deploy-helm test-e2e-run` |
 
-Tests use Ginkgo BDD style (`Describe`/`It`) with `gomega-matchers`
-(`github.com/lburgazzoli/gomega-matchers`) for JQ-based k8s assertions.
+Tests use the Go `testing` package with Gomega and `gomega-matchers`
+(`github.com/lburgazzoli/gomega-matchers`) for JQ-based k8s assertions:
+`TestMain`, `func TestX(t *testing.T)`, `t.Run` subtests, and
+`g := NewWithT(t)` with `g.Eventually(k.Get(obj)).Should(jq.Match(...))`.
 Integration tests derive expected values from `config/manager/configmap.yaml`
 via `support.MustReadConfigMapData()` — no hardcoded assertion values.
 
@@ -160,7 +170,7 @@ Run `make help` for the full list. Key non-obvious targets:
 | Target | Purpose |
 |---|---|
 | `make helm` | Generate Helm chart from kustomize via `chartgen` subcommand |
-| `make test-integration` | In-process manager against Kind cluster |
-| `make test-e2e` | Against deployed operator (requires Helm deploy first) |
-| `make kind-create` | Create Kind cluster with podman + cert-manager |
+| `make test-integration` | In-process manager (OpenShift; modules use cleanup wiring) |
+| `make test-e2e` | Against deployed operator (modules: cleanup + deploy + test) |
+| `make kind-create` | Optional Kind cluster (not default for module tests) |
 | `make deploy-helm` | Deploy via Helm (`--set-string` for image tag) |

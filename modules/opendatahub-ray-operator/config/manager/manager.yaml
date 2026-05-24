@@ -116,11 +116,11 @@ spec:
         - name: manifests
           mountPath: /opt/manifests
         env:
-        - name: ODH_OPERATOR_CONFIGURATION_PATH
+        - name: ODH_MODULE_OPERATOR_CONFIGURATION_PATH
           value: /etc/controller/config
-        - name: ODH_OPERATOR_MANIFESTS_PATH
+        - name: ODH_MODULE_OPERATOR_MANIFESTS_PATH
           value: /opt/manifests
-        - name: ODH_OPERATOR_APPLICATIONS_NAMESPACE
+        - name: ODH_MODULE_OPERATOR_APPLICATIONS_NAMESPACE
           valueFrom:
             fieldRef:
               fieldPath: metadata.namespace

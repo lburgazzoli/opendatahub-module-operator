@@ -12,7 +12,7 @@ plugins:
     testEnvironment: kind
     testStyle: gomega
 projectName: opendatahub-ray-operator
-repo: github.com/lburgazzoli/opendatahub-module-operator/modules/ray
+repo: github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-ray-operator
 resources:
 - api:
     crdVersion: v1
@@ -20,6 +20,6 @@ resources:
   domain: platform.opendatahub.io
   group: components
   kind: Ray
-  path: github.com/lburgazzoli/opendatahub-module-operator/modules/ray/api/components/v1alpha1
+  path: github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-ray-operator/api/components/v1alpha1
   version: v1alpha1
 version: "3"

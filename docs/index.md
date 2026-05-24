@@ -11,9 +11,13 @@ implementation.
 
 Use the skill: `.agents/skills/odh-component-to-module/SKILL.md`
 
-It has a step-by-step checklist with reference docs for naming, controller
-porting, CRD types, manifest scripts, testing, external CRDs, adversarial
-review, and troubleshooting.
+It has a step-by-step checklist; detailed docs live in
+`.agents/skills/odh-component-to-module/references/` (naming, controller
+porting, CRD types, manifest scripts, testing, e2e workflow, verification
+gates, adversarial review, troubleshooting).
+
+**Default test cluster:** OpenShift (CRC, ROSA, dev). Kind is optional for the
+root reference operator only — see [testing-limitations.md](testing-limitations.md).
 
 ## Completed Modules
 
@@ -58,13 +62,22 @@ review, and troubleshooting.
 
 ## Key Lessons Learned (from ray module)
 
-1. **Env prefix**: Use `ODH_OPERATOR_` for ALL modules — no component name in env vars
+1. **Env prefix**: Use `ODH_MODULE_OPERATOR_` for ALL modules — same as the root reference; no component name in env vars
 2. **Manifest permissions**: OpenShift assigns arbitrary UIDs. Use `chmod -R a+rX` in builder stage, init container with emptyDir for writable copy
 3. **Scheme registration**: If watching CRDs, add `apiextensionsv1.AddToScheme(scheme)` in operator.go
-4. **Owns must match kustomize output**: Every resource kind in `kustomize build` output needs an `Owns()` or `OwnsGVK()` — otherwise `ReaderFailOnMissingInformer` fails with "is not cached"
-5. **RBAC escalation**: When deploying ClusterRoles, the module SA must hold ALL permissions those ClusterRoles grant. Derive RBAC markers from `kustomize build | yq 'select(.kind == "ClusterRole") | .rules'`
+4. **Owns must match kustomize output**: Every resource kind in `kustomize build`
+   output needs an `Owns()` or `OwnsGVK()` (except CRDs) — see
+   `manifest-rbac-audit.md`. Without Owns, `ReaderFailOnMissingInformer` fails.
+5. **RBAC for deployed operand**: Module SA must hold ALL permissions operand
+   ClusterRoles grant. Derive markers from kustomize build — see
+   `manifest-rbac-audit.md` and step 5b in the component-to-module skill.
 6. **Memory limits**: 128Mi is too low for kustomize rendering of large manifests. Use 512Mi
 7. **No ConfigValues**: The `status.configValues` field was a template example — real modules don't need it
 8. **Troubleshoot in-cluster**: Patch RBAC/memory/image directly via kubectl before rebuilding. Use `kubectl wait` not `sleep`
-9. **Cleanup scripts**: Each module has `hack/scripts/cleanup-integration.sh` and `cleanup-e2e.sh` plus Makefile targets
-10. **Test gates**: E2e tests check operator deployment is ready BEFORE registering subtests. Integration tests wait for cache sync in TestMain
+9. **get-manifests wipes component dir**: Script must `rm -rf config/manifests/$COMPONENT/`
+   before copy so stale YAML does not break kustomize or Owns/RBAC audits
+10. **Cleanup scripts**: Each module has `cleanup-*.sh`, Makefile `test-*-run`
+   targets, and composite `test-integration` / `test-e2e` — see e2e-workflow.md
+11. **Test gates**: E2e uses `test-e2e-run` after manual deploy; operator gate
+    before subtests; integration waits for cache sync in TestMain
+12. **OpenShift first**: Module integration/e2e assume OpenShift; Kind is optional

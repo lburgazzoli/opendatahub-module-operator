@@ -20,7 +20,7 @@ import (
 	"context"
 	"fmt"
 
-	componentApi "github.com/lburgazzoli/opendatahub-module-operator/modules/ray/api/components/v1alpha1"
+	componentApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-ray-operator/api/components/v1alpha1"
 	odhtypes "github.com/opendatahub-io/opendatahub-operator/v2/pkg/controller/types"
 )
 
