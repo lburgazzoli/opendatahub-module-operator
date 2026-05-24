@@ -7,6 +7,11 @@ Copy from monolith:
 opendatahub-operator/api/components/v1alpha1/${component}_types.go
 ```
 
+The primary CRD type file must come from the **target component** in the
+monolith, not from the copied ray/template module. After scaffolding, the
+module must define its **own** `${Kind}` CRD schema, singleton name, print
+columns, and generated CRD metadata.
+
 ## Changes from monolith
 
 ### Add ModuleStatus to the status struct
@@ -42,6 +47,19 @@ Delete these types — they are monolith-specific:
 - `+kubebuilder` markers (root, subresource, resource scope, printcolumn)
 - `SchemeBuilder.Register` in `init()`
 - Any component-specific Spec fields needed by the controller
+
+### CRD identity rule
+
+After renaming, every CRD-facing identifier must match the new module:
+
+- Go type names (`${Kind}`, `${Kind}Spec`, `${Kind}Status`) — not `Ray*`
+- Singleton validation (`default-$COMPONENT`) — not `default-ray`
+- `+kubebuilder:resource` names/singular/path/short names for this component
+- Generated CRD filenames and metadata under `config/crd/bases/`
+- Helm chart CRD templates for this module, if present
+
+If any of those still describe the template source component, the module does
+**not** contain its own CRD yet.
 
 ### Do NOT include
 

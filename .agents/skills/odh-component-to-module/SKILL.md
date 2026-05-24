@@ -99,7 +99,8 @@ operand handles).
 
 ### 4. Port CRD types
 
-Per [crd-types.md](references/crd-types.md).
+Per [crd-types.md](references/crd-types.md). The module must expose **its own**
+CRD Kind / names / schema, not the ray/template CRD copied during scaffolding.
 
 ### 5. Create manifest script and fetch
 

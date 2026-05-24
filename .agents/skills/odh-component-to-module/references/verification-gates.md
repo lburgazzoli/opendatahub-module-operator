@@ -38,6 +38,28 @@ rg -n 'LegacyComponentName = "ray"|Component\("ray"\)|"default-ray"|part-of.*\br
 Target names must appear in `go.mod`, `PROJECT`, `Makefile`, and
 `pkg/config/config.go`. See step **9b** in [adversarial-review.md](adversarial-review.md).
 
+## CRD identity (steps 4, 8)
+
+The module must contain its **own** CRD, not the ray/template CRD that existed
+right after the copy step.
+
+- `api/components/v1alpha1/*_types.go` must define this component's Kind and
+  singleton validation
+- `config/crd/bases/` must generate this module's CRD name/path/kind
+- If the chart vendors CRDs, the chart templates must match this module too
+
+Concrete checks:
+
+```bash
+# No stale ray/template CRD identity in API types or generated CRDs
+rg -n '\bRay\b|default-ray|components_v1alpha1_ray|components_ray_' \
+  api/components config/crd config/chart/templates && exit 1 || true
+
+# Sanity-check that the generated CRD mentions the target Kind/name instead
+rg -n "$KIND|default-$COMPONENT|$MODULE_NAME" \
+  api/components config/crd config/chart/templates || exit 1
+```
+
 ## Build (step 8)
 
 ```bash
