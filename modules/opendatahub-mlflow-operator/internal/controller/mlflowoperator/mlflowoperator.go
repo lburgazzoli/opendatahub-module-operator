@@ -42,12 +42,6 @@ const (
 	paramsSubDir = "base"
 )
 
-// sectionTitle matches the monolith's sectionTitle map.
-var sectionTitle = map[common.Platform]string{
-	cluster.SelfManagedRhoai: "OpenShift Self Managed Services",
-	cluster.OpenDataHub:      "OpenShift Open Data Hub",
-}
-
 // imageParamMap matches the monolith's imageParamMap.
 var imageParamMap = map[string]string{
 	"MLFLOW_IMAGE":          "RELATED_IMAGE_ODH_MLFLOW_IMAGE",
@@ -63,6 +57,13 @@ type Module struct {
 	manifestInfo    odhtypes.ManifestInfo
 	// consoleSectionTitle is the section-title kustomize variable, computed once from platform.
 	consoleSectionTitle string
+}
+
+func consoleSectionTitleFor(platform common.Platform) string {
+	if platform == cluster.SelfManagedRhoai || platform == cluster.ManagedRhoai {
+		return "OpenShift Self Managed Services"
+	}
+	return "OpenShift Open Data Hub"
 }
 
 // NewModule creates a Module with one-shot computed state.
@@ -97,7 +98,7 @@ func NewModule(cfg *moduleconfig.Config) (*Module, error) {
 		version:             v,
 		platformVersion:     pv,
 		manifestInfo:        mi,
-		consoleSectionTitle: sectionTitle[platform],
+		consoleSectionTitle: consoleSectionTitleFor(platform),
 	}, nil
 }
 
