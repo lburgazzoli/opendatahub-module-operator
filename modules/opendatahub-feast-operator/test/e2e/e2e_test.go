@@ -120,7 +120,7 @@ func TestFeastOperator(t *testing.T) {
 		},
 		workloadDeploy: &appsv1.Deployment{
 			ObjectMeta: metav1.ObjectMeta{
-				Name:      "spark-operator-controller",
+				Name:      "feast-operator-controller-manager",
 				Namespace: operatorNamespace,
 			},
 		},

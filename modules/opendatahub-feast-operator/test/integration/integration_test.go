@@ -202,13 +202,13 @@ func TestMain(m *testing.M) {
 	os.Exit(m.Run())
 }
 
-type rayTest struct {
+type feastTest struct {
 	module         *componentsv1alpha1.FeastOperator
 	workloadDeploy *appsv1.Deployment
 }
 
 func TestFeastOperator(t *testing.T) {
-	rt := &rayTest{
+	rt := &feastTest{
 		module: &componentsv1alpha1.FeastOperator{
 			ObjectMeta: metav1.ObjectMeta{
 				Name: componentsv1alpha1.FeastOperatorInstanceName,
@@ -216,11 +216,15 @@ func TestFeastOperator(t *testing.T) {
 		},
 		workloadDeploy: &appsv1.Deployment{
 			ObjectMeta: metav1.ObjectMeta{
-				Name:      "spark-operator-controller",
+				Name:      "feast-operator-controller-manager",
 				Namespace: testNamespace,
 			},
 		},
 	}
+
+	// Delete any leftover CR from a previous run before starting.
+	_ = k8sClient.Delete(ctx, rt.module)
+	rt.module.ResourceVersion = ""
 
 	t.Cleanup(func() {
 		_ = k8sClient.Delete(ctx, rt.module)
@@ -232,7 +236,7 @@ func TestFeastOperator(t *testing.T) {
 	t.Run("should set owner references", rt.testOwnerReferences)
 }
 
-func (rt *rayTest) testBecomesReady(t *testing.T) {
+func (rt *feastTest) testBecomesReady(t *testing.T) {
 	g := NewWithT(t)
 
 	rt.module.ResourceVersion = ""
@@ -249,7 +253,7 @@ func (rt *rayTest) testBecomesReady(t *testing.T) {
 	)
 }
 
-func (rt *rayTest) testModuleStatus(t *testing.T) {
+func (rt *feastTest) testModuleStatus(t *testing.T) {
 	g := NewWithT(t)
 
 	g.Eventually(k.Get(rt.module)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(And(
@@ -261,7 +265,7 @@ func (rt *rayTest) testModuleStatus(t *testing.T) {
 	))
 }
 
-func (rt *rayTest) testPlatformLabels(t *testing.T) {
+func (rt *feastTest) testPlatformLabels(t *testing.T) {
 	g := NewWithT(t)
 
 	g.Eventually(k.Get(rt.workloadDeploy)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(And(
@@ -275,7 +279,7 @@ func (rt *rayTest) testPlatformLabels(t *testing.T) {
 	))
 }
 
-func (rt *rayTest) testOwnerReferences(t *testing.T) {
+func (rt *feastTest) testOwnerReferences(t *testing.T) {
 	g := NewWithT(t)
 
 	g.Eventually(k.Get(rt.workloadDeploy)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(
