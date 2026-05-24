@@ -19,6 +19,7 @@ package operator
 import (
 	"fmt"
 
+	promv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	corev1 "k8s.io/api/core/v1"
@@ -52,6 +53,7 @@ var scheme = runtime.NewScheme()
 func init() {
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
 	utilruntime.Must(apiextensionsv1.AddToScheme(scheme))
+	utilruntime.Must(promv1.AddToScheme(scheme))
 	utilruntime.Must(componentsv1alpha1.AddToScheme(scheme))
 }
 

@@ -4,7 +4,7 @@ metadata:
   labels:
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: opendatahub-spark-operator
-  name: opendatahub-spark-operator-components-ray-admin-role
+  name: opendatahub-spark-operator-components-sparkoperator-admin-role
 rules:
 - apiGroups:
   - components.platform.opendatahub.io
@@ -25,7 +25,7 @@ metadata:
   labels:
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: opendatahub-spark-operator
-  name: opendatahub-spark-operator-components-ray-editor-role
+  name: opendatahub-spark-operator-components-sparkoperator-editor-role
 rules:
 - apiGroups:
   - components.platform.opendatahub.io
@@ -52,7 +52,7 @@ metadata:
   labels:
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: opendatahub-spark-operator
-  name: opendatahub-spark-operator-components-ray-viewer-role
+  name: opendatahub-spark-operator-components-sparkoperator-viewer-role
 rules:
 - apiGroups:
   - components.platform.opendatahub.io
@@ -78,8 +78,6 @@ rules:
   - ""
   resources:
   - configmaps
-  - events
-  - secrets
   - serviceaccounts
   - services
   verbs:
@@ -91,42 +89,10 @@ rules:
   - update
   - watch
 - apiGroups:
-  - ""
-  resources:
-  - endpoints
-  verbs:
-  - get
-  - list
-  - watch
-- apiGroups:
-  - ""
-  resources:
-  - pods
-  - pods/status
-  verbs:
-  - create
-  - delete
-  - deletecollection
-  - get
-  - list
-  - patch
-  - update
-  - watch
-- apiGroups:
-  - ""
-  resources:
-  - pods/proxy
-  - services/proxy
-  - services/status
-  verbs:
-  - create
-  - get
-  - patch
-  - update
-- apiGroups:
   - admissionregistration.k8s.io
   resources:
   - mutatingwebhookconfigurations
+  - validatingwebhookconfigurations
   verbs:
   - create
   - delete
@@ -140,12 +106,8 @@ rules:
   resources:
   - customresourcedefinitions
   verbs:
-  - create
-  - delete
   - get
   - list
-  - patch
-  - update
   - watch
 - apiGroups:
   - apps
@@ -159,51 +121,6 @@ rules:
   - patch
   - update
   - watch
-- apiGroups:
-  - authentication.k8s.io
-  resources:
-  - tokenreviews
-  verbs:
-  - create
-- apiGroups:
-  - authorization.k8s.io
-  resources:
-  - subjectaccessreviews
-  verbs:
-  - create
-- apiGroups:
-  - batch
-  resources:
-  - jobs
-  verbs:
-  - create
-  - delete
-  - get
-  - list
-  - patch
-  - update
-  - watch
-- apiGroups:
-  - cert-manager.io
-  resources:
-  - certificates
-  - issuers
-  verbs:
-  - create
-  - delete
-  - get
-  - list
-  - patch
-  - update
-  - watch
-- apiGroups:
-  - cert-manager.io
-  resources:
-  - certificates/status
-  verbs:
-  - get
-  - patch
-  - update
 - apiGroups:
   - components.platform.opendatahub.io
   resources:
@@ -231,29 +148,9 @@ rules:
   - patch
   - update
 - apiGroups:
-  - config.openshift.io
+  - monitoring.coreos.com
   resources:
-  - authentications
-  - authentications/status
-  - oauths
-  - oauths/status
-  verbs:
-  - get
-  - list
-  - watch
-- apiGroups:
-  - coordination.k8s.io
-  resources:
-  - leases
-  verbs:
-  - create
-  - get
-  - list
-  - update
-- apiGroups:
-  - extensions
-  resources:
-  - ingresses
+  - podmonitors
   verbs:
   - create
   - delete
@@ -262,91 +159,6 @@ rules:
   - patch
   - update
   - watch
-- apiGroups:
-  - gateway.networking.k8s.io
-  resources:
-  - gateways
-  verbs:
-  - get
-  - list
-  - watch
-- apiGroups:
-  - gateway.networking.k8s.io
-  resources:
-  - httproutes
-  - referencegrants
-  verbs:
-  - create
-  - delete
-  - get
-  - list
-  - patch
-  - update
-  - watch
-- apiGroups:
-  - networking.k8s.io
-  resources:
-  - ingressclasses
-  verbs:
-  - get
-  - list
-  - watch
-- apiGroups:
-  - networking.k8s.io
-  resources:
-  - ingresses
-  - networkpolicies
-  verbs:
-  - create
-  - delete
-  - get
-  - list
-  - patch
-  - update
-  - watch
-- apiGroups:
-  - operator.openshift.io
-  resources:
-  - kubeapiservers
-  - kubeapiservers/status
-  verbs:
-  - get
-  - list
-  - watch
-- apiGroups:
-  - ray.io
-  resources:
-  - rayclusters
-  - rayjobs
-  - rayservices
-  verbs:
-  - create
-  - delete
-  - deletecollection
-  - get
-  - list
-  - patch
-  - update
-  - watch
-- apiGroups:
-  - ray.io
-  resources:
-  - rayclusters/finalizers
-  - rayjobs/finalizers
-  - rayservices/finalizers
-  verbs:
-  - get
-  - update
-- apiGroups:
-  - ray.io
-  resources:
-  - rayclusters/status
-  - rayjobs/status
-  - rayservices/status
-  verbs:
-  - get
-  - patch
-  - update
 - apiGroups:
   - rbac.authorization.k8s.io
   resources:
@@ -354,30 +166,6 @@ rules:
   - clusterroles
   - rolebindings
   - roles
-  verbs:
-  - create
-  - delete
-  - get
-  - list
-  - patch
-  - update
-  - watch
-- apiGroups:
-  - route.openshift.io
-  resources:
-  - routes
-  verbs:
-  - create
-  - delete
-  - get
-  - list
-  - patch
-  - update
-  - watch
-- apiGroups:
-  - security.openshift.io
-  resources:
-  - securitycontextconstraints
   verbs:
   - create
   - delete

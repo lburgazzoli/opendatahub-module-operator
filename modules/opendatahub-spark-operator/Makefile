@@ -99,11 +99,16 @@ fetch-external-crds: ## Fetch external CRDs needed for testing (e.g. SCC).
 
 ##@ Build
 
-VERSION_PKG    = github.com/lburgazzoli/opendatahub-module-operator/modules/ray/pkg/version
+VERSION_PKG    = github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-spark-operator/pkg/version
 VERSION       ?= 0.0.0-dev
 GIT_COMMIT    ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)
 GIT_BRANCH    ?= $(shell git rev-parse --abbrev-ref HEAD 2>/dev/null || echo unknown)
 GIT_REPO      ?= $(shell git remote get-url origin 2>/dev/null || echo unknown)
+GOOS          ?= $(shell go env GOOS)
+GOARCH        ?= $(shell go env GOARCH)
+CGO_ENABLED   ?= 0
+BIN_DIR       ?= bin
+BIN_NAME      ?= manager
 LDFLAGS        = -X $(VERSION_PKG).Version=$(VERSION) \
                  -X $(VERSION_PKG).Commit=$(GIT_COMMIT) \
                  -X $(VERSION_PKG).Branch=$(GIT_BRANCH) \
@@ -111,11 +116,13 @@ LDFLAGS        = -X $(VERSION_PKG).Version=$(VERSION) \
 
 .PHONY: build
 build: manifests generate fmt vet ## Build manager binary.
-	go build -ldflags "$(LDFLAGS)" -o bin/manager cmd/main.go
+	mkdir -p "$(BIN_DIR)"
+	CGO_ENABLED=$(CGO_ENABLED) GOOS=$(GOOS) GOARCH=$(GOARCH) \
+		go build -ldflags "$(LDFLAGS)" -o "$(BIN_DIR)/$(BIN_NAME)" cmd/main.go
 
 .PHONY: run
 run: manifests generate fmt vet ## Run a controller from your host.
-	ODH_RAY_OPERATOR_MANIFESTS_PATH=config/manifests go run -ldflags "$(LDFLAGS)" ./cmd/main.go operator
+	ODH_MODULE_OPERATOR_MANIFESTS_PATH=config/manifests go run -ldflags "$(LDFLAGS)" ./cmd/main.go operator
 
 .PHONY: container-build
 container-build: ## Build container image with the manager.
@@ -133,6 +140,7 @@ HELM_EXTRA_ARGS ?=
 
 .PHONY: helm
 helm: manifests generate ## Generate Helm chart from kustomize output.
+	rm -rf config/chart
 	$(KUSTOMIZE) build config/default | go run ./cmd/main.go chartgen --output config/chart
 
 .PHONY: helm-status

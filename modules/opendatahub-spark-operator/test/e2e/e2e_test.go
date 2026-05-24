@@ -120,7 +120,7 @@ func TestSparkOperator(t *testing.T) {
 		},
 		workloadDeploy: &appsv1.Deployment{
 			ObjectMeta: metav1.ObjectMeta{
-				Name:      "kuberay-operator",
+				Name:      "spark-operator-controller",
 				Namespace: operatorNamespace,
 			},
 		},

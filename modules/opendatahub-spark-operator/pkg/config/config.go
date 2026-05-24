@@ -57,11 +57,11 @@ const (
 
 	// ConfigPathEnvVar is the environment variable that points to the mounted
 	// ConfigMap directory (or a single config file).
-	ConfigPathEnvVar = "ODH_OPERATOR_CONFIGURATION_PATH"
+	ConfigPathEnvVar = "ODH_MODULE_OPERATOR_CONFIGURATION_PATH"
 
 	// EnvPrefix is the prefix for environment variables that override
-	// configuration values (e.g. ODH_OPERATOR_PLATFORM_TYPE).
-	EnvPrefix = "ODH_OPERATOR"
+	// configuration values (e.g. ODH_MODULE_OPERATOR_PLATFORM_TYPE).
+	EnvPrefix = "ODH_MODULE_OPERATOR"
 )
 
 // structuredExtensions is the set of file extensions that are parsed as
@@ -76,8 +76,8 @@ var structuredExtensions = map[string]bool{
 //
 // Values are loaded from (in order of precedence):
 //  1. Struct field defaults
-//  2. ConfigMap files (from ODH_OPERATOR_CONFIGURATION_PATH)
-//  3. Environment variables (ODH_OPERATOR_ prefix)
+//  2. ConfigMap files (from ODH_MODULE_OPERATOR_CONFIGURATION_PATH)
+//  3. Environment variables (ODH_MODULE_OPERATOR_ prefix)
 type Config struct {
 	// MetricsAddr is the address the metrics endpoint binds to (0 to disable).
 	MetricsAddr string `mapstructure:"metrics-bind-address"`
@@ -101,7 +101,7 @@ type Config struct {
 
 	// WebhooksEnabled controls whether the operator starts the webhook
 	// server and registers admission handlers. Default true for in-cluster
-	// operation. Set to false via env var ODH_OPERATOR_WEBHOOKS_ENABLED
+	// operation. Set to false via env var ODH_MODULE_OPERATOR_WEBHOOKS_ENABLED
 	// when running locally without TLS certs.
 	WebhooksEnabled bool `mapstructure:"webhooks-enabled"`
 	// WebhookPort is the port the webhook server listens on.
@@ -132,8 +132,8 @@ func (c *Config) Release() common.Release {
 //
 // The loading sequence:
 //  1. Set defaults
-//  2. Read ConfigMap files from ODH_OPERATOR_CONFIGURATION_PATH (if set)
-//  3. Bind environment variables with the ODH_OPERATOR_ prefix
+//  2. Read ConfigMap files from ODH_MODULE_OPERATOR_CONFIGURATION_PATH (if set)
+//  3. Bind environment variables with the ODH_MODULE_OPERATOR_ prefix
 //  4. Unmarshal into the Config struct
 func Load() (*Config, error) {
 	var configFS fs.FS

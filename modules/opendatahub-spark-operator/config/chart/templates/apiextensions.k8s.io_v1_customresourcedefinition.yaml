@@ -7,10 +7,10 @@ metadata:
 spec:
   group: components.platform.opendatahub.io
   names:
-    kind: Ray
-    listKind: RayList
+    kind: SparkOperator
+    listKind: SparkOperatorList
     plural: sparkoperators
-    singular: ray
+    singular: sparkoperator
   scope: Cluster
   versions:
   - additionalPrinterColumns:
@@ -29,7 +29,7 @@ spec:
     name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: Ray is the Schema for the sparkoperators API.
+        description: SparkOperator is the Schema for the sparkoperators API.
         properties:
           apiVersion:
             description: |-
@@ -49,10 +49,10 @@ spec:
           metadata:
             type: object
           spec:
-            description: RaySpec defines the desired state of Ray.
+            description: SparkOperatorSpec defines the desired state of SparkOperator.
             type: object
           status:
-            description: RayStatus defines the observed state of Ray.
+            description: SparkOperatorStatus defines the observed state of SparkOperator.
             properties:
               conditions:
                 items:
@@ -188,7 +188,7 @@ spec:
             type: object
         type: object
         x-kubernetes-validations:
-        - message: Ray name must be default-sparkoperator
+        - message: SparkOperator name must be default-sparkoperator
           rule: self.metadata.name == 'default-sparkoperator'
     served: true
     storage: true

@@ -32,6 +32,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
+	promv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
@@ -47,7 +48,7 @@ import (
 	"github.com/lburgazzoli/gomega-matchers/pkg/matchers/jq"
 
 	componentsv1alpha1 "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-spark-operator/api/components/v1alpha1"
-	raycontroller "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-spark-operator/internal/controller/sparkoperator"
+	sparkoperatorcontroller "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-spark-operator/internal/controller/sparkoperator"
 	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-spark-operator/pkg/config"
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-spark-operator/test/support"
 	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/cluster"
@@ -78,6 +79,7 @@ var (
 func init() {
 	utilruntime.Must(clientgoscheme.AddToScheme(testScheme))
 	utilruntime.Must(apiextensionsv1.AddToScheme(testScheme))
+	utilruntime.Must(promv1.AddToScheme(testScheme))
 	utilruntime.Must(componentsv1alpha1.AddToScheme(testScheme))
 }
 
@@ -156,7 +158,7 @@ func TestMain(m *testing.M) {
 	mgr := odhmanager.New(ctrlMgr, odhmanager.WithManifestsBasePath(
 		support.MustProjectFile("config", "manifests")))
 
-	if err := raycontroller.NewReconciler(ctx, mgr, moduleCfg, moduleCfg.Release()); err != nil {
+	if err := sparkoperatorcontroller.NewReconciler(ctx, mgr, moduleCfg, moduleCfg.Release()); err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to create reconciler: %v\n", err)
 		os.Exit(1)
 	}
@@ -214,7 +216,7 @@ func TestSparkOperator(t *testing.T) {
 		},
 		workloadDeploy: &appsv1.Deployment{
 			ObjectMeta: metav1.ObjectMeta{
-				Name:      "kuberay-operator",
+				Name:      "spark-operator-controller",
 				Namespace: testNamespace,
 			},
 		},
