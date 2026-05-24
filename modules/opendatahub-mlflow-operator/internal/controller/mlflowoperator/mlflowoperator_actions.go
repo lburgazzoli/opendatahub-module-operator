@@ -93,7 +93,7 @@ func (m *Module) setKustomizedParams(ctx context.Context, rr *odhtypes.Reconcili
 
 	extraParams := map[string]string{
 		"mlflow-url":    fmt.Sprintf("https://%s/", consoleLinkDomain),
-		"section-title": sectionTitle[m.platform],
+		"section-title": m.consoleSectionTitle,
 	}
 
 	// The monolith writes params to base/, not to the overlay path.

@@ -61,7 +61,8 @@ type Module struct {
 	version         componentApi.SemVer
 	platformVersion componentApi.SemVer
 	manifestInfo    odhtypes.ManifestInfo
-	platform        common.Platform
+	// consoleSectionTitle is the section-title kustomize variable, computed once from platform.
+	consoleSectionTitle string
 }
 
 // NewModule creates a Module with one-shot computed state.
@@ -92,11 +93,11 @@ func NewModule(cfg *moduleconfig.Config) (*Module, error) {
 	}
 
 	return &Module{
-		cfg:             cfg,
-		version:         v,
-		platformVersion: pv,
-		manifestInfo:    mi,
-		platform:        platform,
+		cfg:                 cfg,
+		version:             v,
+		platformVersion:     pv,
+		manifestInfo:        mi,
+		consoleSectionTitle: sectionTitle[platform],
 	}, nil
 }
 
