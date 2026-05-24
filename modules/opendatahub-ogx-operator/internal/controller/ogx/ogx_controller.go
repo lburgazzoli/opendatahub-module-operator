@@ -62,6 +62,7 @@ import (
 // +kubebuilder:rbac:groups=authentication.k8s.io,resources=tokenreviews,verbs=create
 // +kubebuilder:rbac:groups=authorization.k8s.io,resources=subjectaccessreviews,verbs=create
 // +kubebuilder:rbac:groups=security.openshift.io,resources=securitycontextconstraints,verbs=use
+// +kubebuilder:rbac:urls=/metrics,verbs=get
 
 func NewReconciler(
 	ctx context.Context,
