@@ -111,6 +111,10 @@ export ODH_PLATFORM_TYPE=OpenDataHub   # or SelfManagedRhoai / ManagedRhoai
 make get-manifests
 ```
 
+Do not stop here waiting for a human prompt just because the migration reached
+the fetch step. Once `get-manifests.sh` is in place, run `make get-manifests`
+yourself and continue to the audit/fix loop.
+
 Script must `rm -rf config/manifests/$COMPONENT/` before copy.
 
 ### 5b. Manifest RBAC audit (mandatory)
@@ -183,6 +187,10 @@ make cleanup-e2e
 make deploy-helm IMG="${IMG}"
 make test-e2e-run
 ```
+
+For the **first** integration/e2e verification pass, prefer short timeouts to
+surface setup bugs quickly. If deploy/test output stalls, stop waiting and check
+the operator logs instead of letting a long timeout burn down.
 
 Keep `IMG` in shell memory. Do not write it to a temp file and later run
 `make ... IMG="$(cat /tmp/img)"`; that adds unnecessary indirection and can

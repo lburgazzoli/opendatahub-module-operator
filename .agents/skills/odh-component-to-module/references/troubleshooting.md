@@ -21,7 +21,7 @@ When the operator fails in-cluster, diagnose before rebuilding:
 | `Permission denied` on manifest files | Container runs as arbitrary UID (OpenShift) | Set `chmod -R a+rX` in builder stage, use init container with emptyDir for writable copy |
 | `field not declared in schema` | CRD on cluster doesn't match module's CRD (e.g., missing `.status.module`) | `InstallCRDs` must use Get+Update pattern to replace existing CRDs |
 | `metrics on wrong port` / config ignored | Env var prefix doesn't match `EnvPrefix` in pkg/config | Align all env vars to `ODH_MODULE_OPERATOR_` (see [controller-rules.md](controller-rules.md)) |
-| `tests hang / no output` | Wrong timeout or chained make hiding failure step | Run build/push/deploy/test separately; use `-timeout 5m -failfast`; see [testing.md](testing.md) |
+| `tests hang / no output` | Wrong timeout, chained make hiding failure step, or waiting too long before inspecting the pod | Run build/push/deploy/test separately; start with `-timeout 5m -failfast`, then check operator logs immediately; see [testing.md](testing.md) |
 
 ## RBAC for operator-that-deploys-an-operator
 

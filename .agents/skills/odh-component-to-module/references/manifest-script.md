@@ -104,6 +104,10 @@ Always `config/manifests/$COMPONENT/`. After script is ready, run:
 make get-manifests
 ```
 
+The agent should call `make get-manifests` itself as soon as the script is
+ready. Do not pause the migration waiting for user confirmation at this step;
+the follow-up audit depends on fetched manifests being present.
+
 Then run the kustomize audit in [manifest-rbac-audit.md](manifest-rbac-audit.md).
 
 ```makefile

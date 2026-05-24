@@ -148,6 +148,10 @@ During active debugging, run an even shorter ad-hoc timeout:
 go test ./test/integration/ -tags=integration -v -timeout 3m -failfast -run TestBecomesReady
 ```
 
+For the **initial** migration validation run, prefer the short timeout first.
+If it fails or stalls, inspect logs and narrow the failing step before trying a
+longer rerun.
+
 Always pass **`-failfast`**: the first failing subtest stops the run instead of
 cascading hangs.
 
@@ -175,7 +179,8 @@ a missing operator fails in ~90s, not after the full package timeout.
 1. Note which step last printed (build / push / deploy / which `t.Run`)
 2. Re-run only that step with the same `IMG`
 3. Lower `-timeout` and `-run` to isolate one test
-4. Check operator logs: `kubectl logs -n $MODULE_NAME-system deploy/...`
+4. Check operator logs right away: `kubectl logs -n $MODULE_NAME-system deploy/...`
+5. Only after logs are understood should you consider a longer rerun
 
 ## Unit Tests (`${name}_test.go`)
 

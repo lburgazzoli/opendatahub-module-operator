@@ -46,6 +46,11 @@ make deploy-helm IMG="${IMG}"
 make test-e2e-run           # go test only — operator already deployed
 ```
 
+On the **first** cluster verify pass, keep tool timeouts short so obvious
+problems fail quickly. If `deploy-helm` or `test-e2e-run` stops making progress,
+check operator logs immediately instead of waiting indefinitely for the outer
+command timeout.
+
 `container-build` depends on `container-prep`, so you can skip the explicit
 `container-prep` line unless you want to inspect generated output first.
 Only **`make build-bin`** runs inside the Containerfile — not manifests,
