@@ -33,6 +33,7 @@ import (
 	networkingv1 "k8s.io/api/networking/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
+	k8serr "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
@@ -44,8 +45,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
-	k8sm "github.com/lburgazzoli/gomega-matchers/pkg/matchers/k8s"
 	"github.com/lburgazzoli/gomega-matchers/pkg/matchers/jq"
+	k8sm "github.com/lburgazzoli/gomega-matchers/pkg/matchers/k8s"
 
 	componentsv1alpha1 "github.com/lburgazzoli/opendatahub-module-operator/api/components/v1alpha1"
 	"github.com/lburgazzoli/opendatahub-module-operator/internal/controller/mymodule"
@@ -66,15 +67,16 @@ const (
 	annotationInstanceUID  = "platform.opendatahub.io/instance.uid"
 	annotationType         = "platform.opendatahub.io/type"
 	annotationVersion      = "platform.opendatahub.io/version"
+	moduleCRDName          = "mymodules.components.platform.opendatahub.io"
 )
 
 var (
-	ctx              context.Context
-	cancel           context.CancelFunc
-	k8sClient        client.Client
-	k                *k8sm.Matcher
-	operatorCfgData  map[string]string
-	testScheme       = runtime.NewScheme()
+	ctx             context.Context
+	cancel          context.CancelFunc
+	k8sClient       client.Client
+	k               *k8sm.Matcher
+	operatorCfgData map[string]string
+	testScheme      = runtime.NewScheme()
 )
 
 func init() {
@@ -84,6 +86,10 @@ func init() {
 }
 
 func TestMain(m *testing.M) {
+	os.Exit(runTestMain(m))
+}
+
+func runTestMain(m *testing.M) int {
 	ctx, cancel = context.WithCancel(context.Background())
 	defer cancel()
 
@@ -92,23 +98,26 @@ func TestMain(m *testing.M) {
 	cfg, err := config.GetConfig()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to get kubeconfig: %v\n", err)
-		os.Exit(1)
+		return 1
 	}
 
 	directClient, err := client.New(cfg, client.Options{Scheme: testScheme})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to create client: %v\n", err)
-		os.Exit(1)
+		return 1
 	}
 
 	if err := support.EnsureNamespace(ctx, directClient, testNamespace); err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to create namespace: %v\n", err)
-		os.Exit(1)
+		return 1
 	}
 
-	if err := support.InstallCRDs(ctx, directClient, support.MustProjectFile("config", "crd", "bases")); err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to install CRDs: %v\n", err)
-		os.Exit(1)
+	moduleCRD := &apiextensionsv1.CustomResourceDefinition{
+		ObjectMeta: metav1.ObjectMeta{Name: moduleCRDName},
+	}
+	if err := directClient.Get(ctx, client.ObjectKeyFromObject(moduleCRD), moduleCRD); err != nil {
+		fmt.Fprintf(os.Stderr, "Expected CRD %s to be installed before running integration tests: %v\n", moduleCRDName, err)
+		return 1
 	}
 
 	// Clean up leftovers from previous runs.
@@ -153,7 +162,7 @@ func TestMain(m *testing.M) {
 	})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to create manager: %v\n", err)
-		os.Exit(1)
+		return 1
 	}
 
 	mgr := odhmanager.New(ctrlMgr, odhmanager.WithManifestsBasePath(
@@ -161,7 +170,7 @@ func TestMain(m *testing.M) {
 
 	if err := mymodule.NewReconciler(ctx, mgr, moduleCfg, moduleCfg.Release()); err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to create reconciler: %v\n", err)
-		os.Exit(1)
+		return 1
 	}
 
 	go func() {
@@ -196,12 +205,13 @@ func TestMain(m *testing.M) {
 		}},
 	})
 
-	os.Exit(m.Run())
+	return m.Run()
 }
 
 // myModuleTest holds shared test fixtures for the MyModule integration tests.
 type myModuleTest struct {
 	module          *componentsv1alpha1.MyModule
+	moduleCRD       *apiextensionsv1.CustomResourceDefinition
 	ingress         *networkingv1.Ingress
 	workloadDeploy  *appsv1.Deployment
 	workloadService *corev1.Service
@@ -213,6 +223,9 @@ func TestMyModule(t *testing.T) {
 			ObjectMeta: metav1.ObjectMeta{
 				Name: componentsv1alpha1.MyModuleInstanceName,
 			},
+		},
+		moduleCRD: &apiextensionsv1.CustomResourceDefinition{
+			ObjectMeta: metav1.ObjectMeta{Name: moduleCRDName},
 		},
 		ingress: &networkingv1.Ingress{
 			ObjectMeta: metav1.ObjectMeta{
@@ -242,11 +255,29 @@ func TestMyModule(t *testing.T) {
 		},
 	}
 
+	// Clean up any leftover singleton objects from a previous run.
+	_ = k8sClient.Delete(ctx, mt.module)
+	_ = k8sClient.Delete(ctx, mt.ingress)
+	g := NewWithT(t)
+	g.Eventually(func(g Gomega) {
+		module := &componentsv1alpha1.MyModule{}
+		err := k8sClient.Get(ctx, client.ObjectKeyFromObject(mt.module), module)
+		g.Expect(k8serr.IsNotFound(err)).To(BeTrue())
+	}).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(Succeed())
+	g.Eventually(func(g Gomega) {
+		ingress := &networkingv1.Ingress{}
+		err := k8sClient.Get(ctx, client.ObjectKeyFromObject(mt.ingress), ingress)
+		g.Expect(k8serr.IsNotFound(err)).To(BeTrue())
+	}).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(Succeed())
+	mt.module.ResourceVersion = ""
+	mt.ingress.ResourceVersion = ""
+
 	t.Cleanup(func() {
 		_ = k8sClient.Delete(ctx, mt.module)
 		_ = k8sClient.Delete(ctx, mt.ingress)
 	})
 
+	t.Run("should have module CRD installed", mt.testModuleCRDInstalled)
 	t.Run("should block when Ingress is missing", mt.testIngressBlocks)
 	t.Run("should recover when Ingress is created", mt.testIngressRecovers)
 	t.Run("should expose config values", mt.testConfigValues)
@@ -256,6 +287,14 @@ func TestMyModule(t *testing.T) {
 	t.Run("should not annotate ingress on fresh install", mt.testUpgradeAnnotationAbsentOnFreshInstall)
 	t.Run("should annotate ingress on upgrade", mt.testUpgradeAnnotatesIngress)
 	t.Run("should not update version on upgrade fault", mt.testUpgradeFaultInjection)
+}
+
+func (mt *myModuleTest) testModuleCRDInstalled(t *testing.T) {
+	g := NewWithT(t)
+
+	g.Eventually(k.Get(mt.moduleCRD)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(
+		jq.Match(`.metadata.name == "%s"`, moduleCRDName),
+	)
 }
 
 func (mt *myModuleTest) testIngressBlocks(t *testing.T) {
@@ -421,7 +460,7 @@ func (mt *myModuleTest) testUpgradeFaultInjection(t *testing.T) {
 	// fail because of the fault annotation, so the status version should
 	// remain at "0.0.1" (the patched value) rather than being updated
 	// to the current operator version.
-	g.Consistently(k.Get(mt.module)).WithContext(ctx).WithTimeout(10*time.Second).WithPolling(interval).Should(
+	g.Consistently(k.Get(mt.module)).WithContext(ctx).WithTimeout(10 * time.Second).WithPolling(interval).Should(
 		jq.Match(`.status.module.version == "0.0.0-0"`),
 	)
 

@@ -29,6 +29,8 @@ import (
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
+	k8serr "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
@@ -36,8 +38,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/config"
 
-	k8sm "github.com/lburgazzoli/gomega-matchers/pkg/matchers/k8s"
 	"github.com/lburgazzoli/gomega-matchers/pkg/matchers/jq"
+	k8sm "github.com/lburgazzoli/gomega-matchers/pkg/matchers/k8s"
 
 	componentsv1alpha1 "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-ray-operator/api/components/v1alpha1"
 	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-ray-operator/pkg/config"
@@ -55,6 +57,7 @@ const (
 	annotationVersion      = "platform.opendatahub.io/version"
 
 	operatorConfigMapName = "opendatahub-ray-operator-config"
+	moduleCRDName         = "rays.components.platform.opendatahub.io"
 )
 
 var (
@@ -68,32 +71,38 @@ var (
 
 func init() {
 	utilruntime.Must(clientgoscheme.AddToScheme(testScheme))
+	utilruntime.Must(apiextensionsv1.AddToScheme(testScheme))
 	utilruntime.Must(componentsv1alpha1.AddToScheme(testScheme))
 }
 
 func TestMain(m *testing.M) {
+	os.Exit(runTestMain(m))
+}
+
+func runTestMain(m *testing.M) int {
 	ctx, cancel = context.WithCancel(context.Background())
 	defer cancel()
 
 	cfg, err := config.GetConfig()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to get kubeconfig: %v\n", err)
-		os.Exit(1)
+		return 1
 	}
 
 	k8sClient, err = client.New(cfg, client.Options{Scheme: testScheme})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to create client: %v\n", err)
-		os.Exit(1)
+		return 1
 	}
 
 	k = k8sm.New(k8sClient, testScheme)
 
-	os.Exit(m.Run())
+	return m.Run()
 }
 
 type rayE2ETest struct {
 	module         *componentsv1alpha1.Ray
+	moduleCRD      *apiextensionsv1.CustomResourceDefinition
 	operatorDeploy *appsv1.Deployment
 	operatorCfgMap *corev1.ConfigMap
 	workloadDeploy *appsv1.Deployment
@@ -105,6 +114,9 @@ func TestRay(t *testing.T) {
 			ObjectMeta: metav1.ObjectMeta{
 				Name: componentsv1alpha1.RayInstanceName,
 			},
+		},
+		moduleCRD: &apiextensionsv1.CustomResourceDefinition{
+			ObjectMeta: metav1.ObjectMeta{Name: moduleCRDName},
 		},
 		operatorDeploy: &appsv1.Deployment{
 			ObjectMeta: metav1.ObjectMeta{
@@ -126,22 +138,41 @@ func TestRay(t *testing.T) {
 		},
 	}
 
+	// Clean up any leftover CR from a previous run.
+	_ = k8sClient.Delete(ctx, rt.module)
+	g := NewWithT(t)
+	g.Eventually(func(g Gomega) {
+		module := &componentsv1alpha1.Ray{}
+		err := k8sClient.Get(ctx, client.ObjectKeyFromObject(rt.module), module)
+		g.Expect(k8serr.IsNotFound(err)).To(BeTrue())
+	}).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(Succeed())
+	rt.module.ResourceVersion = ""
+
 	t.Cleanup(func() {
 		_ = k8sClient.Delete(ctx, rt.module)
 	})
 
 	// Gate: if the operator is not running, fail immediately — don't
 	// let subsequent tests hang waiting for resources that won't appear.
-	g := NewWithT(t)
+	g = NewWithT(t)
 	g.Eventually(k.Get(rt.operatorDeploy)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(
 		jq.Match(`.status.readyReplicas >= 1`),
 	)
 
+	t.Run("should have module CRD installed", rt.testModuleCRDInstalled)
 	t.Run("should have operator ConfigMap deployed", rt.testOperatorConfigMap)
 	t.Run("should become ready", rt.testBecomesReady)
 	t.Run("should report module version and platform", rt.testModuleStatus)
 	t.Run("should set platform labels and annotations", rt.testPlatformLabels)
 	t.Run("should set owner references", rt.testOwnerReferences)
+}
+
+func (rt *rayE2ETest) testModuleCRDInstalled(t *testing.T) {
+	g := NewWithT(t)
+
+	g.Eventually(k.Get(rt.moduleCRD)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(
+		jq.Match(`.metadata.name == "%s"`, moduleCRDName),
+	)
 }
 
 func (rt *rayE2ETest) testOperatorRunning(t *testing.T) {

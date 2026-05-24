@@ -5,11 +5,13 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 
 NAMESPACE="${1:-integration-test}"
+CR_RESOURCE="feastoperators.components.platform.opendatahub.io"
 
 echo "Cleaning up integration test resources..."
 
-# Delete component CRs
-kubectl delete feastoperators.components.platform.opendatahub.io --all --ignore-not-found 2>/dev/null || true
+# Delete component CRs first and wait for them to disappear before touching the CRD.
+kubectl delete "${CR_RESOURCE}" --all --ignore-not-found 2>/dev/null || true
+kubectl wait --for=delete "${CR_RESOURCE}" --all --timeout=60s 2>/dev/null || true
 
 # Delete workload resources in test namespace
 kubectl delete deployments --all -n "${NAMESPACE}" --ignore-not-found 2>/dev/null || true
@@ -29,6 +31,6 @@ kubectl delete clusterrole integration-test-role --ignore-not-found 2>/dev/null 
 kubectl delete clusterrolebinding integration-test-binding --ignore-not-found 2>/dev/null || true
 
 # Delete CRD (so next run installs fresh)
-kubectl delete crd feastoperators.components.platform.opendatahub.io --ignore-not-found 2>/dev/null || true
+kubectl delete crd "${CR_RESOURCE}" --ignore-not-found 2>/dev/null || true
 
 echo "Integration test cleanup complete."

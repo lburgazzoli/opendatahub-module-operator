@@ -36,8 +36,8 @@ running them from the wrong directory can deploy or test the wrong operator.
 
 ### Makefile targets
 
-Add two targets (copy from `modules/opendatahub-ray-operator/Makefile` and
-rename for `$COMPONENT`):
+Add cleanup targets plus an integration prep target (copy from
+`modules/opendatahub-ray-operator/Makefile` and rename for `$COMPONENT`):
 
 ```makefile
 .PHONY: cleanup-integration
@@ -47,9 +47,15 @@ cleanup-integration: ## Clean up integration test resources from the cluster.
 .PHONY: cleanup-e2e
 cleanup-e2e: ## Clean up e2e test resources and uninstall operator from the cluster.
 	./hack/scripts/cleanup-e2e.sh
+
+.PHONY: prepare-integration
+prepare-integration: manifests generate ## Clean cluster state and install CRDs for integration tests.
+	$(MAKE) cleanup-integration
+	$(MAKE) install
 ```
 
-Wire cleanup as a **dependency** of the composite test targets:
+Wire integration prep and e2e cleanup as **dependencies** of the composite test
+targets:
 
 ```makefile
 .PHONY: test-integration-run
@@ -57,7 +63,7 @@ test-integration-run: ## Run integration tests only (cluster must be prepared).
 	go test ./test/integration/ -tags=integration -v -timeout 5m -failfast
 
 .PHONY: test-integration
-test-integration: manifests generate cleanup-integration test-integration-run ## ...
+test-integration: prepare-integration test-integration-run ## ...
 
 .PHONY: test-e2e-run
 test-e2e-run: ## Run e2e tests only (operator must already be deployed).
@@ -69,6 +75,9 @@ test-e2e: cleanup-e2e deploy-helm test-e2e-run ## ...
 
 After manual `deploy-helm`, use **`make test-e2e-run`** — not `make test-e2e`
 (which re-runs cleanup and deploy). See [e2e-workflow.md](e2e-workflow.md).
+
+Integration CRDs must be installed by `make`, not by Go test code. `TestMain`
+should fail fast if the expected module CRD is missing.
 
 ### Cleanup scripts
 
@@ -95,10 +104,17 @@ rg 'ray|opendatahub-ray' hack/scripts/cleanup-*.sh && exit 1 || true
 ### In-process cleanup (integration only)
 
 `TestMain` in integration tests should **also** delete leftovers via the API
-client (defense in depth if someone runs `go test` without `make`):
+client (defense in depth if someone runs `go test` without `make`). Do **not**
+install CRDs in Go; instead, assert the module CRD is already present and fail
+fast if it is missing:
 
 ```go
-// After EnsureNamespace + InstallCRDs, before starting the manager:
+// After EnsureNamespace, before starting the manager:
+moduleCRD := &apiextensionsv1.CustomResourceDefinition{ObjectMeta: metav1.ObjectMeta{Name: moduleCRDName}}
+if err := directClient.Get(ctx, client.ObjectKeyFromObject(moduleCRD), moduleCRD); err != nil {
+    fmt.Fprintf(os.Stderr, "expected CRD %s to be installed before running integration tests: %v\n", moduleCRDName, err)
+    os.Exit(1)
+}
 _ = directClient.DeleteAllOf(ctx, &componentsv1alpha1.${Kind}{})
 _ = directClient.DeleteAllOf(ctx, &appsv1.Deployment{}, client.InNamespace(testNamespace))
 _ = directClient.DeleteAllOf(ctx, &corev1.Service{}, client.InNamespace(testNamespace))
@@ -259,8 +275,11 @@ testOwnerReferences     // workload resources owned by module CR
 
 - **Pre-test cleanup**: `make test-integration` / `make test-e2e` must run
   `cleanup-integration` / `cleanup-e2e` first (see Pre-test cleanup section)
+- **CRD install path**: integration CRDs come from `make prepare-integration` /
+  `make test-integration`, not from Go test code
 - **Cleanup in TestMain**: `DeleteAllOf` for the module CR type + workload
-  Deployments/Services in the test namespace
+  Deployments/Services in the test namespace, plus `Eventually` / `Consistently`
+  checks in the top-level test to verify stale singleton objects are gone
 - **Cache sync gate**: `mgr.GetCache().WaitForCacheSync(ctx)` after starting
   manager, fail if false
 - **InstallCRDs**: must use Get+Update (not Create-only) to replace existing
@@ -353,8 +372,9 @@ Deployment and Service names.
 4. **Wrong working directory**: running module integration/e2e/deploy targets
    from the repo root acts on `opendatahub-module-operator` — run them from
    `modules/$MODULE_NAME/` instead
-5. **CRD conflicts**: on clusters with monolith CRDs, `InstallCRDs` must
-   update (not skip) to get the new `status.module` field
+5. **Missing integration CRD prep**: `test-integration-run` or raw `go test`
+   without prior `make prepare-integration` / `make test-integration` fails
+   the CRD presence check
 6. **Unused struct fields**: remove `workloadService` etc. from test structs
    if no test asserts on them
 7. **Operator gate in e2e**: check operator deployment BEFORE subtests, not

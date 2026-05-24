@@ -30,6 +30,8 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
+	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
+	k8serr "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
@@ -37,8 +39,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/config"
 
-	k8sm "github.com/lburgazzoli/gomega-matchers/pkg/matchers/k8s"
 	"github.com/lburgazzoli/gomega-matchers/pkg/matchers/jq"
+	k8sm "github.com/lburgazzoli/gomega-matchers/pkg/matchers/k8s"
 
 	componentsv1alpha1 "github.com/lburgazzoli/opendatahub-module-operator/api/components/v1alpha1"
 	"github.com/lburgazzoli/opendatahub-module-operator/internal/controller/mymodule"
@@ -57,6 +59,7 @@ const (
 	annotationVersion      = "platform.opendatahub.io/version"
 
 	operatorConfigMapName = "opendatahub-module-operator-config"
+	moduleCRDName         = "mymodules.components.platform.opendatahub.io"
 )
 
 var (
@@ -70,33 +73,39 @@ var (
 
 func init() {
 	utilruntime.Must(clientgoscheme.AddToScheme(testScheme))
+	utilruntime.Must(apiextensionsv1.AddToScheme(testScheme))
 	utilruntime.Must(componentsv1alpha1.AddToScheme(testScheme))
 }
 
 func TestMain(m *testing.M) {
+	os.Exit(runTestMain(m))
+}
+
+func runTestMain(m *testing.M) int {
 	ctx, cancel = context.WithCancel(context.Background())
 	defer cancel()
 
 	cfg, err := config.GetConfig()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to get kubeconfig: %v\n", err)
-		os.Exit(1)
+		return 1
 	}
 
 	k8sClient, err = client.New(cfg, client.Options{Scheme: testScheme})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to create client: %v\n", err)
-		os.Exit(1)
+		return 1
 	}
 
 	k = k8sm.New(k8sClient, testScheme)
 
-	os.Exit(m.Run())
+	return m.Run()
 }
 
 // myModuleE2ETest holds shared test fixtures for the MyModule e2e tests.
 type myModuleE2ETest struct {
 	module          *componentsv1alpha1.MyModule
+	moduleCRD       *apiextensionsv1.CustomResourceDefinition
 	ingress         *networkingv1.Ingress
 	operatorDeploy  *appsv1.Deployment
 	operatorCfgMap  *corev1.ConfigMap
@@ -110,6 +119,9 @@ func TestMyModule(t *testing.T) {
 			ObjectMeta: metav1.ObjectMeta{
 				Name: componentsv1alpha1.MyModuleInstanceName,
 			},
+		},
+		moduleCRD: &apiextensionsv1.CustomResourceDefinition{
+			ObjectMeta: metav1.ObjectMeta{Name: moduleCRDName},
 		},
 		ingress: &networkingv1.Ingress{
 			ObjectMeta: metav1.ObjectMeta{
@@ -151,11 +163,29 @@ func TestMyModule(t *testing.T) {
 		},
 	}
 
+	// Clean up any leftover singleton objects from a previous run.
+	_ = k8sClient.Delete(ctx, mt.module)
+	_ = k8sClient.Delete(ctx, mt.ingress)
+	g := NewWithT(t)
+	g.Eventually(func(g Gomega) {
+		module := &componentsv1alpha1.MyModule{}
+		err := k8sClient.Get(ctx, client.ObjectKeyFromObject(mt.module), module)
+		g.Expect(k8serr.IsNotFound(err)).To(BeTrue())
+	}).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(Succeed())
+	g.Eventually(func(g Gomega) {
+		ingress := &networkingv1.Ingress{}
+		err := k8sClient.Get(ctx, client.ObjectKeyFromObject(mt.ingress), ingress)
+		g.Expect(k8serr.IsNotFound(err)).To(BeTrue())
+	}).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(Succeed())
+	mt.module.ResourceVersion = ""
+	mt.ingress.ResourceVersion = ""
+
 	t.Cleanup(func() {
 		_ = k8sClient.Delete(ctx, mt.module)
 		_ = k8sClient.Delete(ctx, mt.ingress)
 	})
 
+	t.Run("should have module CRD installed", mt.testModuleCRDInstalled)
 	t.Run("operator should be running", mt.testOperatorRunning)
 	t.Run("should have ConfigMap volume mounted", mt.testConfigMapVolume)
 	t.Run("should have operator ConfigMap deployed", mt.testOperatorConfigMap)
@@ -169,6 +199,14 @@ func TestMyModule(t *testing.T) {
 	t.Run("should not annotate ingress on fresh deploy", mt.testUpgradeAnnotationAbsentOnFreshDeploy)
 	t.Run("should annotate ingress on upgrade via configmap restart", mt.testUpgradeViaConfigMapRestart)
 	t.Run("should not update version on upgrade fault", mt.testUpgradeFaultInjection)
+}
+
+func (mt *myModuleE2ETest) testModuleCRDInstalled(t *testing.T) {
+	g := NewWithT(t)
+
+	g.Eventually(k.Get(mt.moduleCRD)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(
+		jq.Match(`.metadata.name == "%s"`, moduleCRDName),
+	)
 }
 
 func (mt *myModuleE2ETest) testOperatorRunning(t *testing.T) {
@@ -380,7 +418,7 @@ func (mt *myModuleE2ETest) testUpgradeFaultInjection(t *testing.T) {
 
 	// The upgrade should fail because of the fault annotation. The platform
 	// version in status should remain unchanged.
-	g.Consistently(k.Get(mt.module)).WithContext(ctx).WithTimeout(10*time.Second).WithPolling(interval).Should(
+	g.Consistently(k.Get(mt.module)).WithContext(ctx).WithTimeout(10 * time.Second).WithPolling(interval).Should(
 		jq.Match(`.status.module.platform.version == "%s"`, platformVersionBefore),
 	)
 

@@ -21,12 +21,11 @@ Use the same `IMG` for `container-build`, `container-push`, and `deploy-helm`.
 Prepare once, then run tests only:
 
 ```bash
-make manifests generate
-make cleanup-integration
+make prepare-integration
 make test-integration-run
 ```
 
-Or all-in-one: `make test-integration` (runs cleanup + tests).
+Or all-in-one: `make test-integration` (runs cleanup, installs CRDs, then tests).
 
 ## E2E tests (deployed operator)
 
@@ -61,9 +60,10 @@ Every module should define:
 | Target | Purpose |
 |--------|---------|
 | `cleanup-integration` | Cluster cleanup before integration; delete module CRs and wait before CRD removal |
+| `prepare-integration` | Cleanup + CRD install before `test-integration-run` |
 | `cleanup-e2e` | Uninstall operator + CRs before e2e; delete module CRs and wait before CRD removal |
 | `test-integration-run` | `go test ./test/integration/` only |
-| `test-integration` | `cleanup-integration` + `test-integration-run` (+ deps) |
+| `test-integration` | `prepare-integration` + `test-integration-run` (+ deps) |
 | `test-e2e-run` | `go test ./test/e2e/` only |
 | `test-e2e` | `cleanup-e2e deploy-helm test-e2e-run` |
 
@@ -74,6 +74,7 @@ Every module should define:
 | `IMG=... make container-build container-push deploy-helm test-e2e` | One target per line |
 | `make test-e2e` after manual `deploy-helm` | `make test-e2e-run` |
 | `deploy-helm` without `make helm` | `make helm` first (or after manifest changes) |
+| `make test-integration-run` on a dirty cluster | `make prepare-integration` first |
 | Run module test/deploy targets from repo root | Run them from `modules/$MODULE_NAME/` |
 | Skip `echo $IMG` | Print tag in logs |
 

@@ -69,8 +69,13 @@ test: manifests generate fmt vet ## Run unit tests.
 test-integration-run: ## Run integration tests only (cluster must be prepared).
 	go test ./test/integration/ -tags=integration -v -timeout 5m -failfast
 
+.PHONY: prepare-integration
+prepare-integration: manifests generate ## Clean cluster state and install CRDs for integration tests.
+	$(MAKE) cleanup-integration
+	$(MAKE) install
+
 .PHONY: test-integration
-test-integration: manifests generate cleanup-integration test-integration-run ## Run integration tests (assumes cluster is available, starts in-process manager).
+test-integration: prepare-integration test-integration-run ## Run integration tests (assumes cluster is available, starts in-process manager).
 
 .PHONY: test-e2e-run
 test-e2e-run: ## Run e2e tests only (operator must already be deployed).

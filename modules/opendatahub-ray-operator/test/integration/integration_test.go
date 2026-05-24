@@ -32,6 +32,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
+	k8serr "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
@@ -43,8 +44,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
-	k8sm "github.com/lburgazzoli/gomega-matchers/pkg/matchers/k8s"
 	"github.com/lburgazzoli/gomega-matchers/pkg/matchers/jq"
+	k8sm "github.com/lburgazzoli/gomega-matchers/pkg/matchers/k8s"
 
 	componentsv1alpha1 "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-ray-operator/api/components/v1alpha1"
 	raycontroller "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-ray-operator/internal/controller/ray"
@@ -64,6 +65,7 @@ const (
 	annotationInstanceUID  = "platform.opendatahub.io/instance.uid"
 	annotationType         = "platform.opendatahub.io/type"
 	annotationVersion      = "platform.opendatahub.io/version"
+	moduleCRDName          = "rays.components.platform.opendatahub.io"
 )
 
 var (
@@ -82,6 +84,10 @@ func init() {
 }
 
 func TestMain(m *testing.M) {
+	os.Exit(runTestMain(m))
+}
+
+func runTestMain(m *testing.M) int {
 	ctx, cancel = context.WithCancel(context.Background())
 	defer cancel()
 
@@ -90,23 +96,26 @@ func TestMain(m *testing.M) {
 	cfg, err := config.GetConfig()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to get kubeconfig: %v\n", err)
-		os.Exit(1)
+		return 1
 	}
 
 	directClient, err := client.New(cfg, client.Options{Scheme: testScheme})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to create client: %v\n", err)
-		os.Exit(1)
+		return 1
 	}
 
 	if err := support.EnsureNamespace(ctx, directClient, testNamespace); err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to create namespace: %v\n", err)
-		os.Exit(1)
+		return 1
 	}
 
-	if err := support.InstallCRDs(ctx, directClient, support.MustProjectFile("config", "crd", "bases")); err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to install CRDs: %v\n", err)
-		os.Exit(1)
+	moduleCRD := &apiextensionsv1.CustomResourceDefinition{
+		ObjectMeta: metav1.ObjectMeta{Name: moduleCRDName},
+	}
+	if err := directClient.Get(ctx, client.ObjectKeyFromObject(moduleCRD), moduleCRD); err != nil {
+		fmt.Fprintf(os.Stderr, "Expected CRD %s to be installed before running integration tests: %v\n", moduleCRDName, err)
+		return 1
 	}
 
 	// Clean up leftovers from previous runs.
@@ -150,7 +159,7 @@ func TestMain(m *testing.M) {
 	})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to create manager: %v\n", err)
-		os.Exit(1)
+		return 1
 	}
 
 	mgr := odhmanager.New(ctrlMgr, odhmanager.WithManifestsBasePath(
@@ -158,7 +167,7 @@ func TestMain(m *testing.M) {
 
 	if err := raycontroller.NewReconciler(ctx, mgr, moduleCfg, moduleCfg.Release()); err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to create reconciler: %v\n", err)
-		os.Exit(1)
+		return 1
 	}
 
 	go func() {
@@ -169,7 +178,7 @@ func TestMain(m *testing.M) {
 
 	if !mgr.GetCache().WaitForCacheSync(ctx) {
 		fmt.Fprintf(os.Stderr, "Failed to sync manager cache\n")
-		os.Exit(1)
+		return 1
 	}
 
 	k8sClient = mgr.GetClient()
@@ -197,11 +206,12 @@ func TestMain(m *testing.M) {
 		}},
 	})
 
-	os.Exit(m.Run())
+	return m.Run()
 }
 
 type rayTest struct {
 	module         *componentsv1alpha1.Ray
+	moduleCRD      *apiextensionsv1.CustomResourceDefinition
 	workloadDeploy *appsv1.Deployment
 }
 
@@ -212,6 +222,9 @@ func TestRay(t *testing.T) {
 				Name: componentsv1alpha1.RayInstanceName,
 			},
 		},
+		moduleCRD: &apiextensionsv1.CustomResourceDefinition{
+			ObjectMeta: metav1.ObjectMeta{Name: moduleCRDName},
+		},
 		workloadDeploy: &appsv1.Deployment{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "kuberay-operator",
@@ -220,14 +233,33 @@ func TestRay(t *testing.T) {
 		},
 	}
 
+	// Clean up any leftover CR from a previous run before starting.
+	_ = k8sClient.Delete(ctx, rt.module)
+	g := NewWithT(t)
+	g.Eventually(func(g Gomega) {
+		module := &componentsv1alpha1.Ray{}
+		err := k8sClient.Get(ctx, client.ObjectKeyFromObject(rt.module), module)
+		g.Expect(k8serr.IsNotFound(err)).To(BeTrue())
+	}).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(Succeed())
+	rt.module.ResourceVersion = ""
+
 	t.Cleanup(func() {
 		_ = k8sClient.Delete(ctx, rt.module)
 	})
 
+	t.Run("should have module CRD installed", rt.testModuleCRDInstalled)
 	t.Run("should become ready", rt.testBecomesReady)
 	t.Run("should report module version and platform", rt.testModuleStatus)
 	t.Run("should set platform labels and annotations", rt.testPlatformLabels)
 	t.Run("should set owner references", rt.testOwnerReferences)
+}
+
+func (rt *rayTest) testModuleCRDInstalled(t *testing.T) {
+	g := NewWithT(t)
+
+	g.Eventually(k.Get(rt.moduleCRD)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(
+		jq.Match(`.metadata.name == "%s"`, moduleCRDName),
+	)
 }
 
 func (rt *rayTest) testBecomesReady(t *testing.T) {

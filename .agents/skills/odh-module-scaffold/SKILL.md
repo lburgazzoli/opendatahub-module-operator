@@ -229,6 +229,12 @@ Module Makefiles define cleanup scripts and `test-integration-run` /
 `test-e2e-run` targets. See
 `.agents/skills/odh-component-to-module/references/e2e-workflow.md`.
 
+Integration CRDs should be installed by `make prepare-integration` (or
+`make test-integration`), not by Go test code. The integration `TestMain`
+should fail fast if the expected module CRD is missing, and the top-level
+integration/e2e tests should use `Eventually` / `Consistently` to verify stale
+singleton CRs are gone before creating a fresh one.
+
 ## Extending
 
 ### Adding a Workload Resource Type

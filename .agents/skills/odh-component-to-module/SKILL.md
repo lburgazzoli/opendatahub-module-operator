@@ -138,8 +138,11 @@ Per [testing.md](references/testing.md):
 - Unit, integration, e2e tests (`testing.T` + Gomega)
 - `hack/scripts/cleanup-integration.sh` and `cleanup-e2e.sh` must delete the
   module CRs and wait for them to disappear before deleting the module CRD
-- Makefile: `test-integration-run`, `test-e2e-run`, and composite targets
-  (`test-integration` → cleanup + run; `test-e2e` → cleanup + deploy + run)
+- Integration CRDs must be installed from `make`, not from Go test code; the
+  tests should fail fast if the expected module CRD is missing
+- Makefile: `prepare-integration`, `test-integration-run`, `test-e2e-run`, and
+  composite targets (`test-integration` → prepare + run; `test-e2e` → cleanup
+  + deploy + run)
 - Execute those integration/e2e targets from `modules/$MODULE_NAME/`, not the
   repo root
 
