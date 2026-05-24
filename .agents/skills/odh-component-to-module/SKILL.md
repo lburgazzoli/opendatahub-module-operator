@@ -23,6 +23,10 @@ Split a monolith `ComponentHandler` into a standalone module under
 only when a step points to them.
 
 **Test cluster:** OpenShift (CRC, ROSA, dev). See [testing.md](references/testing.md).
+When validating a module, run integration/e2e/deploy Make targets from
+`modules/$MODULE_NAME/` (or set your tool `working_directory` there). Running
+the same target names from the repo root acts on `opendatahub-module-operator`
+instead of the module under test.
 
 ## Inputs
 
@@ -132,9 +136,12 @@ RBAC in the controller. **No CRD fetch on OpenShift** — see
 Per [testing.md](references/testing.md):
 
 - Unit, integration, e2e tests (`testing.T` + Gomega)
-- `hack/scripts/cleanup-integration.sh` and `cleanup-e2e.sh`
+- `hack/scripts/cleanup-integration.sh` and `cleanup-e2e.sh` must delete the
+  module CRs and wait for them to disappear before deleting the module CRD
 - Makefile: `test-integration-run`, `test-e2e-run`, and composite targets
   (`test-integration` → cleanup + run; `test-e2e` → cleanup + deploy + run)
+- Execute those integration/e2e targets from `modules/$MODULE_NAME/`, not the
+  repo root
 
 ### 8. Build and verify
 
@@ -147,8 +154,10 @@ Spawn **both** subagents per [adversarial-review.md](references/adversarial-revi
 
 ### 10. Fix findings and cluster verify
 
-Address all findings from steps 9 and 9b. Run **one command at a time** per
-[e2e-workflow.md](references/e2e-workflow.md):
+Address all findings from steps 9 and 9b. Run **one command at a time** from
+`modules/$MODULE_NAME/` per [e2e-workflow.md](references/e2e-workflow.md). If
+you are using a tool that supports `working_directory`, set it to the module
+path before running any integration/e2e/deploy target:
 
 ```bash
 make test

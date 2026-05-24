@@ -1,8 +1,11 @@
 # E2E and container workflow
 
-Run from `modules/$MODULE_NAME/` against **OpenShift**. Do not chain build,
-push, deploy, and test in one command — run each step separately to inspect
-failures.
+Run from `modules/$MODULE_NAME/` against **OpenShift**. If you are using a tool
+that supports `working_directory`, point it at that module path before running
+any integration/e2e/deploy target. The repo root defines the same target names
+for `opendatahub-module-operator`, so running them from the wrong directory can
+build, deploy, or test the wrong operator. Do not chain build, push, deploy,
+and test in one command — run each step separately to inspect failures.
 
 ## Compute IMG once
 
@@ -57,8 +60,8 @@ Every module should define:
 
 | Target | Purpose |
 |--------|---------|
-| `cleanup-integration` | Cluster cleanup before integration |
-| `cleanup-e2e` | Uninstall operator + CRs before e2e |
+| `cleanup-integration` | Cluster cleanup before integration; delete module CRs and wait before CRD removal |
+| `cleanup-e2e` | Uninstall operator + CRs before e2e; delete module CRs and wait before CRD removal |
 | `test-integration-run` | `go test ./test/integration/` only |
 | `test-integration` | `cleanup-integration` + `test-integration-run` (+ deps) |
 | `test-e2e-run` | `go test ./test/e2e/` only |
@@ -71,6 +74,7 @@ Every module should define:
 | `IMG=... make container-build container-push deploy-helm test-e2e` | One target per line |
 | `make test-e2e` after manual `deploy-helm` | `make test-e2e-run` |
 | `deploy-helm` without `make helm` | `make helm` first (or after manifest changes) |
+| Run module test/deploy targets from repo root | Run them from `modules/$MODULE_NAME/` |
 | Skip `echo $IMG` | Print tag in logs |
 
 See [testing.md](testing.md) for timeouts and test code patterns.

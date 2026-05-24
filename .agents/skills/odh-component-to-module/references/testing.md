@@ -28,6 +28,12 @@ workload objects, cluster RBAC, or a stale CRD from a failed run cause flaky
 or misleading failures. Every module must ship cleanup and run it **before**
 `go test` for integration/e2e.
 
+When you are working on `modules/$MODULE_NAME/`, run `make cleanup-*`,
+`make test-integration*`, `make deploy-helm`, and `make test-e2e*` from that
+module directory (or set your tool `working_directory` there). The repo root
+defines targets with the same names for `opendatahub-module-operator`, so
+running them from the wrong directory can deploy or test the wrong operator.
+
 ### Makefile targets
 
 Add two targets (copy from `modules/opendatahub-ray-operator/Makefile` and
@@ -71,10 +77,13 @@ module and update for `$KIND` / `$COMPONENT`:
 
 | Script | Namespace default | Deletes |
 |--------|-------------------|---------|
-| `cleanup-integration.sh` | `integration-test` | Module CRs (cluster-scoped), workload + RBAC in test namespace, `part-of=$COMPONENT` ClusterRoles/Bindings, integration test RBAC, module CRD |
-| `cleanup-e2e.sh` | `$MODULE_NAME-system` | Module CRs, Helm release uninstall, operator namespace, leftover cluster RBAC, module CRD |
+| `cleanup-integration.sh` | `integration-test` | Module CRs (cluster-scoped), waits for CR deletion, workload + RBAC in test namespace, `part-of=$COMPONENT` ClusterRoles/Bindings, integration test RBAC, module CRD |
+| `cleanup-e2e.sh` | `$MODULE_NAME-system` | Module CRs, waits for CR deletion, Helm release uninstall, operator namespace, leftover cluster RBAC, module CRD |
 
 Use `--ignore-not-found` on all `kubectl delete` calls so cleanup is idempotent.
+Delete the module CRs **before** any CRD removal path and wait for them to
+disappear first, otherwise Helm uninstall or direct CRD deletion can strand
+terminating CRs behind a missing CRD.
 
 After [renaming.md](renaming.md), grep the scripts for stale ray names — they
 are easy to miss:
@@ -341,13 +350,16 @@ Deployment and Service names.
    push/deploy/test as separate steps (see Container build and e2e workflow)
 3. **Chained make one-liners** or **`make test-e2e` after manual deploy** —
    use [e2e-workflow.md](e2e-workflow.md); run `test-e2e-run` after deploy
-4. **CRD conflicts**: on clusters with monolith CRDs, `InstallCRDs` must
+4. **Wrong working directory**: running module integration/e2e/deploy targets
+   from the repo root acts on `opendatahub-module-operator` — run them from
+   `modules/$MODULE_NAME/` instead
+5. **CRD conflicts**: on clusters with monolith CRDs, `InstallCRDs` must
    update (not skip) to get the new `status.module` field
-5. **Unused struct fields**: remove `workloadService` etc. from test structs
+6. **Unused struct fields**: remove `workloadService` etc. from test structs
    if no test asserts on them
-6. **Operator gate in e2e**: check operator deployment BEFORE subtests, not
+7. **Operator gate in e2e**: check operator deployment BEFORE subtests, not
    as a subtest — a failed subtest doesn't stop subsequent subtests
-7. **Wrong env prefix**: deployment sets `ODH_OPERATOR_*` but `pkg/config`
+8. **Wrong env prefix**: deployment sets `ODH_OPERATOR_*` but `pkg/config`
    uses `ODH_MODULE_OPERATOR` — viper silently ignores mismatched vars
    during `Unmarshal()`. All env vars must use `ODH_MODULE_OPERATOR_`
    (see `controller-rules.md`).
