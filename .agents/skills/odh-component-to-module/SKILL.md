@@ -176,13 +176,17 @@ make test-integration-run
 export IMG="ttl.sh/${MODULE_NAME}-$(uuidgen | tr '[:upper:]' '[:lower:]'):1h"
 echo "IMG=${IMG}"
 make container-prep         # host: manifests generate get-manifests
-make container-build        # binary compiled inside image
-make container-push
+make container-build IMG="${IMG}"        # binary compiled inside image
+make container-push IMG="${IMG}"
 make helm
 make cleanup-e2e
-make deploy-helm
+make deploy-helm IMG="${IMG}"
 make test-e2e-run
 ```
+
+Keep `IMG` in shell memory. Do not write it to a temp file and later run
+`make ... IMG="$(cat /tmp/img)"`; that adds unnecessary indirection and can
+trigger extra command authorization in agent runs.
 
 Do not chain targets. Do not run `make test-e2e` after manual deploy — use
 `test-e2e-run` to avoid re-running cleanup and deploy.

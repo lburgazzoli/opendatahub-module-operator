@@ -139,8 +139,11 @@ export ODH_PLATFORM_TYPE=OpenDataHub   # for get-manifests
 make container-prep
 
 export IMG="ttl.sh/${MODULE_NAME}-$(uuidgen | tr '[:upper:]' '[:lower:]'):1h"
-make container-build   # host prep + podman build; only go build runs in image
+make container-build IMG="${IMG}"   # host prep + podman build; only go build runs in image
 ```
+
+Keep `IMG` in shell memory and pass it directly to `make`. Do not write it to a
+temp file and later read it back with `cat`.
 
 Manifests are copied into the runtime image:
 

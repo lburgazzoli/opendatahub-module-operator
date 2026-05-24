@@ -15,6 +15,9 @@ echo "IMG=${IMG}"
 ```
 
 Use the same `IMG` for `container-build`, `container-push`, and `deploy-helm`.
+Keep it in shell memory and pass it directly to `make`, for example
+`make container-build IMG="${IMG}"` or `IMG="${IMG}" make container-build`.
+Do not write it to a temp file for later `cat`.
 
 ## Integration tests (in-process manager)
 
@@ -35,11 +38,11 @@ One step at a time after exporting `IMG`:
 export ODH_PLATFORM_TYPE=OpenDataHub   # when fetching ODH manifests
 make container-prep       # host: manifests + generate + get-manifests
 echo "IMG=${IMG}"
-make container-build      # host prep (if needed) + image build; binary compiled in container
-make container-push
+make container-build IMG="${IMG}"      # host prep (if needed) + image build; binary compiled in container
+make container-push IMG="${IMG}"
 make helm                   # generates config/chart (runs manifests generate)
 make cleanup-e2e
-make deploy-helm
+make deploy-helm IMG="${IMG}"
 make test-e2e-run           # go test only — operator already deployed
 ```
 
@@ -72,6 +75,7 @@ Every module should define:
 | Do not | Do instead |
 |--------|------------|
 | `IMG=... make container-build container-push deploy-helm test-e2e` | One target per line |
+| `make container-build IMG="$(cat /tmp/img)"` | `make container-build IMG="${IMG}"` |
 | `make test-e2e` after manual `deploy-helm` | `make test-e2e-run` |
 | `deploy-helm` without `make helm` | `make helm` first (or after manifest changes) |
 | `make test-integration-run` on a dirty cluster | `make prepare-integration` first |
