@@ -47,39 +47,6 @@ jobs:
         run: |
           make container-build container-push IMG=${{ steps.img.outputs.img }}
 
-  e2e-kustomize:
-    permissions:
-      contents: read
-    name: e2e kustomize (k8s ${{ matrix.k8s-version }})
-    needs: build
-    runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        k8s-version: ${{ fromJson(needs.build.outputs.k8s-versions) }}
-    steps:
-      - name: Clone the code
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-        with:
-          persist-credentials: false
-
-      - name: Setup Go
-        uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6.3.0
-        with:
-          go-version-file: go.mod
-
-      - name: Create Kind cluster
-        run: |
-          make kind-create KIND_NODE_IMAGE=kindest/node:${{ matrix.k8s-version }}
-
-      - name: Deploy via kustomize
-        run: |
-          make deploy-kustomize IMG=${{ needs.build.outputs.img }}
-
-      - name: Run e2e tests
-        run: |
-          make test-e2e
-
   e2e-helm:
     permissions:
       contents: read
