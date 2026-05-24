@@ -15,8 +15,13 @@ COPY go.sum go.sum
 # downloaded layer.
 RUN go mod download
 
-# Copy the Go source (relies on .containerignore to filter)
-COPY . .
+# Copy only the source and build inputs needed for the binary and manifests.
+COPY Makefile Makefile
+COPY api/ api/
+COPY cmd/ cmd/
+COPY internal/ internal/
+COPY pkg/ pkg/
+COPY config/manifests/ config/manifests/
 
 # Generated code and manifests come from the host (make container-prep).
 # Only compile the manager binary inside the image.

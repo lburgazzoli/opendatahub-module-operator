@@ -64,6 +64,8 @@ import (
 // +kubebuilder:rbac:groups=authentication.k8s.io,resources=tokenreviews,verbs=create
 // +kubebuilder:rbac:groups=authorization.k8s.io,resources=subjectaccessreviews,verbs=create
 // +kubebuilder:rbac:groups=kubeflow.org,resources=notebooks,verbs=get;list;watch
+// +kubebuilder:rbac:groups=rbac.authorization.k8s.io,resources=subjectaccessreviews,verbs=get;list;watch;create;update;delete
+// +kubebuilder:rbac:urls=/metrics,verbs=get
 
 func NewReconciler(
 	ctx context.Context,

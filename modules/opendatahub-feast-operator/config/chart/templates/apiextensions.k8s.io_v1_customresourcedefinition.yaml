@@ -22,10 +22,6 @@ spec:
       jsonPath: .status.conditions[?(@.type=="Ready")].reason
       name: Reason
       type: string
-    - description: Module Version
-      jsonPath: .status.module.version
-      name: Version
-      type: string
     name: v1alpha1
     schema:
       openAPIV3Schema:
@@ -50,6 +46,22 @@ spec:
             type: object
           spec:
             description: FeastOperatorSpec defines the desired state of FeastOperator.
+            properties:
+              oidc:
+                description: |-
+                  OIDC holds the OIDC issuer settings. When the cluster uses external OIDC
+                  the issuer URL is written to params.env before kustomize renders manifests.
+                properties:
+                  issuerURL:
+                    description: IssuerURL is the OIDC issuer URL (for example "https://keycloak.example.com/realms/myorg").
+                    format: uri
+                    maxLength: 2048
+                    minLength: 1
+                    pattern: ^https://\S+$
+                    type: string
+                required:
+                - issuerURL
+                type: object
             type: object
           status:
             description: FeastOperatorStatus defines the observed state of FeastOperator.
