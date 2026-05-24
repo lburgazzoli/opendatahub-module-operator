@@ -1,0 +1,256 @@
+name: Module Tests
+
+on:
+  push:
+    paths:
+      - "modules/**"
+      - ".github/workflows/test-modules.yml"
+  pull_request:
+    paths:
+      - "modules/**"
+      - ".github/workflows/test-modules.yml"
+
+permissions: {}
+
+jobs:
+  changes:
+    permissions:
+      contents: read
+      pull-requests: read
+    name: Detect changed modules
+    runs-on: ubuntu-latest
+    outputs:
+      ray: ${{ steps.filter.outputs.ray }}
+      spark: ${{ steps.filter.outputs.spark }}
+      feast: ${{ steps.filter.outputs.feast }}
+    steps:
+      - name: Clone the code
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Detect changed module paths
+        id: filter
+        uses: dorny/paths-filter@3b5e8027d2c8e1d8c5f8f6c9e3d6f7c2b3c7a9cd # v3.0.2
+        with:
+          filters: |
+            ray:
+              - 'modules/opendatahub-ray-operator/**'
+            spark:
+              - 'modules/opendatahub-spark-operator/**'
+            feast:
+              - 'modules/opendatahub-feast-operator/**'
+
+  test-ray:
+    permissions:
+      contents: read
+    name: opendatahub-ray-operator
+    needs: changes
+    if: ${{ needs.changes.outputs.ray == 'true' }}
+    runs-on: ubuntu-latest
+    env:
+      KUBECONFIG: ${{ runner.temp }}/kubeconfig
+      ODH_PLATFORM_TYPE: OpenDataHub
+    steps:
+      - name: Clone the code
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Setup Go
+        uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6.3.0
+        with:
+          go-version-file: modules/opendatahub-ray-operator/go.mod
+
+      - name: Write OpenShift kubeconfig
+        if: ${{ false }}
+        env:
+          OPENSHIFT_KUBECONFIG: ${{ secrets.OPENSHIFT_KUBECONFIG }}
+        run: |
+          test -n "${OPENSHIFT_KUBECONFIG}" || {
+            echo "Missing OPENSHIFT_KUBECONFIG secret"
+            exit 1
+          }
+          printf '%s\n' "${OPENSHIFT_KUBECONFIG}" > "${KUBECONFIG}"
+          chmod 600 "${KUBECONFIG}"
+
+      - name: Run unit tests
+        working-directory: modules/opendatahub-ray-operator
+        run: |
+          make test
+
+      - name: Run integration tests
+        if: ${{ false }}
+        working-directory: modules/opendatahub-ray-operator
+        run: |
+          make test-integration
+
+      - name: Compute image reference
+        id: img
+        if: ${{ false }}
+        run: |
+          IMG="ttl.sh/opendatahub-ray-operator-${GITHUB_SHA::7}:1h"
+          echo "img=${IMG}" >> "$GITHUB_OUTPUT"
+          echo "Using image: ${IMG}"
+
+      - name: Build and push image
+        if: ${{ false }}
+        working-directory: modules/opendatahub-ray-operator
+        run: |
+          make container-build IMG=${{ steps.img.outputs.img }}
+          make container-push IMG=${{ steps.img.outputs.img }}
+
+      - name: Generate Helm chart
+        if: ${{ false }}
+        working-directory: modules/opendatahub-ray-operator
+        run: |
+          make helm
+
+      - name: Run e2e tests
+        if: ${{ false }}
+        working-directory: modules/opendatahub-ray-operator
+        run: |
+          make test-e2e IMG=${{ steps.img.outputs.img }}
+
+  test-spark:
+    permissions:
+      contents: read
+    name: opendatahub-spark-operator
+    needs: changes
+    if: ${{ needs.changes.outputs.spark == 'true' }}
+    runs-on: ubuntu-latest
+    env:
+      KUBECONFIG: ${{ runner.temp }}/kubeconfig
+      ODH_PLATFORM_TYPE: OpenDataHub
+    steps:
+      - name: Clone the code
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Setup Go
+        uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6.3.0
+        with:
+          go-version-file: modules/opendatahub-spark-operator/go.mod
+
+      - name: Write OpenShift kubeconfig
+        if: ${{ false }}
+        env:
+          OPENSHIFT_KUBECONFIG: ${{ secrets.OPENSHIFT_KUBECONFIG }}
+        run: |
+          test -n "${OPENSHIFT_KUBECONFIG}" || {
+            echo "Missing OPENSHIFT_KUBECONFIG secret"
+            exit 1
+          }
+          printf '%s\n' "${OPENSHIFT_KUBECONFIG}" > "${KUBECONFIG}"
+          chmod 600 "${KUBECONFIG}"
+
+      - name: Run unit tests
+        working-directory: modules/opendatahub-spark-operator
+        run: |
+          make test
+
+      - name: Run integration tests
+        if: ${{ false }}
+        working-directory: modules/opendatahub-spark-operator
+        run: |
+          make test-integration
+
+      - name: Compute image reference
+        id: img
+        if: ${{ false }}
+        run: |
+          IMG="ttl.sh/opendatahub-spark-operator-${GITHUB_SHA::7}:1h"
+          echo "img=${IMG}" >> "$GITHUB_OUTPUT"
+          echo "Using image: ${IMG}"
+
+      - name: Build and push image
+        if: ${{ false }}
+        working-directory: modules/opendatahub-spark-operator
+        run: |
+          make container-build IMG=${{ steps.img.outputs.img }}
+          make container-push IMG=${{ steps.img.outputs.img }}
+
+      - name: Generate Helm chart
+        if: ${{ false }}
+        working-directory: modules/opendatahub-spark-operator
+        run: |
+          make helm
+
+      - name: Run e2e tests
+        if: ${{ false }}
+        working-directory: modules/opendatahub-spark-operator
+        run: |
+          make test-e2e IMG=${{ steps.img.outputs.img }}
+
+  test-feast:
+    permissions:
+      contents: read
+    name: opendatahub-feast-operator
+    needs: changes
+    if: ${{ needs.changes.outputs.feast == 'true' }}
+    runs-on: ubuntu-latest
+    env:
+      KUBECONFIG: ${{ runner.temp }}/kubeconfig
+      ODH_PLATFORM_TYPE: OpenDataHub
+    steps:
+      - name: Clone the code
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Setup Go
+        uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6.3.0
+        with:
+          go-version-file: modules/opendatahub-feast-operator/go.mod
+
+      - name: Write OpenShift kubeconfig
+        if: ${{ false }}
+        env:
+          OPENSHIFT_KUBECONFIG: ${{ secrets.OPENSHIFT_KUBECONFIG }}
+        run: |
+          test -n "${OPENSHIFT_KUBECONFIG}" || {
+            echo "Missing OPENSHIFT_KUBECONFIG secret"
+            exit 1
+          }
+          printf '%s\n' "${OPENSHIFT_KUBECONFIG}" > "${KUBECONFIG}"
+          chmod 600 "${KUBECONFIG}"
+
+      - name: Run unit tests
+        working-directory: modules/opendatahub-feast-operator
+        run: |
+          make test
+
+      - name: Run integration tests
+        if: ${{ false }}
+        working-directory: modules/opendatahub-feast-operator
+        run: |
+          make test-integration
+
+      - name: Compute image reference
+        id: img
+        if: ${{ false }}
+        run: |
+          IMG="ttl.sh/opendatahub-feast-operator-${GITHUB_SHA::7}:1h"
+          echo "img=${IMG}" >> "$GITHUB_OUTPUT"
+          echo "Using image: ${IMG}"
+
+      - name: Build and push image
+        if: ${{ false }}
+        working-directory: modules/opendatahub-feast-operator
+        run: |
+          make container-build IMG=${{ steps.img.outputs.img }}
+          make container-push IMG=${{ steps.img.outputs.img }}
+
+      - name: Generate Helm chart
+        if: ${{ false }}
+        working-directory: modules/opendatahub-feast-operator
+        run: |
+          make helm
+
+      - name: Run e2e tests
+        if: ${{ false }}
+        working-directory: modules/opendatahub-feast-operator
+        run: |
+          make test-e2e IMG=${{ steps.img.outputs.img }}
