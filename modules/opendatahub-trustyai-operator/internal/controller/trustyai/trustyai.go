@@ -19,6 +19,7 @@ package trustyai
 import (
 	"context"
 	"fmt"
+	"sort"
 
 	"github.com/opendatahub-io/opendatahub-operator/v2/api/common"
 	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/cluster"
@@ -155,6 +156,15 @@ func (m *Module) reportStatus(_ context.Context, rr *odhtypes.ReconciliationRequ
 	for _, h := range rr.HelmCharts {
 		sources = append(sources, componentApi.SourceStatus{Path: h.Chart, Renderer: componentApi.SourceRendererHelm})
 	}
+
+	sort.Slice(sources, func(i int, j int) bool {
+		if sources[i].Path == sources[j].Path {
+			return sources[i].Renderer < sources[j].Renderer
+		}
+
+		return sources[i].Path < sources[j].Path
+	})
+
 	obj.Status.Module.Sources = sources
 
 	return nil

@@ -19,6 +19,7 @@ package mymodule
 import (
 	"context"
 	"fmt"
+	"sort"
 
 	networkingv1 "k8s.io/api/networking/v1"
 	k8serr "k8s.io/apimachinery/pkg/api/errors"
@@ -233,6 +234,14 @@ func (m *Module) reportStatus(_ context.Context, rr *odhtypes.ReconciliationRequ
 			Renderer: componentApi.SourceRendererHelm,
 		})
 	}
+
+	sort.Slice(sources, func(i int, j int) bool {
+		if sources[i].Path == sources[j].Path {
+			return sources[i].Renderer < sources[j].Renderer
+		}
+
+		return sources[i].Path < sources[j].Path
+	})
 
 	obj.Status.Module.Sources = sources
 

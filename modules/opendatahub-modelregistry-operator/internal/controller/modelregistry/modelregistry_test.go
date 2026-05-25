@@ -137,6 +137,7 @@ func TestReportStatus(t *testing.T) {
 	rr := newTestRR(obj)
 
 	g.Expect(m.initialize(context.Background(), rr)).To(Succeed())
+	rr.Manifests[0], rr.Manifests[1] = rr.Manifests[1], rr.Manifests[0]
 	g.Expect(m.reportStatus(context.Background(), rr)).To(Succeed())
 
 	g.Expect(obj.Status.Module.Version.String()).To(Equal(version.Version))
@@ -144,4 +145,5 @@ func TestReportStatus(t *testing.T) {
 	g.Expect(obj.Status.Module.Platform.Version.String()).To(Equal("1.0.0"))
 	g.Expect(obj.Status.Module.Sources).To(HaveLen(2))
 	g.Expect(obj.Status.Module.Sources[0].Renderer).To(Equal(componentApi.SourceRendererKustomize))
+	g.Expect(obj.Status.Module.Sources[0].Path <= obj.Status.Module.Sources[1].Path).To(BeTrue())
 }

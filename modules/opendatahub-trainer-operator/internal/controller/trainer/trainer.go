@@ -19,6 +19,7 @@ package trainer
 import (
 	"context"
 	"fmt"
+	"sort"
 
 	componentApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-trainer-operator/api/components/v1alpha1"
 	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-trainer-operator/pkg/config"
@@ -109,6 +110,14 @@ func (m *Module) reportStatus(_ context.Context, rr *odhtypes.ReconciliationRequ
 			Renderer: componentApi.SourceRendererHelm,
 		})
 	}
+
+	sort.Slice(sources, func(i int, j int) bool {
+		if sources[i].Path == sources[j].Path {
+			return sources[i].Renderer < sources[j].Renderer
+		}
+
+		return sources[i].Path < sources[j].Path
+	})
 
 	obj.Status.Module.Sources = sources
 

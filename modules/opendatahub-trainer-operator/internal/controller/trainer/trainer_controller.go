@@ -136,6 +136,7 @@ func NewReconciler(
 		)).
 		WithAction(deploy.NewAction(
 			deploy.WithCache(),
+			deploy.WithApplyOrder(),
 		)).
 		WithAction(deployments.NewAction()).
 		WithAction(m.reportStatus).

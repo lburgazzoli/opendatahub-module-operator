@@ -20,6 +20,7 @@ import (
 	"context"
 	"fmt"
 	"path"
+	"sort"
 
 	corev1 "k8s.io/api/core/v1"
 
@@ -92,6 +93,14 @@ func (m *Module) reportStatus(_ context.Context, rr *odhtypes.ReconciliationRequ
 			Renderer: localapi.SourceRendererKustomize,
 		})
 	}
+
+	sort.Slice(sources, func(i int, j int) bool {
+		if sources[i].Path == sources[j].Path {
+			return sources[i].Renderer < sources[j].Renderer
+		}
+
+		return sources[i].Path < sources[j].Path
+	})
 
 	obj.Status.Module.Sources = sources
 

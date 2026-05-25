@@ -20,6 +20,7 @@ import (
 	"context"
 	"fmt"
 	"path"
+	"sort"
 
 	odhtypes "github.com/opendatahub-io/opendatahub-operator/v2/pkg/controller/types"
 	odhdeploy "github.com/opendatahub-io/opendatahub-operator/v2/pkg/deploy"
@@ -151,6 +152,14 @@ func (m *Module) reportStatus(_ context.Context, rr *odhtypes.ReconciliationRequ
 			Renderer: componentApi.SourceRendererHelm,
 		})
 	}
+
+	sort.Slice(sources, func(i int, j int) bool {
+		if sources[i].Path == sources[j].Path {
+			return sources[i].Renderer < sources[j].Renderer
+		}
+
+		return sources[i].Path < sources[j].Path
+	})
 
 	obj.Status.Module.Sources = sources
 
