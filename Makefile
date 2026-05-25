@@ -4,6 +4,12 @@
 # Root Makefile is monorepo orchestration only.
 SHELL = /usr/bin/env bash -o pipefail
 .SHELLFLAGS = -ec
+CONTAINER_TOOL ?= podman
+ALL_MODULES_IMG ?= ttl.sh/opendatahub-module-operators-$(shell git rev-parse --short HEAD 2>/dev/null || echo dev):1h
+VERSION ?= 0.0.0-dev
+GIT_COMMIT ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)
+GIT_BRANCH ?= $(shell git rev-parse --abbrev-ref HEAD 2>/dev/null || echo unknown)
+GIT_REPO ?= $(shell git remote get-url origin 2>/dev/null || echo unknown)
 
 MODULE_DIRS ?= \
 	modules/opendatahub-feast-operator \
@@ -13,7 +19,8 @@ MODULE_DIRS ?= \
 	modules/opendatahub-ogx-operator \
 	modules/opendatahub-ray-operator \
 	modules/opendatahub-spark-operator \
-	modules/opendatahub-trustyai-operator
+	modules/opendatahub-trustyai-operator \
+	modules/opendatahub-workbenches-operator
 
 .PHONY: help
 help: ## Display this help.
@@ -43,3 +50,12 @@ lint-modules: ## Run golangci-lint across all tracked module operators.
 
 .PHONY: verify-all
 verify-all: test-modules lint-modules ## Run the standard aggregate verification suite.
+
+.PHONY: container-build-all-modules
+container-build-all-modules: ## Build a single image containing all real module operators.
+	$(CONTAINER_TOOL) build -f Containerfile \
+		--build-arg VERSION="$(VERSION)" \
+		--build-arg GIT_COMMIT="$(GIT_COMMIT)" \
+		--build-arg GIT_BRANCH="$(GIT_BRANCH)" \
+		--build-arg GIT_REPO="$(GIT_REPO)" \
+		-t ${ALL_MODULES_IMG} .

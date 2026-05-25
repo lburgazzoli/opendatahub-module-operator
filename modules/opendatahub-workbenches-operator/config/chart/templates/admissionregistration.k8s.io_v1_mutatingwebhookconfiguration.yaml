@@ -1,0 +1,47 @@
+apiVersion: admissionregistration.k8s.io/v1
+kind: MutatingWebhookConfiguration
+metadata:
+  annotations:
+    cert-manager.io/inject-ca-from: {{ .Release.Namespace }}/opendatahub-workbenches-operator-serving-cert
+  name: opendatahub-workbenches-operator-mutating-webhook-configuration
+webhooks:
+- admissionReviewVersions:
+  - v1
+  clientConfig:
+    service:
+      name: opendatahub-workbenches-operator-webhook-service
+      namespace: {{ .Release.Namespace }}
+      path: /platform-connection-notebook
+  failurePolicy: Fail
+  name: connection-notebook.opendatahub.io
+  rules:
+  - apiGroups:
+    - kubeflow.org
+    apiVersions:
+    - v1
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - notebooks
+  sideEffects: None
+- admissionReviewVersions:
+  - v1
+  clientConfig:
+    service:
+      name: opendatahub-workbenches-operator-webhook-service
+      namespace: {{ .Release.Namespace }}
+      path: /mutate-hardware-profile
+  failurePolicy: Fail
+  name: hardwareprofile-notebook-injector.opendatahub.io
+  rules:
+  - apiGroups:
+    - kubeflow.org
+    apiVersions:
+    - v1
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - notebooks
+  sideEffects: None

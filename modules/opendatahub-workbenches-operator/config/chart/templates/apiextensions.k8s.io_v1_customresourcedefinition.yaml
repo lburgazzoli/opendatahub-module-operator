@@ -1,0 +1,591 @@
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.17.3
+  name: hardwareprofiles.infrastructure.opendatahub.io
+spec:
+  group: infrastructure.opendatahub.io
+  names:
+    kind: HardwareProfile
+    listKind: HardwareProfileList
+    plural: hardwareprofiles
+    singular: hardwareprofile
+  scope: Namespaced
+  versions:
+  - name: v1
+    schema:
+      openAPIV3Schema:
+        description: HardwareProfile is the Schema for the hardwareprofiles API.
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: HardwareProfileSpec defines the desired state of HardwareProfile.
+            properties:
+              identifiers:
+                description: The array of identifiers
+                items:
+                  properties:
+                    defaultCount:
+                      anyOf:
+                      - type: integer
+                      - type: string
+                      description: The default count can be an integer or a string.
+                      x-kubernetes-int-or-string: true
+                    displayName:
+                      description: The display name of identifier.
+                      type: string
+                    identifier:
+                      description: The resource identifier of the hardware device.
+                      type: string
+                    maxCount:
+                      anyOf:
+                      - type: integer
+                      - type: string
+                      description: The maximum count can be an integer or a string.
+                      x-kubernetes-int-or-string: true
+                    minCount:
+                      anyOf:
+                      - type: integer
+                      - type: string
+                      description: The minimum count can be an integer or a string.
+                      x-kubernetes-int-or-string: true
+                    resourceType:
+                      description: The type of identifier. could be "CPU", "Memory",
+                        or "Accelerator". Leave it undefined for the other types.
+                      enum:
+                      - CPU
+                      - Memory
+                      - Accelerator
+                      type: string
+                  required:
+                  - defaultCount
+                  - displayName
+                  - identifier
+                  - minCount
+                  type: object
+                type: array
+              scheduling:
+                description: SchedulingSpec specifies how workloads using this hardware
+                  profile should be scheduled.
+                properties:
+                  kueue:
+                    description: |-
+                      Kueue specifies queue-based scheduling configuration.
+                      This field is only valid when schedulingType is "Queue".
+                    properties:
+                      localQueueName:
+                        description: |-
+                          LocalQueueName specifies the name of the local queue to use for workload scheduling.
+                          When specified, workloads using this hardware profile will be submitted to the
+                          specified queue and the queue's configuration will determine the actual node
+                          placement and tolerations.
+                        minLength: 1
+                        type: string
+                      priorityClass:
+                        description: PriorityClass specifies the name of the WorkloadPriorityClass
+                          associated with the HardwareProfile.
+                        type: string
+                    required:
+                    - localQueueName
+                    type: object
+                  node:
+                    description: |-
+                      node specifies direct node scheduling configuration.
+                      This field is only valid when schedulingType is "Node".
+                    properties:
+                      nodeSelector:
+                        additionalProperties:
+                          type: string
+                        description: |-
+                          NodeSelector specifies the node selector to use for direct node scheduling.
+                          Workloads will be scheduled only on nodes that match all the specified labels.
+                        type: object
+                      tolerations:
+                        description: |-
+                          Tolerations specifies the tolerations to apply to workloads for direct node scheduling.
+                          These tolerations allow workloads to be scheduled on nodes with matching taints.
+                        items:
+                          description: |-
+                            The pod this Toleration is attached to tolerates any taint that matches
+                            the triple <key,value,effect> using the matching operator <operator>.
+                          properties:
+                            effect:
+                              description: |-
+                                Effect indicates the taint effect to match. Empty means match all taint effects.
+                                When specified, allowed values are NoSchedule, PreferNoSchedule and NoExecute.
+                              type: string
+                            key:
+                              description: |-
+                                Key is the taint key that the toleration applies to. Empty means match all taint keys.
+                                If the key is empty, operator must be Exists; this combination means to match all values and all keys.
+                              type: string
+                            operator:
+                              description: |-
+                                Operator represents a key's relationship to the value.
+                                Valid operators are Exists, Equal, Lt, and Gt. Defaults to Equal.
+                                Exists is equivalent to wildcard for value, so that a pod can
+                                tolerate all taints of a particular category.
+                                Lt and Gt perform numeric comparisons (requires feature gate TaintTolerationComparisonOperators).
+                              type: string
+                            tolerationSeconds:
+                              description: |-
+                                TolerationSeconds represents the period of time the toleration (which must be
+                                of effect NoExecute, otherwise this field is ignored) tolerates the taint. By default,
+                                it is not set, which means tolerate the taint forever (do not evict). Zero and
+                                negative values will be treated as 0 (evict immediately) by the system.
+                              format: int64
+                              type: integer
+                            value:
+                              description: |-
+                                Value is the taint value the toleration matches to.
+                                If the operator is Exists, the value should be empty, otherwise just a regular string.
+                              type: string
+                          type: object
+                        type: array
+                    type: object
+                  type:
+                    description: |-
+                      SchedulingType is the scheduling method discriminator.
+                      Users must set this value to indicate which scheduling method to use.
+                      The value of this field should match exactly one configured scheduling method.
+                      Valid values are "Queue" and "Node".
+                    enum:
+                    - Queue
+                    - Node
+                    type: string
+                required:
+                - type
+                type: object
+                x-kubernetes-validations:
+                - message: When schedulingType is 'Queue', the 'kueue.localQueueName'
+                    field must be specified and non-empty, and the 'node' field must
+                    not be set
+                  rule: 'self.type == ''Queue'' ? (has(self.kueue) && has(self.kueue.localQueueName)
+                    && !has(self.node)) : true'
+                - message: When schedulingType is 'Node', the 'node' field must be
+                    set, and the 'kueue' field must not be set
+                  rule: 'self.type == ''Node'' ? (has(self.node) && !has(self.kueue))
+                    : true'
+            type: object
+          status:
+            description: HardwareProfileStatus defines the observed state of HardwareProfile.
+            type: object
+        required:
+        - spec
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}
+  - deprecated: true
+    deprecationWarning: infrastructure.opendatahub.io/v1alpha1 is deprecated; please
+      use infrastructure.opendatahub.io/v1
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: HardwareProfile is the Schema for the hardwareprofiles API.
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: HardwareProfileSpec defines the desired state of HardwareProfile.
+            properties:
+              identifiers:
+                description: The array of identifiers
+                items:
+                  properties:
+                    defaultCount:
+                      anyOf:
+                      - type: integer
+                      - type: string
+                      description: The default count can be an integer or a string.
+                      x-kubernetes-int-or-string: true
+                    displayName:
+                      description: The display name of identifier.
+                      type: string
+                    identifier:
+                      description: The resource identifier of the hardware device.
+                      type: string
+                    maxCount:
+                      anyOf:
+                      - type: integer
+                      - type: string
+                      description: The maximum count can be an integer or a string.
+                      x-kubernetes-int-or-string: true
+                    minCount:
+                      anyOf:
+                      - type: integer
+                      - type: string
+                      description: The minimum count can be an integer or a string.
+                      x-kubernetes-int-or-string: true
+                    resourceType:
+                      description: The type of identifier. could be "CPU", "Memory",
+                        or "Accelerator". Leave it undefined for the other types.
+                      enum:
+                      - CPU
+                      - Memory
+                      - Accelerator
+                      type: string
+                  required:
+                  - defaultCount
+                  - displayName
+                  - identifier
+                  - minCount
+                  type: object
+                type: array
+              scheduling:
+                description: SchedulingSpec specifies how workloads using this hardware
+                  profile should be scheduled.
+                properties:
+                  kueue:
+                    description: |-
+                      Kueue specifies queue-based scheduling configuration.
+                      This field is only valid when schedulingType is "Queue".
+                    properties:
+                      localQueueName:
+                        description: |-
+                          LocalQueueName specifies the name of the local queue to use for workload scheduling.
+                          When specified, workloads using this hardware profile will be submitted to the
+                          specified queue and the queue's configuration will determine the actual node
+                          placement and tolerations.
+                        minLength: 1
+                        type: string
+                      priorityClass:
+                        description: PriorityClass specifies the name of the WorkloadPriorityClass
+                          associated with the HardwareProfile.
+                        type: string
+                    required:
+                    - localQueueName
+                    type: object
+                  node:
+                    description: |-
+                      node specifies direct node scheduling configuration.
+                      This field is only valid when schedulingType is "Node".
+                    properties:
+                      nodeSelector:
+                        additionalProperties:
+                          type: string
+                        description: |-
+                          NodeSelector specifies the node selector to use for direct node scheduling.
+                          Workloads will be scheduled only on nodes that match all the specified labels.
+                        type: object
+                      tolerations:
+                        description: |-
+                          Tolerations specifies the tolerations to apply to workloads for direct node scheduling.
+                          These tolerations allow workloads to be scheduled on nodes with matching taints.
+                        items:
+                          description: |-
+                            The pod this Toleration is attached to tolerates any taint that matches
+                            the triple <key,value,effect> using the matching operator <operator>.
+                          properties:
+                            effect:
+                              description: |-
+                                Effect indicates the taint effect to match. Empty means match all taint effects.
+                                When specified, allowed values are NoSchedule, PreferNoSchedule and NoExecute.
+                              type: string
+                            key:
+                              description: |-
+                                Key is the taint key that the toleration applies to. Empty means match all taint keys.
+                                If the key is empty, operator must be Exists; this combination means to match all values and all keys.
+                              type: string
+                            operator:
+                              description: |-
+                                Operator represents a key's relationship to the value.
+                                Valid operators are Exists, Equal, Lt, and Gt. Defaults to Equal.
+                                Exists is equivalent to wildcard for value, so that a pod can
+                                tolerate all taints of a particular category.
+                                Lt and Gt perform numeric comparisons (requires feature gate TaintTolerationComparisonOperators).
+                              type: string
+                            tolerationSeconds:
+                              description: |-
+                                TolerationSeconds represents the period of time the toleration (which must be
+                                of effect NoExecute, otherwise this field is ignored) tolerates the taint. By default,
+                                it is not set, which means tolerate the taint forever (do not evict). Zero and
+                                negative values will be treated as 0 (evict immediately) by the system.
+                              format: int64
+                              type: integer
+                            value:
+                              description: |-
+                                Value is the taint value the toleration matches to.
+                                If the operator is Exists, the value should be empty, otherwise just a regular string.
+                              type: string
+                          type: object
+                        type: array
+                    type: object
+                  type:
+                    description: |-
+                      SchedulingType is the scheduling method discriminator.
+                      Users must set this value to indicate which scheduling method to use.
+                      The value of this field should match exactly one configured scheduling method.
+                      Valid values are "Queue" and "Node".
+                    enum:
+                    - Queue
+                    - Node
+                    type: string
+                required:
+                - type
+                type: object
+                x-kubernetes-validations:
+                - message: When schedulingType is 'Queue', the 'kueue.localQueueName'
+                    field must be specified and non-empty, and the 'node' field must
+                    not be set
+                  rule: 'self.type == ''Queue'' ? (has(self.kueue) && has(self.kueue.localQueueName)
+                    && !has(self.node)) : true'
+                - message: When schedulingType is 'Node', the 'node' field must be
+                    set, and the 'kueue' field must not be set
+                  rule: 'self.type == ''Node'' ? (has(self.node) && !has(self.kueue))
+                    : true'
+            type: object
+          status:
+            description: HardwareProfileStatus defines the observed state of HardwareProfile.
+            type: object
+        required:
+        - spec
+        type: object
+    served: true
+    storage: false
+    subresources:
+      status: {}
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.20.1
+  name: workbenches.components.platform.opendatahub.io
+spec:
+  group: components.platform.opendatahub.io
+  names:
+    kind: Workbenches
+    listKind: WorkbenchesList
+    plural: workbenches
+    singular: workbenches
+  scope: Cluster
+  versions:
+  - additionalPrinterColumns:
+    - description: Ready
+      jsonPath: .status.conditions[?(@.type=="Ready")].status
+      name: Ready
+      type: string
+    - description: Reason
+      jsonPath: .status.conditions[?(@.type=="Ready")].reason
+      name: Reason
+      type: string
+    - description: Module Version
+      jsonPath: .status.module.version
+      name: Version
+      type: string
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: Workbenches is the Schema for the workbenches API.
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: WorkbenchesSpec defines the desired state of Workbenches.
+            properties:
+              workbenchNamespace:
+                default: opendatahub
+                description: |-
+                  Namespace for workbenches to be installed.
+                  Configurable only once when workbenches are enabled, defaults to "opendatahub".
+                maxLength: 63
+                pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?)?$
+                type: string
+                x-kubernetes-validations:
+                - message: WorkbenchNamespace is immutable
+                  rule: self == oldSelf
+            type: object
+          status:
+            description: WorkbenchesStatus defines the observed state of Workbenches.
+            properties:
+              conditions:
+                items:
+                  properties:
+                    lastHeartbeatTime:
+                      description: |-
+                        The last time we got an update on a given condition, this should not be set and is
+                        present only for backward compatibility reasons
+                      format: date-time
+                      type: string
+                    lastTransitionTime:
+                      description: |-
+                        lastTransitionTime is the last time the condition transitioned from one status to another.
+                        This should be when the underlying condition changed.
+                        If that is not known, then using the time when the API field changed is acceptable.
+                      format: date-time
+                      type: string
+                    message:
+                      description: message is a human-readable message indicating
+                        details about the transition.
+                      type: string
+                    observedGeneration:
+                      description: |-
+                        observedGeneration represents the .metadata.generation that the condition was set based upon.
+                        For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration
+                        is 9, the condition is out of date with respect to the current state of the instance.
+                      format: int64
+                      minimum: 0
+                      type: integer
+                    reason:
+                      description: |-
+                        reason contains a programmatic identifier indicating the reason for the condition's last transition.
+                        The value should be a CamelCase string.
+                      type: string
+                    severity:
+                      description: |-
+                        Severity with which to treat failures of this type of condition.
+                        When this is not specified, it defaults to Error.
+                      type: string
+                    status:
+                      description: status of the condition, one of True, False, Unknown.
+                      enum:
+                      - "True"
+                      - "False"
+                      - Unknown
+                      type: string
+                    type:
+                      description: type of condition in CamelCase or in foo.example.com/CamelCase.
+                      maxLength: 316
+                      pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
+                      type: string
+                  required:
+                  - status
+                  - type
+                  type: object
+                type: array
+                x-kubernetes-list-type: atomic
+              module:
+                description: Module reports the module operator's runtime information.
+                properties:
+                  buildSource:
+                    description: |-
+                      BuildSource identifies the source the operator was built from
+                      in the format repo@branch/commit (e.g. github.com/org/repo@main/abc1234).
+                    type: string
+                  platform:
+                    description: Platform reports the detected platform identity and
+                      version.
+                    properties:
+                      name:
+                        description: Name is the platform identifier (e.g. OpenDataHub,
+                          SelfManagedRHOAI).
+                        type: string
+                      version:
+                        description: Version is the platform operator version.
+                        type: string
+                    required:
+                    - name
+                    type: object
+                  sources:
+                    description: Sources lists the manifest sources loaded during
+                      reconciliation.
+                    items:
+                      description: SourceStatus describes a manifest source loaded
+                        during reconciliation.
+                      properties:
+                        path:
+                          description: Path is the resolved manifest source path.
+                          type: string
+                        renderer:
+                          description: Renderer is the rendering engine used for this
+                            source.
+                          enum:
+                          - kustomize
+                          - helm
+                          - template
+                          type: string
+                      required:
+                      - path
+                      - renderer
+                      type: object
+                    type: array
+                  version:
+                    description: Version is the module operator version.
+                    type: string
+                required:
+                - version
+                type: object
+              observedGeneration:
+                description: The generation observed by the resource controller.
+                format: int64
+                type: integer
+              phase:
+                type: string
+              releases:
+                items:
+                  description: ComponentRelease represents the detailed status of
+                    a component release.
+                  properties:
+                    name:
+                      type: string
+                    repoUrl:
+                      type: string
+                    version:
+                      type: string
+                  required:
+                  - name
+                  type: object
+                type: array
+                x-kubernetes-list-map-keys:
+                - name
+                x-kubernetes-list-type: map
+              workbenchNamespace:
+                type: string
+            type: object
+        type: object
+        x-kubernetes-validations:
+        - message: Workbenches name must be default-workbenches
+          rule: self.metadata.name == 'default-workbenches'
+    served: true
+    storage: true
+    subresources:
+      status: {}

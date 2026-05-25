@@ -1,0 +1,18 @@
+# The workbenches operator must deploy aggregated ClusterRoles (notebooks-admin,
+# notebooks-edit, kubeflow-notebooks-admin, etc.) which require cluster-admin
+# privileges to create. This binding is required in addition to the manager-role.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  labels:
+    app.kubernetes.io/name: opendatahub-workbenches-operator
+    app.kubernetes.io/managed-by: kustomize
+  name: cluster-admin-rolebinding
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: cluster-admin
+subjects:
+- kind: ServiceAccount
+  name: controller-manager
+  namespace: system
