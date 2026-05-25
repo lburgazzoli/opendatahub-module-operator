@@ -58,9 +58,8 @@ import (
 )
 
 const (
-	testNamespace = "integration-test"
-	timeout = 3 * time.Minute
-	interval      = 2 * time.Second
+	timeout  = 3 * time.Minute
+	interval = 2 * time.Second
 
 	labelPartOf            = "platform.opendatahub.io/part-of"
 	annotationInstanceName = "platform.opendatahub.io/instance.name"
@@ -108,6 +107,8 @@ func runTestMain(m *testing.M) int {
 		fmt.Fprintf(os.Stderr, "Failed to create client: %v\n", err)
 		return 1
 	}
+
+	testNamespace := support.HelmNamespace()
 
 	if err := support.EnsureNamespace(ctx, directClient, testNamespace); err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to create namespace: %v\n", err)
@@ -219,6 +220,8 @@ type feastTest struct {
 }
 
 func TestMLflowOperator(t *testing.T) {
+	testNamespace := support.HelmNamespace()
+
 	rt := &feastTest{
 		module: &componentsv1alpha1.MLflowOperator{
 			ObjectMeta: metav1.ObjectMeta{

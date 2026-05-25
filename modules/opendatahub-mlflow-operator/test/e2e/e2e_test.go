@@ -43,12 +43,12 @@ import (
 
 	componentsv1alpha1 "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-mlflow-operator/api/components/v1alpha1"
 	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-mlflow-operator/pkg/config"
+	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-mlflow-operator/test/support"
 )
 
 const (
-	operatorNamespace = "opendatahub-mlflow-operator-system"
-	timeout           = 90 * time.Second
-	interval          = 2 * time.Second
+	timeout  = 90 * time.Second
+	interval = 2 * time.Second
 
 	labelPartOf            = "platform.opendatahub.io/part-of"
 	annotationInstanceName = "platform.opendatahub.io/instance.name"
@@ -109,6 +109,8 @@ type mlflowE2ETest struct {
 }
 
 func TestMLflowOperator(t *testing.T) {
+	operatorNamespace := support.HelmNamespace()
+
 	rt := &mlflowE2ETest{
 		module: &componentsv1alpha1.MLflowOperator{
 			ObjectMeta: metav1.ObjectMeta{

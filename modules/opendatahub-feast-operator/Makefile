@@ -67,11 +67,11 @@ test: manifests generate fmt vet ## Run unit tests.
 
 .PHONY: test-integration-run
 test-integration-run: ## Run integration tests only (cluster must be prepared).
-	go test ./test/integration/ -tags=integration -v -timeout 5m -failfast
+	HELM_NAMESPACE="$(HELM_NAMESPACE)" go test ./test/integration/ -tags=integration -v -timeout 5m -failfast
 
 .PHONY: prepare-integration
 prepare-integration: manifests generate ## Clean cluster state and install CRDs for integration tests.
-	$(MAKE) cleanup-integration
+	$(MAKE) cleanup-integration HELM_NAMESPACE="$(HELM_NAMESPACE)"
 	$(MAKE) install
 
 .PHONY: test-integration
@@ -79,18 +79,18 @@ test-integration: prepare-integration test-integration-run ## Run integration te
 
 .PHONY: test-e2e-run
 test-e2e-run: ## Run e2e tests only (operator must already be deployed).
-	go test ./test/e2e/ -tags=e2e -v -timeout 5m -failfast
+	HELM_NAMESPACE="$(HELM_NAMESPACE)" go test ./test/e2e/ -tags=e2e -v -timeout 5m -failfast
 
 .PHONY: test-e2e
 test-e2e: cleanup-e2e deploy-helm test-e2e-run ## Run e2e tests (cleans cluster, deploys operator, then tests).
 
 .PHONY: cleanup-integration
 cleanup-integration: ## Clean up integration test resources from the cluster.
-	./hack/scripts/cleanup-integration.sh
+	HELM_NAMESPACE="$(HELM_NAMESPACE)" ./hack/scripts/cleanup-integration.sh "$(HELM_NAMESPACE)"
 
 .PHONY: cleanup-e2e
 cleanup-e2e: ## Clean up e2e test resources and uninstall operator from the cluster.
-	./hack/scripts/cleanup-e2e.sh
+	HELM_NAMESPACE="$(HELM_NAMESPACE)" ./hack/scripts/cleanup-e2e.sh "$(HELM_NAMESPACE)" "$(HELM_RELEASE)"
 
 .PHONY: lint
 lint: ## Run golangci-lint linter.

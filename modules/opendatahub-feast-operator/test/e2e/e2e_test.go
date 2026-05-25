@@ -43,12 +43,12 @@ import (
 
 	componentsv1alpha1 "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-feast-operator/api/components/v1alpha1"
 	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-feast-operator/pkg/config"
+	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-feast-operator/test/support"
 )
 
 const (
-	operatorNamespace = "opendatahub-feast-operator-system"
-	timeout           = 90 * time.Second
-	interval          = 2 * time.Second
+	timeout  = 90 * time.Second
+	interval = 2 * time.Second
 
 	labelPartOf            = "platform.opendatahub.io/part-of"
 	annotationInstanceName = "platform.opendatahub.io/instance.name"
@@ -109,6 +109,8 @@ type rayE2ETest struct {
 }
 
 func TestFeastOperator(t *testing.T) {
+	operatorNamespace := support.HelmNamespace()
+
 	rt := &rayE2ETest{
 		module: &componentsv1alpha1.FeastOperator{
 			ObjectMeta: metav1.ObjectMeta{
