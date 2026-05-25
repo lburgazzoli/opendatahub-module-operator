@@ -12,6 +12,14 @@ on:
       image_name:
         required: true
         type: string
+      run_integration_tests:
+        required: false
+        type: boolean
+        default: false
+      run_e2e_tests:
+        required: false
+        type: boolean
+        default: false
 
 permissions: {}
 
@@ -22,7 +30,7 @@ jobs:
     name: ${{ inputs.module_name }}
     runs-on: ubuntu-latest
     env:
-      KUBECONFIG: ${{ runner.temp }}/kubeconfig
+      KUBECONFIG: /tmp/kubeconfig
       ODH_PLATFORM_TYPE: OpenDataHub
     steps:
       - name: Clone the code
@@ -36,7 +44,7 @@ jobs:
           go-version-file: ${{ inputs.module_path }}/go.mod
 
       - name: Write OpenShift kubeconfig
-        if: ${{ false }}
+        if: ${{ inputs.run_integration_tests || inputs.run_e2e_tests }}
         env:
           OPENSHIFT_KUBECONFIG: ${{ secrets.KUBECONFIG }}
         run: |
@@ -53,34 +61,34 @@ jobs:
           make test
 
       - name: Run integration tests
-        if: ${{ false }}
+        if: ${{ inputs.run_integration_tests }}
         working-directory: ${{ inputs.module_path }}
         run: |
           make test-integration
 
       - name: Compute image reference
         id: img
-        if: ${{ false }}
+        if: ${{ inputs.run_e2e_tests }}
         run: |
           IMG="ttl.sh/${{ inputs.image_name }}-${GITHUB_SHA::7}:1h"
           echo "img=${IMG}" >> "$GITHUB_OUTPUT"
           echo "Using image: ${IMG}"
 
       - name: Build and push image
-        if: ${{ false }}
+        if: ${{ inputs.run_e2e_tests }}
         working-directory: ${{ inputs.module_path }}
         run: |
           make container-build IMG=${{ steps.img.outputs.img }}
           make container-push IMG=${{ steps.img.outputs.img }}
 
       - name: Generate Helm chart
-        if: ${{ false }}
+        if: ${{ inputs.run_e2e_tests }}
         working-directory: ${{ inputs.module_path }}
         run: |
           make helm
 
       - name: Run e2e tests
-        if: ${{ false }}
+        if: ${{ inputs.run_e2e_tests }}
         working-directory: ${{ inputs.module_path }}
         run: |
           make test-e2e IMG=${{ steps.img.outputs.img }}
