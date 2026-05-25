@@ -16,8 +16,8 @@ It has a step-by-step checklist; detailed docs live in
 porting, CRD types, manifest scripts, testing, e2e workflow, verification
 gates, adversarial review, troubleshooting).
 
-**Default test cluster:** OpenShift (CRC, ROSA, dev). Kind is optional for the
-example module — see [testing-limitations.md](testing-limitations.md).
+**Default test cluster:** OpenShift (CRC, ROSA, dev). Use a connected cluster
+or CRC via kubeconfig.
 
 ## Completed Modules
 
@@ -45,7 +45,7 @@ example module — see [testing-limitations.md](testing-limitations.md).
 - [manifest-sources.md](manifest-sources.md) — Per-component manifest repo/ref/path
 - [upgrade-logic.md](upgrade-logic.md) — Upgrade functions and which components they affect
 - [webhook-logic.md](webhook-logic.md) — Per-component webhook mapping
-- [testing-limitations.md](testing-limitations.md) — Known testing limitations (SCC on Kind, etc.)
+- [testing-limitations.md](testing-limitations.md) — OpenShift testing assumptions and limits
 
 ## Skills
 
@@ -85,4 +85,4 @@ example module — see [testing-limitations.md](testing-limitations.md).
     before subtests; integration waits for cache sync in TestMain
 13. **Ephemeral e2e images**: Prefer a fresh `ttl.sh` tag per e2e run so the
     cluster pulls the image you just built instead of reusing a stale cached tag
-14. **OpenShift first**: Module integration/e2e assume OpenShift; Kind is optional
+14. **OpenShift only**: Module integration/e2e assume OpenShift APIs are available

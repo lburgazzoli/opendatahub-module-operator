@@ -5,7 +5,7 @@
 `hack/scripts/get-manifests.sh` — downloads component manifests from GitHub.
 
 Module hack scripts use **hyphens**, not underscores (e.g. `get-manifests.sh`,
-`fetch-external-crds.sh`, `cleanup-integration.sh`).
+`cleanup-integration.sh`, `cleanup-e2e.sh`).
 
 ## Source
 

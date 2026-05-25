@@ -56,8 +56,8 @@ Ray name must be default-ray → $KIND name must be default-$COMPONENT
 opendatahub-ray-operator → $MODULE_NAME
 ```
 
-Apply `$MODULE_NAME` to: image name, Helm release, namespace, Kind cluster
-name, leader election ID, ConfigMap name, `app.kubernetes.io/name` label.
+Apply `$MODULE_NAME` to: image name, Helm release, namespace, leader election
+ID, ConfigMap name, `app.kubernetes.io/name` label.
 
 The env var prefix is **`ODH_MODULE_OPERATOR_`** for ALL modules — same as
 the example module. Do NOT include the component name. This should NOT be

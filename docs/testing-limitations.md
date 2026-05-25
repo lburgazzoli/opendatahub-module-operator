@@ -15,32 +15,13 @@ Use the skill testing guide:
 E2e/container workflow:
 `.agents/skills/odh-component-to-module/references/e2e-workflow.md`
 
-## Kind (optional, not default)
+## Unsupported Cluster Types
 
-Kind is supported for the **example module**
-`modules/opendatahub-mymodule-operator/` local dev only.
-OpenShift-specific resources (SCC) do not reconcile on plain Kind — see
-[testing-limitations.md](testing-limitations.md).
+Supported integration and e2e testing assumes a real **OpenShift** API surface.
+Plain Kubernetes environments that do not provide OpenShift resources are not a
+supported validation path for this repo.
 
-```sh
-cd modules/opendatahub-mymodule-operator
-make kind-create
-make test-integration
-make kind-delete
-```
-
-Split modules should be tested on OpenShift, not Kind.
-
-## SCC on Kind clusters
-
-Components that deploy `SecurityContextConstraints` (e.g., ray) fail on Kind
-because the OpenShift SCC controller is not present. The CRD schema enforces
-required fields that the SCC controller normally handles on OpenShift.
-
-**Workaround options (Kind only):**
-1. Run integration/e2e tests on OpenShift (recommended)
-2. Use a kustomize overlay that excludes the SCC for Kind testing
-3. Strip SCC resources from the kustomize output at test time
-
-**Affected components:** ray, datasciencepipelines, any component with SCC in
-its manifests.
+In particular, components that deploy `SecurityContextConstraints` (for example
+ray) require OpenShift behavior that is not present on non-OpenShift clusters.
+Use CRC, ROSA, or another connected OpenShift cluster instead of trying to
+approximate these APIs locally.

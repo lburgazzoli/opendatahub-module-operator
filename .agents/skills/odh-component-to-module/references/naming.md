@@ -25,8 +25,8 @@ example module. It does NOT contain the component name:
 ## What uses the module name
 
 The module name is used for: directory, go.mod module path, image name, Helm
-release, Kubernetes namespace, Kind cluster name, ConfigMap name,
-`app.kubernetes.io/name` label, and leader election ID.
+release, Kubernetes namespace, ConfigMap name, `app.kubernetes.io/name` label,
+and leader election ID.
 
 The env prefix does NOT use the module name.
 
@@ -37,13 +37,11 @@ Use **hyphens**, not underscores, under `hack/scripts/`:
 | Script | Purpose |
 |--------|---------|
 | `get-manifests.sh` | Fetch component manifests |
-| `fetch-external-crds.sh` | Kind-only external CRD generation |
 | `cleanup-integration.sh` | Pre-integration test cleanup |
 | `cleanup-e2e.sh` | Pre-e2e test cleanup |
-| `kind-setup.sh` | Kind cluster + cert-manager |
 
-Makefile targets may use hyphens too (`get-manifests`, `fetch-external-crds`,
-`container-prep`, `build-bin`).
+Makefile targets may use hyphens too (`get-manifests`, `container-prep`,
+`build-bin`).
 
 **Container build:** `container-prep` (host) → `container-build` (image tag;
 only `build-bin` runs inside the Containerfile).

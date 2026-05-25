@@ -28,9 +28,6 @@ HELM           = go run helm.sh/helm/v4/cmd/helm@$(HELM_VERSION)
 KUBECTL ?= kubectl
 
 MODULE_NAME ?= $(notdir $(CURDIR))
-CRC_REGISTRY ?=
-CRC_IMAGE_NAMESPACE ?=
-CRC_IMG ?=
 
 .PHONY: all
 all: build
@@ -150,10 +147,6 @@ container-build: container-prep ## Build container image with the manager.
 .PHONY: container-push
 container-push: ## Push container image with the manager.
 	$(CONTAINER_TOOL) push ${IMG}
-
-.PHONY: container-push-crc
-container-push-crc: ## Push container image to the CRC internal registry and print the pushed image reference.
-	@IMG="${IMG}" CRC_REGISTRY="$(CRC_REGISTRY)" CRC_IMAGE_NAMESPACE="$(CRC_IMAGE_NAMESPACE)" CRC_IMG="$(CRC_IMG)" MODULE_NAME="$(MODULE_NAME)" CONTAINER_TOOL="$(CONTAINER_TOOL)" ./hack/scripts/push-container-crc.sh
 
 ##@ Helm
 

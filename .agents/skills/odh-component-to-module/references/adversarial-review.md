@@ -97,8 +97,8 @@ Check EVERY dimension and report ALL stale references with file:line:
 4. Type names — CRD types, constants (${KIND}*, ${KIND}InstanceName), no Ray*
 5. File and directory names — no ray_*.go, no internal/controller/ray/
 6. PROJECT file — projectName, repo, kind, path match $MODULE_NAME and $KIND
-7. Makefile / Containerfile — IMG, HELM_RELEASE, KIND_CLUSTER, VERSION_PKG,
-   leader election ID use $MODULE_NAME not opendatahub-ray-operator
+7. Makefile / Containerfile — IMG, HELM_RELEASE, VERSION_PKG, leader election
+   ID use $MODULE_NAME not opendatahub-ray-operator
 8. K8s manifests — Namespace, Deployment labels, ConfigMap names, RBAC
    resourceNames, CRD filenames, sample YAML names use $MODULE_NAME / $KIND
 9. Helm chart — Chart.yaml, values, template helpers, release name

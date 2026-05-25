@@ -173,7 +173,7 @@ wrapper pattern.
 ## Testing
 
 Default cluster for module integration/e2e: **OpenShift** (CRC, ROSA, dev).
-Kind is optional — see `docs/testing-limitations.md`.
+Use an OpenShift kubeconfig (connected cluster or CRC).
 
 | Target | Scope | Requires |
 |---|---|---|

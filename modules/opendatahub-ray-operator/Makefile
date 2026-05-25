@@ -18,16 +18,16 @@ CONTROLLER_GEN_VERSION ?= v0.20.1
 KUSTOMIZE_VERSION      ?= v5.8.1
 GOLANGCI_LINT_VERSION  ?= v2.11.4
 HELM_VERSION           ?= v4.2.0
-KIND_VERSION           ?= v0.31.0
 
 ## Tool Commands
 CONTROLLER_GEN = go run sigs.k8s.io/controller-tools/cmd/controller-gen@$(CONTROLLER_GEN_VERSION)
 KUSTOMIZE      = go run sigs.k8s.io/kustomize/kustomize/v5@$(KUSTOMIZE_VERSION)
 GOLANGCI_LINT  = go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION)
 HELM           = go run helm.sh/helm/v4/cmd/helm@$(HELM_VERSION)
-KIND           = go run sigs.k8s.io/kind@$(KIND_VERSION)
 
 KUBECTL ?= kubectl
+
+MODULE_NAME ?= $(notdir $(CURDIR))
 
 .PHONY: all
 all: build
@@ -104,10 +104,6 @@ lint-fix: ## Run golangci-lint linter and perform fixes.
 get-manifests: ## Download component manifests.
 	./hack/scripts/get-manifests.sh
 
-.PHONY: fetch-external-crds
-fetch-external-crds: ## Fetch external CRDs needed for testing (e.g. SCC).
-	./hack/scripts/fetch-external-crds.sh
-
 ##@ Build
 
 VERSION_PKG    = github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-ray-operator/pkg/version
@@ -166,23 +162,6 @@ helm: manifests generate ## Generate Helm chart from kustomize output.
 .PHONY: helm-status
 helm-status: ## Show Helm release status.
 	$(HELM) status $(HELM_RELEASE) --namespace $(HELM_NAMESPACE)
-
-##@ Kind
-
-KIND_CLUSTER         ?= opendatahub-ray-operator
-KIND_NODE_IMAGE      ?=
-CERT_MANAGER_VERSION ?= v1.17.2
-
-.PHONY: kind-create
-kind-create: ## Create a Kind cluster with podman provider and install cert-manager.
-	KIND="$(KIND)" HELM="$(HELM)" CONTAINER_TOOL="$(CONTAINER_TOOL)" \
-		KIND_CLUSTER=$(KIND_CLUSTER) KIND_NODE_IMAGE=$(KIND_NODE_IMAGE) \
-		CERT_MANAGER_VERSION=$(CERT_MANAGER_VERSION) \
-		hack/scripts/kind-setup.sh
-
-.PHONY: kind-delete
-kind-delete: ## Delete the Kind cluster.
-	KIND_EXPERIMENTAL_PROVIDER="$(CONTAINER_TOOL)" $(KIND) delete cluster --name $(KIND_CLUSTER)
 
 ##@ Deployment
 

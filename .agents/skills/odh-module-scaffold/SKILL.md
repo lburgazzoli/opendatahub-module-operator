@@ -188,9 +188,9 @@ After changes: `make helm` regenerates the chart and verifies it lints.
 ## Testing
 
 **Target cluster: OpenShift** (CRC, ROSA, dev cluster). Integration and e2e
-tests assume OpenShift APIs (e.g. SCC) are available on the cluster — not a
-vanilla Kind cluster. See [testing.md](../odh-component-to-module/references/testing.md)
-(OpenShift assumptions) and `docs/testing-limitations.md` for Kind caveats.
+tests assume OpenShift APIs (e.g. SCC) are available on the cluster. See
+[testing.md](../odh-component-to-module/references/testing.md) for the OpenShift
+assumptions and `docs/testing-limitations.md` for unsupported cluster types.
 
 Tests use the **Go `testing` package** with **Gomega** and **gomega-matchers**.
 

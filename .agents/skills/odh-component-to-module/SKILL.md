@@ -210,6 +210,9 @@ Run all gates in [verification-gates.md](references/verification-gates.md), then
 ### 9–9b. Adversarial reviews
 
 Spawn **both** subagents per [adversarial-review.md](references/adversarial-review.md).
+Do **not** skip these reviews, even if build, lint, integration, and e2e are
+already green. A migration is not complete, PR-ready, or ready to commit until
+both adversarial reviews have run and their findings have been addressed.
 
 ### 10. Fix findings and cluster verify
 

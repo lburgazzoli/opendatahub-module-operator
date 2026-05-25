@@ -6,11 +6,6 @@ on:
 
 permissions: {}
 
-env:
-  # Kubernetes versions to test against (Kind node images from kind v0.31.0).
-  # Update these when a new Kind release ships newer images.
-  K8S_VERSIONS: '["v1.33.7", "v1.34.3", "v1.35.0"]'
-
 jobs:
   build:
     permissions:
@@ -19,7 +14,6 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       img: ${{ steps.img.outputs.img }}
-      k8s-versions: ${{ steps.versions.outputs.k8s-versions }}
     steps:
       - name: Clone the code
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -38,11 +32,6 @@ jobs:
           echo "img=${IMG}" >> "$GITHUB_OUTPUT"
           echo "Using image: ${IMG}"
 
-      - name: Export Kubernetes versions
-        id: versions
-        run: |
-          echo "k8s-versions=${K8S_VERSIONS}" >> "$GITHUB_OUTPUT"
-
       - name: Build and push image
         working-directory: modules/opendatahub-mymodule-operator
         run: |
@@ -51,13 +40,9 @@ jobs:
   e2e-helm:
     permissions:
       contents: read
-    name: e2e helm (k8s ${{ matrix.k8s-version }})
+    name: e2e helm (OpenShift)
     needs: build
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        k8s-version: ${{ fromJson(needs.build.outputs.k8s-versions) }}
     steps:
       - name: Clone the code
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -69,17 +54,27 @@ jobs:
         with:
           go-version-file: modules/opendatahub-mymodule-operator/go.mod
 
-      - name: Create Kind cluster
-        working-directory: modules/opendatahub-mymodule-operator
+      - name: Write OpenShift kubeconfig
+        env:
+          OPENSHIFT_KUBECONFIG: ${{ secrets.KUBECONFIG }}
         run: |
-          make kind-create KIND_NODE_IMAGE=kindest/node:${{ matrix.k8s-version }}
+          test -n "${OPENSHIFT_KUBECONFIG}" || {
+            echo "Missing KUBECONFIG secret"
+            exit 1
+          }
+          printf '%s\n' "${OPENSHIFT_KUBECONFIG}" > "${RUNNER_TEMP}/kubeconfig"
+          chmod 600 "${RUNNER_TEMP}/kubeconfig"
 
       - name: Deploy via Helm
         working-directory: modules/opendatahub-mymodule-operator
+        env:
+          KUBECONFIG: ${{ runner.temp }}/kubeconfig
         run: |
           make deploy-helm IMG=${{ needs.build.outputs.img }}
 
       - name: Run e2e tests
         working-directory: modules/opendatahub-mymodule-operator
+        env:
+          KUBECONFIG: ${{ runner.temp }}/kubeconfig
         run: |
           make test-e2e-run

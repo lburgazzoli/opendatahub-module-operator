@@ -205,4 +205,4 @@ For each simple component, the work is:
   the module-local `pkg/resources/gvk/gvk.go` wrapper
 - Each module gets its own CI, image build, Helm chart
 - Test on **OpenShift** with `make test-integration` / `make test-e2e` per module
-- Kind is optional for the example module only — see `docs/testing-limitations.md`
+- Use an OpenShift kubeconfig for module integration/e2e verification

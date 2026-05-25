@@ -20,7 +20,6 @@ guidance. It is not an operator project.
 - podman
 - kubectl
 - Access to an **OpenShift** cluster (CRC, ROSA, or dev) for module integration/e2e tests
-- Optional: Kind for the example module under `modules/opendatahub-mymodule-operator/`
 
 ## Working On A Module
 

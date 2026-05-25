@@ -3,15 +3,14 @@
 ## OpenShift assumptions
 
 Integration and e2e tests are run against **OpenShift** (CRC, ROSA, shared dev
-cluster) — not vanilla Kind. Assume:
+cluster). Assume:
 
 - **Kubeconfig** points at OpenShift (`oc login` or existing context).
 - **OpenShift APIs** (SCC, Route, etc.) exist on the cluster — no need to
   install synthetic CRDs before tests (see [external-crds.md](external-crds.md)).
 - **Platform overlay** in tests matches the cluster: use `rhoai` or `odh` from
-  `config/manager/configmap.yaml`, not a Kind-specific stub.
-- **SCC workloads** reconcile normally — ray and similar components deploy SCC
-  resources; this fails on Kind but works on OpenShift.
+  `config/manager/configmap.yaml` based on the OpenShift environment under test.
+- **SCC workloads** reconcile normally because OpenShift provides the required APIs.
 - **Image pull**: push to a registry the cluster can reach (`ttl.sh`, internal
   registry, or `imagePullSecrets` on the operator namespace if required).
   For e2e verification, prefer a fresh ephemeral `ttl.sh` tag per run so the
@@ -20,8 +19,7 @@ cluster) — not vanilla Kind. Assume:
 Use `oc` or `kubectl` interchangeably in cleanup scripts; prefer whatever is
 in the user's PATH.
 
-For Kind-only local dev (optional, not the default path), see
-`docs/testing-limitations.md`.
+Unsupported non-OpenShift clusters are documented in `docs/testing-limitations.md`.
 
 ## Pre-test cleanup (required)
 
