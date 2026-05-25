@@ -1,0 +1,6 @@
+apiVersion: v2
+name: opendatahub-modelregistry-operator
+description: ODH ModelRegistry Operator Helm chart
+version: 0.1.0
+appVersion: "0.1.0"
+type: application

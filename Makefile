@@ -8,6 +8,7 @@ SHELL = /usr/bin/env bash -o pipefail
 MODULE_DIRS ?= \
 	modules/opendatahub-feast-operator \
 	modules/opendatahub-mlflow-operator \
+	modules/opendatahub-modelregistry-operator \
 	modules/opendatahub-mymodule-operator \
 	modules/opendatahub-ogx-operator \
 	modules/opendatahub-ray-operator \

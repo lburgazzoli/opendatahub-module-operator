@@ -17,14 +17,14 @@ Excluded from migration scope: `modelsasservice`, `kueue`, and `modelcontroller`
 | ogx | Yes | OGX | default-ogx | CM, SA, Svc, Role/Binding, ClusterRole/Binding, Deployment, PDB | CRD (by label) | DSC (deprecation check for LlamaStack) | opendatahub-io/ogx-k8s-operator |
 | mlflowoperator | Yes | MLflowOperator | default-mlflowoperator | CM, SA, Svc, ClusterRole/Binding, ConsoleLink, ServiceMonitor, Deployment, MLflow CRD | CRD (by label), HTTPRoute | Gateway domain (read config) | opendatahub-io/mlflow-operator |
 | trustyai | Yes | TrustyAI | default-trustyai | CM, SA, Svc, ClusterRole/Binding, Role/Binding, Deployment | CRD (by label + InferenceServices CRD) | KServe CRD must exist | opendatahub-io/trustyai-service-operator |
-| trainer | No | Trainer | default-trainer | CM, SA, Svc, ClusterRole/Binding, Deployment, PodMonitor, ClusterTrainingRuntime | CRD (by label), JobSetOperator | JobSet operator status | opendatahub-io/trainer |
+| trainer | Yes | Trainer | default-trainer | CM, SA, Svc, ClusterRole/Binding, Deployment, PodMonitor, ClusterTrainingRuntime | CRD (by label), JobSetOperator | JobSet operator status | opendatahub-io/trainer |
 
 ## Medium Components
 
 | Component | Migrated | CRD Kind | Instance Name | Notes |
 |-----------|----------|----------|---------------|-------|
-| datasciencepipelines | No | DataSciencePipelines | default-datasciencepipelines | Argo Workflows CRD precondition, SCC ownership |
-| modelregistry | No | ModelRegistry | default-modelregistry | Gateway domain dependency, template rendering, extra manifests |
+| datasciencepipelines | Yes | DataSciencePipelines | default-datasciencepipelines | Argo Workflows CRD precondition, SCC ownership |
+| modelregistry | Yes | ModelRegistry | default-modelregistry | Gateway domain from spec.gateway.domain, template rendering, extras overlay, registries namespace |
 
 ## Complex Components
 
