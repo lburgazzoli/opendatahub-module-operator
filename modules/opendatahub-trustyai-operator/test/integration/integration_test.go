@@ -72,6 +72,7 @@ var (
 	ctx             context.Context
 	cancel          context.CancelFunc
 	k8sClient       client.Client
+	directClient    client.Client
 	k               *k8sm.Matcher
 	operatorCfgData map[string]string
 	testScheme      = runtime.NewScheme()
@@ -100,7 +101,7 @@ func runTestMain(m *testing.M) int {
 		return 1
 	}
 
-	directClient, err := client.New(cfg, client.Options{Scheme: testScheme})
+	directClient, err = client.New(cfg, client.Options{Scheme: testScheme})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to create client: %v\n", err)
 		return 1
@@ -264,10 +265,43 @@ func TestTrustyAI(t *testing.T) {
 	})
 
 	t.Run("should have module CRD installed", rt.testModuleCRDInstalled)
+	t.Run("should report not ready when precondition CRD is missing", rt.testPreconditionCRDMissing)
 	t.Run("should become ready", rt.testBecomesReady)
 	t.Run("should report module version and platform", rt.testModuleStatus)
 	t.Run("should set platform labels and annotations", rt.testPlatformLabels)
 	t.Run("should set owner references", rt.testOwnerReferences)
+}
+
+// testPreconditionCRDMissing verifies that the CR reports ProvisioningSucceeded=False
+// when the Kserve module CRD (a required precondition) is absent.
+func (rt *trustyAITest) testPreconditionCRDMissing(t *testing.T) {
+	g := NewWithT(t)
+
+	kserveCRD := &apiextensionsv1.CustomResourceDefinition{}
+	kserveCRD.Name = "kserves.components.platform.opendatahub.io"
+
+	// Remove the Kserve module stub CRD to simulate the missing precondition.
+	g.Expect(directClient.Delete(ctx, kserveCRD)).To(Succeed())
+	t.Cleanup(func() {
+		_ = support.EnsureStubCRD(ctx, directClient, "kserves.components.platform.opendatahub.io",
+			"components.platform.opendatahub.io", "v1alpha1", "Kserve", "kserves")
+	})
+
+	rt.module.ResourceVersion = ""
+	g.Expect(k8sClient.Create(ctx, rt.module)).To(Succeed())
+	t.Cleanup(func() {
+		_ = k8sClient.Delete(ctx, rt.module)
+		g.Eventually(func(g Gomega) {
+			m := &componentsv1alpha1.TrustyAI{}
+			err := k8sClient.Get(ctx, client.ObjectKeyFromObject(rt.module), m)
+			g.Expect(k8serr.IsNotFound(err)).To(BeTrue())
+		}).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(Succeed())
+		rt.module.ResourceVersion = ""
+	})
+
+	g.Eventually(k.Get(rt.module)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(
+		jq.Match(`.status.conditions[] | select(.type == "ProvisioningSucceeded") | .status == "False"`),
+	)
 }
 
 func (rt *trustyAITest) testModuleCRDInstalled(t *testing.T) {
