@@ -22,6 +22,7 @@ jobs:
     name: Detect changed modules
     runs-on: ubuntu-latest
     outputs:
+      mymodule: ${{ steps.filter.outputs.mymodule }}
       ray: ${{ steps.filter.outputs.ray }}
       spark: ${{ steps.filter.outputs.spark }}
       feast: ${{ steps.filter.outputs.feast }}
@@ -37,12 +38,27 @@ jobs:
         uses: dorny/paths-filter@3b5e8027d2c8e1d8c5f8f6c9e3d6f7c2b3c7a9cd # v3.0.2
         with:
           filters: |
+            mymodule:
+              - 'modules/opendatahub-mymodule-operator/**'
             ray:
               - 'modules/opendatahub-ray-operator/**'
             spark:
               - 'modules/opendatahub-spark-operator/**'
             feast:
               - 'modules/opendatahub-feast-operator/**'
+
+  test-mymodule:
+    name: opendatahub-mymodule-operator
+    needs: changes
+    if: ${{ needs.changes.outputs.mymodule == 'true' }}
+    uses: ./.github/workflows/module-test.yml
+    permissions:
+      contents: read
+    secrets: inherit
+    with:
+      module_name: opendatahub-mymodule-operator
+      module_path: modules/opendatahub-mymodule-operator
+      image_name: opendatahub-mymodule-operator
 
   test-ray:
     name: opendatahub-ray-operator

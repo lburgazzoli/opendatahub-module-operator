@@ -5,7 +5,7 @@ Run these from `modules/$MODULE_NAME/` after rename and before/alongside
 
 ## Env prefix (steps 2b, 8)
 
-Every module uses **`ODH_MODULE_OPERATOR_`** — identical to the root reference
+Every module uses **`ODH_MODULE_OPERATOR_`** — identical to the example module
 in `pkg/config/config.go`.
 
 ```bash

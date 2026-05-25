@@ -321,12 +321,12 @@ For a **split module** under `modules/`, use
 [odh-component-to-module](../odh-component-to-module/SKILL.md) — do not
 hand-scaffold from mymodule.
 
-To extend the **root reference operator** only:
+To extend the **example module** only (`modules/opendatahub-mymodule-operator/`):
 
 1. `kubebuilder create api --group components --version v1alpha1 --kind NewModule --namespaced=false`
 2. Replace types with PlatformObject contract (embed `common.Status` + `common.ComponentReleaseStatus`)
 3. Add CEL singleton validation marker
-4. Create `internal/controller/components/newmodule/` (controller, actions, support)
+4. Create `internal/controller/newmodule/` (controller, actions, support)
 5. Pass `*moduleconfig.Config` to `NewReconciler(ctx, mgr, cfg)`
 6. Register in `cmd/operator/operator.go`
 7. `make manifests generate build test`

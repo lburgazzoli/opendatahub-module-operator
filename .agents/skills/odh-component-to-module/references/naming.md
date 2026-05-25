@@ -16,7 +16,7 @@ with `operator`, split at that boundary and re-join with a dash.
 ## Env prefix
 
 The env prefix is **`ODH_MODULE_OPERATOR_`** for ALL modules — same as the
-root reference operator. It does NOT contain the component name:
+example module. It does NOT contain the component name:
 - `ODH_MODULE_OPERATOR_CONFIGURATION_PATH`
 - `ODH_MODULE_OPERATOR_MANIFESTS_PATH`
 - `ODH_MODULE_OPERATOR_APPLICATIONS_NAMESPACE`

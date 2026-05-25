@@ -58,7 +58,7 @@ inputs for porting.
 
 ## From module scaffold (must not rename)
 
-When copying from the ray module, these values come from the root reference
+When copying from the ray module, these values come from the example module
 and must **not** change during component rename:
 
 - [ ] **EnvPrefix** = `"ODH_MODULE_OPERATOR"` in `pkg/config/config.go`

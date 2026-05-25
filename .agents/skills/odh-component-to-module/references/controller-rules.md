@@ -255,12 +255,14 @@ Without this, the controller fails at startup with:
 ## Env prefix
 
 **Rule:** `ODH_MODULE_OPERATOR_` for every module operator — identical to the
-root reference. Never use `ODH_OPERATOR_`. Never embed the component name
+example module. Never use `ODH_OPERATOR_`. Never embed the component name
 (e.g. `ODH_RAY_OPERATOR_*`). `pkg/config.EnvPrefix` and `ConfigPathEnvVar`
 must match deployment env vars and `make run`.
 
-Copy from root [`pkg/config/config.go`](../../../../pkg/config/config.go) and
-[`config/manager/manager.yaml`](../../../../config/manager/manager.yaml).
+Copy from the example module
+[`modules/opendatahub-mymodule-operator/pkg/config/config.go`](../../../../modules/opendatahub-mymodule-operator/pkg/config/config.go)
+and
+[`modules/opendatahub-mymodule-operator/config/manager/manager.yaml`](../../../../modules/opendatahub-mymodule-operator/config/manager/manager.yaml).
 
 These files must stay in sync:
 

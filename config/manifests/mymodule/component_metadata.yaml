@@ -1,4 +1,0 @@
-releases:
-  - name: MyModule
-    version: "0.1.0"
-    repoUrl: https://github.com/lburgazzoli/opendatahub-module-operator

@@ -1,0 +1,17 @@
+apiVersion: v1
+data:
+  {{- with .Values.imagePullSecret }}
+  imagePullSecret: {{ . }}
+  {{- end }}
+  {{- range $key, $val := .Values.config }}
+  {{ $key }}: {{ $val | quote }}
+  {{- end }}
+  platform-type: OpenDataHub
+  platform-version: unknown
+kind: ConfigMap
+metadata:
+  labels:
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: opendatahub-mymodule-operator
+  name: opendatahub-mymodule-operator-config
+  namespace: {{ .Release.Namespace }}

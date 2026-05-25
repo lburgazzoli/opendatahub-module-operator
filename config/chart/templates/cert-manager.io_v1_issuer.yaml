@@ -1,7 +1,0 @@
-apiVersion: cert-manager.io/v1
-kind: Issuer
-metadata:
-  name: opendatahub-module-operator-selfsigned-issuer
-  namespace: {{ .Release.Namespace }}
-spec:
-  selfSigned: {}

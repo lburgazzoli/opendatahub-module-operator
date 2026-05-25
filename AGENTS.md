@@ -2,9 +2,10 @@
 
 ## Module Split
 
-This repo contains the reference module operator AND the split-out component
-modules under `modules/`. See `docs/index.md` for the full plan, completed
-modules, lessons learned, and links to all reference docs.
+This repo is a monorepo of module operators under `modules/`. The runnable
+example operator lives at `modules/opendatahub-mymodule-operator/`. See
+`docs/index.md` for the full plan, completed modules, lessons learned, and
+links to all reference docs.
 
 To create a new module from a monolith component, use the
 `odh-component-to-module` skill.
@@ -48,36 +49,45 @@ Do NOT delete `// +kubebuilder:scaffold:*` comments.
 
 ## Project Layout
 
-Multi-group kubebuilder project (`multigroup: true` in PROJECT).
+Each module is a multi-group kubebuilder project (`multigroup: true` in
+`PROJECT`). The example lives under
+`modules/opendatahub-mymodule-operator/`, and other split modules follow the
+same shape:
 
 ```
-api/components/v1alpha1/       CRD types (MyModule, ModuleStatus, etc.)
-cmd/main.go                    Cobra root command
-cmd/operator/                  Operator subcommand (manager lifecycle)
-cmd/chartgen/                  Helm chart generator (reads kustomize YAML from stdin)
-internal/controller/components/mymodule/   Controller (ReconcilerFor + actions)
-pkg/cache/                     Cache transform (StripUnusedFields)
-pkg/config/                    Operator config (viper + ConfigMap loading)
-pkg/resources/gvk/             Module-local GVK registry for controllers and chartgen
-pkg/version/                   Build metadata (ldflags)
-config/manifests/              Workload manifests (kustomize overlays per platform)
-config/manager/                Operator Deployment + ConfigMap
-hack/scripts/                  kind-setup.sh
-test/integration/              In-process manager against Kind
-test/e2e/                      Against deployed operator
-test/support/                  Shared test helpers
+modules/$name/
+  api/components/v1alpha1/     CRD types
+  cmd/main.go                  Cobra root command
+  cmd/operator/                Operator subcommand (manager lifecycle)
+  cmd/chartgen/                Helm chart generator
+  internal/controller/$name/   Controller (ReconcilerFor + actions)
+  pkg/cache/                   Cache transform (StripUnusedFields)
+  pkg/config/                  Operator config (viper + ConfigMap loading)
+  pkg/resources/gvk/           Module-local GVK registry for controllers and chartgen
+  pkg/version/                 Build metadata (ldflags)
+  config/manifests/            Workload manifests (kustomize overlays per platform)
+  config/manager/              Operator Deployment + ConfigMap
+  hack/scripts/                Cluster/test helper scripts
+  test/integration/            In-process manager tests
+  test/e2e/                    Deployed operator tests
+  test/support/                Shared test helpers
 ```
 
 Uses `Containerfile` (not Dockerfile) and `podman` (not docker).
 Use `local.mk` (gitignored) for local Makefile overrides.
 
+The root `Makefile` is monorepo orchestration only. Run operator-specific
+targets from the module directory.
+
 ## Action Pipeline
 
-Split modules under `modules/` follow the monolith order with module additions
-— see `.agents/skills/odh-component-to-module/references/controller-rules.md`.
+Split modules under `modules/` follow the monolith order with module
+additions — see
+`.agents/skills/odh-component-to-module/references/controller-rules.md`.
 
-The root **mymodule** reference controller uses a different pipeline order;
-do not use it as the template for new split modules.
+The example **mymodule** controller under
+`modules/opendatahub-mymodule-operator/` is kept as a runnable example. Use
+the split-module pipeline rules, not legacy root layout assumptions.
 
 ```
 [component actions] -> initialize -> upgradeIfNeeded -> releases -> kustomize
@@ -135,7 +145,8 @@ The local package is the module's internal source of truth for GVK values:
 
 ## Configuration
 
-See `pkg/config/config.go` and SKILL.md for the three-layer config model.
+See `modules/opendatahub-mymodule-operator/pkg/config/config.go` and SKILL.md
+for the three-layer config model.
 Env var prefix: `ODH_MODULE_OPERATOR_`.
 
 ## Operator Dependency
@@ -185,19 +196,20 @@ When iterating locally with the same tag, Kubernetes still re-pulls. For
 extra safety (or if the policy is overridden), use a unique tag per build:
 
 ```sh
-IMG=ttl.sh/opendatahub-module-operator-$(uuidgen):1h \
+cd modules/opendatahub-mymodule-operator
+IMG=ttl.sh/opendatahub-mymodule-operator-$(uuidgen):1h \
   make container-build container-push deploy-helm
 ```
 
 ## Make Targets
 
 All tools use `go run <module>@<version>` — no local binary downloads.
-Run `make help` for the full list. Key non-obvious targets:
+Run module-local `make help` for operator targets and root `make help` for
+aggregate monorepo targets. Key root targets:
 
 | Target | Purpose |
 |---|---|
-| `make helm` | Generate Helm chart from kustomize via `chartgen` subcommand |
-| `make test-integration` | In-process manager (OpenShift; modules use cleanup wiring) |
-| `make test-e2e` | Against deployed operator (modules: cleanup + deploy + test) |
-| `make kind-create` | Optional Kind cluster (not default for module tests) |
-| `make deploy-helm` | Deploy via Helm (`--set-string` for image tag) |
+| `make list-modules` | Print module directories covered by aggregate targets |
+| `make test-modules` | Run unit-test workflows across tracked modules |
+| `make lint-modules` | Run lint across tracked modules |
+| `make verify-all` | Run aggregate verification across tracked modules |

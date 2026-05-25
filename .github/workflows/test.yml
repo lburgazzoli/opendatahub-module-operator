@@ -1,4 +1,4 @@
-name: Tests
+name: Aggregate Module Tests
 
 on:
   push:
@@ -21,9 +21,7 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6.3.0
         with:
-          go-version-file: go.mod
+          go-version-file: modules/opendatahub-mymodule-operator/go.mod
 
-      - name: Running Tests
-        run: |
-          go mod tidy
-          make test
+      - name: Run aggregate module tests
+        run: make test-modules

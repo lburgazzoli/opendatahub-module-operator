@@ -5,7 +5,7 @@
 Each module is a standalone Go project under `modules/$name/` with:
 - Its own `go.mod`, `Makefile`, `Containerfile`
 - A `get-manifests.sh` fetching only its component manifests
-- A `cmd/chartgen/` copied from the reference (only reusable piece)
+- A `cmd/chartgen/` copied from the example module (only reusable piece)
 - Local copy of its CRD types (from opendatahub-operator api/components/v1alpha1)
 - A `pkg/resources/gvk/gvk.go` package as the module-local source of truth for
   all controller and chartgen GVKs
@@ -60,7 +60,7 @@ Manifest paths, platform overlays, and image parameters are often fixed for
 the lifetime of the process. Compute them once in `NewModule()` and store on
 the Module struct — do NOT recompute them on every reconcile.
 
-Pattern from the reference implementation:
+Pattern from the example implementation:
 ```go
 func NewModule(cfg *moduleconfig.Config) (*Module, error) {
     // Computed once, stored on struct
@@ -111,7 +111,7 @@ For each simple component, the work is:
 
 ### Task Template (repeat per component)
 
-1. **Scaffold** — Copy reference module structure to `modules/$name/`
+1. **Scaffold** — Copy example module structure to `modules/$name/`
 2. **CRD types** — Copy the component's types from opendatahub-operator, adjust package/imports
 3. **get-manifests.sh** — Extract this component's entry from get_all_manifests.sh
 4. **Controller** — Port the controller pipeline:
@@ -196,7 +196,7 @@ For each simple component, the work is:
 
 ## Execution Notes
 
-- Start each module by copying the reference `mymodule` structure
+- Start each module by copying the example `modules/opendatahub-mymodule-operator/` structure
 - Replace `mymodule` naming with the component name throughout
 - The chartgen command is the only code reused from this repo — copy the
   structure, then retarget it to the module-local `pkg/resources/gvk/gvk.go`
@@ -205,4 +205,4 @@ For each simple component, the work is:
   the module-local `pkg/resources/gvk/gvk.go` wrapper
 - Each module gets its own CI, image build, Helm chart
 - Test on **OpenShift** with `make test-integration` / `make test-e2e` per module
-- Kind is optional for root reference only — see `docs/testing-limitations.md`
+- Kind is optional for the example module only — see `docs/testing-limitations.md`

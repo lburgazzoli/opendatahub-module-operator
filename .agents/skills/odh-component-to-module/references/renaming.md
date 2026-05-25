@@ -60,7 +60,7 @@ Apply `$MODULE_NAME` to: image name, Helm release, namespace, Kind cluster
 name, leader election ID, ConfigMap name, `app.kubernetes.io/name` label.
 
 The env var prefix is **`ODH_MODULE_OPERATOR_`** for ALL modules — same as
-the root reference. Do NOT include the component name. This should NOT be
+the example module. Do NOT include the component name. This should NOT be
 renamed when copying a module to a new component.
 
 **Do-not-rename / forbidden prefixes:**

@@ -1,0 +1,138 @@
+# Adds namespace to all resources.
+namespace: opendatahub-mymodule-operator-system
+
+# Value of this field is prepended to the
+# names of all resources, e.g. a deployment named
+# "wordpress" becomes "alices-wordpress".
+# Note that it should also match with the prefix (text before '-') of the namespace
+# field above.
+namePrefix: opendatahub-mymodule-operator-
+
+# Labels to add to all resources and selectors.
+#labels:
+#- includeSelectors: true
+#  pairs:
+#    someName: someValue
+
+resources:
+- ../crd
+- ../rbac
+- ../manager
+# [WEBHOOK] Webhook resources (Service + MutatingWebhookConfiguration).
+- ../webhook
+# [CERTMANAGER] cert-manager issuer and certificate for webhook TLS.
+- ../certmanager
+# [PROMETHEUS] To enable prometheus monitor, uncomment all sections with 'PROMETHEUS'.
+#- ../prometheus
+# [METRICS] Expose the controller manager metrics service.
+- metrics_service.yaml
+# [NETWORK POLICY] Protect the /metrics endpoint and Webhook Server with NetworkPolicy.
+# Only Pod(s) running a namespace labeled with 'metrics: enabled' will be able to gather the metrics.
+# Only CR(s) which requires webhooks and are applied on namespaces labeled with 'webhooks: enabled' will
+# be able to communicate with the Webhook Server.
+#- ../network-policy
+
+patches:
+# [METRICS] The following patch will enable the metrics endpoint using HTTPS and the port :8443.
+# More info: https://book.kubebuilder.io/reference/metrics
+- path: manager_metrics_patch.yaml
+  target:
+    kind: Deployment
+
+# [WEBHOOK] Mount the webhook TLS cert secret into the manager.
+- path: manager_webhook_patch.yaml
+  target:
+    kind: Deployment
+
+# [CERTMANAGER] Replacements to wire the cert-manager Certificate to the
+# webhook Service name/namespace and inject the CA bundle into the
+# MutatingWebhookConfiguration.
+replacements:
+  # Webhook service name -> Certificate dnsNames
+  - source:
+      kind: Service
+      version: v1
+      name: webhook-service
+      fieldPath: .metadata.name
+    targets:
+      - select:
+          kind: Certificate
+          group: cert-manager.io
+          version: v1
+          name: serving-cert
+        fieldPaths:
+          - .spec.dnsNames.0
+          - .spec.dnsNames.1
+        options:
+          delimiter: '.'
+          index: 0
+          create: true
+  # Webhook service namespace -> Certificate dnsNames
+  - source:
+      kind: Service
+      version: v1
+      name: webhook-service
+      fieldPath: .metadata.namespace
+    targets:
+      - select:
+          kind: Certificate
+          group: cert-manager.io
+          version: v1
+          name: serving-cert
+        fieldPaths:
+          - .spec.dnsNames.0
+          - .spec.dnsNames.1
+        options:
+          delimiter: '.'
+          index: 1
+          create: true
+  # Certificate namespace -> MutatingWebhookConfiguration CA injection annotation
+  - source:
+      kind: Certificate
+      group: cert-manager.io
+      version: v1
+      name: serving-cert
+      fieldPath: .metadata.namespace
+    targets:
+      - select:
+          kind: MutatingWebhookConfiguration
+        fieldPaths:
+          - .metadata.annotations.[cert-manager.io/inject-ca-from]
+        options:
+          delimiter: '/'
+          index: 0
+          create: true
+  # Certificate name -> MutatingWebhookConfiguration CA injection annotation
+  - source:
+      kind: Certificate
+      group: cert-manager.io
+      version: v1
+      name: serving-cert
+      fieldPath: .metadata.name
+    targets:
+      - select:
+          kind: MutatingWebhookConfiguration
+        fieldPaths:
+          - .metadata.annotations.[cert-manager.io/inject-ca-from]
+        options:
+          delimiter: '/'
+          index: 1
+          create: true
+  # Issuer name -> Certificate issuerRef.name (namePrefix cross-reference)
+  - source:
+      kind: Issuer
+      group: cert-manager.io
+      version: v1
+      name: selfsigned-issuer
+      fieldPath: .metadata.name
+    targets:
+      - select:
+          kind: Certificate
+          group: cert-manager.io
+          version: v1
+          name: serving-cert
+        fieldPaths:
+          - .spec.issuerRef.name
+
+# +kubebuilder:scaffold:crdkustomizecainjectionns
+# +kubebuilder:scaffold:crdkustomizecainjectionname

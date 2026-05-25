@@ -1,0 +1,17 @@
+config:
+  platform-type: OpenDataHub
+  platform-version: unknown
+image:
+  pullPolicy: Always
+  repository: ttl.sh/opendatahub-mymodule-operator
+  tag: 1h
+leaderElect: true
+replicas: 1
+resources:
+  limits:
+    cpu: 500m
+    memory: 128Mi
+  requests:
+    cpu: 10m
+    memory: 64Mi
+serviceAccount: {}

@@ -17,13 +17,15 @@ E2e/container workflow:
 
 ## Kind (optional, not default)
 
-Kind is supported for the **root reference operator** local dev only.
+Kind is supported for the **example module**
+`modules/opendatahub-mymodule-operator/` local dev only.
 OpenShift-specific resources (SCC) do not reconcile on plain Kind — see
 [testing-limitations.md](testing-limitations.md).
 
 ```sh
-make kind-create          # Optional local cluster
-make test-integration     # Root reference only
+cd modules/opendatahub-mymodule-operator
+make kind-create
+make test-integration
 make kind-delete
 ```
 

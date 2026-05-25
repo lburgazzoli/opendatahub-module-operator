@@ -3,9 +3,9 @@
 ## Goal
 
 Split the monolithic opendatahub-operator into independent module operators,
-one per component. Each module lives under `modules/$name/` in this repo and
-follows the patterns established by the existing `mymodule` reference
-implementation.
+one per component. Each module lives under `modules/$name/` in this repo. The
+runnable example operator also lives under
+`modules/opendatahub-mymodule-operator/`.
 
 ## How to Create a New Module
 
@@ -17,7 +17,7 @@ porting, CRD types, manifest scripts, testing, e2e workflow, verification
 gates, adversarial review, troubleshooting).
 
 **Default test cluster:** OpenShift (CRC, ROSA, dev). Kind is optional for the
-root reference operator only — see [testing-limitations.md](testing-limitations.md).
+example module — see [testing-limitations.md](testing-limitations.md).
 
 ## Completed Modules
 
@@ -30,7 +30,7 @@ root reference operator only — see [testing-limitations.md](testing-limitation
 
 | What | Path |
 |------|------|
-| Reference module operator | this repo (`internal/controller/mymodule/`) |
+| Example module operator | `modules/opendatahub-mymodule-operator/` |
 | Completed ray module | `modules/opendatahub-ray-operator/` |
 | Component controllers | `/home/luca/work/dev/openshift-ai/opendatahub-operator/internal/controller/components/` |
 | Component API types | `/home/luca/work/dev/openshift-ai/opendatahub-operator/api/components/v1alpha1/` |
@@ -62,7 +62,7 @@ root reference operator only — see [testing-limitations.md](testing-limitation
 
 ## Key Lessons Learned (from ray module)
 
-1. **Env prefix**: Use `ODH_MODULE_OPERATOR_` for ALL modules — same as the root reference; no component name in env vars
+1. **Env prefix**: Use `ODH_MODULE_OPERATOR_` for ALL modules — same as the example module; no component name in env vars
 2. **Manifest permissions**: OpenShift assigns arbitrary UIDs. Use `chmod -R a+rX` in builder stage, init container with emptyDir for writable copy
 3. **Scheme registration**: If watching CRDs, add `apiextensionsv1.AddToScheme(scheme)` in operator.go
 4. **Owns must match kustomize output**: Every resource kind in `kustomize build`

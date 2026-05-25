@@ -1,4 +1,4 @@
-name: E2E Tests
+name: Example Module E2E Tests
 
 on:
   push:
@@ -29,12 +29,12 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6.3.0
         with:
-          go-version-file: go.mod
+          go-version-file: modules/opendatahub-mymodule-operator/go.mod
 
       - name: Compute image reference
         id: img
         run: |
-          IMG="ttl.sh/opendatahub-module-operator-$(git rev-parse --short HEAD):1h"
+          IMG="ttl.sh/opendatahub-mymodule-operator-$(git rev-parse --short HEAD):1h"
           echo "img=${IMG}" >> "$GITHUB_OUTPUT"
           echo "Using image: ${IMG}"
 
@@ -44,6 +44,7 @@ jobs:
           echo "k8s-versions=${K8S_VERSIONS}" >> "$GITHUB_OUTPUT"
 
       - name: Build and push image
+        working-directory: modules/opendatahub-mymodule-operator
         run: |
           make container-build container-push IMG=${{ steps.img.outputs.img }}
 
@@ -66,16 +67,19 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6.3.0
         with:
-          go-version-file: go.mod
+          go-version-file: modules/opendatahub-mymodule-operator/go.mod
 
       - name: Create Kind cluster
+        working-directory: modules/opendatahub-mymodule-operator
         run: |
           make kind-create KIND_NODE_IMAGE=kindest/node:${{ matrix.k8s-version }}
 
       - name: Deploy via Helm
+        working-directory: modules/opendatahub-mymodule-operator
         run: |
           make deploy-helm IMG=${{ needs.build.outputs.img }}
 
       - name: Run e2e tests
+        working-directory: modules/opendatahub-mymodule-operator
         run: |
-          make test-e2e
+          make test-e2e-run
