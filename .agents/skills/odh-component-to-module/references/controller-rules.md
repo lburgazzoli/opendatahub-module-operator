@@ -96,11 +96,14 @@ r.Release = rel  // MODULE ADDITION: set release from config
 
 ### RBAC Marker Checklist
 
-Two RBAC surfaces — do not conflate them:
+Three RBAC surfaces — do not conflate them:
 
 1. **Owns / Watches** — operator needs get/list/watch/create/update/patch/delete
    on every resource type the reconciler owns or watches.
-2. **Deployed operand** — operator SA must hold every permission granted by
+2. **Baseline module-operator RBAC** — every module operator carries CRD RBAC,
+   and every module that exposes `/metrics` carries the protected-metrics RBAC
+   markers even if the monolith did not call them out explicitly.
+3. **Deployed operand** — operator SA must hold every permission granted by
    ClusterRoles (and Roles) in the kustomize build, or deploy fails with RBAC
    escalation errors.
 
@@ -113,9 +116,16 @@ For every `Owns()` or `OwnsGVK()`, add a corresponding RBAC marker:
 // +kubebuilder:rbac:groups=$GROUP,resources=$RESOURCE,verbs=get;list;watch;create;update;patch;delete
 ```
 
-For `Watches(&extv1.CustomResourceDefinition{})`, add:
+Every module operator keeps the baseline CRD marker:
 ```go
-// +kubebuilder:rbac:groups=apiextensions.k8s.io,resources=customresourcedefinitions,verbs=get;list;watch
+// +kubebuilder:rbac:groups=apiextensions.k8s.io,resources=customresourcedefinitions,verbs=get;list;watch;create;update;patch;delete
+```
+
+If the module exposes `/metrics`, keep the protected-metrics markers:
+```go
+// +kubebuilder:rbac:groups=authentication.k8s.io,resources=tokenreviews,verbs=create
+// +kubebuilder:rbac:groups=authorization.k8s.io,resources=subjectaccessreviews,verbs=create
+// +kubebuilder:rbac:urls=/metrics,verbs=get
 ```
 
 ## File Organization

@@ -95,7 +95,10 @@ Copy **Watches** and action pipeline from the monolith. Insert
 between**. **Owns** and RBAC markers are a **draft** from the monolith here —
 **finalize in step 5b** against kustomize output (module must own every
 deployed resource except CRDs, and hold RBAC for everything the deployed
-operand handles).
+operand handles). Every module operator also carries baseline CRD RBAC, and
+every module that exposes `/metrics` keeps the protected-metrics RBAC markers
+(`tokenreviews`, `subjectaccessreviews`, and `urls=/metrics`) even when the
+monolith did not make that baseline explicit.
 
 ### 4. Port CRD types
 
@@ -129,6 +132,12 @@ After `make get-manifests`, run the full audit in
   audit against **every overlay** (for example `overlays/odh` and
   `overlays/rhoai`), not just the configmap default
 - Add `Owns` / `OwnsGVK` for every Kind in output (except CRD / Namespace)
+- Keep the baseline CRD marker on every module operator:
+  `// +kubebuilder:rbac:groups=apiextensions.k8s.io,resources=customresourcedefinitions,verbs=get;list;watch;create;update;patch;delete`
+- If the module exposes `/metrics`, keep the protected-metrics markers:
+  `// +kubebuilder:rbac:groups=authentication.k8s.io,resources=tokenreviews,verbs=create`,
+  `// +kubebuilder:rbac:groups=authorization.k8s.io,resources=subjectaccessreviews,verbs=create`,
+  and `// +kubebuilder:rbac:urls=/metrics,verbs=get`
 - Add operator `+kubebuilder:rbac` for every rule in deployed operand
   ClusterRoles (and Roles)
 - Run `make manifests generate`

@@ -101,6 +101,17 @@ reconciliation triggers, or orphaned resources.
 
 After changing manifests, review all three and run `make manifests generate`.
 
+In addition to manifest-derived RBAC, every module operator keeps baseline
+controller RBAC:
+
+- **CRDs** — include `customresourcedefinitions`
+  `get;list;watch;create;update;patch;delete`
+- **Protected metrics** — when the manager exposes `/metrics`, include
+  `tokenreviews create`, `subjectaccessreviews create`, and `urls=/metrics get`
+
+Treat these as default module-operator markers even when they are not obvious
+from the fetched operand manifests alone.
+
 The cache is configured with `ReaderFailOnMissingInformer: true`. A `Get`
 or `List` for a resource type with no running informer returns
 `ErrResourceNotCached` instead of silently doing a live API call. This

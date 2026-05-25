@@ -27,7 +27,15 @@ Mandatory after `make get-manifests`. Reconciles the controller's `Owns()` /
    and dynamic GVK watches are **not** inferable from kustomize — port them
    from `${component}_controller.go` verbatim.
 
-4. **Monolith Owns not in build.** Drop only if confirmed upstream removed
+4. **Baseline module-operator RBAC stays even if kustomize cannot infer it.**
+   Every module operator keeps the CRD marker
+   (`customresourcedefinitions get;list;watch;create;update;patch;delete`).
+   If the manager exposes `/metrics`, also keep the protected-metrics markers
+   for `tokenreviews`, `subjectaccessreviews`, and `urls=/metrics`. These are
+   baseline controller requirements, not operand-RBAC discoveries from
+   `kustomize build`.
+
+5. **Monolith Owns not in build.** Drop only if confirmed upstream removed
    the resource; otherwise flag in adversarial review.
 
 After updating markers and Owns, run `make manifests generate`.
@@ -126,6 +134,7 @@ kustomize build "${KUSTOMIZE_PATH}" | yq e \
 |--------|----------------------------------------|
 | Each **Kind** in build (except CRD, Namespace) | `Owns()` or `OwnsGVK()` — OpenShift types via GVK per [controller-rules.md](controller-rules.md) |
 | Monolith **Watches** / cross-deps | Keep from monolith — not inferable from kustomize |
+| Baseline module-operator RBAC | Keep CRD RBAC on every module; keep protected-metrics RBAC whenever `/metrics` is exposed |
 | Deployed **ClusterRole** (and **Role**) rules | Add matching `+kubebuilder:rbac` on module operator |
 | Monolith **Owns** not in build | Drop only if confirmed removed upstream; else flag |
 
@@ -173,6 +182,8 @@ Add scheme registration in `cmd/operator/operator.go` for any API group not in
 - [ ] If the module has multiple overlays, `kustomize build` succeeds for every
       overlay (for example both `overlays/odh` and `overlays/rhoai`)
 - [ ] Every Kind in output has `Owns` / `OwnsGVK` (except documented CRD/Namespace)
+- [ ] Baseline CRD marker present on the module operator
+- [ ] If the module exposes `/metrics`, the protected-metrics markers are present
 - [ ] Every ClusterRole rule in output has matching operator `+kubebuilder:rbac`
 - [ ] Monolith Watches ported unchanged
 - [ ] `make manifests generate` run after marker updates
