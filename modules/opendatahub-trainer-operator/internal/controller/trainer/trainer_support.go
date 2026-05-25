@@ -19,6 +19,7 @@ import (
 const (
 	LegacyComponentName = componentName
 
+	// JobSetOperator is defined by OpenShift as a singleton named "cluster".
 	jobSetOperatorCRName  = "cluster"
 	jobSetOperatorCRDName = "jobsetoperators.operator.openshift.io"
 	jobSetCRDName         = "jobsets.jobset.x-k8s.io"
