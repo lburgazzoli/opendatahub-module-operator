@@ -3,7 +3,8 @@
 Each row describes one component from the monolithic operator that becomes an
 independent module operator.
 
-Excluded from migration scope: `modelsasservice` and `kueue`.
+Excluded from migration scope: `modelsasservice`, `kueue`, and `modelcontroller`
+(modelcontroller has no independent CRD — its logic is merged into the `kserve` module).
 
 ## Simple Components (do first)
 
@@ -24,13 +25,12 @@ Excluded from migration scope: `modelsasservice` and `kueue`.
 |-----------|----------|----------|---------------|-------|
 | datasciencepipelines | No | DataSciencePipelines | default-datasciencepipelines | Argo Workflows CRD precondition, SCC ownership |
 | modelregistry | No | ModelRegistry | default-modelregistry | Gateway domain dependency, template rendering, extra manifests |
-| modelcontroller | No | ModelController | default-modelcontroller | Depends on KServe being Managed, KEDA subscription watch, WVA manifests |
 
 ## Complex Components
 
 | Component | Migrated | CRD Kind | Instance Name | Notes |
 |-----------|----------|----------|---------------|-------|
-| kserve | No | Kserve | default-kserve | Many dynamic GVKs, Istio/cert-manager CRD watches, model cache, LLM configs, xKS support |
+| kserve | No | Kserve | default-kserve | Many dynamic GVKs, Istio/cert-manager CRD watches, model cache, LLM configs, xKS support; **absorbs modelcontroller** (KEDA subscription watch, WVA manifests, KServe management-state gating) |
 | dashboard | No | Dashboard | default-dashboard | Dynamic GVKs, OdhDashboardConfig, observability, hardware profiles, gateway dep |
 | workbenches | No | Workbenches | default-workbenches | 3 manifest sets, MLflowOperator watch, ImageStream tracking, notebook namespace |
 
@@ -43,7 +43,7 @@ the other module's types. Pattern: `Watches(&apiextensionsv1.CustomResourceDefin
 | Module | Needs to know about | Discovery method |
 |--------|--------------------|--------------------|
 | trustyai | KServe (InferenceServices CRD) | CRD existence check |
-| modelcontroller | KServe (management state) | Discover KServe CR |
+| kserve | modelcontroller logic (KEDA, WVA, management-state gating) | Merged in — no separate module |
 | ray | CodeFlare (must NOT exist) | CRD existence check |
 | ogx | LlamaStackOperator (deprecated) | DSC check → replace with CRD discovery |
 | workbenches | MLflowOperator | Watch MLflowOperator CR |
