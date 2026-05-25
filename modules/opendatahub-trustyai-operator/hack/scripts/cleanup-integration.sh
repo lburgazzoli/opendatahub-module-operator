@@ -5,7 +5,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 
 NAMESPACE="${1:-${HELM_NAMESPACE:-opendatahub-trustyai-operator-system}}"
-CR_RESOURCE="ogxs.components.platform.opendatahub.io"
+CR_RESOURCE="trustyais.components.platform.opendatahub.io"
 
 echo "Cleaning up integration test resources..."
 

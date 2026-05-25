@@ -25,8 +25,6 @@ import (
 	rbacv1 "k8s.io/api/rbac/v1"
 	extv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	ctrl "sigs.k8s.io/controller-runtime"
-	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
 	componentApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-trustyai-operator/api/components/v1alpha1"
@@ -43,22 +41,7 @@ import (
 	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/controller/reconciler"
 	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/controller/status"
 	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/metadata/labels"
-	pkgresources "github.com/opendatahub-io/opendatahub-operator/v2/pkg/resources"
 )
-
-const (
-	// InferenceServicesCRDName is the CRD name TrustyAI depends on.
-	InferenceServicesCRDName = "inferenceservices.serving.kserve.io"
-)
-
-// isInferenceServicesCRD checks if obj is the InferenceServices CRD managed by KServe.
-// Mirrors the monolith's isInferenceServicesCRD function.
-func isInferenceServicesCRD(obj client.Object) bool {
-	if obj.GetName() != InferenceServicesCRDName {
-		return false
-	}
-	return pkgresources.HasLabel(obj, labels.ODH.Component("kserve"), labels.True)
-}
 
 // +kubebuilder:rbac:groups=components.platform.opendatahub.io,resources=trustyais,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=components.platform.opendatahub.io,resources=trustyais/status,verbs=get;update;patch
@@ -115,14 +98,10 @@ func NewReconciler(
 			reconciler.WithPredicates(predicate.Or(
 				// Re-enqueue when TrustyAI-labelled CRDs change.
 				component.ForLabel(labels.ODH.Component(LegacyComponentName), labels.True),
-				// Also re-enqueue when InferenceServices CRD appears or disappears
-				// (dependency on KServe). Mirrors the monolith's custom predicate.
-				predicate.Funcs{
-					CreateFunc:  func(e event.CreateEvent) bool { return isInferenceServicesCRD(e.Object) },
-					UpdateFunc:  func(e event.UpdateEvent) bool { return false },
-					DeleteFunc:  func(e event.DeleteEvent) bool { return isInferenceServicesCRD(e.Object) },
-					GenericFunc: func(e event.GenericEvent) bool { return false },
-				},
+				// Re-enqueue when InferenceServices CRD appears/disappears (KServe dependency).
+				createdOrDeletedNamed(InferenceServicesCRDName),
+				// Re-enqueue when Kserve module CRD appears/disappears (module readiness signal).
+				createdOrDeletedNamed(KserveModuleCRDName),
 			)),
 		).
 		WithAction(m.checkPreConditions).

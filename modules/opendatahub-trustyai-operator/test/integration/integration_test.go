@@ -29,7 +29,6 @@ import (
 	"github.com/spf13/viper"
 
 	promv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
-	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
@@ -50,7 +49,7 @@ import (
 	k8sm "github.com/lburgazzoli/gomega-matchers/pkg/matchers/k8s"
 
 	componentsv1alpha1 "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-trustyai-operator/api/components/v1alpha1"
-	ogxcontroller "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-trustyai-operator/internal/controller/trustyai"
+	trustyaicontroller "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-trustyai-operator/internal/controller/trustyai"
 	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-trustyai-operator/pkg/config"
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-trustyai-operator/test/support"
 	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/cluster"
@@ -66,7 +65,7 @@ const (
 	annotationInstanceUID  = "platform.opendatahub.io/instance.uid"
 	annotationType         = "platform.opendatahub.io/type"
 	annotationVersion      = "platform.opendatahub.io/version"
-	moduleCRDName = "trustyais.components.platform.opendatahub.io"
+	moduleCRDName          = "trustyais.components.platform.opendatahub.io"
 )
 
 var (
@@ -83,7 +82,6 @@ func init() {
 	utilruntime.Must(apiextensionsv1.AddToScheme(testScheme))
 	utilruntime.Must(promv1.AddToScheme(testScheme))
 	utilruntime.Must(componentsv1alpha1.AddToScheme(testScheme))
-	utilruntime.Must(gwapiv1.Install(testScheme))
 }
 
 func TestMain(m *testing.M) {
@@ -120,6 +118,18 @@ func runTestMain(m *testing.M) int {
 	}
 	if err := directClient.Get(ctx, client.ObjectKeyFromObject(moduleCRD), moduleCRD); err != nil {
 		fmt.Fprintf(os.Stderr, "Expected CRD %s to be installed before running integration tests: %v\n", moduleCRDName, err)
+		return 1
+	}
+
+	// Install stub CRDs required by checkPreConditions (InferenceServices + Kserve module).
+	if err := support.EnsureStubCRD(ctx, directClient, "inferenceservices.serving.kserve.io",
+		"serving.kserve.io", "v1beta1", "InferenceService", "inferenceservices"); err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to install InferenceServices stub CRD: %v\n", err)
+		return 1
+	}
+	if err := support.EnsureStubCRD(ctx, directClient, "kserves.components.platform.opendatahub.io",
+		"components.platform.opendatahub.io", "v1alpha1", "Kserve", "kserves"); err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to install Kserve module stub CRD: %v\n", err)
 		return 1
 	}
 
@@ -169,7 +179,7 @@ func runTestMain(m *testing.M) int {
 	mgr := odhmanager.New(ctrlMgr, odhmanager.WithManifestsBasePath(
 		support.MustProjectFile("config", "manifests")))
 
-	if err := ogxcontroller.NewReconciler(ctx, mgr, moduleCfg, moduleCfg.Release()); err != nil {
+	if err := trustyaicontroller.NewReconciler(ctx, mgr, moduleCfg, moduleCfg.Release()); err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to create reconciler: %v\n", err)
 		return 1
 	}
@@ -213,7 +223,7 @@ func runTestMain(m *testing.M) int {
 	return m.Run()
 }
 
-type feastTest struct {
+type trustyAITest struct {
 	module         *componentsv1alpha1.TrustyAI
 	moduleCRD      *apiextensionsv1.CustomResourceDefinition
 	workloadDeploy *appsv1.Deployment
@@ -222,7 +232,7 @@ type feastTest struct {
 func TestTrustyAI(t *testing.T) {
 	testNamespace := support.HelmNamespace()
 
-	rt := &feastTest{
+	rt := &trustyAITest{
 		module: &componentsv1alpha1.TrustyAI{
 			ObjectMeta: metav1.ObjectMeta{
 				Name: componentsv1alpha1.TrustyAIInstanceName,
@@ -233,7 +243,7 @@ func TestTrustyAI(t *testing.T) {
 		},
 		workloadDeploy: &appsv1.Deployment{
 			ObjectMeta: metav1.ObjectMeta{
-				Name:      "mlflow-operator-controller-manager",
+				Name:      "trustyai-service-operator-controller-manager",
 				Namespace: testNamespace,
 			},
 		},
@@ -260,7 +270,7 @@ func TestTrustyAI(t *testing.T) {
 	t.Run("should set owner references", rt.testOwnerReferences)
 }
 
-func (rt *feastTest) testModuleCRDInstalled(t *testing.T) {
+func (rt *trustyAITest) testModuleCRDInstalled(t *testing.T) {
 	g := NewWithT(t)
 
 	g.Eventually(k.Get(rt.moduleCRD)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(
@@ -268,7 +278,7 @@ func (rt *feastTest) testModuleCRDInstalled(t *testing.T) {
 	)
 }
 
-func (rt *feastTest) testBecomesReady(t *testing.T) {
+func (rt *trustyAITest) testBecomesReady(t *testing.T) {
 	g := NewWithT(t)
 
 	rt.module.ResourceVersion = ""
@@ -285,7 +295,7 @@ func (rt *feastTest) testBecomesReady(t *testing.T) {
 	)
 }
 
-func (rt *feastTest) testModuleStatus(t *testing.T) {
+func (rt *trustyAITest) testModuleStatus(t *testing.T) {
 	g := NewWithT(t)
 
 	g.Eventually(k.Get(rt.module)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(And(
@@ -297,7 +307,7 @@ func (rt *feastTest) testModuleStatus(t *testing.T) {
 	))
 }
 
-func (rt *feastTest) testPlatformLabels(t *testing.T) {
+func (rt *trustyAITest) testPlatformLabels(t *testing.T) {
 	g := NewWithT(t)
 
 	g.Eventually(k.Get(rt.workloadDeploy)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(And(
@@ -311,7 +321,7 @@ func (rt *feastTest) testPlatformLabels(t *testing.T) {
 	))
 }
 
-func (rt *feastTest) testOwnerReferences(t *testing.T) {
+func (rt *trustyAITest) testOwnerReferences(t *testing.T) {
 	g := NewWithT(t)
 
 	g.Eventually(k.Get(rt.workloadDeploy)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(

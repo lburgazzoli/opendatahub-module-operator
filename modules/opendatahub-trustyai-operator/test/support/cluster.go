@@ -25,6 +25,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	k8serr "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/serializer"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
@@ -80,6 +81,47 @@ func InstallCRDs(
 		if err := cli.Update(ctx, crd); err != nil {
 			return fmt.Errorf("updating CRD %s: %w", crd.Name, err)
 		}
+	}
+
+	return nil
+}
+
+// EnsureStubCRD creates a minimal CRD stub so that cluster.HasCRD returns true.
+// Used in integration tests to satisfy precondition checks without installing the full operand.
+func EnsureStubCRD(
+	ctx context.Context,
+	cli client.Client,
+	crdName string,
+	group string,
+	version string,
+	kind string,
+	plural string,
+) error {
+	crd := &apiextensionsv1.CustomResourceDefinition{
+		ObjectMeta: metav1.ObjectMeta{Name: crdName},
+		Spec: apiextensionsv1.CustomResourceDefinitionSpec{
+			Group: group,
+			Names: apiextensionsv1.CustomResourceDefinitionNames{
+				Plural:   plural,
+				Singular: plural[:len(plural)-1], // strip trailing 's' for singular
+				Kind:     kind,
+			},
+			Scope: apiextensionsv1.ClusterScoped,
+			Versions: []apiextensionsv1.CustomResourceDefinitionVersion{{
+				Name:    version,
+				Served:  true,
+				Storage: true,
+				Schema: &apiextensionsv1.CustomResourceValidation{
+					OpenAPIV3Schema: &apiextensionsv1.JSONSchemaProps{
+						Type: "object",
+					},
+				},
+			}},
+		},
+	}
+
+	if err := cli.Create(ctx, crd); err != nil && !k8serr.IsAlreadyExists(err) {
+		return fmt.Errorf("creating stub CRD %s: %w", crdName, err)
 	}
 
 	return nil

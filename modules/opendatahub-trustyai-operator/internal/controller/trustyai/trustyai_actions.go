@@ -40,26 +40,26 @@ var gvkKserve = k8sschema.GroupVersionKind{
 }
 
 // checkPreConditions verifies that:
-//  1. InferenceServices CRD (inferenceservices.serving.kserve.io) exists — KServe is installed
-//  2. Kserve module CRD (kserves.components.platform.opendatahub.io) exists — KServe module is ready
+//  1. Kserve module CRD (kserves.components.platform.opendatahub.io) exists — KServe module is ready
+//  2. InferenceServices CRD (inferenceservices.serving.kserve.io) exists — KServe is installed
 func (m *Module) checkPreConditions(ctx context.Context, rr *odhtypes.ReconciliationRequest) error {
-	// Check InferenceServices CRD (same check as monolith).
-	isvc, err := cluster.HasCRD(ctx, rr.Client, gvk.InferenceServices)
-	if err != nil {
-		return odherrors.NewStopError("failed to check %s CRD: %w", gvk.InferenceServices, err)
-	}
-	if !isvc {
-		return odherrors.NewStopError("InferenceServices CRD (%s) not found: KServe must be installed before enabling TrustyAI", gvk.InferenceServices.GroupKind())
-	}
 
 	// Check Kserve module CRD — signals the KServe module operator is installed.
-	kserveModuleCRD := gvkKserve
-	kserveModule, err := cluster.HasCRD(ctx, rr.Client, kserveModuleCRD)
-	if err != nil {
+	kserveModule, err := cluster.HasCRD(ctx, rr.Client, gvkKserve)
+	switch {
+	case err != nil:
 		return odherrors.NewStopError("failed to check Kserve module CRD: %w", err)
+	case !kserveModule:
+		return odherrors.NewStopError("Kserve module CRD (%s) not found: the KServe module operator must be installed before enabling TrustyAI", gvkKserve.GroupKind())
 	}
-	if !kserveModule {
-		return odherrors.NewStopError("Kserve module CRD (%s) not found: the KServe module operator must be installed before enabling TrustyAI", kserveModuleCRD.GroupKind())
+
+	// Check InferenceServices CRD (same check as monolith).
+	isvc, err := cluster.HasCRD(ctx, rr.Client, gvk.InferenceServices)
+	switch {
+	case err != nil:
+		return odherrors.NewStopError("failed to check %s CRD: %w", gvk.InferenceServices, err)
+	case !isvc:
+		return odherrors.NewStopError("InferenceServices CRD (%s) not found: KServe must be installed before enabling TrustyAI", gvk.InferenceServices.GroupKind())
 	}
 
 	return nil
