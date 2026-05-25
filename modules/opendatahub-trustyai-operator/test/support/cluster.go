@@ -26,6 +26,8 @@ import (
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	k8serr "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	k8sschema "k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/serializer"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
@@ -124,6 +126,27 @@ func EnsureStubCRD(
 		return fmt.Errorf("creating stub CRD %s: %w", crdName, err)
 	}
 
+	return nil
+}
+
+// NewStubKserveCR returns a minimal unstructured Kserve CR for use in integration tests.
+func NewStubKserveCR() *unstructured.Unstructured {
+	u := &unstructured.Unstructured{}
+	u.SetGroupVersionKind(k8sschema.GroupVersionKind{
+		Group:   "components.platform.opendatahub.io",
+		Version: "v1alpha1",
+		Kind:    "Kserve",
+	})
+	u.SetName("default-kserve")
+	return u
+}
+
+// EnsureStubKserveCR creates the stub Kserve CR if it does not already exist.
+func EnsureStubKserveCR(ctx context.Context, cli client.Client) error {
+	cr := NewStubKserveCR()
+	if err := cli.Create(ctx, cr); err != nil && !k8serr.IsAlreadyExists(err) {
+		return fmt.Errorf("creating stub Kserve CR: %w", err)
+	}
 	return nil
 }
 

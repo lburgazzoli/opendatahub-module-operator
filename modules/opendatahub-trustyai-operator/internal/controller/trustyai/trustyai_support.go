@@ -17,14 +17,23 @@ limitations under the License.
 package trustyai
 
 import (
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
+
+	pkgresources "github.com/opendatahub-io/opendatahub-operator/v2/pkg/resources"
 )
 
 const (
 	InferenceServicesCRDName = "inferenceservices.serving.kserve.io"
 	KserveModuleCRDName      = "kserves.components.platform.opendatahub.io"
 )
+
+// kserveUnstructured returns an unstructured object typed as the Kserve CR GVK,
+// used for watching Kserve CR lifecycle events without importing the kserve module types.
+func kserveUnstructured() *unstructured.Unstructured {
+	return pkgresources.GvkToUnstructured(gvkKserve)
+}
 
 // createdOrDeletedNamed returns a predicate that fires only on create/delete events for the named object.
 func createdOrDeletedNamed(name string) predicate.Funcs {

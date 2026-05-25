@@ -134,6 +134,12 @@ func runTestMain(m *testing.M) int {
 		return 1
 	}
 
+	// Create a stub Kserve CR — required by checkPreConditions to signal KServe module is enabled.
+	if err := support.EnsureStubKserveCR(ctx, directClient); err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to create stub Kserve CR: %v\n", err)
+		return 1
+	}
+
 	// Clean up leftovers from previous runs.
 	_ = directClient.DeleteAllOf(ctx, &componentsv1alpha1.TrustyAI{})
 	_ = directClient.DeleteAllOf(ctx, &appsv1.Deployment{}, client.InNamespace(testNamespace))
@@ -272,19 +278,16 @@ func TestTrustyAI(t *testing.T) {
 	t.Run("should set owner references", rt.testOwnerReferences)
 }
 
-// testPreconditionCRDMissing verifies that the CR reports ProvisioningSucceeded=False
-// when the Kserve module CRD (a required precondition) is absent.
+// testPreconditionCRDMissing verifies that the TrustyAI CR reports ProvisioningSucceeded=False
+// when a required precondition (Kserve CR absent) is not satisfied.
 func (rt *trustyAITest) testPreconditionCRDMissing(t *testing.T) {
 	g := NewWithT(t)
 
-	kserveCRD := &apiextensionsv1.CustomResourceDefinition{}
-	kserveCRD.Name = "kserves.components.platform.opendatahub.io"
-
-	// Remove the Kserve module stub CRD to simulate the missing precondition.
-	g.Expect(directClient.Delete(ctx, kserveCRD)).To(Succeed())
+	// Delete the Kserve CR to simulate KServe module not enabled.
+	kserveCR := support.NewStubKserveCR()
+	g.Expect(directClient.Delete(ctx, kserveCR)).To(Succeed())
 	t.Cleanup(func() {
-		_ = support.EnsureStubCRD(ctx, directClient, "kserves.components.platform.opendatahub.io",
-			"components.platform.opendatahub.io", "v1alpha1", "Kserve", "kserves")
+		_ = support.EnsureStubKserveCR(ctx, directClient)
 	})
 
 	rt.module.ResourceVersion = ""
@@ -300,7 +303,7 @@ func (rt *trustyAITest) testPreconditionCRDMissing(t *testing.T) {
 	})
 
 	g.Eventually(k.Get(rt.module)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(
-		jq.Match(`.status.conditions[] | select(.type == "ProvisioningSucceeded") | .status == "False"`),
+		jq.Match(`(.status.conditions // []) | any(.[]; .type == "ProvisioningSucceeded" and .status == "False")`),
 	)
 }
 

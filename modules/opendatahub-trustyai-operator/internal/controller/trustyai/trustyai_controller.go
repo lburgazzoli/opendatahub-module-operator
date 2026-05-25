@@ -58,6 +58,7 @@ import (
 // +kubebuilder:rbac:groups="",resources=events,verbs=create;patch;update
 // +kubebuilder:rbac:groups=authentication.k8s.io,resources=tokenreviews,verbs=create
 // +kubebuilder:rbac:groups=authorization.k8s.io,resources=subjectaccessreviews,verbs=create
+// +kubebuilder:rbac:groups=components.platform.opendatahub.io,resources=kserves,verbs=get;list;watch
 // +kubebuilder:rbac:groups=serving.kserve.io,resources=inferenceservices;servingruntimes,verbs=get;list;watch
 // +kubebuilder:rbac:groups=trustyai.opendatahub.io,resources=trustyaiservices;trustyaiservices/status;trustyaiservices/finalizers,verbs=get;list;watch;create;delete;patch;update
 // +kubebuilder:rbac:groups=trustyai.opendatahub.io,resources=lmevaljobs;lmevaljobs/status;lmevaljobs/finalizers,verbs=get;list;watch;create;delete;patch;update
@@ -103,6 +104,11 @@ func NewReconciler(
 				// Re-enqueue when Kserve module CRD appears/disappears (module readiness signal).
 				createdOrDeletedNamed(KserveModuleCRDName),
 			)),
+		).
+		Watches(
+			kserveUnstructured(),
+			reconciler.WithEventHandler(
+				handlers.ToNamed(componentApi.TrustyAIInstanceName)),
 		).
 		WithAction(m.checkPreConditions).
 		WithAction(m.initialize).

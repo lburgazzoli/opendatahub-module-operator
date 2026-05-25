@@ -99,6 +99,14 @@ rules:
 - apiGroups:
   - components.platform.opendatahub.io
   resources:
+  - kserves
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - components.platform.opendatahub.io
+  resources:
   - trustyais
   verbs:
   - create

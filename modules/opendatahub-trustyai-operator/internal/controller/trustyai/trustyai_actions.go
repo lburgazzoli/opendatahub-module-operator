@@ -22,14 +22,16 @@ import (
 	"strconv"
 
 	corev1 "k8s.io/api/core/v1"
+	k8serr "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	k8sschema "k8s.io/apimachinery/pkg/runtime/schema"
 
 	componentApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-trustyai-operator/api/components/v1alpha1"
 	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/cluster"
 	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/cluster/gvk"
 	odherrors "github.com/opendatahub-io/opendatahub-operator/v2/pkg/controller/actions/errors"
 	odhtypes "github.com/opendatahub-io/opendatahub-operator/v2/pkg/controller/types"
-	k8sschema "k8s.io/apimachinery/pkg/runtime/schema"
 )
 
 // gvkKserve is the GVK for the module-based Kserve CR — signals the KServe module is ready.
@@ -40,17 +42,27 @@ var gvkKserve = k8sschema.GroupVersionKind{
 }
 
 // checkPreConditions verifies that:
-//  1. Kserve module CRD (kserves.components.platform.opendatahub.io) exists — KServe module is ready
-//  2. InferenceServices CRD (inferenceservices.serving.kserve.io) exists — KServe is installed
+//  1. Kserve module CRD (kserves.components.platform.opendatahub.io) exists — KServe module is installed
+//  2. At least one Kserve CR exists — KServe module is enabled
+//  3. InferenceServices CRD (inferenceservices.serving.kserve.io) exists — KServe is installed
 func (m *Module) checkPreConditions(ctx context.Context, rr *odhtypes.ReconciliationRequest) error {
-
 	// Check Kserve module CRD — signals the KServe module operator is installed.
-	kserveModule, err := cluster.HasCRD(ctx, rr.Client, gvkKserve)
+	kserveModuleCRD, err := cluster.HasCRD(ctx, rr.Client, gvkKserve)
 	switch {
 	case err != nil:
 		return odherrors.NewStopError("failed to check Kserve module CRD: %w", err)
-	case !kserveModule:
+	case !kserveModuleCRD:
 		return odherrors.NewStopError("Kserve module CRD (%s) not found: the KServe module operator must be installed before enabling TrustyAI", gvkKserve.GroupKind())
+	}
+
+	// Check that the Kserve singleton CR exists — signals KServe module is enabled.
+	kserveCR := &unstructured.Unstructured{}
+	kserveCR.SetGroupVersionKind(gvkKserve)
+	if err := cluster.GetSingleton(ctx, rr.Client, kserveCR); err != nil {
+		if k8serr.IsNotFound(err) {
+			return odherrors.NewStopError("Kserve CR not found: the KServe module must be enabled before enabling TrustyAI")
+		}
+		return odherrors.NewStopError("failed to get Kserve CR: %w", err)
 	}
 
 	// Check InferenceServices CRD (same check as monolith).
