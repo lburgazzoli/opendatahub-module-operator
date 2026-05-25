@@ -68,16 +68,19 @@ root reference operator only — see [testing-limitations.md](testing-limitation
 4. **Owns must match kustomize output**: Every resource kind in `kustomize build`
    output needs an `Owns()` or `OwnsGVK()` (except CRDs) — see
    `manifest-rbac-audit.md`. Without Owns, `ReaderFailOnMissingInformer` fails.
-5. **RBAC for deployed operand**: Module SA must hold ALL permissions operand
+5. **Module-local GVKs**: Each split module keeps its own
+   `pkg/resources/gvk/gvk.go`; controllers and `cmd/chartgen/` import that
+   local package instead of importing upstream `pkg/cluster/gvk` directly.
+6. **RBAC for deployed operand**: Module SA must hold ALL permissions operand
    ClusterRoles grant. Derive markers from kustomize build — see
    `manifest-rbac-audit.md` and step 5b in the component-to-module skill.
-6. **Memory limits**: 128Mi is too low for kustomize rendering of large manifests. Use 512Mi
-7. **No ConfigValues**: The `status.configValues` field was a template example — real modules don't need it
-8. **Troubleshoot in-cluster**: Patch RBAC/memory/image directly via kubectl before rebuilding. Use `kubectl wait` not `sleep`
-9. **get-manifests wipes component dir**: Script must `rm -rf config/manifests/$COMPONENT/`
+7. **Memory limits**: 128Mi is too low for kustomize rendering of large manifests. Use 512Mi
+8. **No ConfigValues**: The `status.configValues` field was a template example — real modules don't need it
+9. **Troubleshoot in-cluster**: Patch RBAC/memory/image directly via kubectl before rebuilding. Use `kubectl wait` not `sleep`
+10. **get-manifests wipes component dir**: Script must `rm -rf config/manifests/$COMPONENT/`
    before copy so stale YAML does not break kustomize or Owns/RBAC audits
-10. **Cleanup scripts**: Each module has `cleanup-*.sh`, Makefile `test-*-run`
+11. **Cleanup scripts**: Each module has `cleanup-*.sh`, Makefile `test-*-run`
    targets, and composite `test-integration` / `test-e2e` — see e2e-workflow.md
-11. **Test gates**: E2e uses `test-e2e-run` after manual deploy; operator gate
+12. **Test gates**: E2e uses `test-e2e-run` after manual deploy; operator gate
     before subtests; integration waits for cache sync in TestMain
-12. **OpenShift first**: Module integration/e2e assume OpenShift; Kind is optional
+13. **OpenShift first**: Module integration/e2e assume OpenShift; Kind is optional

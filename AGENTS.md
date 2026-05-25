@@ -58,6 +58,7 @@ cmd/chartgen/                  Helm chart generator (reads kustomize YAML from s
 internal/controller/components/mymodule/   Controller (ReconcilerFor + actions)
 pkg/cache/                     Cache transform (StripUnusedFields)
 pkg/config/                    Operator config (viper + ConfigMap loading)
+pkg/resources/gvk/             Module-local GVK registry for controllers and chartgen
 pkg/version/                   Build metadata (ldflags)
 config/manifests/              Workload manifests (kustomize overlays per platform)
 config/manager/                Operator Deployment + ConfigMap
@@ -116,6 +117,21 @@ The cache is configured with `ReaderFailOnMissingInformer: true`. A `Get`
 or `List` for a resource type with no running informer returns
 `ErrResourceNotCached` instead of silently doing a live API call. This
 catches missing `Owns()` or `Watches()` declarations at runtime.
+
+## GVK Rule
+
+Each split module defines its own GVK package at `pkg/resources/gvk/gvk.go`.
+Inside a module, controllers and `cmd/chartgen/` must import that local
+package instead of importing
+`github.com/opendatahub-io/opendatahub-operator/v2/pkg/cluster/gvk`
+directly.
+
+The local package is the module's internal source of truth for GVK values:
+
+- Re-export upstream GVKs when the upstream package already defines them
+- Define module-only GVKs locally when upstream has no constant
+- Keep the shared chartgen GVKs there too, so chart generation and controller
+  code use the same import path
 
 ## Configuration
 

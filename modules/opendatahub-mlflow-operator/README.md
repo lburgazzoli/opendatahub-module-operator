@@ -17,6 +17,7 @@ monolithic opendatahub-operator.
 
 - **ConsoleLink + ServiceMonitor** in Owns
 - **MLflow GVK** dynamic ownership (`OwnsGVK(gvk.MLflow, reconciler.Dynamic())`)
+  via the module-local `pkg/resources/gvk` package
 - **HTTPRoute + GatewayConfig** watches (gateway-api dependency)
 - **setKustomizedParams**: reads `GatewayConfig.Status.Domain` live at reconcile time
   to compute `mlflow-url` and `section-title` for params.env. Implemented with

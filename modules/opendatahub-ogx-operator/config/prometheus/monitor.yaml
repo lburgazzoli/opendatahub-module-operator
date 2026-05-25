@@ -6,7 +6,7 @@ metadata:
 
     app.kubernetes.io/name: opendatahub-ogx-operator
     app.kubernetes.io/managed-by: kustomize
-  name: controller-manager-metrics-monitor
+  name: metrics-monitor
   namespace: system
 spec:
   endpoints:

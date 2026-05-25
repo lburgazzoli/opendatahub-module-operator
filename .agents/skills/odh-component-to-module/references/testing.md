@@ -276,6 +276,15 @@ testOwnerReferences     // workload resources owned by module CR
 - If the module has **upgrade logic**: simulate version advance by patching
   status, trigger reconcile, verify effect
 
+For dependency-gated modules, write tests around the concrete dependency
+resources, not around generic operator-installation metadata. Prefer explicit
+cases for:
+
+- missing required controller/operator CRD
+- missing required controller/operator CR instance
+- missing required operand CRD type
+- all required dependency resources present
+
 ### Key patterns
 
 - **Pre-test cleanup**: `make test-integration` / `make test-e2e` must run

@@ -20,7 +20,6 @@ import (
 	"fmt"
 
 	promv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
-	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	corev1 "k8s.io/api/core/v1"
@@ -34,6 +33,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
+	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 
 	componentsv1alpha1 "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-mlflow-operator/api/components/v1alpha1"
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-mlflow-operator/internal/controller/mlflowoperator"

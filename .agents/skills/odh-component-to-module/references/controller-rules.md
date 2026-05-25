@@ -94,6 +94,75 @@ r.Release = rel  // MODULE ADDITION: set release from config
 7. **r.Release**: always set after Build
 8. **RBAC markers**: must match every Owns + Watches resource type
 
+## GVK Package Rule
+
+For split modules, `gvk` refers to the module-local package
+`pkg/resources/gvk/gvk.go`, not to
+`github.com/opendatahub-io/opendatahub-operator/v2/pkg/cluster/gvk`
+imported directly from controller or chartgen code.
+
+Use this rule consistently:
+
+1. Create `pkg/resources/gvk/gvk.go` in the module before porting GVK-based
+   `OwnsGVK`, `WatchesGVK`, or chartgen logic
+2. Re-export upstream GVK values there when upstream already defines them
+3. Define module-only GVKs there when upstream has no constant
+4. Keep shared chartgen GVKs there too, so the controller and `cmd/chartgen/`
+   use the same import path
+
+## GVK Package Rule
+
+For split modules, `gvk` refers to the module-local package
+`pkg/resources/gvk/gvk.go`, not to
+`github.com/opendatahub-io/opendatahub-operator/v2/pkg/cluster/gvk`
+imported directly from controller or chartgen code.
+
+Use this rule consistently:
+
+1. Create `pkg/resources/gvk/gvk.go` in the module before porting GVK-based
+   `OwnsGVK`, `WatchesGVK`, or chartgen logic
+2. Re-export upstream GVK values there when upstream already defines them
+3. Define module-only GVKs there when upstream has no constant
+4. Keep shared chartgen GVKs there too, so the controller and `cmd/chartgen/`
+   use the same import path
+
+## Dependency Checks — Prefer Types and Instances
+
+When porting preconditions and dependency logic, prefer checking for concrete
+API types and required instances instead of checking whether some "operator" is
+installed.
+
+Default order of preference:
+
+1. **Required CRD types exist**
+2. **Required CR instances exist** (for singleton/operator-managed resources)
+3. **Operand CRD types exist** to prove the dependent API surface is installed
+
+Avoid using operator-installation metadata such as Subscription state, CSV
+presence, or generic operator-health checks as the primary gate when a concrete
+CRD or CR can be checked directly.
+
+### Example
+
+For a JobSet-backed dependency, prefer:
+
+- JobSet operator CRD exists
+- `JobSetOperator` CR instance exists
+- JobSet workload CRD exists
+
+instead of:
+
+- "JobSet operator is installed"
+
+### Porting Guidance
+
+- If the monolith uses `MonitorOperator(...)`, `OperatorExists(...)`, or other
+  operator-level checks, treat that as a hint about the dependency, not as the
+  required module implementation.
+- In the module, re-express the dependency in terms of the concrete CRDs and
+  CRs the component actually needs in order to reconcile safely.
+- Tests should cover missing-CRD and missing-CR cases explicitly.
+
 ### RBAC Marker Checklist
 
 Three RBAC surfaces — do not conflate them:

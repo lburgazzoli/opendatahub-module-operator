@@ -38,6 +38,38 @@ rg -n 'LegacyComponentName = "ray"|Component\("ray"\)|"default-ray"|part-of.*\br
 Target names must appear in `go.mod`, `PROJECT`, `Makefile`, and
 `pkg/config/config.go`. See step **9b** in [adversarial-review.md](adversarial-review.md).
 
+## GVK import path (steps 3, 8)
+
+Module controller and chartgen code must import the module-local
+`pkg/resources/gvk/gvk.go` package. Direct imports of upstream
+`pkg/cluster/gvk` are only allowed inside that wrapper package.
+
+```bash
+# Must be empty outside pkg/resources/gvk
+rg -n 'opendatahub-operator/v2/pkg/cluster/gvk' . \
+  --glob '!pkg/resources/gvk/**' && exit 1 || true
+
+# The wrapper package itself must exist and be referenced
+test -f pkg/resources/gvk/gvk.go
+rg -n 'pkg/resources/gvk' internal cmd || exit 1
+```
+
+## GVK import path (steps 3, 8)
+
+Module controller and chartgen code must import the module-local
+`pkg/resources/gvk/gvk.go` package. Direct imports of upstream
+`pkg/cluster/gvk` are only allowed inside that wrapper package.
+
+```bash
+# Must be empty outside pkg/resources/gvk
+rg -n 'opendatahub-operator/v2/pkg/cluster/gvk' . \
+  --glob '!pkg/resources/gvk/**' && exit 1 || true
+
+# The wrapper package itself must exist and be referenced
+test -f pkg/resources/gvk/gvk.go
+rg -n 'pkg/resources/gvk' internal cmd || exit 1
+```
+
 ## CRD identity (steps 4, 8)
 
 The module must contain its **own** CRD, not the ray/template CRD that existed

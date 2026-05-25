@@ -25,9 +25,9 @@ import (
 	k8serr "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
-	k8sschema "k8s.io/apimachinery/pkg/runtime/schema"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
+	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-mlflow-operator/pkg/resources/gvk"
 	odhtypes "github.com/opendatahub-io/opendatahub-operator/v2/pkg/controller/types"
 	odhdeploy "github.com/opendatahub-io/opendatahub-operator/v2/pkg/deploy"
 )
@@ -35,18 +35,11 @@ import (
 // errGatewayDomainEmpty is returned when GatewayConfig exists but Status.Domain is not yet set.
 var errGatewayDomainEmpty = fmt.Errorf("GatewayConfig.Status.Domain is empty")
 
-// gvkGatewayConfig is the GVK for the GatewayConfig singleton.
-var gvkGatewayConfig = k8sschema.GroupVersionKind{
-	Group:   "services.platform.opendatahub.io",
-	Version: "v1alpha1",
-	Kind:    "GatewayConfig",
-}
-
 // getGatewayDomain reads the gateway domain from the GatewayConfig singleton CR using
 // an unstructured client so no OpenShift service API import is needed.
 func getGatewayDomain(ctx context.Context, cli client.Client) (string, error) {
 	obj := &unstructured.Unstructured{}
-	obj.SetGroupVersionKind(gvkGatewayConfig)
+	obj.SetGroupVersionKind(gvk.GatewayConfig)
 
 	if err := cli.Get(ctx, client.ObjectKey{Name: "default-gateway"}, obj); err != nil {
 		return "", err

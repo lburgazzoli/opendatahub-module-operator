@@ -7,6 +7,8 @@ Each module is a standalone Go project under `modules/$name/` with:
 - A `get-manifests.sh` fetching only its component manifests
 - A `cmd/chartgen/` copied from the reference (only reusable piece)
 - Local copy of its CRD types (from opendatahub-operator api/components/v1alpha1)
+- A `pkg/resources/gvk/gvk.go` package as the module-local source of truth for
+  all controller and chartgen GVKs
 - Dependencies only on opendatahub-operator/v2 and odh-platform-utilities
 - No inter-module Go dependencies
 
@@ -34,6 +36,7 @@ modules/$name/
     ${name}_webhook.go          # Webhook handlers (if component has webhooks)
     ${name}_test.go             # Unit tests
   pkg/config/config.go
+  pkg/resources/gvk/gvk.go      # module-local GVK registry (controller + chartgen)
   pkg/version/version.go
   pkg/cache/
   config/
@@ -195,7 +198,11 @@ For each simple component, the work is:
 
 - Start each module by copying the reference `mymodule` structure
 - Replace `mymodule` naming with the component name throughout
-- The chartgen command is the only code reused from this repo — copy it as-is
+- The chartgen command is the only code reused from this repo — copy the
+  structure, then retarget it to the module-local `pkg/resources/gvk/gvk.go`
+- Never import `github.com/opendatahub-io/opendatahub-operator/v2/pkg/cluster/gvk`
+  directly from module controller or chartgen code; that import belongs only in
+  the module-local `pkg/resources/gvk/gvk.go` wrapper
 - Each module gets its own CI, image build, Helm chart
 - Test on **OpenShift** with `make test-integration` / `make test-e2e` per module
 - Kind is optional for root reference only — see `docs/testing-limitations.md`

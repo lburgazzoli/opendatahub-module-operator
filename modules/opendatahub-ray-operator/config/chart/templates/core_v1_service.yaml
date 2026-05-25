@@ -4,7 +4,7 @@ metadata:
   labels:
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: opendatahub-ray-operator
-  name: opendatahub-ray-operator-controller-manager-metrics-service
+  name: opendatahub-ray-operator-metrics-service
   namespace: {{ .Release.Namespace }}
 spec:
   ports:

@@ -10,6 +10,13 @@ inputs for porting.
 - [ ] **Action pipeline**: every `WithAction()` in order
 - [ ] **Conditions**: the `WithConditions()` arguments
 - [ ] **Preconditions**: any `WithPreCondition()` calls
+- [ ] **Dependency checks**: identify the concrete dependency resources:
+  - [ ] required operator/controller CRDs
+  - [ ] required singleton/operator CR instances
+  - [ ] required operand CRD types
+- [ ] **Operator-level checks to replace**: note any `OperatorExists`,
+      `MonitorOperator`, Subscription, CSV, or similar checks that should be
+      re-expressed as type/instance checks in the module
 
 ## From `${component}_support.go` (or constants at top of files)
 
@@ -30,6 +37,12 @@ inputs for porting.
 - [ ] **Init()**: what it does at startup (usually `odhdeploy.ApplyParams` with imageParamMap)
 - [ ] **initialize()**: what it does per-reconcile (usually appends manifests + applies namespace params)
 - [ ] **Custom actions**: any action functions (setKustomizedParams, checkPreConditions, etc.)
+
+## Dependency-check rewrite rule
+
+- [ ] For every dependency, prefer **CRD + CR instance + operand CRD** checks
+      over generic "operator installed" checks whenever the concrete resources
+      exist and can be queried directly
 
 ## From `${component}_types.go` (API)
 

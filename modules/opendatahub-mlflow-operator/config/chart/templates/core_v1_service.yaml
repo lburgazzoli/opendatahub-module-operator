@@ -4,7 +4,7 @@ metadata:
   labels:
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: opendatahub-mlflow-operator
-  name: opendatahub-mlflow-operator-controller-manager-metrics-service
+  name: opendatahub-mlflow-operator-metrics-service
   namespace: {{ .Release.Namespace }}
 spec:
   ports:

@@ -140,6 +140,16 @@ function for any code that calls `cluster.GetApplicationNamespace()`.
 `cmd/chartgen/` reads multi-doc YAML from stdin and generates a Helm chart.
 Resources are grouped by GVK into files named `<group>_<version>_<kind>.yaml`.
 
+For split modules, `cmd/chartgen/` must import the module-local
+`pkg/resources/gvk/gvk.go` package. Do not import
+`github.com/opendatahub-io/opendatahub-operator/v2/pkg/cluster/gvk`
+directly from chartgen files.
+
+For split modules, `cmd/chartgen/` must import the module-local
+`pkg/resources/gvk/gvk.go` package. Do not import
+`github.com/opendatahub-io/opendatahub-operator/v2/pkg/cluster/gvk`
+directly from chartgen files.
+
 Transformations:
 
 - **Deployment**: image, resources, replicas, serviceAccountName, imagePullSecrets from values

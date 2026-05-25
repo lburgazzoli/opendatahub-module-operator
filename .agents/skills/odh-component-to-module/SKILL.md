@@ -67,6 +67,18 @@ Read ALL files in:
 
 Record findings per [extraction-checklist.md](references/extraction-checklist.md).
 
+When analyzing dependencies and preconditions, do **not** default to checking
+operator-installation state (`OperatorExists`, Subscription health, CSV
+presence, etc.). Prefer concrete API/resource availability:
+
+- the operator CRD and required singleton/operator CR instance, when the
+  component depends on another controller-managed API
+- the operand CRD types that prove the dependent API surface is installed
+
+Example: for JobSet-backed components, gate on the JobSet operator CRD, the
+`JobSetOperator` CR instance, and the JobSet workload CRD rather than on
+"is the operator installed?" metadata.
+
 ### 2. Copy ray module and rename
 
 ```bash
@@ -99,6 +111,28 @@ operand handles). Every module operator also carries baseline CRD RBAC, and
 every module that exposes `/metrics` keeps the protected-metrics RBAC markers
 (`tokenreviews`, `subjectaccessreviews`, and `urls=/metrics`) even when the
 monolith did not make that baseline explicit.
+
+If the monolith uses operator-level dependency checks, port the **intent** but
+prefer resource-based gates in the module:
+
+- check for dependent CRDs and required CR instances first
+- use operand CRD presence as the signal that the downstream API surface exists
+- avoid gating on operator-installation metadata unless there is no concrete API
+  or instance to check instead
+
+Before wiring `OwnsGVK`, `WatchesGVK`, sanity checks, or chart generation,
+create `pkg/resources/gvk/gvk.go` in the module and make it the module-local
+source of truth for all GVK constants. Module code must import that local
+package instead of importing
+`github.com/opendatahub-io/opendatahub-operator/v2/pkg/cluster/gvk`
+directly.
+
+Before wiring `OwnsGVK`, `WatchesGVK`, sanity checks, or chart generation,
+create `pkg/resources/gvk/gvk.go` in the module and make it the module-local
+source of truth for all GVK constants. Module code must import that local
+package instead of importing
+`github.com/opendatahub-io/opendatahub-operator/v2/pkg/cluster/gvk`
+directly.
 
 ### 4. Port CRD types
 

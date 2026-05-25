@@ -29,8 +29,8 @@ import (
 
 	componentApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-mlflow-operator/api/components/v1alpha1"
 	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-mlflow-operator/pkg/config"
+	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-mlflow-operator/pkg/resources/gvk"
 	"github.com/opendatahub-io/opendatahub-operator/v2/api/common"
-	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/cluster/gvk"
 	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/controller/actions/deploy"
 	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/controller/actions/gc"
 	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/controller/actions/render/kustomize"
@@ -42,11 +42,7 @@ import (
 	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/controller/reconciler"
 	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/controller/status"
 	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/metadata/labels"
-	k8sschema "k8s.io/apimachinery/pkg/runtime/schema"
 )
-
-// gvkConsoleLink is the GVK for OpenShift ConsoleLink (no gvk.* constant exists).
-var gvkConsoleLink = k8sschema.GroupVersionKind{Group: "console.openshift.io", Version: "v1", Kind: "ConsoleLink"}
 
 // +kubebuilder:rbac:groups=components.platform.opendatahub.io,resources=mlflowoperators,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=components.platform.opendatahub.io,resources=mlflowoperators/status,verbs=get;update;patch
@@ -92,7 +88,7 @@ func NewReconciler(
 		Owns(&rbacv1.RoleBinding{}).
 		Owns(&corev1.Service{}).
 		Owns(&corev1.ServiceAccount{}).
-		OwnsGVK(gvkConsoleLink).
+		OwnsGVK(gvk.ConsoleLink).
 		Owns(&monitoringv1.ServiceMonitor{}).
 		Owns(&appsv1.Deployment{}, reconciler.WithPredicates(predicates.DefaultDeploymentPredicate)).
 		OwnsGVK(gvk.MLflow, reconciler.Dynamic()).
