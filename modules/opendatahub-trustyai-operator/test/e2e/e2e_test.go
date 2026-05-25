@@ -57,7 +57,7 @@ const (
 	annotationVersion      = "platform.opendatahub.io/version"
 
 	operatorConfigMapName = "opendatahub-trustyai-operator-config"
-	moduleCRDName = "trustyais.components.platform.opendatahub.io"
+	moduleCRDName         = "trustyais.components.platform.opendatahub.io"
 )
 
 var (
@@ -100,7 +100,7 @@ func runTestMain(m *testing.M) int {
 	return m.Run()
 }
 
-type mlflowE2ETest struct {
+type trustyAIE2ETest struct {
 	module         *componentsv1alpha1.TrustyAI
 	moduleCRD      *apiextensionsv1.CustomResourceDefinition
 	operatorDeploy *appsv1.Deployment
@@ -111,7 +111,7 @@ type mlflowE2ETest struct {
 func TestTrustyAI(t *testing.T) {
 	operatorNamespace := support.HelmNamespace()
 
-	rt := &mlflowE2ETest{
+	rt := &trustyAIE2ETest{
 		module: &componentsv1alpha1.TrustyAI{
 			ObjectMeta: metav1.ObjectMeta{
 				Name: componentsv1alpha1.TrustyAIInstanceName,
@@ -134,7 +134,7 @@ func TestTrustyAI(t *testing.T) {
 		},
 		workloadDeploy: &appsv1.Deployment{
 			ObjectMeta: metav1.ObjectMeta{
-				Name:      "mlflow-operator-controller-manager",
+				Name:      "trustyai-service-operator-controller-manager",
 				Namespace: operatorNamespace,
 			},
 		},
@@ -154,22 +154,31 @@ func TestTrustyAI(t *testing.T) {
 		_ = k8sClient.Delete(ctx, rt.module)
 	})
 
-	// Gate: if the operator is not running, fail immediately — don't
-	// let subsequent tests hang waiting for resources that won't appear.
+	// Gate: operator must be running before tests proceed.
 	g = NewWithT(t)
 	g.Eventually(k.Get(rt.operatorDeploy)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(
 		jq.Match(`.status.readyReplicas >= 1`),
 	)
 
+	// Install stub CRDs and Kserve CR required by checkPreConditions.
+	g.Expect(support.EnsureStubCRD(ctx, k8sClient, "inferenceservices.serving.kserve.io",
+		"serving.kserve.io", "v1beta1", "InferenceService", "inferenceservices")).To(Succeed())
+	g.Expect(support.EnsureStubCRD(ctx, k8sClient, "kserves.components.platform.opendatahub.io",
+		"components.platform.opendatahub.io", "v1alpha1", "Kserve", "kserves")).To(Succeed())
+	g.Eventually(func(g Gomega) {
+		g.Expect(support.EnsureStubKserveCR(ctx, k8sClient)).To(Succeed())
+	}).WithContext(ctx).WithTimeout(30 * time.Second).WithPolling(2 * time.Second).Should(Succeed())
+
 	t.Run("should have module CRD installed", rt.testModuleCRDInstalled)
 	t.Run("should have operator ConfigMap deployed", rt.testOperatorConfigMap)
+	t.Run("should report not ready when precondition CR is missing", rt.testPreconditionCRMissing)
 	t.Run("should become ready", rt.testBecomesReady)
 	t.Run("should report module version and platform", rt.testModuleStatus)
 	t.Run("should set platform labels and annotations", rt.testPlatformLabels)
 	t.Run("should set owner references", rt.testOwnerReferences)
 }
 
-func (rt *mlflowE2ETest) testModuleCRDInstalled(t *testing.T) {
+func (rt *trustyAIE2ETest) testModuleCRDInstalled(t *testing.T) {
 	g := NewWithT(t)
 
 	g.Eventually(k.Get(rt.moduleCRD)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(
@@ -177,15 +186,7 @@ func (rt *mlflowE2ETest) testModuleCRDInstalled(t *testing.T) {
 	)
 }
 
-func (rt *mlflowE2ETest) testOperatorRunning(t *testing.T) {
-	g := NewWithT(t)
-
-	g.Eventually(k.Get(rt.operatorDeploy)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(
-		jq.Match(`.status.readyReplicas >= 1`),
-	)
-}
-
-func (rt *mlflowE2ETest) testOperatorConfigMap(t *testing.T) {
+func (rt *trustyAIE2ETest) testOperatorConfigMap(t *testing.T) {
 	g := NewWithT(t)
 
 	g.Eventually(k.Get(rt.operatorCfgMap)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(And(
@@ -194,7 +195,35 @@ func (rt *mlflowE2ETest) testOperatorConfigMap(t *testing.T) {
 	))
 }
 
-func (rt *mlflowE2ETest) testBecomesReady(t *testing.T) {
+// testPreconditionCRMissing verifies that the TrustyAI CR reports ProvisioningSucceeded=False
+// when the Kserve CR (a required precondition) is absent.
+func (rt *trustyAIE2ETest) testPreconditionCRMissing(t *testing.T) {
+	g := NewWithT(t)
+
+	kserveCR := support.NewStubKserveCR()
+	g.Expect(k8sClient.Delete(ctx, kserveCR)).To(Succeed())
+	t.Cleanup(func() {
+		_ = support.EnsureStubKserveCR(ctx, k8sClient)
+	})
+
+	rt.module.ResourceVersion = ""
+	g.Expect(k8sClient.Create(ctx, rt.module)).To(Succeed())
+	t.Cleanup(func() {
+		_ = k8sClient.Delete(ctx, rt.module)
+		g.Eventually(func(g Gomega) {
+			m := &componentsv1alpha1.TrustyAI{}
+			err := k8sClient.Get(ctx, client.ObjectKeyFromObject(rt.module), m)
+			g.Expect(k8serr.IsNotFound(err)).To(BeTrue())
+		}).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(Succeed())
+		rt.module.ResourceVersion = ""
+	})
+
+	g.Eventually(k.Get(rt.module)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(
+		jq.Match(`(.status.conditions // []) | any(.[]; .type == "ProvisioningSucceeded" and .status == "False")`),
+	)
+}
+
+func (rt *trustyAIE2ETest) testBecomesReady(t *testing.T) {
 	g := NewWithT(t)
 
 	rt.module.ResourceVersion = ""
@@ -211,7 +240,7 @@ func (rt *mlflowE2ETest) testBecomesReady(t *testing.T) {
 	)
 }
 
-func (rt *mlflowE2ETest) testModuleStatus(t *testing.T) {
+func (rt *trustyAIE2ETest) testModuleStatus(t *testing.T) {
 	g := NewWithT(t)
 
 	g.Eventually(k.Get(rt.module)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(And(
@@ -222,7 +251,7 @@ func (rt *mlflowE2ETest) testModuleStatus(t *testing.T) {
 	))
 }
 
-func (rt *mlflowE2ETest) testPlatformLabels(t *testing.T) {
+func (rt *trustyAIE2ETest) testPlatformLabels(t *testing.T) {
 	g := NewWithT(t)
 
 	g.Eventually(k.Get(rt.workloadDeploy)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(And(
@@ -234,7 +263,7 @@ func (rt *mlflowE2ETest) testPlatformLabels(t *testing.T) {
 	))
 }
 
-func (rt *mlflowE2ETest) testOwnerReferences(t *testing.T) {
+func (rt *trustyAIE2ETest) testOwnerReferences(t *testing.T) {
 	g := NewWithT(t)
 
 	g.Eventually(k.Get(rt.workloadDeploy)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(

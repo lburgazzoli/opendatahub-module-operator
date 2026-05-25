@@ -46,6 +46,35 @@ spec:
             type: object
           spec:
             description: TrustyAISpec defines the desired state of TrustyAI.
+            properties:
+              eval:
+                description: Eval configures evaluation capabilities.
+                properties:
+                  lmeval:
+                    description: LMEval holds configuration for model evaluations.
+                    properties:
+                      permitCodeExecution:
+                        default: Deny
+                        description: PermitCodeExecution controls whether LMEval jobs
+                          may execute arbitrary code.
+                        enum:
+                        - Allow
+                        - Deny
+                        type: string
+                      permitOnline:
+                        default: Deny
+                        description: PermitOnline controls whether LMEval jobs may
+                          access the internet.
+                        enum:
+                        - Allow
+                        - Deny
+                        type: string
+                    type: object
+                type: object
+              mcpGuardrailsMode:
+                description: MCPGuardrailsMode enables the mcp-guardrails overlay
+                  when set to true.
+                type: boolean
             type: object
           status:
             description: TrustyAIStatus defines the observed state of TrustyAI.

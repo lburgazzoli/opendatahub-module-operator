@@ -21,6 +21,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
+	modulegvk "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-trustyai-operator/pkg/resources/gvk"
 	pkgresources "github.com/opendatahub-io/opendatahub-operator/v2/pkg/resources"
 )
 
@@ -32,7 +33,7 @@ const (
 // kserveUnstructured returns an unstructured object typed as the Kserve CR GVK,
 // used for watching Kserve CR lifecycle events without importing the kserve module types.
 func kserveUnstructured() *unstructured.Unstructured {
-	return pkgresources.GvkToUnstructured(gvkKserve)
+	return pkgresources.GvkToUnstructured(modulegvk.Kserve)
 }
 
 // createdOrDeletedNamed returns a predicate that fires only on create/delete events for the named object.

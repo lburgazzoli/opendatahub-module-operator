@@ -83,6 +83,7 @@ rules:
   resources:
   - configmaps
   - persistentvolumeclaims
+  - pods
   - secrets
   - serviceaccounts
   - services
@@ -101,12 +102,23 @@ rules:
   verbs:
   - create
   - patch
+  - update
 - apiGroups:
   - ""
   resources:
   - namespaces
-  - pods
+  - persistentvolumes
   verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - ""
+  resources:
+  - pods/exec
+  verbs:
+  - create
+  - delete
   - get
   - list
   - watch
@@ -115,8 +127,12 @@ rules:
   resources:
   - customresourcedefinitions
   verbs:
+  - create
+  - delete
   - get
   - list
+  - patch
+  - update
   - watch
 - apiGroups:
   - apps
@@ -130,6 +146,15 @@ rules:
   - patch
   - update
   - watch
+- apiGroups:
+  - apps
+  resources:
+  - deployments/finalizers
+  - deployments/status
+  verbs:
+  - get
+  - patch
+  - update
 - apiGroups:
   - authentication.k8s.io
   resources:
@@ -145,7 +170,6 @@ rules:
 - apiGroups:
   - batch
   resources:
-  - cronjobs
   - jobs
   verbs:
   - create
@@ -153,7 +177,14 @@ rules:
   - get
   - list
   - patch
-  - update
+  - watch
+- apiGroups:
+  - components.platform.opendatahub.io
+  resources:
+  - kserves
+  verbs:
+  - get
+  - list
   - watch
 - apiGroups:
   - components.platform.opendatahub.io
@@ -182,18 +213,6 @@ rules:
   - patch
   - update
 - apiGroups:
-  - console.openshift.io
-  resources:
-  - consolelinks
-  verbs:
-  - create
-  - delete
-  - get
-  - list
-  - patch
-  - update
-  - watch
-- apiGroups:
   - coordination.k8s.io
   resources:
   - leases
@@ -206,75 +225,40 @@ rules:
   - update
   - watch
 - apiGroups:
-  - gateway.networking.k8s.io
+  - kueue.x-k8s.io
   resources:
-  - httproutes
+  - workloads
   verbs:
-  - create
-  - delete
   - get
   - list
   - patch
-  - update
   - watch
 - apiGroups:
   - mlflow.kubeflow.org
   resources:
-  - datasets
   - experiments
-  - gatewayendpoints
-  - gatewaymodeldefinitions
-  - gatewaysecrets
-  - mlflowconfigs
-  - registeredmodels
   verbs:
   - create
   - delete
-  - deletecollection
   - get
   - list
-  - patch
   - update
-  - watch
-- apiGroups:
-  - mlflow.kubeflow.org
-  resources:
-  - gatewayendpoints/use
-  - gatewaymodeldefinitions/use
-  - gatewaysecrets/use
-  verbs:
-  - create
-- apiGroups:
-  - mlflow.opendatahub.io
-  resources:
-  - mlflows
-  - mlflows/finalizers
-  - mlflows/status
-  verbs:
-  - create
-  - delete
-  - deletecollection
-  - get
-  - list
-  - patch
-  - update
-  - watch
 - apiGroups:
   - monitoring.coreos.com
   resources:
   - servicemonitors
   verbs:
   - create
-  - delete
   - get
   - list
   - patch
   - update
   - watch
 - apiGroups:
-  - networking.k8s.io
+  - networking.istio.io
   resources:
-  - networkpolicies
+  - destinationrules
+  - virtualservices
   verbs:
   - create
   - delete
@@ -298,6 +282,94 @@ rules:
   - patch
   - update
   - watch
+- apiGroups:
+  - route.openshift.io
+  resources:
+  - routes
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - serving.kserve.io
+  resources:
+  - inferenceservices
+  verbs:
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - serving.kserve.io
+  resources:
+  - inferenceservices/finalizers
+  verbs:
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - serving.kserve.io
+  resources:
+  - servingruntimes
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - trustyai.opendatahub.io
+  resources:
+  - collections
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+- apiGroups:
+  - trustyai.opendatahub.io
+  resources:
+  - evalhubs
+  - evalhubs/finalizers
+  - evalhubs/proxy
+  - evalhubs/status
+  - guardrailsorchestrators
+  - guardrailsorchestrators/finalizers
+  - guardrailsorchestrators/status
+  - lmevaljobs
+  - lmevaljobs/finalizers
+  - lmevaljobs/status
+  - nemoguardrails
+  - nemoguardrails/finalizers
+  - nemoguardrails/status
+  - trustyaiservices
+  - trustyaiservices/finalizers
+  - trustyaiservices/status
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - trustyai.opendatahub.io
+  resources:
+  - providers
+  - status-events
+  verbs:
+  - create
+  - get
+  - list
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole

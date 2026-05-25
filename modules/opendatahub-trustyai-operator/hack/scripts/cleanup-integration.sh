@@ -33,4 +33,9 @@ kubectl delete clusterrolebinding integration-test-binding --ignore-not-found 2>
 # Delete CRD (so next run installs fresh)
 kubectl delete crd "${CR_RESOURCE}" --ignore-not-found 2>/dev/null || true
 
+# Delete stub CRDs and CRs installed by runTestMain for precondition checks.
+kubectl delete kserves --all --ignore-not-found 2>/dev/null || true
+kubectl delete crd kserves.components.platform.opendatahub.io --ignore-not-found 2>/dev/null || true
+kubectl delete crd inferenceservices.serving.kserve.io --ignore-not-found 2>/dev/null || true
+
 echo "Integration test cleanup complete."

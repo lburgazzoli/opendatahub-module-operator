@@ -48,24 +48,32 @@ import (
 // +kubebuilder:rbac:groups=components.platform.opendatahub.io,resources=trustyais/finalizers,verbs=update
 // +kubebuilder:rbac:groups=apps,resources=deployments,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups="",resources=services;serviceaccounts;configmaps,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups="",resources=pods,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups="",resources=pods/exec,verbs=get;list;watch;create;delete
+// +kubebuilder:rbac:groups="",resources=persistentvolumeclaims,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups="",resources=persistentvolumes;namespaces,verbs=get;list;watch
+// +kubebuilder:rbac:groups="",resources=events,verbs=create;patch;update
+// +kubebuilder:rbac:groups=route.openshift.io,resources=routes,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=rbac.authorization.k8s.io,resources=clusterroles;clusterrolebindings;roles;rolebindings,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=apiextensions.k8s.io,resources=customresourcedefinitions,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=apps,resources=deployments/finalizers;deployments/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=batch,resources=jobs,verbs=get;list;watch;create;delete;patch
-// +kubebuilder:rbac:groups=monitoring.coreos.com,resources=servicemonitors,verbs=get;list;watch;create;update
+// +kubebuilder:rbac:groups=monitoring.coreos.com,resources=servicemonitors,verbs=get;list;watch;create;update;patch
 // +kubebuilder:rbac:groups=coordination.k8s.io,resources=leases,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups="",resources=persistentvolumeclaims;persistentvolumes;namespaces,verbs=get;list;watch
-// +kubebuilder:rbac:groups="",resources=events,verbs=create;patch;update
 // +kubebuilder:rbac:groups=authentication.k8s.io,resources=tokenreviews,verbs=create
 // +kubebuilder:rbac:groups=authorization.k8s.io,resources=subjectaccessreviews,verbs=create
 // +kubebuilder:rbac:groups=components.platform.opendatahub.io,resources=kserves,verbs=get;list;watch
-// +kubebuilder:rbac:groups=serving.kserve.io,resources=inferenceservices;servingruntimes,verbs=get;list;watch
+// +kubebuilder:rbac:groups=serving.kserve.io,resources=inferenceservices,verbs=get;list;watch;update;patch
+// +kubebuilder:rbac:groups=serving.kserve.io,resources=inferenceservices/finalizers,verbs=get;list;watch;update;patch;delete
+// +kubebuilder:rbac:groups=serving.kserve.io,resources=servingruntimes,verbs=get;list;watch
 // +kubebuilder:rbac:groups=trustyai.opendatahub.io,resources=trustyaiservices;trustyaiservices/status;trustyaiservices/finalizers,verbs=get;list;watch;create;delete;patch;update
 // +kubebuilder:rbac:groups=trustyai.opendatahub.io,resources=lmevaljobs;lmevaljobs/status;lmevaljobs/finalizers,verbs=get;list;watch;create;delete;patch;update
 // +kubebuilder:rbac:groups=trustyai.opendatahub.io,resources=evalhubs;evalhubs/status;evalhubs/finalizers;evalhubs/proxy,verbs=get;list;watch;create;delete;patch;update
 // +kubebuilder:rbac:groups=trustyai.opendatahub.io,resources=guardrailsorchestrators;guardrailsorchestrators/status;guardrailsorchestrators/finalizers,verbs=get;list;watch;create;delete;patch;update
 // +kubebuilder:rbac:groups=trustyai.opendatahub.io,resources=nemoguardrails;nemoguardrails/status;nemoguardrails/finalizers,verbs=get;list;watch;create;delete;patch;update
-// +kubebuilder:rbac:groups=trustyai.opendatahub.io,resources=collections;providers;status-events,verbs=get;list;create
+// +kubebuilder:rbac:groups=trustyai.opendatahub.io,resources=collections,verbs=get;list;create;update;patch;delete
+// +kubebuilder:rbac:groups=trustyai.opendatahub.io,resources=providers;status-events,verbs=get;list;create
 // +kubebuilder:rbac:groups=networking.istio.io,resources=destinationrules;virtualservices,verbs=get;list;watch;create;delete;patch;update
 // +kubebuilder:rbac:groups=kueue.x-k8s.io,resources=workloads,verbs=get;list;watch;patch
 // +kubebuilder:rbac:groups=mlflow.kubeflow.org,resources=experiments,verbs=get;list;create;update;delete
@@ -121,6 +129,7 @@ func NewReconciler(
 		)).
 		WithAction(deploy.NewAction(
 			deploy.WithCache(),
+			deploy.WithApplyOrder(),
 		)).
 		WithAction(deployments.NewAction()).
 		WithAction(m.reportStatus).

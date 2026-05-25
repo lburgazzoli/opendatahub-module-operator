@@ -6,7 +6,7 @@ PROJECT_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 
 NAMESPACE="${1:-opendatahub-trustyai-operator-system}"
 HELM_RELEASE="${2:-opendatahub-trustyai-operator}"
-CR_RESOURCE="ogxs.components.platform.opendatahub.io"
+CR_RESOURCE="trustyais.components.platform.opendatahub.io"
 
 echo "Cleaning up e2e test resources..."
 
@@ -29,5 +29,10 @@ kubectl delete clusterrolebindings -l platform.opendatahub.io/part-of=trustyai -
 
 # Delete CRD if still present (Helm should have removed it)
 kubectl delete crd "${CR_RESOURCE}" --ignore-not-found 2>/dev/null || true
+
+# Delete stub CRDs and CRs installed by runTestMain for precondition checks.
+kubectl delete kserves --all --ignore-not-found 2>/dev/null || true
+kubectl delete crd kserves.components.platform.opendatahub.io --ignore-not-found 2>/dev/null || true
+kubectl delete crd inferenceservices.serving.kserve.io --ignore-not-found 2>/dev/null || true
 
 echo "E2E test cleanup complete."
