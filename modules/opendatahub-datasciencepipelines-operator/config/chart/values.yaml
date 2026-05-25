@@ -1,0 +1,17 @@
+config:
+  platform-type: OpenDataHub
+  platform-version: unknown
+image:
+  pullPolicy: Always
+  repository: ttl.sh/opendatahub-datasciencepipelines-operator
+  tag: latest
+leaderElect: true
+replicas: 1
+resources:
+  limits:
+    cpu: 500m
+    memory: 512Mi
+  requests:
+    cpu: 10m
+    memory: 128Mi
+serviceAccount: {}
