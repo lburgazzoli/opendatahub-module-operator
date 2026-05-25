@@ -66,19 +66,7 @@ func getGatewayDomain(ctx context.Context, cli client.Client) (string, error) {
 // fixDeploymentNamespace amends the rendered mlflow-operator Deployment in rr.Resources
 // to replace the hardcoded --namespace arg with the configured ApplicationsNamespace.
 //
-// The upstream overlays hardcode --namespace=opendatahub (or redhat-ods-applications)
-// in the manager command args. This action fixes it in-memory after kustomize renders
-// so the deployed binary watches the correct namespace.
-//
-// TODO(module-team): contribute a params.env substitution upstream to remove this.
-// fixDeploymentNamespace amends the rendered mlflow-operator Deployment in rr.Resources
-// to replace any --namespace=<hardcoded> arg with the configured ApplicationsNamespace.
-//
-// The upstream overlays hardcode --namespace=opendatahub (or redhat-ods-applications)
-// in the manager command args. This action fixes it in-memory after kustomize renders
-// so the deployed binary watches the correct namespace without touching the disk.
-//
-// TODO(module-team): contribute a params.env substitution upstream to remove this.
+// TODO(module-team): use the namespace in which the oeprator runs.
 func (m *Module) fixDeploymentNamespace(_ context.Context, rr *odhtypes.ReconciliationRequest) error {
 	target := "--namespace=" + m.cfg.ApplicationsNamespace
 

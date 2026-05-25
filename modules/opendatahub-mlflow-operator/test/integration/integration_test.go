@@ -218,7 +218,7 @@ type feastTest struct {
 	workloadDeploy *appsv1.Deployment
 }
 
-func TestOGX(t *testing.T) {
+func TestMLflowOperator(t *testing.T) {
 	rt := &feastTest{
 		module: &componentsv1alpha1.MLflowOperator{
 			ObjectMeta: metav1.ObjectMeta{
@@ -230,7 +230,7 @@ func TestOGX(t *testing.T) {
 		},
 		workloadDeploy: &appsv1.Deployment{
 			ObjectMeta: metav1.ObjectMeta{
-				Name:      "mlflowoperator-k8s-operator-controller-manager",
+				Name:      "mlflow-operator-controller-manager",
 				Namespace: testNamespace,
 			},
 		},

@@ -133,7 +133,7 @@ func TestMLflowOperator(t *testing.T) {
 		workloadDeploy: &appsv1.Deployment{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "mlflow-operator-controller-manager",
-				Namespace: "opendatahub",
+				Namespace: operatorNamespace,
 			},
 		},
 	}
