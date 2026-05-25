@@ -31,7 +31,7 @@ import (
 	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-mymodule-operator/pkg/config"
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-mymodule-operator/pkg/version"
 	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/cluster"
-	odhtypes "github.com/opendatahub-io/opendatahub-operator/v2/pkg/controller/types"
+	"github.com/opendatahub-io/operator-actions-framework/controller/types"
 )
 
 const (
@@ -67,15 +67,15 @@ func newTestModule(t *testing.T, platformType string) *Module {
 	return m
 }
 
-func newTestRR(obj *componentApi.MyModule) *odhtypes.ReconciliationRequest {
-	return &odhtypes.ReconciliationRequest{
+func newTestRR(obj *componentApi.MyModule) *types.ReconciliationRequest {
+	return &types.ReconciliationRequest{
 		Instance:          obj,
 		ManifestsBasePath: "/manifests",
 	}
 }
 
-func newTestRRWithClient(obj *componentApi.MyModule, cl client.Client) *odhtypes.ReconciliationRequest {
-	return &odhtypes.ReconciliationRequest{
+func newTestRRWithClient(obj *componentApi.MyModule, cl client.Client) *types.ReconciliationRequest {
+	return &types.ReconciliationRequest{
 		Client:            cl,
 		Instance:          obj,
 		ManifestsBasePath: "/manifests",

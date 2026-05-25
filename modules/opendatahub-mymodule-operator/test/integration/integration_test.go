@@ -54,7 +54,7 @@ import (
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-mymodule-operator/test/support"
 	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/cluster"
 	odhmanager "github.com/opendatahub-io/opendatahub-operator/v2/pkg/manager"
-	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/resources"
+	"github.com/opendatahub-io/operator-actions-framework/resources"
 )
 
 const (

@@ -4,10 +4,12 @@ go 1.26.2
 
 require (
 	github.com/blang/semver/v4 v4.0.0
+	github.com/go-logr/logr v1.4.3
 	github.com/invopop/jsonschema v0.14.0
 	github.com/lburgazzoli/gomega-matchers v0.4.1-0.20260219145423-4061a5fb8799
 	github.com/onsi/gomega v1.41.0
 	github.com/opendatahub-io/opendatahub-operator/v2 v2.0.0-00010101000000-000000000000
+	github.com/opendatahub-io/operator-actions-framework v0.0.0-00010101000000-000000000000
 	github.com/operator-framework/api v0.42.0
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/viper v1.21.0
@@ -52,7 +54,6 @@ require (
 	github.com/fsnotify/fsnotify v1.10.0 // indirect
 	github.com/fxamacker/cbor/v2 v2.9.1 // indirect
 	github.com/go-errors/errors v1.5.1 // indirect
-	github.com/go-logr/logr v1.4.3 // indirect
 	github.com/go-logr/zapr v1.3.0 // indirect
 	github.com/go-openapi/jsonpointer v0.23.1 // indirect
 	github.com/go-openapi/jsonreference v0.21.5 // indirect
@@ -131,4 +132,6 @@ require (
 	sigs.k8s.io/structured-merge-diff/v6 v6.4.0 // indirect
 )
 
-replace github.com/opendatahub-io/opendatahub-operator/v2 => github.com/lburgazzoli/opendatahub-operator/v2 v2.0.0-20260522211029-67d95fa3b5a1
+replace github.com/opendatahub-io/opendatahub-operator/v2 => github.com/valdar/opendatahub-operator/v2 v2.0.0-20260525110443-d9b875130e14
+
+replace github.com/opendatahub-io/operator-actions-framework => github.com/valdar/opendatahub-operator/operator-actions-framework v0.0.0-20260525110443-d9b875130e14

@@ -27,20 +27,24 @@ import (
 
 	componentApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-mymodule-operator/api/components/v1alpha1"
 	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-mymodule-operator/pkg/config"
+	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-mymodule-operator/pkg/controller/status"
 	"github.com/opendatahub-io/opendatahub-operator/v2/api/common"
-	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/controller/actions/deploy"
-	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/controller/actions/gc"
 	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/controller/actions/render/kustomize"
-	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/controller/actions/status/deployments"
 	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/controller/actions/status/releases"
-	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/controller/handlers"
 	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/controller/precondition"
-	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/controller/predicates"
-	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/controller/predicates/resources"
-	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/controller/reconciler"
-	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/controller/status"
-	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/metadata/labels"
+	"github.com/opendatahub-io/operator-actions-framework/api"
+	"github.com/opendatahub-io/operator-actions-framework/controller/actions/deploy"
+	"github.com/opendatahub-io/operator-actions-framework/controller/actions/gc"
+	"github.com/opendatahub-io/operator-actions-framework/controller/actions/status/deployments"
+	"github.com/opendatahub-io/operator-actions-framework/controller/conditions"
+	"github.com/opendatahub-io/operator-actions-framework/controller/handlers"
+	"github.com/opendatahub-io/operator-actions-framework/controller/predicates"
+	"github.com/opendatahub-io/operator-actions-framework/controller/predicates/resources"
+	"github.com/opendatahub-io/operator-actions-framework/controller/reconciler"
+	"github.com/opendatahub-io/operator-actions-framework/controller/types"
 )
+
+const platformPartOfLabel = "platform.opendatahub.io/part-of"
 
 // +kubebuilder:rbac:groups=components.platform.opendatahub.io,resources=mymodules,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=components.platform.opendatahub.io,resources=mymodules/status,verbs=get;update;patch
@@ -70,7 +74,7 @@ func NewReconciler(
 		return err
 	}
 
-	r, err := reconciler.ReconcilerFor(mgr, &componentApi.MyModule{}).
+	_, err = reconciler.ReconcilerFor(mgr, &componentApi.MyModule{}).
 		// Owned resources: the controller watches these and reconciles
 		// when they change.
 		Owns(&appsv1.Deployment{}, reconciler.WithPredicates(predicates.DefaultDeploymentPredicate)).
@@ -88,11 +92,40 @@ func NewReconciler(
 		).
 		// Preconditions: halt the pipeline if the required Ingress is
 		// missing. Nothing is deployed until it exists.
-		WithPreCondition(precondition.NewPreCondition(
-			m.checkIngress,
-			precondition.WithConditionType(ConditionIngressAvailable),
-			precondition.WithStopReconciliation(),
-		)).
+		WithReconcilerOpts(
+			reconciler.WithRelease(api.Release{Name: rel.Name, Version: rel.Version.Version}),
+			reconciler.WithPreApplyFn(func(
+				ctx context.Context,
+				rr *types.ReconciliationRequest,
+			) bool {
+				result, err := m.checkIngress(ctx, rr)
+				if err != nil {
+					rr.Conditions.MarkUnknown(
+						ConditionIngressAvailable,
+						conditions.WithObservedGeneration(rr.Instance.GetGeneration()),
+						conditions.WithReason(precondition.PreConditionFailedReason),
+						conditions.WithMessage("%s", err.Error()),
+					)
+					return true
+				}
+
+				if !result.Pass {
+					rr.Conditions.MarkFalse(
+						ConditionIngressAvailable,
+						conditions.WithObservedGeneration(rr.Instance.GetGeneration()),
+						conditions.WithReason(precondition.PreConditionFailedReason),
+						conditions.WithMessage("%s", result.Message),
+					)
+					return true
+				}
+
+				rr.Conditions.MarkTrue(
+					ConditionIngressAvailable,
+					conditions.WithObservedGeneration(rr.Instance.GetGeneration()),
+				)
+				return false
+			}),
+		).
 		// Action pipeline:
 		//   initialize -> upgrade ->
 		//   kustomize -> deploy ->
@@ -101,21 +134,26 @@ func NewReconciler(
 		WithAction(m.initialize).
 		WithAction(m.upgradeIfNeeded).
 		WithAction(kustomize.NewAction(
-			kustomize.WithLabel(labels.PlatformPartOf, componentName),
+			kustomize.WithLabel(platformPartOfLabel, componentName),
 		)).
 		WithAction(deploy.NewAction(
 			deploy.WithCache(),
 			deploy.WithApplyOrder(),
 		)).
-		WithAction(deployments.NewAction()).
+		WithAction(deployments.NewAction(
+			deployments.InNamespace(cfg.ApplicationsNamespace),
+		)).
 		WithAction(releases.NewAction()).
 		// reportStatus runs after deployments and releases have populated
 		// their conditions and release info, so it can override or enrich
 		// any previously set status fields.
 		WithAction(m.reportStatus).
-		WithAction(gc.NewAction(
-			gc.InNamespace(cfg.ApplicationsNamespace),
-		)).
+		WithAction(gc.NewAction(func(
+			_ context.Context,
+			_ *types.ReconciliationRequest,
+		) (string, error) {
+			return cfg.ApplicationsNamespace, nil
+		})).
 		WithConditions(
 			status.ConditionDeploymentsAvailable,
 			ConditionIngressAvailable,
@@ -125,13 +163,6 @@ func NewReconciler(
 	if err != nil {
 		return err
 	}
-
-	// The reconciler framework reads Release from cluster.GetRelease(),
-	// which is only populated by cluster.Init() (called by the main ODH
-	// operator). A standalone module operator must set it explicitly so
-	// the deploy action stamps the correct platform.opendatahub.io/type
-	// and platform.opendatahub.io/version annotations on managed resources.
-	r.Release = rel
 
 	if cfg.WebhooksEnabled {
 		if err := m.RegisterWebhooks(mgr); err != nil {

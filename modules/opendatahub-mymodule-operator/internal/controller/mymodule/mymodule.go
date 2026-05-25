@@ -29,8 +29,8 @@ import (
 	"github.com/opendatahub-io/opendatahub-operator/v2/api/common"
 	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/cluster"
 	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/controller/precondition"
-	odhtypes "github.com/opendatahub-io/opendatahub-operator/v2/pkg/controller/types"
-	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/resources"
+	"github.com/opendatahub-io/operator-actions-framework/controller/types"
+	"github.com/opendatahub-io/operator-actions-framework/resources"
 
 	componentApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-mymodule-operator/api/components/v1alpha1"
 	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-mymodule-operator/pkg/config"
@@ -72,7 +72,7 @@ type Module struct {
 	cfg             *moduleconfig.Config
 	version         componentApi.SemVer
 	platformVersion componentApi.SemVer
-	manifestInfo    odhtypes.ManifestInfo
+	manifestInfo    types.ManifestInfo
 
 	// Webhook fields — set by RegisterWebhooks.
 	decoder   admission.Decoder
@@ -90,7 +90,7 @@ func NewModule(cfg *moduleconfig.Config) (*Module, error) {
 	// Platform version may be "unknown" or unset; default to zero.
 	pv, _ := componentApi.NewSemVer(cfg.PlatformVersion)
 
-	mi := odhtypes.ManifestInfo{
+	mi := types.ManifestInfo{
 		Path:       cfg.ManifestsPath,
 		ContextDir: componentName,
 		SourcePath: overlayODH,
@@ -109,7 +109,7 @@ func NewModule(cfg *moduleconfig.Config) (*Module, error) {
 }
 
 // initialize appends the pre-resolved manifest info to the pipeline.
-func (m *Module) initialize(_ context.Context, rr *odhtypes.ReconciliationRequest) error {
+func (m *Module) initialize(_ context.Context, rr *types.ReconciliationRequest) error {
 	rr.Manifests = append(rr.Manifests, m.manifestInfo)
 
 	return nil
@@ -118,7 +118,7 @@ func (m *Module) initialize(_ context.Context, rr *odhtypes.ReconciliationReques
 // checkIngress is a precondition check that verifies the required Ingress
 // exists in the application namespace. Used with precondition.NewPreCondition
 // and WithStopReconciliation so the pipeline halts when missing.
-func (m *Module) checkIngress(ctx context.Context, rr *odhtypes.ReconciliationRequest) (precondition.CheckResult, error) {
+func (m *Module) checkIngress(ctx context.Context, rr *types.ReconciliationRequest) (precondition.CheckResult, error) {
 	ingress := &networkingv1.Ingress{}
 	key := client.ObjectKey{
 		Namespace: m.cfg.ApplicationsNamespace,
@@ -145,7 +145,7 @@ func (m *Module) checkIngress(ctx context.Context, rr *odhtypes.ReconciliationRe
 // upgradeIfNeeded checks whether the module version advanced or the
 // platform version changed since the last reconcile. If so, it calls
 // m.upgrade to run idempotent migrations.
-func (m *Module) upgradeIfNeeded(ctx context.Context, rr *odhtypes.ReconciliationRequest) error {
+func (m *Module) upgradeIfNeeded(ctx context.Context, rr *types.ReconciliationRequest) error {
 	obj, ok := rr.Instance.(*componentApi.MyModule)
 	if !ok {
 		return fmt.Errorf("instance is not a MyModule")
@@ -166,7 +166,7 @@ func (m *Module) upgradeIfNeeded(ctx context.Context, rr *odhtypes.Reconciliatio
 // upgrade runs idempotent migrations when the module version advances
 // or the platform version changes. It amends existing resources before
 // the new manifests are applied by the deploy action.
-func (m *Module) upgrade(ctx context.Context, prev componentApi.ModuleStatus, rr *odhtypes.ReconciliationRequest) error {
+func (m *Module) upgrade(ctx context.Context, prev componentApi.ModuleStatus, rr *types.ReconciliationRequest) error {
 	existing := &networkingv1.Ingress{}
 	key := client.ObjectKey{
 		Namespace: m.cfg.ApplicationsNamespace,
@@ -197,7 +197,7 @@ func (m *Module) upgrade(ctx context.Context, prev componentApi.ModuleStatus, rr
 
 // reportStatus populates the module status with version, platform,
 // source information, and config values.
-func (m *Module) reportStatus(_ context.Context, rr *odhtypes.ReconciliationRequest) error {
+func (m *Module) reportStatus(_ context.Context, rr *types.ReconciliationRequest) error {
 	obj, ok := rr.Instance.(*componentApi.MyModule)
 	if !ok {
 		return fmt.Errorf("instance is not a MyModule")

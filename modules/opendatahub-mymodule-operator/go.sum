@@ -137,8 +137,6 @@ github.com/kylelemons/godebug v1.1.0 h1:RPNrshWIDI6G2gRW9EHilWtl7Z6Sb1BR0xunSBf0
 github.com/kylelemons/godebug v1.1.0/go.mod h1:9/0rRGxNHcop5bhtWyNeEfOS8JIWk580+fNqagV/RAw=
 github.com/lburgazzoli/gomega-matchers v0.4.1-0.20260219145423-4061a5fb8799 h1:l71wBxK4OtDX8mRR9kHmux22y565JRIstv0oGA5Wgfs=
 github.com/lburgazzoli/gomega-matchers v0.4.1-0.20260219145423-4061a5fb8799/go.mod h1:I9Z7FkJAlSr+mkm981S3pLnsoSTsctXqBfdS8ao6w6Q=
-github.com/lburgazzoli/opendatahub-operator/v2 v2.0.0-20260522211029-67d95fa3b5a1 h1:IzBoiVEp2Oxf3G6w4wsb/9VrLmttJtWQ5TghonnPBls=
-github.com/lburgazzoli/opendatahub-operator/v2 v2.0.0-20260522211029-67d95fa3b5a1/go.mod h1:98taq0y6mF3fuSByLOsb5IFbNqG2O1qV2as0AYXjsVc=
 github.com/mitchellh/copystructure v1.2.0 h1:vpKXTN4ewci03Vljg/q9QvCGUDttBOGBIa15WveJJGw=
 github.com/mitchellh/copystructure v1.2.0/go.mod h1:qLl+cE2AmVv+CoeAwDPye/v+N2HKCj9FbZEVFJRxO9s=
 github.com/mitchellh/reflectwalk v1.0.2 h1:G2LzWKi524PWgd3mLHV8Y5k7s6XUvT0Gef6zxSIeXaQ=
@@ -219,6 +217,10 @@ github.com/stretchr/testify v1.11.1 h1:7s2iGBzp5EwR7/aIZr8ao5+dra3wiQyKjjFuvgVKu
 github.com/stretchr/testify v1.11.1/go.mod h1:wZwfW3scLgRK+23gO65QZefKpKQRnfz6sD981Nm4B6U=
 github.com/subosito/gotenv v1.6.0 h1:9NlTDc1FTs4qu0DDq7AEtTPNw6SVm7uBMsUCUjABIf8=
 github.com/subosito/gotenv v1.6.0/go.mod h1:Dk4QP5c2W3ibzajGcXpNraDfq2IrhjMIvMSWPKKo0FU=
+github.com/valdar/opendatahub-operator/operator-actions-framework v0.0.0-20260525110443-d9b875130e14 h1:6hZHmny796ppqPVRRA0TNQWcwIpPq0qQXnG/TzmDikU=
+github.com/valdar/opendatahub-operator/operator-actions-framework v0.0.0-20260525110443-d9b875130e14/go.mod h1:PwSPYKwqAiV8GUL5NlRaeJGyp3iLK6rsc8CgdNhGBKQ=
+github.com/valdar/opendatahub-operator/v2 v2.0.0-20260525110443-d9b875130e14 h1:Akghj8+2T+E5IoczqglVh3u22rSd+Amkzd3qiVtfgsI=
+github.com/valdar/opendatahub-operator/v2 v2.0.0-20260525110443-d9b875130e14/go.mod h1:r3Oa41uyZmKOCQDnd1xZWv8+CTHVQWjvIW2zFhTm/2I=
 github.com/x448/float16 v0.8.4 h1:qLwI1I70+NjRFUR3zs1JPUCgaCXSh3SW62uAKT1mSBM=
 github.com/x448/float16 v0.8.4/go.mod h1:14CWIYCyZA/cWjXOioeEpHeN/83MdbZDRQHoFcYsOfg=
 github.com/xlab/treeprint v1.2.0 h1:HzHnuAF1plUN2zGlAFHbSQP2qJ0ZAD3XF5XD7OesXRQ=
