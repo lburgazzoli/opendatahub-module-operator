@@ -83,4 +83,6 @@ example module — see [testing-limitations.md](testing-limitations.md).
    targets, and composite `test-integration` / `test-e2e` — see e2e-workflow.md
 12. **Test gates**: E2e uses `test-e2e-run` after manual deploy; operator gate
     before subtests; integration waits for cache sync in TestMain
-13. **OpenShift first**: Module integration/e2e assume OpenShift; Kind is optional
+13. **Ephemeral e2e images**: Prefer a fresh `ttl.sh` tag per e2e run so the
+    cluster pulls the image you just built instead of reusing a stale cached tag
+14. **OpenShift first**: Module integration/e2e assume OpenShift; Kind is optional

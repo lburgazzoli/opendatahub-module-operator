@@ -187,6 +187,11 @@ RBAC in the controller. **No CRD fetch on OpenShift** — see
 Per [testing.md](references/testing.md):
 
 - Unit, integration, e2e tests (`testing.T` + Gomega)
+- If the module has dependency-gated preconditions (for example a required CRD,
+  required singleton CR, or ownership check), add **negative-path integration
+  and e2e coverage** for those gates, not just the happy path. At minimum,
+  cover the missing-dependency case and the foreign/unmanaged ownership case
+  when those are distinct behaviors.
 - `hack/scripts/cleanup-integration.sh` and `cleanup-e2e.sh` must delete the
   module CRs and wait for them to disappear before deleting the module CRD
 - Integration CRDs must be installed from `make`, not from Go test code; the
@@ -234,6 +239,10 @@ make cleanup-e2e
 make deploy-helm IMG="${IMG}"
 make test-e2e-run
 ```
+
+For e2e work, prefer a fresh **ephemeral `ttl.sh` image tag** like the one
+above instead of reusing a stable tag. That avoids stale image cache problems
+on the cluster and makes repeated local verification much more reliable.
 
 For the **first** integration/e2e verification pass, prefer short timeouts to
 surface setup bugs quickly. If deploy/test output stalls, stop waiting and check

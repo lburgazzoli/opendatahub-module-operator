@@ -36,6 +36,10 @@ make helm
 make test-e2e
 ```
 
+For e2e verification, prefer a fresh ephemeral `ttl.sh` image tag per run
+instead of reusing a stable image tag. That is the most reliable way to avoid
+stale image cache issues on the cluster while iterating locally.
+
 For step-by-step image build, deploy, and e2e flows, see
 `.agents/skills/odh-component-to-module/references/e2e-workflow.md`.
 

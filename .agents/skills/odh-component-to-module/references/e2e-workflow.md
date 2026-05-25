@@ -24,6 +24,10 @@ Keep it in shell memory and pass it directly to `make`, for example
 `make container-build IMG="${IMG}"` or `IMG="${IMG}" make container-build`.
 Do not write it to a temp file for later `cat`.
 
+Best practice: for e2e runs, prefer a fresh ephemeral `ttl.sh` image tag for
+every verification pass. A unique short-lived tag avoids stale image pulls and
+keeps local iteration predictable.
+
 ## Integration tests (in-process manager)
 
 Prepare once, then run tests only:

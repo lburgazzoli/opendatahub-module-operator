@@ -201,6 +201,10 @@ IMG=ttl.sh/opendatahub-mymodule-operator-$(uuidgen):1h \
   make container-build container-push deploy-helm
 ```
 
+For e2e verification, this ephemeral `ttl.sh` flow is the preferred default.
+Using a fresh short-lived tag per run avoids stale image cache issues and makes
+debugging deploy/test failures much more predictable.
+
 ## Make Targets
 
 All tools use `go run <module>@<version>` — no local binary downloads.

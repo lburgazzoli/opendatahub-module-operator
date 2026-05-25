@@ -14,6 +14,8 @@ cluster) — not vanilla Kind. Assume:
   resources; this fails on Kind but works on OpenShift.
 - **Image pull**: push to a registry the cluster can reach (`ttl.sh`, internal
   registry, or `imagePullSecrets` on the operator namespace if required).
+  For e2e verification, prefer a fresh ephemeral `ttl.sh` tag per run so the
+  cluster does not reuse a stale image.
 
 Use `oc` or `kubectl` interchangeably in cleanup scripts; prefer whatever is
 in the user's PATH.
@@ -76,8 +78,33 @@ test-e2e: cleanup-e2e deploy-helm test-e2e-run ## ...
 After manual `deploy-helm`, use **`make test-e2e-run`** — not `make test-e2e`
 (which re-runs cleanup and deploy). See [e2e-workflow.md](e2e-workflow.md).
 
+Best practice for e2e runs: export a new `ttl.sh` image reference with a short
+TTL before `container-build` / `container-push` / `deploy-helm`, for example
+`ttl.sh/${MODULE_NAME}-$(uuidgen):1h`. Reusing a stable tag makes image cache
+problems much harder to diagnose.
+
+Best practice for e2e runs: export a new `ttl.sh` image reference with a short
+TTL before `container-build` / `container-push` / `deploy-helm`, for example
+`ttl.sh/${MODULE_NAME}-$(uuidgen):1h`. Reusing a stable tag makes image cache
+problems much harder to diagnose.
+
 Integration CRDs must be installed by `make`, not by Go test code. `TestMain`
 should fail fast if the expected module CRD is missing.
+
+For **dependency-gated modules**, add negative-path integration and e2e tests
+that exercise the preconditions directly. Do not stop at a single happy-path
+Ready test. If reconciliation depends on another API surface or ownership
+contract, cover both:
+
+- the dependency missing path (for example missing operand CRD / required CR)
+- the dependency present but unusable path (for example foreign-owned CRD,
+  unmanaged singleton, or wrong ownership label)
+
+Prefer assertions on the specific condition/reason set by the gate in addition
+to the top-level Ready=False state. When a negative path requires mutating a
+cluster-scoped dependency, only do so when the test owns that dependency; if an
+external cluster already provides a conflicting shared CRD/CR, skip rather than
+rewriting shared state.
 
 ### Cleanup scripts
 
