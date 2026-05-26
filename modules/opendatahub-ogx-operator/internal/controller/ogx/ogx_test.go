@@ -49,6 +49,10 @@ func newTestRR(obj *componentApi.OGX) *odhtypes.ReconciliationRequest {
 	return &odhtypes.ReconciliationRequest{
 		Instance:          obj,
 		ManifestsBasePath: "/manifests",
+		Release: (&moduleconfig.Config{
+			PlatformType:    "OpenDataHub",
+			PlatformVersion: "1.0.0",
+		}).Release(),
 	}
 }
 

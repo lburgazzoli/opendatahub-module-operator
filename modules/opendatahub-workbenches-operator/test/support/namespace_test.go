@@ -1,35 +1,35 @@
 package support
 
-import "testing"
+import (
+	"testing"
+
+	. "github.com/onsi/gomega"
+)
 
 func TestOperatorNamespaceUsesEnvironmentOverride(t *testing.T) {
+	g := NewWithT(t)
 	t.Setenv("OPERATOR_NAMESPACE", "custom-namespace")
 
-	if got := OperatorNamespace(); got != "custom-namespace" {
-		t.Fatalf("OperatorNamespace() = %q, want %q", got, "custom-namespace")
-	}
+	g.Expect(OperatorNamespace()).To(Equal("custom-namespace"))
 }
 
 func TestOperatorNamespaceFallsBackToDefault(t *testing.T) {
+	g := NewWithT(t)
 	t.Setenv("OPERATOR_NAMESPACE", "")
 
-	if got := OperatorNamespace(); got != DefaultOperatorNamespace {
-		t.Fatalf("OperatorNamespace() = %q, want %q", got, DefaultOperatorNamespace)
-	}
+	g.Expect(OperatorNamespace()).To(Equal(DefaultOperatorNamespace))
 }
 
 func TestIntegrationTestNamespaceUsesEnvironmentOverride(t *testing.T) {
+	g := NewWithT(t)
 	t.Setenv("INTEGRATION_TEST_NAMESPACE", "custom-integration")
 
-	if got := IntegrationTestNamespace(); got != "custom-integration" {
-		t.Fatalf("IntegrationTestNamespace() = %q, want %q", got, "custom-integration")
-	}
+	g.Expect(IntegrationTestNamespace()).To(Equal("custom-integration"))
 }
 
 func TestIntegrationTestNamespaceFallsBackToDefault(t *testing.T) {
+	g := NewWithT(t)
 	t.Setenv("INTEGRATION_TEST_NAMESPACE", "")
 
-	if got := IntegrationTestNamespace(); got != DefaultIntegrationTestNamespace {
-		t.Fatalf("IntegrationTestNamespace() = %q, want %q", got, DefaultIntegrationTestNamespace)
-	}
+	g.Expect(IntegrationTestNamespace()).To(Equal(DefaultIntegrationTestNamespace))
 }

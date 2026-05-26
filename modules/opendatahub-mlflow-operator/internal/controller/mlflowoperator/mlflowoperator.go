@@ -52,10 +52,9 @@ var imageParamMap = map[string]string{
 
 // Module holds process-lifetime state for the mlflowoperator controller.
 type Module struct {
-	cfg             *moduleconfig.Config
-	version         componentApi.SemVer
-	platformVersion componentApi.SemVer
-	manifestInfo    odhtypes.ManifestInfo
+	cfg          *moduleconfig.Config
+	version      componentApi.SemVer
+	manifestInfo odhtypes.ManifestInfo
 	// consoleSectionTitle is the section-title kustomize variable, computed once from platform.
 	consoleSectionTitle string
 }
@@ -73,8 +72,6 @@ func NewModule(cfg *moduleconfig.Config) (*Module, error) {
 	if err != nil {
 		return nil, fmt.Errorf("parsing module version %q: %w", version.Version, err)
 	}
-
-	pv, _ := componentApi.NewSemVer(cfg.PlatformVersion)
 
 	platform := common.Platform(cfg.PlatformType)
 	overlay := overlayODH
@@ -97,7 +94,6 @@ func NewModule(cfg *moduleconfig.Config) (*Module, error) {
 	return &Module{
 		cfg:                 cfg,
 		version:             v,
-		platformVersion:     pv,
 		manifestInfo:        mi,
 		consoleSectionTitle: consoleSectionTitleFor(platform),
 	}, nil
@@ -120,8 +116,8 @@ func (m *Module) reportStatus(_ context.Context, rr *odhtypes.ReconciliationRequ
 		Version:     m.version,
 		BuildSource: version.Repo + "@" + version.Branch + "/" + version.Commit,
 		Platform: componentApi.PlatformStatus{
-			Name:    m.cfg.PlatformType,
-			Version: m.platformVersion,
+			Name:    string(rr.Release.Name),
+			Version: componentApi.SemVer(rr.Release.Version.String()),
 		},
 	}
 

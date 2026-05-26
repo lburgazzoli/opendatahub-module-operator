@@ -25,11 +25,11 @@ import (
 	"testing"
 	"time"
 
-	admissionv1 "k8s.io/api/admissionregistration/v1"
-	imagev1 "github.com/openshift/api/image/v1"
 	. "github.com/onsi/gomega"
+	imagev1 "github.com/openshift/api/image/v1"
 	promv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
 	"github.com/spf13/viper"
+	admissionv1 "k8s.io/api/admissionregistration/v1"
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -53,6 +53,7 @@ import (
 	componentsv1alpha1 "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-trainer-operator/api/components/v1alpha1"
 	trainercontroller "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-trainer-operator/internal/controller/trainer"
 	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-trainer-operator/pkg/config"
+	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-trainer-operator/pkg/version"
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-trainer-operator/test/support"
 	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/cluster"
 	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/controller/status"
@@ -77,13 +78,14 @@ const (
 )
 
 var (
-	ctx             context.Context
-	cancel          context.CancelFunc
-	k8sClient       client.Client
-	directClient    client.Client
-	k               *k8sm.Matcher
-	operatorCfgData map[string]string
-	testScheme      = runtime.NewScheme()
+	ctx                    context.Context
+	cancel                 context.CancelFunc
+	k8sClient              client.Client
+	directClient           client.Client
+	k                      *k8sm.Matcher
+	operatorCfgData        map[string]string
+	operatorReleaseVersion string
+	testScheme             = runtime.NewScheme()
 )
 
 func envOrDefault(key string, defaultValue string) string {
@@ -140,18 +142,8 @@ func runTestMain(m *testing.M) int {
 		return 1
 	}
 
-	if err := support.EnsureStubCRD(ctx, directClient, jobSetOperatorCRDName,
-		"operator.openshift.io", "v1", "JobSetOperator", "jobsetoperators"); err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to install JobSetOperator stub CRD: %v\n", err)
-		return 1
-	}
-	if err := support.EnsureStubJobSetOperatorCR(ctx, directClient); err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to create JobSetOperator stub CR: %v\n", err)
-		return 1
-	}
-	if err := support.EnsureStubCRD(ctx, directClient, jobSetCRDName,
-		"jobset.x-k8s.io", "v1alpha2", "JobSet", "jobsets"); err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to install JobSet stub CRD: %v\n", err)
+	if err := support.EnsureTrainerPreconditions(ctx, directClient); err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to install Trainer preconditions: %v\n", err)
 		return 1
 	}
 
@@ -172,6 +164,7 @@ func runTestMain(m *testing.M) int {
 		ApplicationsNamespace: testNamespace,
 		ManifestsPath:         support.MustProjectFile("config", "manifests"),
 	}
+	operatorReleaseVersion = moduleCfg.Release().Version.String()
 
 	ctrlMgr, err := ctrl.NewManager(cfg, ctrl.Options{
 		Scheme:         testScheme,
@@ -273,13 +266,7 @@ func TestTrainer(t *testing.T) {
 
 	// Clean up any leftover CR from a previous run before starting.
 	_ = k8sClient.Delete(ctx, rt.module)
-	g := NewWithT(t)
-	g.Eventually(func(g Gomega) {
-		module := &componentsv1alpha1.Trainer{}
-		err := k8sClient.Get(ctx, client.ObjectKeyFromObject(rt.module), module)
-		g.Expect(k8serr.IsNotFound(err)).To(BeTrue())
-	}).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(Succeed())
-	rt.module.ResourceVersion = ""
+	waitForSingletonDeleted(t, rt.module)
 
 	t.Cleanup(func() {
 		_ = k8sClient.Delete(ctx, rt.module)
@@ -301,32 +288,6 @@ func (rt *trainerTest) testModuleCRDInstalled(t *testing.T) {
 	g.Eventually(k.Get(rt.moduleCRD)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(
 		jq.Match(`.metadata.name == "%s"`, moduleCRDName),
 	)
-}
-
-func (rt *trainerTest) waitForModuleDeleted(t *testing.T) {
-	t.Helper()
-
-	g := NewWithT(t)
-	g.Eventually(func(g Gomega) {
-		module := &componentsv1alpha1.Trainer{}
-		err := k8sClient.Get(ctx, client.ObjectKeyFromObject(rt.module), module)
-		g.Expect(k8serr.IsNotFound(err)).To(BeTrue())
-	}).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(Succeed())
-	rt.module.ResourceVersion = ""
-}
-
-func waitForDeleted(
-	t *testing.T,
-	obj client.Object,
-) {
-	t.Helper()
-
-	g := NewWithT(t)
-	g.Eventually(func(g Gomega) {
-		fresh := obj.DeepCopyObject().(client.Object)
-		err := directClient.Get(ctx, client.ObjectKeyFromObject(obj), fresh)
-		g.Expect(k8serr.IsNotFound(err)).To(BeTrue())
-	}).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(Succeed())
 }
 
 func (rt *trainerTest) expectDependenciesUnavailable(
@@ -359,11 +320,18 @@ func (rt *trainerTest) testJobSetOperatorCRDMissing(t *testing.T) {
 	g.Expect(directClient.Delete(ctx, jobSetOperatorCRD)).To(Succeed())
 	waitForDeleted(t, jobSetOperatorCRD)
 	t.Cleanup(func() {
-		_ = support.EnsureStubCRD(ctx, directClient, jobSetOperatorCRDName,
-			"operator.openshift.io", "v1", "JobSetOperator", "jobsetoperators")
-		_ = support.EnsureStubJobSetOperatorCR(ctx, directClient)
+		_, _ = support.EnsureStubCRDIfMissing(
+			ctx,
+			directClient,
+			jobSetOperatorCRDName,
+			"operator.openshift.io",
+			"v1",
+			"JobSetOperator",
+			"jobsetoperators",
+		)
+		_, _ = support.EnsureStubJobSetOperatorCRIfMissing(ctx, directClient)
 		_ = k8sClient.Delete(ctx, rt.module)
-		rt.waitForModuleDeleted(t)
+		waitForSingletonDeleted(t, rt.module)
 	})
 
 	rt.module.ResourceVersion = ""
@@ -378,9 +346,9 @@ func (rt *trainerTest) testJobSetOperatorCRMissing(t *testing.T) {
 	g.Expect(directClient.Delete(ctx, jobSetOperatorCR)).To(Succeed())
 	waitForDeleted(t, jobSetOperatorCR)
 	t.Cleanup(func() {
-		_ = support.EnsureStubJobSetOperatorCR(ctx, directClient)
+		_, _ = support.EnsureStubJobSetOperatorCRIfMissing(ctx, directClient)
 		_ = k8sClient.Delete(ctx, rt.module)
-		rt.waitForModuleDeleted(t)
+		waitForSingletonDeleted(t, rt.module)
 	})
 
 	rt.module.ResourceVersion = ""
@@ -397,10 +365,17 @@ func (rt *trainerTest) testJobSetCRDMissing(t *testing.T) {
 	g.Expect(directClient.Delete(ctx, jobSetCRD)).To(Succeed())
 	waitForDeleted(t, jobSetCRD)
 	t.Cleanup(func() {
-		_ = support.EnsureStubCRD(ctx, directClient, jobSetCRDName,
-			"jobset.x-k8s.io", "v1alpha2", "JobSet", "jobsets")
+		_, _ = support.EnsureStubCRDIfMissing(
+			ctx,
+			directClient,
+			jobSetCRDName,
+			"jobset.x-k8s.io",
+			"v1alpha2",
+			"JobSet",
+			"jobsets",
+		)
 		_ = k8sClient.Delete(ctx, rt.module)
-		rt.waitForModuleDeleted(t)
+		waitForSingletonDeleted(t, rt.module)
 	})
 
 	rt.module.ResourceVersion = ""
@@ -420,7 +395,33 @@ func (rt *trainerTest) testBecomesReady(t *testing.T) {
 		jq.Match(`.status.conditions[] | select(.type == "ProvisioningSucceeded") | .status == "True"`),
 	))
 
-	g.Eventually(k.Get(rt.workloadDeploy)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(
+	eventuallyDeploymentReady(t, rt.workloadDeploy)
+}
+
+func waitForDeleted(t *testing.T, obj client.Object) {
+	t.Helper()
+
+	g := NewWithT(t)
+	g.Eventually(func(g Gomega) {
+		fresh := obj.DeepCopyObject().(client.Object)
+		err := directClient.Get(ctx, client.ObjectKeyFromObject(obj), fresh)
+		g.Expect(k8serr.IsNotFound(err)).To(BeTrue())
+	}).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(Succeed())
+}
+
+func waitForSingletonDeleted(t *testing.T, obj client.Object) {
+	t.Helper()
+
+	waitForDeleted(t, obj)
+	obj.SetResourceVersion("")
+	obj.SetUID("")
+}
+
+func eventuallyDeploymentReady(t *testing.T, deploy *appsv1.Deployment) {
+	t.Helper()
+
+	g := NewWithT(t)
+	g.Eventually(k.Get(deploy)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(
 		jq.Match(`.status.readyReplicas >= 1`),
 	)
 }
@@ -429,10 +430,15 @@ func (rt *trainerTest) testModuleStatus(t *testing.T) {
 	g := NewWithT(t)
 
 	g.Eventually(k.Get(rt.module)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(And(
-		jq.Match(`.status.module.version != ""`),
+		jq.Match(`.status.module.version == "%s"`, version.Version),
+		jq.Match(`.status.module.buildSource == "%s@%s/%s"`,
+			version.Repo, version.Branch, version.Commit),
 		jq.Match(`.status.module.platform.name == "%s"`,
 			operatorCfgData[moduleconfig.KeyPlatformType]),
+		jq.Match(`.status.module.platform.version == "%s"`,
+			operatorReleaseVersion),
 		jq.Match(`.status.module.sources | length > 0`),
+		jq.Match(`.status.module.sources[0].path != ""`),
 		jq.Match(`.status.module.sources[0].renderer == "kustomize"`),
 	))
 }
@@ -442,12 +448,18 @@ func (rt *trainerTest) testPlatformLabels(t *testing.T) {
 
 	g.Eventually(k.Get(rt.workloadDeploy)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(And(
 		jq.Match(`.metadata.labels."%s" == "trainer"`, labelPartOf),
-		jq.Match(`.metadata.annotations."%s" != ""`, annotationInstanceName),
-		jq.Match(`.metadata.annotations."%s" != ""`, annotationInstanceUID),
+		jq.Match(`.metadata.annotations."%s" == "%s"`,
+			annotationInstanceName,
+			rt.module.GetName()),
+		jq.Match(`.metadata.annotations."%s" == "%s"`,
+			annotationInstanceUID,
+			string(rt.module.GetUID())),
 		jq.Match(`.metadata.annotations."%s" == "%s"`,
 			annotationType,
 			operatorCfgData[moduleconfig.KeyPlatformType]),
-		jq.Match(`.metadata.annotations."%s" != ""`, annotationVersion),
+		jq.Match(`.metadata.annotations."%s" == "%s"`,
+			annotationVersion,
+			operatorReleaseVersion),
 	))
 }
 

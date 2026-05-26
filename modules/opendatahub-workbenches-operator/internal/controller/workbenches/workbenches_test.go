@@ -21,7 +21,6 @@ import (
 	"testing"
 
 	. "github.com/onsi/gomega"
-	"github.com/opendatahub-io/opendatahub-operator/v2/api/common"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	componentApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-workbenches-operator/api/components/v1alpha1"
@@ -47,9 +46,10 @@ func newTestRR(obj *componentApi.Workbenches) *odhtypes.ReconciliationRequest {
 	return &odhtypes.ReconciliationRequest{
 		Instance:          obj,
 		ManifestsBasePath: "/manifests",
-		Release: common.Release{
-			Name: "OpenDataHub",
-		},
+		Release: (&moduleconfig.Config{
+			PlatformType:    "OpenDataHub",
+			PlatformVersion: "1.0.0",
+		}).Release(),
 	}
 }
 

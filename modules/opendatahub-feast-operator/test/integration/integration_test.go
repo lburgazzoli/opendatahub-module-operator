@@ -51,6 +51,7 @@ import (
 	componentsv1alpha1 "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-feast-operator/api/components/v1alpha1"
 	feastoperatorcontroller "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-feast-operator/internal/controller/feastoperator"
 	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-feast-operator/pkg/config"
+	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-feast-operator/pkg/version"
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-feast-operator/test/support"
 	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/cluster"
 	odhmanager "github.com/opendatahub-io/opendatahub-operator/v2/pkg/manager"
@@ -69,12 +70,13 @@ const (
 )
 
 var (
-	ctx             context.Context
-	cancel          context.CancelFunc
-	k8sClient       client.Client
-	k               *k8sm.Matcher
-	operatorCfgData map[string]string
-	testScheme      = runtime.NewScheme()
+	ctx                    context.Context
+	cancel                 context.CancelFunc
+	k8sClient              client.Client
+	k                      *k8sm.Matcher
+	operatorCfgData        map[string]string
+	operatorReleaseVersion string
+	testScheme             = runtime.NewScheme()
 )
 
 func init() {
@@ -138,6 +140,7 @@ func runTestMain(m *testing.M) int {
 		ApplicationsNamespace: testNamespace,
 		ManifestsPath:         support.MustProjectFile("config", "manifests"),
 	}
+	operatorReleaseVersion = moduleCfg.Release().Version.String()
 
 	ctrlMgr, err := ctrl.NewManager(cfg, ctrl.Options{
 		Scheme:         testScheme,
@@ -239,13 +242,7 @@ func TestFeastOperator(t *testing.T) {
 
 	// Delete any leftover CR from a previous run before starting.
 	_ = k8sClient.Delete(ctx, rt.module)
-	g := NewWithT(t)
-	g.Eventually(func(g Gomega) {
-		module := &componentsv1alpha1.FeastOperator{}
-		err := k8sClient.Get(ctx, client.ObjectKeyFromObject(rt.module), module)
-		g.Expect(k8serr.IsNotFound(err)).To(BeTrue())
-	}).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(Succeed())
-	rt.module.ResourceVersion = ""
+	waitForSingletonDeleted(t, rt.module)
 
 	t.Cleanup(func() {
 		_ = k8sClient.Delete(ctx, rt.module)
@@ -278,7 +275,33 @@ func (rt *feastTest) testBecomesReady(t *testing.T) {
 		jq.Match(`.status.conditions[] | select(.type == "ProvisioningSucceeded") | .status == "True"`),
 	))
 
-	g.Eventually(k.Get(rt.workloadDeploy)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(
+	eventuallyDeploymentReady(t, rt.workloadDeploy)
+}
+
+func waitForDeleted(t *testing.T, obj client.Object) {
+	t.Helper()
+
+	g := NewWithT(t)
+	g.Eventually(func(g Gomega) {
+		fresh := obj.DeepCopyObject().(client.Object)
+		err := k8sClient.Get(ctx, client.ObjectKeyFromObject(obj), fresh)
+		g.Expect(k8serr.IsNotFound(err)).To(BeTrue())
+	}).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(Succeed())
+}
+
+func waitForSingletonDeleted(t *testing.T, obj client.Object) {
+	t.Helper()
+
+	waitForDeleted(t, obj)
+	obj.SetResourceVersion("")
+	obj.SetUID("")
+}
+
+func eventuallyDeploymentReady(t *testing.T, deploy *appsv1.Deployment) {
+	t.Helper()
+
+	g := NewWithT(t)
+	g.Eventually(k.Get(deploy)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(
 		jq.Match(`.status.readyReplicas >= 1`),
 	)
 }
@@ -287,10 +310,15 @@ func (rt *feastTest) testModuleStatus(t *testing.T) {
 	g := NewWithT(t)
 
 	g.Eventually(k.Get(rt.module)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(And(
-		jq.Match(`.status.module.version != ""`),
+		jq.Match(`.status.module.version == "%s"`, version.Version),
+		jq.Match(`.status.module.buildSource == "%s@%s/%s"`,
+			version.Repo, version.Branch, version.Commit),
 		jq.Match(`.status.module.platform.name == "%s"`,
 			operatorCfgData[moduleconfig.KeyPlatformType]),
+		jq.Match(`.status.module.platform.version == "%s"`,
+			operatorReleaseVersion),
 		jq.Match(`.status.module.sources | length > 0`),
+		jq.Match(`.status.module.sources[0].path != ""`),
 		jq.Match(`.status.module.sources[0].renderer == "kustomize"`),
 	))
 }
@@ -300,12 +328,18 @@ func (rt *feastTest) testPlatformLabels(t *testing.T) {
 
 	g.Eventually(k.Get(rt.workloadDeploy)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(And(
 		jq.Match(`.metadata.labels."%s" == "feastoperator"`, labelPartOf),
-		jq.Match(`.metadata.annotations."%s" != ""`, annotationInstanceName),
-		jq.Match(`.metadata.annotations."%s" != ""`, annotationInstanceUID),
+		jq.Match(`.metadata.annotations."%s" == "%s"`,
+			annotationInstanceName,
+			rt.module.GetName()),
+		jq.Match(`.metadata.annotations."%s" == "%s"`,
+			annotationInstanceUID,
+			string(rt.module.GetUID())),
 		jq.Match(`.metadata.annotations."%s" == "%s"`,
 			annotationType,
 			operatorCfgData[moduleconfig.KeyPlatformType]),
-		jq.Match(`.metadata.annotations."%s" != ""`, annotationVersion),
+		jq.Match(`.metadata.annotations."%s" == "%s"`,
+			annotationVersion,
+			operatorReleaseVersion),
 	))
 }
 

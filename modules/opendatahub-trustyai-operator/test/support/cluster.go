@@ -27,6 +27,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	k8serr "k8s.io/apimachinery/pkg/api/errors"
+	apimeta "k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -34,6 +35,15 @@ import (
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
+
+const (
+	inferenceServiceCRDName = "inferenceservices.serving.kserve.io"
+	kserveModuleCRDName     = "kserves.components.platform.opendatahub.io"
+)
+
+type TrustyAIPreconditions struct {
+	ManageKserveCR bool
+}
 
 // InstallCRDs reads all YAML files from the given directory and applies them
 // as CustomResourceDefinitions to the cluster. Existing CRDs are updated
@@ -168,4 +178,115 @@ func EnsureNamespace(
 	}
 
 	return nil
+}
+
+func EnsureStubCRDIfMissing(
+	ctx context.Context,
+	cli client.Client,
+	crdName string,
+	group string,
+	version string,
+	kind string,
+	plural string,
+) (bool, error) {
+	crd := &apiextensionsv1.CustomResourceDefinition{
+		ObjectMeta: metav1.ObjectMeta{Name: crdName},
+	}
+	if err := cli.Get(ctx, client.ObjectKeyFromObject(crd), crd); err == nil {
+		return false, nil
+	} else if !k8serr.IsNotFound(err) {
+		return false, err
+	}
+
+	if err := EnsureStubCRD(ctx, cli, crdName, group, version, kind, plural); err != nil {
+		return false, err
+	}
+
+	return true, nil
+}
+
+func EnsureStubKserveCRIfMissing(
+	ctx context.Context,
+	cli client.Client,
+) (bool, error) {
+	cr := NewStubKserveCR()
+	if err := cli.Get(ctx, client.ObjectKeyFromObject(cr), cr); err == nil {
+		return false, nil
+	} else if !k8serr.IsNotFound(err) && !apimeta.IsNoMatchError(err) {
+		return false, err
+	}
+
+	if err := EnsureStubKserveCR(ctx, cli); err != nil {
+		return false, err
+	}
+
+	return true, nil
+}
+
+func EnsureTrustyAIPreconditions(
+	ctx context.Context,
+	cli client.Client,
+) error {
+	if err := EnsureStubCRD(
+		ctx,
+		cli,
+		inferenceServiceCRDName,
+		"serving.kserve.io",
+		"v1beta1",
+		"InferenceService",
+		"inferenceservices",
+	); err != nil {
+		return err
+	}
+	if err := EnsureStubCRD(
+		ctx,
+		cli,
+		kserveModuleCRDName,
+		"components.platform.opendatahub.io",
+		"v1alpha1",
+		"Kserve",
+		"kserves",
+	); err != nil {
+		return err
+	}
+	if err := EnsureStubKserveCR(ctx, cli); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func EnsureTrustyAIPreconditionsIfMissing(
+	ctx context.Context,
+	cli client.Client,
+) (TrustyAIPreconditions, error) {
+	if _, err := EnsureStubCRDIfMissing(
+		ctx,
+		cli,
+		inferenceServiceCRDName,
+		"serving.kserve.io",
+		"v1beta1",
+		"InferenceService",
+		"inferenceservices",
+	); err != nil {
+		return TrustyAIPreconditions{}, err
+	}
+	if _, err := EnsureStubCRDIfMissing(
+		ctx,
+		cli,
+		kserveModuleCRDName,
+		"components.platform.opendatahub.io",
+		"v1alpha1",
+		"Kserve",
+		"kserves",
+	); err != nil {
+		return TrustyAIPreconditions{}, err
+	}
+
+	manageKserveCR, err := EnsureStubKserveCRIfMissing(ctx, cli)
+	if err != nil {
+		return TrustyAIPreconditions{}, err
+	}
+
+	return TrustyAIPreconditions{ManageKserveCR: manageKserveCR}, nil
 }

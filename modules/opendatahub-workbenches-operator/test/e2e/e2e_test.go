@@ -41,11 +41,12 @@ import (
 	"github.com/lburgazzoli/gomega-matchers/pkg/matchers/jq"
 	k8sm "github.com/lburgazzoli/gomega-matchers/pkg/matchers/k8s"
 
-	imagev1 "github.com/openshift/api/image/v1"
 	infrav1 "github.com/opendatahub-io/opendatahub-operator/v2/api/infrastructure/v1"
+	imagev1 "github.com/openshift/api/image/v1"
 
 	componentsv1alpha1 "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-workbenches-operator/api/components/v1alpha1"
 	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-workbenches-operator/pkg/config"
+	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-workbenches-operator/pkg/version"
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-workbenches-operator/test/support"
 )
 
@@ -147,23 +148,14 @@ func TestWorkbenches(t *testing.T) {
 
 	// Clean up any leftover CR from a previous run.
 	_ = k8sClient.Delete(ctx, wt.module)
-	g := NewWithT(t)
-	g.Eventually(func(g Gomega) {
-		module := &componentsv1alpha1.Workbenches{}
-		err := k8sClient.Get(ctx, client.ObjectKeyFromObject(wt.module), module)
-		g.Expect(k8serr.IsNotFound(err)).To(BeTrue())
-	}).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(Succeed())
-	wt.module.ResourceVersion = ""
+	waitForSingletonDeleted(t, wt.module)
 
 	t.Cleanup(func() {
 		_ = k8sClient.Delete(ctx, wt.module)
 	})
 
 	// Gate: if the operator is not running, fail immediately.
-	g = NewWithT(t)
-	g.Eventually(k.Get(wt.operatorDeploy)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(
-		jq.Match(`.status.readyReplicas >= 1`),
-	)
+	eventuallyDeploymentReady(t, wt.operatorDeploy)
 
 	t.Run("should have module CRD installed", wt.testModuleCRDInstalled)
 	t.Run("should have operator ConfigMap deployed", wt.testOperatorConfigMap)
@@ -202,31 +194,97 @@ func (wt *workbenchesE2ETest) testBecomesReady(t *testing.T) {
 		jq.Match(`.status.conditions[] | select(.type == "ProvisioningSucceeded") | .status == "True"`),
 	))
 
-	g.Eventually(k.Get(wt.nbcDeploy)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(
+	eventuallyDeploymentReady(t, wt.nbcDeploy)
+}
+
+func waitForDeleted(t *testing.T, obj client.Object) {
+	t.Helper()
+
+	g := NewWithT(t)
+	g.Eventually(func(g Gomega) {
+		fresh := obj.DeepCopyObject().(client.Object)
+		err := k8sClient.Get(ctx, client.ObjectKeyFromObject(obj), fresh)
+		g.Expect(k8serr.IsNotFound(err)).To(BeTrue())
+	}).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(Succeed())
+}
+
+func waitForSingletonDeleted(t *testing.T, obj client.Object) {
+	t.Helper()
+
+	waitForDeleted(t, obj)
+	obj.SetResourceVersion("")
+	obj.SetUID("")
+}
+
+func eventuallyDeploymentReady(t *testing.T, deploy *appsv1.Deployment) {
+	t.Helper()
+
+	g := NewWithT(t)
+	g.Eventually(k.Get(deploy)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(
 		jq.Match(`.status.readyReplicas >= 1`),
 	)
 }
 
 func (wt *workbenchesE2ETest) testModuleStatus(t *testing.T) {
 	g := NewWithT(t)
+	operatorCfg := &corev1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      operatorConfigMapName,
+			Namespace: support.OperatorNamespace(),
+		},
+	}
+	workloadDeploy := &appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "odh-notebook-controller-manager",
+			Namespace: support.OperatorNamespace(),
+		},
+	}
+
+	g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(operatorCfg), operatorCfg)).To(Succeed())
+	g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(workloadDeploy), workloadDeploy)).To(Succeed())
+
+	platformType := operatorCfg.Data[moduleconfig.KeyPlatformType]
+	workloadVersion := workloadDeploy.Annotations[annotationVersion]
 
 	g.Eventually(k.Get(wt.module)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(And(
-		jq.Match(`.status.module.version != ""`),
-		jq.Match(`.status.module.platform.name != ""`),
+		jq.Match(`.status.module.version == "%s"`, version.Version),
+		jq.Match(`.status.module.buildSource == "%s@%s/%s"`,
+			version.Repo, version.Branch, version.Commit),
+		jq.Match(`.status.module.platform.name == "%s"`, platformType),
+		jq.Match(`.status.module.platform.version == "%s"`, workloadVersion),
 		jq.Match(`.status.module.sources | length > 0`),
+		jq.Match(`.status.module.sources[0].path != ""`),
 		jq.Match(`.status.module.sources[0].renderer == "kustomize"`),
 	))
 }
 
 func (wt *workbenchesE2ETest) testPlatformLabels(t *testing.T) {
 	g := NewWithT(t)
+	module := wt.module.DeepCopy()
+	operatorCfg := &corev1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      operatorConfigMapName,
+			Namespace: support.OperatorNamespace(),
+		},
+	}
+
+	g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(module), module)).To(Succeed())
+	g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(operatorCfg), operatorCfg)).To(Succeed())
 
 	g.Eventually(k.Get(wt.nbcDeploy)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(And(
 		jq.Match(`.metadata.labels."%s" == "workbenches"`, labelPartOf),
-		jq.Match(`.metadata.annotations."%s" != ""`, annotationInstanceName),
-		jq.Match(`.metadata.annotations."%s" != ""`, annotationInstanceUID),
-		jq.Match(`.metadata.annotations."%s" != ""`, annotationType),
-		jq.Match(`.metadata.annotations."%s" != ""`, annotationVersion),
+		jq.Match(`.metadata.annotations."%s" == "%s"`,
+			annotationInstanceName,
+			module.GetName()),
+		jq.Match(`.metadata.annotations."%s" == "%s"`,
+			annotationInstanceUID,
+			string(module.GetUID())),
+		jq.Match(`.metadata.annotations."%s" == "%s"`,
+			annotationType,
+			operatorCfg.Data[moduleconfig.KeyPlatformType]),
+		jq.Match(`.metadata.annotations."%s" == "%s"`,
+			annotationVersion,
+			module.Status.Module.Platform.Version.String()),
 	))
 }
 

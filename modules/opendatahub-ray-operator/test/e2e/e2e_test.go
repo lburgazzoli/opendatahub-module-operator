@@ -43,6 +43,7 @@ import (
 
 	componentsv1alpha1 "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-ray-operator/api/components/v1alpha1"
 	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-ray-operator/pkg/config"
+	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-ray-operator/pkg/version"
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-ray-operator/test/support"
 )
 
@@ -239,11 +240,14 @@ func (rt *rayE2ETest) testModuleStatus(t *testing.T) {
 	g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(workloadDeploy), workloadDeploy)).To(Succeed())
 
 	platformType := operatorCfg.Data[moduleconfig.KeyPlatformType]
+	workloadVersion := workloadDeploy.Annotations[annotationVersion]
 
 	g.Eventually(k.Get(rt.module)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(And(
-		jq.Match(`.status.module.version != ""`),
-		jq.Match(`.status.module.buildSource != ""`),
+		jq.Match(`.status.module.version == "%s"`, version.Version),
+		jq.Match(`.status.module.buildSource == "%s@%s/%s"`,
+			version.Repo, version.Branch, version.Commit),
 		jq.Match(`.status.module.platform.name == "%s"`, platformType),
+		jq.Match(`.status.module.platform.version == "%s"`, workloadVersion),
 		jq.Match(`.status.module.sources | length > 0`),
 		jq.Match(`.status.module.sources[0].path != ""`),
 		jq.Match(`.status.module.sources[0].renderer == "kustomize"`),
@@ -274,7 +278,9 @@ func (rt *rayE2ETest) testPlatformLabels(t *testing.T) {
 		jq.Match(`.metadata.annotations."%s" == "%s"`,
 			annotationType,
 			operatorCfg.Data[moduleconfig.KeyPlatformType]),
-		jq.Match(`.metadata.annotations."%s" != ""`, annotationVersion),
+		jq.Match(`.metadata.annotations."%s" == "%s"`,
+			annotationVersion,
+			module.Status.Module.Platform.Version.String()),
 	))
 }
 

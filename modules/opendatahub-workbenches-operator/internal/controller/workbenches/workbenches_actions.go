@@ -81,8 +81,8 @@ func (m *Module) reportStatus(_ context.Context, rr *odhtypes.ReconciliationRequ
 		Version:     m.version,
 		BuildSource: version.Repo + "@" + version.Branch + "/" + version.Commit,
 		Platform: localapi.PlatformStatus{
-			Name:    m.cfg.PlatformType,
-			Version: m.platformVersion,
+			Name:    string(rr.Release.Name),
+			Version: localapi.SemVer(rr.Release.Version.String()),
 		},
 	}
 

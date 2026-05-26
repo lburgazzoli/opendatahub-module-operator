@@ -46,10 +46,9 @@ var imageParamMap = map[string]string{
 
 // Module holds process-lifetime state for the ogx controller.
 type Module struct {
-	cfg             *moduleconfig.Config
-	version         componentApi.SemVer
-	platformVersion componentApi.SemVer
-	manifestInfo    odhtypes.ManifestInfo
+	cfg          *moduleconfig.Config
+	version      componentApi.SemVer
+	manifestInfo odhtypes.ManifestInfo
 }
 
 // NewModule creates a Module with one-shot computed state.
@@ -58,8 +57,6 @@ func NewModule(cfg *moduleconfig.Config) (*Module, error) {
 	if err != nil {
 		return nil, fmt.Errorf("parsing module version %q: %w", version.Version, err)
 	}
-
-	pv, _ := componentApi.NewSemVer(cfg.PlatformVersion)
 
 	overlay := overlayODH
 	platform := common.Platform(cfg.PlatformType)
@@ -79,10 +76,9 @@ func NewModule(cfg *moduleconfig.Config) (*Module, error) {
 	}
 
 	return &Module{
-		cfg:             cfg,
-		version:         v,
-		platformVersion: pv,
-		manifestInfo:    mi,
+		cfg:          cfg,
+		version:      v,
+		manifestInfo: mi,
 	}, nil
 }
 
@@ -103,8 +99,8 @@ func (m *Module) reportStatus(_ context.Context, rr *odhtypes.ReconciliationRequ
 		Version:     m.version,
 		BuildSource: version.Repo + "@" + version.Branch + "/" + version.Commit,
 		Platform: componentApi.PlatformStatus{
-			Name:    m.cfg.PlatformType,
-			Version: m.platformVersion,
+			Name:    string(rr.Release.Name),
+			Version: componentApi.SemVer(rr.Release.Version.String()),
 		},
 	}
 

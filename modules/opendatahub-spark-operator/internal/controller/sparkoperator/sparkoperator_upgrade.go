@@ -33,7 +33,8 @@ func (m *Module) upgradeIfNeeded(ctx context.Context, rr *odhtypes.Reconciliatio
 	prev := obj.Status.Module
 
 	moduleVersionChanged := !prev.Version.IsZero() && m.version.GT(prev.Version)
-	platformVersionChanged := !prev.Platform.Version.IsZero() && m.platformVersion.GT(prev.Platform.Version)
+	platformVersionChanged := !prev.Platform.Version.IsZero() &&
+		componentApi.SemVer(rr.Release.Version.String()).GT(prev.Platform.Version)
 
 	if !moduleVersionChanged && !platformVersionChanged {
 		return nil

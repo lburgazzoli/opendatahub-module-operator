@@ -51,6 +51,7 @@ import (
 	componentsv1alpha1 "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-trustyai-operator/api/components/v1alpha1"
 	trustyaicontroller "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-trustyai-operator/internal/controller/trustyai"
 	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-trustyai-operator/pkg/config"
+	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-trustyai-operator/pkg/version"
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-trustyai-operator/test/support"
 	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/cluster"
 	odhmanager "github.com/opendatahub-io/opendatahub-operator/v2/pkg/manager"
@@ -70,13 +71,14 @@ const (
 )
 
 var (
-	ctx             context.Context
-	cancel          context.CancelFunc
-	k8sClient       client.Client
-	directClient    client.Client
-	k               *k8sm.Matcher
-	operatorCfgData map[string]string
-	testScheme      = runtime.NewScheme()
+	ctx                    context.Context
+	cancel                 context.CancelFunc
+	k8sClient              client.Client
+	directClient           client.Client
+	k                      *k8sm.Matcher
+	operatorCfgData        map[string]string
+	operatorReleaseVersion string
+	testScheme             = runtime.NewScheme()
 )
 
 func envOrDefault(key string, defaultValue string) string {
@@ -131,21 +133,8 @@ func runTestMain(m *testing.M) int {
 		return 1
 	}
 
-	// Install stub CRDs required by checkPreConditions (InferenceServices + Kserve module).
-	if err := support.EnsureStubCRD(ctx, directClient, "inferenceservices.serving.kserve.io",
-		"serving.kserve.io", "v1beta1", "InferenceService", "inferenceservices"); err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to install InferenceServices stub CRD: %v\n", err)
-		return 1
-	}
-	if err := support.EnsureStubCRD(ctx, directClient, "kserves.components.platform.opendatahub.io",
-		"components.platform.opendatahub.io", "v1alpha1", "Kserve", "kserves"); err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to install Kserve module stub CRD: %v\n", err)
-		return 1
-	}
-
-	// Create a stub Kserve CR — required by checkPreConditions to signal KServe module is enabled.
-	if err := support.EnsureStubKserveCR(ctx, directClient); err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to create stub Kserve CR: %v\n", err)
+	if err := support.EnsureTrustyAIPreconditions(ctx, directClient); err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to install TrustyAI preconditions: %v\n", err)
 		return 1
 	}
 
@@ -166,6 +155,7 @@ func runTestMain(m *testing.M) int {
 		ApplicationsNamespace: testNamespace,
 		ManifestsPath:         support.MustProjectFile("config", "manifests"),
 	}
+	operatorReleaseVersion = moduleCfg.Release().Version.String()
 
 	ctrlMgr, err := ctrl.NewManager(cfg, ctrl.Options{
 		Scheme:         testScheme,
@@ -267,13 +257,7 @@ func TestTrustyAI(t *testing.T) {
 
 	// Delete any leftover CR from a previous run before starting.
 	_ = k8sClient.Delete(ctx, rt.module)
-	g := NewWithT(t)
-	g.Eventually(func(g Gomega) {
-		module := &componentsv1alpha1.TrustyAI{}
-		err := k8sClient.Get(ctx, client.ObjectKeyFromObject(rt.module), module)
-		g.Expect(k8serr.IsNotFound(err)).To(BeTrue())
-	}).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(Succeed())
-	rt.module.ResourceVersion = ""
+	waitForSingletonDeleted(t, rt.module)
 
 	t.Cleanup(func() {
 		_ = k8sClient.Delete(ctx, rt.module)
@@ -295,20 +279,16 @@ func (rt *trustyAITest) testPreconditionCRDMissing(t *testing.T) {
 	// Delete the Kserve CR to simulate KServe module not enabled.
 	kserveCR := support.NewStubKserveCR()
 	g.Expect(directClient.Delete(ctx, kserveCR)).To(Succeed())
+	waitForDeleted(t, kserveCR)
 	t.Cleanup(func() {
-		_ = support.EnsureStubKserveCR(ctx, directClient)
+		_, _ = support.EnsureStubKserveCRIfMissing(ctx, directClient)
 	})
 
 	rt.module.ResourceVersion = ""
 	g.Expect(k8sClient.Create(ctx, rt.module)).To(Succeed())
 	t.Cleanup(func() {
 		_ = k8sClient.Delete(ctx, rt.module)
-		g.Eventually(func(g Gomega) {
-			m := &componentsv1alpha1.TrustyAI{}
-			err := k8sClient.Get(ctx, client.ObjectKeyFromObject(rt.module), m)
-			g.Expect(k8serr.IsNotFound(err)).To(BeTrue())
-		}).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(Succeed())
-		rt.module.ResourceVersion = ""
+		waitForSingletonDeleted(t, rt.module)
 	})
 
 	g.Eventually(k.Get(rt.module)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(
@@ -336,7 +316,33 @@ func (rt *trustyAITest) testBecomesReady(t *testing.T) {
 		jq.Match(`.status.conditions[] | select(.type == "ProvisioningSucceeded") | .status == "True"`),
 	))
 
-	g.Eventually(k.Get(rt.workloadDeploy)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(
+	eventuallyDeploymentReady(t, rt.workloadDeploy)
+}
+
+func waitForDeleted(t *testing.T, obj client.Object) {
+	t.Helper()
+
+	g := NewWithT(t)
+	g.Eventually(func(g Gomega) {
+		fresh := obj.DeepCopyObject().(client.Object)
+		err := directClient.Get(ctx, client.ObjectKeyFromObject(obj), fresh)
+		g.Expect(k8serr.IsNotFound(err)).To(BeTrue())
+	}).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(Succeed())
+}
+
+func waitForSingletonDeleted(t *testing.T, obj client.Object) {
+	t.Helper()
+
+	waitForDeleted(t, obj)
+	obj.SetResourceVersion("")
+	obj.SetUID("")
+}
+
+func eventuallyDeploymentReady(t *testing.T, deploy *appsv1.Deployment) {
+	t.Helper()
+
+	g := NewWithT(t)
+	g.Eventually(k.Get(deploy)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(
 		jq.Match(`.status.readyReplicas >= 1`),
 	)
 }
@@ -345,10 +351,15 @@ func (rt *trustyAITest) testModuleStatus(t *testing.T) {
 	g := NewWithT(t)
 
 	g.Eventually(k.Get(rt.module)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(And(
-		jq.Match(`.status.module.version != ""`),
+		jq.Match(`.status.module.version == "%s"`, version.Version),
+		jq.Match(`.status.module.buildSource == "%s@%s/%s"`,
+			version.Repo, version.Branch, version.Commit),
 		jq.Match(`.status.module.platform.name == "%s"`,
 			operatorCfgData[moduleconfig.KeyPlatformType]),
+		jq.Match(`.status.module.platform.version == "%s"`,
+			operatorReleaseVersion),
 		jq.Match(`.status.module.sources | length > 0`),
+		jq.Match(`.status.module.sources[0].path != ""`),
 		jq.Match(`.status.module.sources[0].renderer == "kustomize"`),
 	))
 }
@@ -358,12 +369,18 @@ func (rt *trustyAITest) testPlatformLabels(t *testing.T) {
 
 	g.Eventually(k.Get(rt.workloadDeploy)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(And(
 		jq.Match(`.metadata.labels."%s" == "trustyai"`, labelPartOf),
-		jq.Match(`.metadata.annotations."%s" != ""`, annotationInstanceName),
-		jq.Match(`.metadata.annotations."%s" != ""`, annotationInstanceUID),
+		jq.Match(`.metadata.annotations."%s" == "%s"`,
+			annotationInstanceName,
+			rt.module.GetName()),
+		jq.Match(`.metadata.annotations."%s" == "%s"`,
+			annotationInstanceUID,
+			string(rt.module.GetUID())),
 		jq.Match(`.metadata.annotations."%s" == "%s"`,
 			annotationType,
 			operatorCfgData[moduleconfig.KeyPlatformType]),
-		jq.Match(`.metadata.annotations."%s" != ""`, annotationVersion),
+		jq.Match(`.metadata.annotations."%s" == "%s"`,
+			annotationVersion,
+			operatorReleaseVersion),
 	))
 }
 

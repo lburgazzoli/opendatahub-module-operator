@@ -27,6 +27,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	k8serr "k8s.io/apimachinery/pkg/api/errors"
+	apimeta "k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -38,7 +39,15 @@ import (
 const (
 	stubResourceLabelKey   = "testing.opendatahub.io/stub-resource"
 	stubResourceLabelValue = "trainer"
+	jobSetOperatorCRDName  = "jobsetoperators.operator.openshift.io"
+	jobSetCRDName          = "jobsets.jobset.x-k8s.io"
 )
+
+type TrainerPreconditions struct {
+	ManageJobSetOperatorCRD bool
+	ManageJobSetOperatorCR  bool
+	ManageJobSetCRD         bool
+}
 
 // InstallCRDs reads all YAML files from the given directory and applies them
 // as CustomResourceDefinitions to the cluster. Existing CRDs are updated
@@ -181,4 +190,116 @@ func EnsureNamespace(
 	}
 
 	return nil
+}
+
+func EnsureStubCRDIfMissing(
+	ctx context.Context,
+	cli client.Client,
+	crdName string,
+	group string,
+	version string,
+	kind string,
+	plural string,
+) (bool, error) {
+	crd := &apiextensionsv1.CustomResourceDefinition{
+		ObjectMeta: metav1.ObjectMeta{Name: crdName},
+	}
+	if err := cli.Get(ctx, client.ObjectKeyFromObject(crd), crd); err == nil {
+		return false, nil
+	} else if !k8serr.IsNotFound(err) {
+		return false, err
+	}
+
+	if err := EnsureStubCRD(ctx, cli, crdName, group, version, kind, plural); err != nil {
+		return false, err
+	}
+
+	return true, nil
+}
+
+func EnsureStubJobSetOperatorCRIfMissing(
+	ctx context.Context,
+	cli client.Client,
+) (bool, error) {
+	cr := NewStubJobSetOperatorCR()
+	if err := cli.Get(ctx, client.ObjectKeyFromObject(cr), cr); err == nil {
+		return false, nil
+	} else if !k8serr.IsNotFound(err) && !apimeta.IsNoMatchError(err) {
+		return false, err
+	}
+
+	if err := EnsureStubJobSetOperatorCR(ctx, cli); err != nil {
+		return false, err
+	}
+
+	return true, nil
+}
+
+func EnsureTrainerPreconditions(
+	ctx context.Context,
+	cli client.Client,
+) error {
+	if err := EnsureStubCRD(
+		ctx,
+		cli,
+		jobSetOperatorCRDName,
+		"operator.openshift.io",
+		"v1",
+		"JobSetOperator",
+		"jobsetoperators",
+	); err != nil {
+		return err
+	}
+	if err := EnsureStubJobSetOperatorCR(ctx, cli); err != nil {
+		return err
+	}
+	if err := EnsureStubCRD(
+		ctx,
+		cli,
+		jobSetCRDName,
+		"jobset.x-k8s.io",
+		"v1alpha2",
+		"JobSet",
+		"jobsets",
+	); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func EnsureTrainerPreconditionsIfMissing(
+	ctx context.Context,
+	cli client.Client,
+) (TrainerPreconditions, error) {
+	state := TrainerPreconditions{}
+
+	var err error
+	if state.ManageJobSetOperatorCRD, err = EnsureStubCRDIfMissing(
+		ctx,
+		cli,
+		jobSetOperatorCRDName,
+		"operator.openshift.io",
+		"v1",
+		"JobSetOperator",
+		"jobsetoperators",
+	); err != nil {
+		return TrainerPreconditions{}, err
+	}
+	if state.ManageJobSetOperatorCR, err = EnsureStubJobSetOperatorCRIfMissing(ctx, cli); err != nil {
+		return TrainerPreconditions{}, err
+	}
+	if state.ManageJobSetCRD, err = EnsureStubCRDIfMissing(
+		ctx,
+		cli,
+		jobSetCRDName,
+		"jobset.x-k8s.io",
+		"v1alpha2",
+		"JobSet",
+		"jobsets",
+	); err != nil {
+		return TrainerPreconditions{}, err
+	}
+
+	return state, nil
 }

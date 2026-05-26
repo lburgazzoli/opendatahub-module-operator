@@ -45,6 +45,7 @@ import (
 	componentsv1alpha1 "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-mymodule-operator/api/components/v1alpha1"
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-mymodule-operator/internal/controller/mymodule"
 	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-mymodule-operator/pkg/config"
+	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-mymodule-operator/pkg/version"
 )
 
 const (
@@ -64,10 +65,10 @@ const (
 
 var (
 	operatorNamespace = envOrDefault("OPERATOR_NAMESPACE", defaultOperatorNamespace)
-	ctx       context.Context
-	cancel    context.CancelFunc
-	k8sClient client.Client
-	k         *k8sm.Matcher
+	ctx               context.Context
+	cancel            context.CancelFunc
+	k8sClient         client.Client
+	k                 *k8sm.Matcher
 
 	testScheme = runtime.NewScheme()
 )
@@ -175,27 +176,17 @@ func TestMyModule(t *testing.T) {
 	// Clean up any leftover singleton objects from a previous run.
 	_ = k8sClient.Delete(ctx, mt.module)
 	_ = k8sClient.Delete(ctx, mt.ingress)
-	g := NewWithT(t)
-	g.Eventually(func(g Gomega) {
-		module := &componentsv1alpha1.MyModule{}
-		err := k8sClient.Get(ctx, client.ObjectKeyFromObject(mt.module), module)
-		g.Expect(k8serr.IsNotFound(err)).To(BeTrue())
-	}).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(Succeed())
-	g.Eventually(func(g Gomega) {
-		ingress := &networkingv1.Ingress{}
-		err := k8sClient.Get(ctx, client.ObjectKeyFromObject(mt.ingress), ingress)
-		g.Expect(k8serr.IsNotFound(err)).To(BeTrue())
-	}).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(Succeed())
-	mt.module.ResourceVersion = ""
-	mt.ingress.ResourceVersion = ""
+	waitForSingletonDeleted(t, mt.module)
+	waitForSingletonDeleted(t, mt.ingress)
 
 	t.Cleanup(func() {
 		_ = k8sClient.Delete(ctx, mt.module)
 		_ = k8sClient.Delete(ctx, mt.ingress)
 	})
 
+	eventuallyDeploymentReady(t, mt.operatorDeploy)
+
 	t.Run("should have module CRD installed", mt.testModuleCRDInstalled)
-	t.Run("operator should be running", mt.testOperatorRunning)
 	t.Run("should have ConfigMap volume mounted", mt.testConfigMapVolume)
 	t.Run("should have operator ConfigMap deployed", mt.testOperatorConfigMap)
 	t.Run("should block when Ingress is missing", mt.testIngressBlocks)
@@ -215,14 +206,6 @@ func (mt *myModuleE2ETest) testModuleCRDInstalled(t *testing.T) {
 
 	g.Eventually(k.Get(mt.moduleCRD)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(
 		jq.Match(`.metadata.name == "%s"`, moduleCRDName),
-	)
-}
-
-func (mt *myModuleE2ETest) testOperatorRunning(t *testing.T) {
-	g := NewWithT(t)
-
-	g.Eventually(k.Get(mt.operatorDeploy)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(
-		jq.Match(`.status.readyReplicas >= 1`),
 	)
 }
 
@@ -285,9 +268,7 @@ func (mt *myModuleE2ETest) testIngressRecovers(t *testing.T) {
 		jq.Match(`.status.conditions[] | select(.type == "ProvisioningSucceeded") | .status == "True"`),
 	))
 
-	g.Eventually(k.Get(mt.workloadDeploy)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(
-		jq.Match(`.status.readyReplicas >= 1`),
-	)
+	eventuallyDeploymentReady(t, mt.workloadDeploy)
 }
 
 func (mt *myModuleE2ETest) testConfigValues(t *testing.T) {
@@ -301,30 +282,74 @@ func (mt *myModuleE2ETest) testConfigValues(t *testing.T) {
 
 func (mt *myModuleE2ETest) testModuleStatus(t *testing.T) {
 	g := NewWithT(t)
+	operatorCfg := &corev1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      operatorConfigMapName,
+			Namespace: defaultOperatorNamespace,
+		},
+	}
+	workloadDeploy := &appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "mymodule-workload",
+			Namespace: defaultOperatorNamespace,
+		},
+	}
+
+	g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(operatorCfg), operatorCfg)).To(Succeed())
+	g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(workloadDeploy), workloadDeploy)).To(Succeed())
+
+	platformType := operatorCfg.Data[moduleconfig.KeyPlatformType]
+	workloadVersion := workloadDeploy.Annotations[annotationVersion]
 
 	g.Eventually(k.Get(mt.module)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(And(
-		jq.Match(`.status.module.version != ""`),
-		jq.Match(`.status.module.platform.name != ""`),
+		jq.Match(`.status.module.version == "%s"`, version.Version),
+		jq.Match(`.status.module.buildSource == "%s@%s/%s"`,
+			version.Repo, version.Branch, version.Commit),
+		jq.Match(`.status.module.platform.name == "%s"`, platformType),
+		jq.Match(`.status.module.platform.version == "%s"`, workloadVersion),
 		jq.Match(`.status.module.sources | length > 0`),
+		jq.Match(`.status.module.sources[0].path != ""`),
 		jq.Match(`.status.module.sources[0].renderer == "kustomize"`),
 	))
 }
 
 func (mt *myModuleE2ETest) testPlatformLabels(t *testing.T) {
 	g := NewWithT(t)
+	module := mt.module.DeepCopy()
+	operatorCfg := &corev1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      operatorConfigMapName,
+			Namespace: defaultOperatorNamespace,
+		},
+	}
+
+	g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(module), module)).To(Succeed())
+	g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(operatorCfg), operatorCfg)).To(Succeed())
 
 	g.Eventually(k.Get(mt.workloadDeploy)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(And(
 		jq.Match(`.metadata.labels."%s" == "mymodule"`, labelPartOf),
-		jq.Match(`.metadata.annotations."%s" != ""`, annotationInstanceName),
-		jq.Match(`.metadata.annotations."%s" != ""`, annotationInstanceUID),
-		jq.Match(`.metadata.annotations."%s" != ""`, annotationType),
-		jq.Match(`.metadata.annotations."%s" != ""`, annotationVersion),
+		jq.Match(`.metadata.annotations."%s" == "%s"`,
+			annotationInstanceName,
+			module.GetName()),
+		jq.Match(`.metadata.annotations."%s" == "%s"`,
+			annotationInstanceUID,
+			string(module.GetUID())),
+		jq.Match(`.metadata.annotations."%s" == "%s"`,
+			annotationType,
+			operatorCfg.Data[moduleconfig.KeyPlatformType]),
+		jq.Match(`.metadata.annotations."%s" == "%s"`,
+			annotationVersion,
+			module.Status.Module.Platform.Version.String()),
 	))
 
 	g.Eventually(k.Get(mt.workloadService)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(And(
 		jq.Match(`.metadata.labels."%s" == "mymodule"`, labelPartOf),
-		jq.Match(`.metadata.annotations."%s" != ""`, annotationType),
-		jq.Match(`.metadata.annotations."%s" != ""`, annotationVersion),
+		jq.Match(`.metadata.annotations."%s" == "%s"`,
+			annotationType,
+			operatorCfg.Data[moduleconfig.KeyPlatformType]),
+		jq.Match(`.metadata.annotations."%s" == "%s"`,
+			annotationVersion,
+			module.Status.Module.Platform.Version.String()),
 	))
 }
 
@@ -378,9 +403,7 @@ func (mt *myModuleE2ETest) testUpgradeViaConfigMapRestart(t *testing.T) {
 	)).To(Succeed())
 
 	// Wait for the operator to be running again.
-	g.Eventually(k.Get(mt.operatorDeploy)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(
-		jq.Match(`.status.readyReplicas >= 1`),
-	)
+	eventuallyDeploymentReady(t, mt.operatorDeploy)
 
 	// Wait for the Ingress to get both upgrade annotations after upgrade.
 	g.Eventually(k.Get(mt.ingress)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(And(
@@ -425,9 +448,7 @@ func (mt *myModuleE2ETest) testUpgradeFaultInjection(t *testing.T) {
 	}
 
 	// Wait for the operator to restart.
-	g.Eventually(k.Get(mt.operatorDeploy)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(
-		jq.Match(`.status.readyReplicas >= 1`),
-	)
+	eventuallyDeploymentReady(t, mt.operatorDeploy)
 
 	// The upgrade should fail because of the fault annotation. The platform
 	// version in status should remain unchanged.
@@ -448,5 +469,33 @@ func (mt *myModuleE2ETest) testUpgradeFaultInjection(t *testing.T) {
 	// should update to 2.0.0.
 	g.Eventually(k.Get(mt.module)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(
 		jq.Match(`.status.module.platform.version == "2.0.0"`),
+	)
+}
+
+func waitForDeleted(t *testing.T, obj client.Object) {
+	t.Helper()
+
+	g := NewWithT(t)
+	g.Eventually(func(g Gomega) {
+		fresh := obj.DeepCopyObject().(client.Object)
+		err := k8sClient.Get(ctx, client.ObjectKeyFromObject(obj), fresh)
+		g.Expect(k8serr.IsNotFound(err)).To(BeTrue())
+	}).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(Succeed())
+}
+
+func waitForSingletonDeleted(t *testing.T, obj client.Object) {
+	t.Helper()
+
+	waitForDeleted(t, obj)
+	obj.SetResourceVersion("")
+	obj.SetUID("")
+}
+
+func eventuallyDeploymentReady(t *testing.T, deploy *appsv1.Deployment) {
+	t.Helper()
+
+	g := NewWithT(t)
+	g.Eventually(k.Get(deploy)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(
+		jq.Match(`.status.readyReplicas >= 1`),
 	)
 }

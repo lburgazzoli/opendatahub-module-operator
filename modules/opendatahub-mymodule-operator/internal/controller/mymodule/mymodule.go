@@ -69,10 +69,9 @@ const (
 // It is created once at registration time via NewModule and its methods
 // are registered as actions.Fn in the reconciliation pipeline.
 type Module struct {
-	cfg             *moduleconfig.Config
-	version         componentApi.SemVer
-	platformVersion componentApi.SemVer
-	manifestInfo    types.ManifestInfo
+	cfg          *moduleconfig.Config
+	version      componentApi.SemVer
+	manifestInfo types.ManifestInfo
 
 	// Webhook fields — set by RegisterWebhooks.
 	decoder   admission.Decoder
@@ -87,9 +86,6 @@ func NewModule(cfg *moduleconfig.Config) (*Module, error) {
 		return nil, fmt.Errorf("parsing module version %q: %w", version.Version, err)
 	}
 
-	// Platform version may be "unknown" or unset; default to zero.
-	pv, _ := componentApi.NewSemVer(cfg.PlatformVersion)
-
 	mi := types.ManifestInfo{
 		Path:       cfg.ManifestsPath,
 		ContextDir: componentName,
@@ -101,10 +97,9 @@ func NewModule(cfg *moduleconfig.Config) (*Module, error) {
 	}
 
 	return &Module{
-		cfg:             cfg,
-		version:         v,
-		platformVersion: pv,
-		manifestInfo:    mi,
+		cfg:          cfg,
+		version:      v,
+		manifestInfo: mi,
 	}, nil
 }
 
@@ -154,7 +149,8 @@ func (m *Module) upgradeIfNeeded(ctx context.Context, rr *types.ReconciliationRe
 	prev := obj.Status.Module
 
 	moduleVersionChanged := !prev.Version.IsZero() && m.version.GT(prev.Version)
-	platformVersionChanged := !prev.Platform.Version.IsZero() && m.platformVersion.GT(prev.Platform.Version)
+	platformVersionChanged := !prev.Platform.Version.IsZero() &&
+		componentApi.SemVer(rr.Release.Version.String()).GT(prev.Platform.Version)
 
 	if !moduleVersionChanged && !platformVersionChanged {
 		return nil
@@ -207,8 +203,8 @@ func (m *Module) reportStatus(_ context.Context, rr *types.ReconciliationRequest
 		Version:     m.version,
 		BuildSource: version.Repo + "@" + version.Branch + "/" + version.Commit,
 		Platform: componentApi.PlatformStatus{
-			Name:    m.cfg.PlatformType,
-			Version: m.platformVersion,
+			Name:    string(rr.Release.Name),
+			Version: componentApi.SemVer(rr.Release.Version.String()),
 		},
 	}
 

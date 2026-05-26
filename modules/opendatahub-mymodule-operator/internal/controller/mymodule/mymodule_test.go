@@ -31,6 +31,7 @@ import (
 	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-mymodule-operator/pkg/config"
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-mymodule-operator/pkg/version"
 	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/cluster"
+	actionapi "github.com/opendatahub-io/operator-actions-framework/api"
 	"github.com/opendatahub-io/operator-actions-framework/controller/types"
 )
 
@@ -68,17 +69,29 @@ func newTestModule(t *testing.T, platformType string) *Module {
 }
 
 func newTestRR(obj *componentApi.MyModule) *types.ReconciliationRequest {
+	rel := (&moduleconfig.Config{
+		PlatformType:    string(cluster.OpenDataHub),
+		PlatformVersion: "1.0.0",
+	}).Release()
+
 	return &types.ReconciliationRequest{
 		Instance:          obj,
 		ManifestsBasePath: "/manifests",
+		Release:           actionapi.Release{Name: rel.Name, Version: rel.Version.Version},
 	}
 }
 
 func newTestRRWithClient(obj *componentApi.MyModule, cl client.Client) *types.ReconciliationRequest {
+	rel := (&moduleconfig.Config{
+		PlatformType:    string(cluster.OpenDataHub),
+		PlatformVersion: "1.0.0",
+	}).Release()
+
 	return &types.ReconciliationRequest{
 		Client:            cl,
 		Instance:          obj,
 		ManifestsBasePath: "/manifests",
+		Release:           actionapi.Release{Name: rel.Name, Version: rel.Version.Version},
 	}
 }
 

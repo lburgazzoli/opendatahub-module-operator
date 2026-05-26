@@ -43,6 +43,7 @@ import (
 
 	componentsv1alpha1 "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-trustyai-operator/api/components/v1alpha1"
 	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-trustyai-operator/pkg/config"
+	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-trustyai-operator/pkg/version"
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-trustyai-operator/test/support"
 )
 
@@ -106,6 +107,7 @@ type trustyAIE2ETest struct {
 	operatorDeploy *appsv1.Deployment
 	operatorCfgMap *corev1.ConfigMap
 	workloadDeploy *appsv1.Deployment
+	manageKserveCR bool
 }
 
 func TestTrustyAI(t *testing.T) {
@@ -142,32 +144,18 @@ func TestTrustyAI(t *testing.T) {
 
 	// Clean up any leftover CR from a previous run.
 	_ = k8sClient.Delete(ctx, rt.module)
-	g := NewWithT(t)
-	g.Eventually(func(g Gomega) {
-		module := &componentsv1alpha1.TrustyAI{}
-		err := k8sClient.Get(ctx, client.ObjectKeyFromObject(rt.module), module)
-		g.Expect(k8serr.IsNotFound(err)).To(BeTrue())
-	}).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(Succeed())
-	rt.module.ResourceVersion = ""
+	waitForSingletonDeleted(t, rt.module)
 
 	t.Cleanup(func() {
 		_ = k8sClient.Delete(ctx, rt.module)
 	})
 
 	// Gate: operator must be running before tests proceed.
-	g = NewWithT(t)
-	g.Eventually(k.Get(rt.operatorDeploy)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(
-		jq.Match(`.status.readyReplicas >= 1`),
-	)
+	eventuallyDeploymentReady(t, rt.operatorDeploy)
 
-	// Install stub CRDs and Kserve CR required by checkPreConditions.
-	g.Expect(support.EnsureStubCRD(ctx, k8sClient, "inferenceservices.serving.kserve.io",
-		"serving.kserve.io", "v1beta1", "InferenceService", "inferenceservices")).To(Succeed())
-	g.Expect(support.EnsureStubCRD(ctx, k8sClient, "kserves.components.platform.opendatahub.io",
-		"components.platform.opendatahub.io", "v1alpha1", "Kserve", "kserves")).To(Succeed())
-	g.Eventually(func(g Gomega) {
-		g.Expect(support.EnsureStubKserveCR(ctx, k8sClient)).To(Succeed())
-	}).WithContext(ctx).WithTimeout(30 * time.Second).WithPolling(2 * time.Second).Should(Succeed())
+	preconditions, err := support.EnsureTrustyAIPreconditionsIfMissing(ctx, k8sClient)
+	NewWithT(t).Expect(err).NotTo(HaveOccurred())
+	rt.manageKserveCR = preconditions.ManageKserveCR
 
 	t.Run("should have module CRD installed", rt.testModuleCRDInstalled)
 	t.Run("should have operator ConfigMap deployed", rt.testOperatorConfigMap)
@@ -198,24 +186,24 @@ func (rt *trustyAIE2ETest) testOperatorConfigMap(t *testing.T) {
 // testPreconditionCRMissing verifies that the TrustyAI CR reports ProvisioningSucceeded=False
 // when the Kserve CR (a required precondition) is absent.
 func (rt *trustyAIE2ETest) testPreconditionCRMissing(t *testing.T) {
+	if !rt.manageKserveCR {
+		t.Skip("Kserve CR already exists on cluster; skipping destructive absence test")
+	}
+
 	g := NewWithT(t)
 
 	kserveCR := support.NewStubKserveCR()
 	g.Expect(k8sClient.Delete(ctx, kserveCR)).To(Succeed())
+	waitForDeleted(t, kserveCR)
 	t.Cleanup(func() {
-		_ = support.EnsureStubKserveCR(ctx, k8sClient)
+		_, _ = support.EnsureStubKserveCRIfMissing(ctx, k8sClient)
 	})
 
 	rt.module.ResourceVersion = ""
 	g.Expect(k8sClient.Create(ctx, rt.module)).To(Succeed())
 	t.Cleanup(func() {
 		_ = k8sClient.Delete(ctx, rt.module)
-		g.Eventually(func(g Gomega) {
-			m := &componentsv1alpha1.TrustyAI{}
-			err := k8sClient.Get(ctx, client.ObjectKeyFromObject(rt.module), m)
-			g.Expect(k8serr.IsNotFound(err)).To(BeTrue())
-		}).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(Succeed())
-		rt.module.ResourceVersion = ""
+		waitForSingletonDeleted(t, rt.module)
 	})
 
 	g.Eventually(k.Get(rt.module)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(
@@ -235,31 +223,97 @@ func (rt *trustyAIE2ETest) testBecomesReady(t *testing.T) {
 		jq.Match(`.status.conditions[] | select(.type == "ProvisioningSucceeded") | .status == "True"`),
 	))
 
-	g.Eventually(k.Get(rt.workloadDeploy)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(
+	eventuallyDeploymentReady(t, rt.workloadDeploy)
+}
+
+func waitForDeleted(t *testing.T, obj client.Object) {
+	t.Helper()
+
+	g := NewWithT(t)
+	g.Eventually(func(g Gomega) {
+		fresh := obj.DeepCopyObject().(client.Object)
+		err := k8sClient.Get(ctx, client.ObjectKeyFromObject(obj), fresh)
+		g.Expect(k8serr.IsNotFound(err)).To(BeTrue())
+	}).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(Succeed())
+}
+
+func waitForSingletonDeleted(t *testing.T, obj client.Object) {
+	t.Helper()
+
+	waitForDeleted(t, obj)
+	obj.SetResourceVersion("")
+	obj.SetUID("")
+}
+
+func eventuallyDeploymentReady(t *testing.T, deploy *appsv1.Deployment) {
+	t.Helper()
+
+	g := NewWithT(t)
+	g.Eventually(k.Get(deploy)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(
 		jq.Match(`.status.readyReplicas >= 1`),
 	)
 }
 
 func (rt *trustyAIE2ETest) testModuleStatus(t *testing.T) {
 	g := NewWithT(t)
+	operatorCfg := &corev1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      operatorConfigMapName,
+			Namespace: support.OperatorNamespace(),
+		},
+	}
+	workloadDeploy := &appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "trustyai-service-operator-controller-manager",
+			Namespace: support.OperatorNamespace(),
+		},
+	}
+
+	g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(operatorCfg), operatorCfg)).To(Succeed())
+	g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(workloadDeploy), workloadDeploy)).To(Succeed())
+
+	platformType := operatorCfg.Data[moduleconfig.KeyPlatformType]
+	workloadVersion := workloadDeploy.Annotations[annotationVersion]
 
 	g.Eventually(k.Get(rt.module)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(And(
-		jq.Match(`.status.module.version != ""`),
-		jq.Match(`.status.module.platform.name != ""`),
+		jq.Match(`.status.module.version == "%s"`, version.Version),
+		jq.Match(`.status.module.buildSource == "%s@%s/%s"`,
+			version.Repo, version.Branch, version.Commit),
+		jq.Match(`.status.module.platform.name == "%s"`, platformType),
+		jq.Match(`.status.module.platform.version == "%s"`, workloadVersion),
 		jq.Match(`.status.module.sources | length > 0`),
+		jq.Match(`.status.module.sources[0].path != ""`),
 		jq.Match(`.status.module.sources[0].renderer == "kustomize"`),
 	))
 }
 
 func (rt *trustyAIE2ETest) testPlatformLabels(t *testing.T) {
 	g := NewWithT(t)
+	module := rt.module.DeepCopy()
+	operatorCfg := &corev1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      operatorConfigMapName,
+			Namespace: support.OperatorNamespace(),
+		},
+	}
+
+	g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(module), module)).To(Succeed())
+	g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(operatorCfg), operatorCfg)).To(Succeed())
 
 	g.Eventually(k.Get(rt.workloadDeploy)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(And(
 		jq.Match(`.metadata.labels."%s" == "trustyai"`, labelPartOf),
-		jq.Match(`.metadata.annotations."%s" != ""`, annotationInstanceName),
-		jq.Match(`.metadata.annotations."%s" != ""`, annotationInstanceUID),
-		jq.Match(`.metadata.annotations."%s" != ""`, annotationType),
-		jq.Match(`.metadata.annotations."%s" != ""`, annotationVersion),
+		jq.Match(`.metadata.annotations."%s" == "%s"`,
+			annotationInstanceName,
+			module.GetName()),
+		jq.Match(`.metadata.annotations."%s" == "%s"`,
+			annotationInstanceUID,
+			string(module.GetUID())),
+		jq.Match(`.metadata.annotations."%s" == "%s"`,
+			annotationType,
+			operatorCfg.Data[moduleconfig.KeyPlatformType]),
+		jq.Match(`.metadata.annotations."%s" == "%s"`,
+			annotationVersion,
+			module.Status.Module.Platform.Version.String()),
 	))
 }
 

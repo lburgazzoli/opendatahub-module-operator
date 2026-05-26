@@ -25,17 +25,18 @@ import (
 	"testing"
 	"time"
 
+	"github.com/lburgazzoli/gomega-matchers/pkg/matchers/jq"
+	k8sm "github.com/lburgazzoli/gomega-matchers/pkg/matchers/k8s"
 	componentsv1alpha1 "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-datasciencepipelines-operator/api/components/v1alpha1"
 	dspcontroller "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-datasciencepipelines-operator/internal/controller/datasciencepipelines"
 	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-datasciencepipelines-operator/pkg/config"
+	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-datasciencepipelines-operator/pkg/version"
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-datasciencepipelines-operator/test/support"
-	"github.com/lburgazzoli/gomega-matchers/pkg/matchers/jq"
-	k8sm "github.com/lburgazzoli/gomega-matchers/pkg/matchers/k8s"
 	. "github.com/onsi/gomega"
-	operatorstatus "github.com/opendatahub-io/opendatahub-operator/v2/pkg/controller/status"
 	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/cluster"
-	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/metadata/labels"
+	operatorstatus "github.com/opendatahub-io/opendatahub-operator/v2/pkg/controller/status"
 	odhmanager "github.com/opendatahub-io/opendatahub-operator/v2/pkg/manager"
+	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/metadata/labels"
 	promv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
 	"github.com/spf13/viper"
 	appsv1 "k8s.io/api/apps/v1"
@@ -65,24 +66,25 @@ const (
 	annotationType         = "platform.opendatahub.io/type"
 	annotationVersion      = "platform.opendatahub.io/version"
 
-	moduleCRDName            = "datasciencepipelines.components.platform.opendatahub.io"
-	argoWorkflowCRDName      = "workflows.argoproj.io"
-	testManagedByLabel       = "testing.opendatahub.io/managed-by"
-	testManagedByValue       = "dsp-integration"
-	legacyComponentName      = "data-science-pipelines-operator"
-	workloadDeploymentName   = "data-science-pipelines-operator-controller-manager"
-	workloadConfigMapName    = "data-science-pipelines-operator-dspo-config"
-	workloadServiceMonName   = "data-science-pipelines-operator-service-monitor"
+	moduleCRDName          = "datasciencepipelines.components.platform.opendatahub.io"
+	argoWorkflowCRDName    = "workflows.argoproj.io"
+	testManagedByLabel     = "testing.opendatahub.io/managed-by"
+	testManagedByValue     = "dsp-integration"
+	legacyComponentName    = "data-science-pipelines-operator"
+	workloadDeploymentName = "data-science-pipelines-operator-controller-manager"
+	workloadConfigMapName  = "data-science-pipelines-operator-dspo-config"
+	workloadServiceMonName = "data-science-pipelines-operator-service-monitor"
 )
 
 var (
-	ctx             context.Context
-	cancel          context.CancelFunc
-	k8sClient       client.Client
-	directClient    client.Client
-	k               *k8sm.Matcher
-	operatorCfgData map[string]string
-	testScheme      = runtime.NewScheme()
+	ctx                    context.Context
+	cancel                 context.CancelFunc
+	k8sClient              client.Client
+	directClient           client.Client
+	k                      *k8sm.Matcher
+	operatorCfgData        map[string]string
+	operatorReleaseVersion string
+	testScheme             = runtime.NewScheme()
 )
 
 func init() {
@@ -147,6 +149,7 @@ func runTestMain(m *testing.M) int {
 		ApplicationsNamespace: testNamespace,
 		ManifestsPath:         support.MustProjectFile("config", "manifests"),
 	}
+	operatorReleaseVersion = moduleCfg.Release().Version.String()
 
 	ctrlMgr, err := ctrl.NewManager(cfg, ctrl.Options{
 		Scheme:         testScheme,
@@ -277,14 +280,7 @@ func cleanupModule(t *testing.T, module *componentsv1alpha1.DataSciencePipelines
 	t.Helper()
 
 	_ = k8sClient.Delete(ctx, module)
-	g := NewWithT(t)
-	g.Eventually(func(g Gomega) {
-		current := &componentsv1alpha1.DataSciencePipelines{}
-		err := directClient.Get(ctx, client.ObjectKeyFromObject(module), current)
-		g.Expect(k8serr.IsNotFound(err)).To(BeTrue())
-	}).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(Succeed())
-	module.ResourceVersion = ""
-	module.UID = ""
+	waitForSingletonDeleted(t, module)
 }
 
 func manageArgoWorkflowCRD(t *testing.T) {
@@ -326,12 +322,7 @@ func ensureArgoWorkflowCRDMissing(t *testing.T) {
 	if err := directClient.Delete(ctx, crd); err != nil && !k8serr.IsNotFound(err) {
 		t.Fatalf("deleting workflows CRD: %v", err)
 	}
-	g := NewWithT(t)
-	g.Eventually(func(g Gomega) {
-		current := &apiextensionsv1.CustomResourceDefinition{}
-		err := directClient.Get(ctx, client.ObjectKey{Name: argoWorkflowCRDName}, current)
-		g.Expect(k8serr.IsNotFound(err)).To(BeTrue())
-	}).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(Succeed())
+	waitForDeleted(t, crd)
 }
 
 func ensureArgoWorkflowCRDOwnedByODH(t *testing.T) {
@@ -487,9 +478,7 @@ func (dt *dspIntegrationTest) testBecomesReady(t *testing.T) {
 			operatorstatus.ConditionTypeProvisioningSucceeded),
 	))
 
-	g.Eventually(k.Get(dt.workloadDeploy)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(
-		jq.Match(`.status.readyReplicas >= 1`),
-	)
+	eventuallyDeploymentReady(t, dt.workloadDeploy)
 	g.Eventually(k.Get(dt.workloadConfigMap)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(
 		jq.Match(`.metadata.name == "%s"`, workloadConfigMapName),
 	)
@@ -506,10 +495,15 @@ func (dt *dspIntegrationTest) testModuleStatus(t *testing.T) {
 
 	g := NewWithT(t)
 	g.Eventually(k.Get(module)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(And(
-		jq.Match(`.status.module.version != ""`),
+		jq.Match(`.status.module.version == "%s"`, version.Version),
+		jq.Match(`.status.module.buildSource == "%s@%s/%s"`,
+			version.Repo, version.Branch, version.Commit),
 		jq.Match(`.status.module.platform.name == "%s"`,
 			operatorCfgData[moduleconfig.KeyPlatformType]),
+		jq.Match(`.status.module.platform.version == "%s"`,
+			operatorReleaseVersion),
 		jq.Match(`.status.module.sources | length > 0`),
+		jq.Match(`.status.module.sources[0].path != ""`),
 		jq.Match(`.status.module.sources[0].renderer == "kustomize"`),
 	))
 }
@@ -523,12 +517,18 @@ func (dt *dspIntegrationTest) testPlatformLabels(t *testing.T) {
 	g := NewWithT(t)
 	g.Eventually(k.Get(dt.workloadDeploy)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(And(
 		jq.Match(`.metadata.labels."%s" == "%s"`, labelPartOf, componentsv1alpha1.DataSciencePipelinesComponentName),
-		jq.Match(`.metadata.annotations."%s" != ""`, annotationInstanceName),
-		jq.Match(`.metadata.annotations."%s" != ""`, annotationInstanceUID),
+		jq.Match(`.metadata.annotations."%s" == "%s"`,
+			annotationInstanceName,
+			module.GetName()),
+		jq.Match(`.metadata.annotations."%s" == "%s"`,
+			annotationInstanceUID,
+			string(module.GetUID())),
 		jq.Match(`.metadata.annotations."%s" == "%s"`,
 			annotationType,
 			operatorCfgData[moduleconfig.KeyPlatformType]),
-		jq.Match(`.metadata.annotations."%s" != ""`, annotationVersion),
+		jq.Match(`.metadata.annotations."%s" == "%s"`,
+			annotationVersion,
+			operatorReleaseVersion),
 	))
 }
 
@@ -542,5 +542,33 @@ func (dt *dspIntegrationTest) testOwnerReferences(t *testing.T) {
 	g.Eventually(k.Get(dt.workloadDeploy)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(
 		jq.Match(`.metadata.ownerReferences[] | select(.kind == "DataSciencePipelines") | .name == "%s"`,
 			componentsv1alpha1.DataSciencePipelinesInstanceName),
+	)
+}
+
+func waitForDeleted(t *testing.T, obj client.Object) {
+	t.Helper()
+
+	g := NewWithT(t)
+	g.Eventually(func(g Gomega) {
+		fresh := obj.DeepCopyObject().(client.Object)
+		err := directClient.Get(ctx, client.ObjectKeyFromObject(obj), fresh)
+		g.Expect(k8serr.IsNotFound(err)).To(BeTrue())
+	}).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(Succeed())
+}
+
+func waitForSingletonDeleted(t *testing.T, obj client.Object) {
+	t.Helper()
+
+	waitForDeleted(t, obj)
+	obj.SetResourceVersion("")
+	obj.SetUID("")
+}
+
+func eventuallyDeploymentReady(t *testing.T, deploy *appsv1.Deployment) {
+	t.Helper()
+
+	g := NewWithT(t)
+	g.Eventually(k.Get(deploy)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(
+		jq.Match(`.status.readyReplicas >= 1`),
 	)
 }

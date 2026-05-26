@@ -63,11 +63,11 @@ deps: ## Tidy and verify Go module dependencies.
 
 .PHONY: test
 test: manifests generate fmt vet ## Run unit tests.
-	go test $$(go list ./... | grep -v /e2e | grep -v /integration) -coverprofile cover.out
+	go test -ldflags "$(LDFLAGS)" $$(go list ./... | grep -v /e2e | grep -v /integration) -coverprofile cover.out
 
 .PHONY: test-integration-run
 test-integration-run: ## Run integration tests only (cluster must be prepared).
-	INTEGRATION_TEST_NAMESPACE="$(INTEGRATION_TEST_NAMESPACE)" go test ./test/integration/ -tags=integration -v -timeout 5m -failfast
+	INTEGRATION_TEST_NAMESPACE="$(INTEGRATION_TEST_NAMESPACE)" go test -ldflags "$(LDFLAGS)" ./test/integration/ -tags=integration -v -timeout 5m -failfast
 
 .PHONY: fetch-external-crds
 fetch-external-crds: ## Fetch external CRDs required for integration and e2e tests.
@@ -83,7 +83,7 @@ test-integration: prepare-integration test-integration-run ## Run integration te
 
 .PHONY: test-e2e-run
 test-e2e-run: ## Run e2e tests only (operator must already be deployed).
-	OPERATOR_NAMESPACE="$(OPERATOR_NAMESPACE)" go test ./test/e2e/ -tags=e2e -v -timeout 5m -failfast
+	OPERATOR_NAMESPACE="$(OPERATOR_NAMESPACE)" go test -ldflags "$(LDFLAGS)" ./test/e2e/ -tags=e2e -v -timeout 5m -failfast
 
 .PHONY: test-e2e
 test-e2e: cleanup-e2e deploy-helm test-e2e-run ## Run e2e tests (cleans cluster, deploys operator, then tests).

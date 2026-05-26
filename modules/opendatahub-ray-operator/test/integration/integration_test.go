@@ -69,12 +69,13 @@ const (
 )
 
 var (
-	ctx             context.Context
-	cancel          context.CancelFunc
-	k8sClient       client.Client
-	k               *k8sm.Matcher
-	operatorCfgData map[string]string
-	testScheme      = runtime.NewScheme()
+	ctx                    context.Context
+	cancel                 context.CancelFunc
+	k8sClient              client.Client
+	k                      *k8sm.Matcher
+	operatorCfgData        map[string]string
+	operatorReleaseVersion string
+	testScheme             = runtime.NewScheme()
 )
 
 func init() {
@@ -137,6 +138,7 @@ func runTestMain(m *testing.M) int {
 		ApplicationsNamespace: testNamespace,
 		ManifestsPath:         support.MustProjectFile("config", "manifests"),
 	}
+	operatorReleaseVersion = moduleCfg.Release().Version.String()
 
 	ctrlMgr, err := ctrl.NewManager(cfg, ctrl.Options{
 		Scheme:         testScheme,
@@ -312,7 +314,7 @@ func (rt *rayTest) testModuleStatus(t *testing.T) {
 		jq.Match(`.status.module.platform.name == "%s"`,
 			operatorCfgData[moduleconfig.KeyPlatformType]),
 		jq.Match(`.status.module.platform.version == "%s"`,
-			operatorCfgData[moduleconfig.KeyPlatformVersion]),
+			operatorReleaseVersion),
 		jq.Match(`.status.module.sources | length > 0`),
 		jq.Match(`.status.module.sources[0].path != ""`),
 		jq.Match(`.status.module.sources[0].renderer == "kustomize"`),
@@ -335,7 +337,7 @@ func (rt *rayTest) testPlatformLabels(t *testing.T) {
 			operatorCfgData[moduleconfig.KeyPlatformType]),
 		jq.Match(`.metadata.annotations."%s" == "%s"`,
 			annotationVersion,
-			version.Version),
+			operatorReleaseVersion),
 	))
 }
 

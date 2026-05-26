@@ -34,9 +34,8 @@ import (
 
 // Module holds process-lifetime state for the workbenches controller.
 type Module struct {
-	cfg             *moduleconfig.Config
-	version         componentApi.SemVer
-	platformVersion componentApi.SemVer
+	cfg     *moduleconfig.Config
+	version componentApi.SemVer
 	// manifestInfos is computed once at startup from the fixed platform and manifests path.
 	manifestInfos []odhtypes.ManifestInfo
 
@@ -52,8 +51,6 @@ func NewModule(cfg *moduleconfig.Config) (*Module, error) {
 	if err != nil {
 		return nil, fmt.Errorf("parsing module version %q: %w", version.Version, err)
 	}
-
-	pv, _ := componentApi.NewSemVer(cfg.PlatformVersion)
 
 	platform := common.Platform(cfg.PlatformType)
 
@@ -88,9 +85,8 @@ func NewModule(cfg *moduleconfig.Config) (*Module, error) {
 	}
 
 	return &Module{
-		cfg:             cfg,
-		version:         v,
-		platformVersion: pv,
-		manifestInfos:   manifests,
+		cfg:           cfg,
+		version:       v,
+		manifestInfos: manifests,
 	}, nil
 }
