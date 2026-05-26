@@ -32,12 +32,18 @@ Example:
 cd modules/opendatahub-mymodule-operator
 make test
 make helm
-make test-e2e
+make cleanup-e2e
+make deploy-crc
+make test-e2e-run
 ```
 
-For e2e verification, prefer a fresh ephemeral `ttl.sh` image tag per run
-instead of reusing a stable image tag. That is the most reliable way to avoid
-stale image cache issues on the cluster while iterating locally.
+On CRC/OpenShift local development, prefer `make deploy-crc`. That target uses
+the module-local CRC registry helper and deploys Helm with an internal registry
+pullspec the cluster can always reach.
+
+Across split modules, Helm deploys use `image.fullRef`, operator Deployments set
+`ODH_MODULE_OPERATOR_NAMESPACE` from `metadata.namespace`, and the generated
+charts keep `imagePullPolicy: Always`.
 
 For step-by-step image build, deploy, and e2e flows, see
 `.agents/skills/odh-component-to-module/references/e2e-workflow.md`.

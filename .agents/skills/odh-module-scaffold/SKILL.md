@@ -145,14 +145,11 @@ For split modules, `cmd/chartgen/` must import the module-local
 `github.com/opendatahub-io/opendatahub-operator/v2/pkg/cluster/gvk`
 directly from chartgen files.
 
-For split modules, `cmd/chartgen/` must import the module-local
-`pkg/resources/gvk/gvk.go` package. Do not import
-`github.com/opendatahub-io/opendatahub-operator/v2/pkg/cluster/gvk`
-directly from chartgen files.
-
 Transformations:
 
-- **Deployment**: image, resources, replicas, serviceAccountName, imagePullSecrets from values
+- **Deployment**: image from `image.fullRef`, resources, replicas,
+  serviceAccountName, imagePullSecrets from values, and
+  `imagePullPolicy: Always`
 - **ServiceAccount**: name from values, annotations from values
 - **ConfigMap**: merges `.Values.config` and `.Values.imagePullSecret` into data
 - **RoleBinding/ClusterRoleBinding**: subjects namespace and SA name from values
@@ -183,7 +180,14 @@ The `chartgen` subcommand in `cmd/chartgen/` must be updated when:
   in `helpers.go`. `Chart.yaml` is only generated if missing (existing
   files are preserved).
 
-After changes: `make helm` regenerates the chart and verifies it lints.
+Module chart conventions:
+
+- Use `image.fullRef`, not repository/tag value pairs
+- Keep the chart helper responsible for rendering the full image reference
+- Keep `imagePullPolicy: Always` in generated Deployments
+
+After changes: `make helm` regenerates the chart. After a multi-module rollout,
+run a final `make helm` pass in every module and confirm the repo is clean.
 
 ## Testing
 
@@ -236,7 +240,9 @@ reflected in test expectations (they are coupled).
 
 **Pre-test cleanup:** integration and e2e require a clean OpenShift cluster.
 Module Makefiles define cleanup scripts and `test-integration-run` /
-`test-e2e-run` targets. See
+`test-e2e-run` targets. On CRC, prefer `deploy-crc` over hand-built
+`container-push` + `deploy-helm` flows because it pushes the current `IMG` to
+the internal registry and deploys with a cluster-reachable pullspec. See
 `.agents/skills/odh-component-to-module/references/e2e-workflow.md`.
 
 Integration CRDs should be installed by `make prepare-integration` (or
@@ -244,6 +250,11 @@ Integration CRDs should be installed by `make prepare-integration` (or
 should fail fast if the expected module CRD is missing, and the top-level
 integration/e2e tests should use `Eventually` / `Consistently` to verify stale
 singleton CRs are gone before creating a fresh one.
+
+E2e tests should read `OPERATOR_NAMESPACE` with a module-specific default, and
+integration tests should read `INTEGRATION_TEST_NAMESPACE` with a default such
+as `integration-test`. Operator Deployments should set
+`ODH_MODULE_OPERATOR_NAMESPACE` from `metadata.namespace`.
 
 ## Extending
 

@@ -11,10 +11,9 @@ cluster). Assume:
 - **Platform overlay** in tests matches the cluster: use `rhoai` or `odh` from
   `config/manager/configmap.yaml` based on the OpenShift environment under test.
 - **SCC workloads** reconcile normally because OpenShift provides the required APIs.
-- **Image pull**: push to a registry the cluster can reach (`ttl.sh`, internal
-  registry, or `imagePullSecrets` on the operator namespace if required).
-  For e2e verification, prefer a fresh ephemeral `ttl.sh` tag per run so the
-  cluster does not reuse a stale image.
+- **Image pull**: on CRC, prefer the OpenShift internal registry via
+  `make deploy-crc`. On other OpenShift clusters, use a cluster-reachable image
+  reference with `make deploy-helm`.
 
 Use `oc` or `kubectl` interchangeably in cleanup scripts; prefer whatever is
 in the user's PATH.
@@ -29,7 +28,8 @@ or misleading failures. Every module must ship cleanup and run it **before**
 `go test` for integration/e2e.
 
 When you are working on `modules/$MODULE_NAME/`, run `make cleanup-*`,
-`make test-integration*`, `make deploy-helm`, and `make test-e2e*` from that
+`make test-integration*`, `make deploy-crc` / `make deploy-helm`, and
+`make test-e2e*` from that
 module directory (or set your tool `working_directory` there). The repo root
 defines targets with the same names for `opendatahub-module-operator`, so
 running them from the wrong directory can deploy or test the wrong operator.
@@ -73,18 +73,17 @@ test-e2e-run: ## Run e2e tests only (operator must already be deployed).
 test-e2e: cleanup-e2e deploy-helm test-e2e-run ## ...
 ```
 
-After manual `deploy-helm`, use **`make test-e2e-run`** — not `make test-e2e`
-(which re-runs cleanup and deploy). See [e2e-workflow.md](e2e-workflow.md).
+Modules should also expose `deploy-crc` for local CRC verification. That target
+should push the current `IMG` through the module-local `push-crc-image.sh`
+helper, resolve the internal registry pullspec, and then run the Helm deploy.
 
-Best practice for e2e runs: export a new `ttl.sh` image reference with a short
-TTL before `container-build` / `container-push` / `deploy-helm`, for example
-`ttl.sh/${MODULE_NAME}-$(uuidgen):1h`. Reusing a stable tag makes image cache
-problems much harder to diagnose.
+After manual `deploy-crc` or `deploy-helm`, use **`make test-e2e-run`** — not
+`make test-e2e` (which re-runs cleanup and deploy). See
+[e2e-workflow.md](e2e-workflow.md).
 
-Best practice for e2e runs: export a new `ttl.sh` image reference with a short
-TTL before `container-build` / `container-push` / `deploy-helm`, for example
-`ttl.sh/${MODULE_NAME}-$(uuidgen):1h`. Reusing a stable tag makes image cache
-problems much harder to diagnose.
+Best practice for e2e runs on CRC: keep `IMG` as a local/dev tag and let
+`deploy-crc` move it into the internal registry. For non-CRC clusters, use a
+cluster-reachable image and avoid reusing stale tags.
 
 Integration CRDs must be installed by `make`, not by Go test code. `TestMain`
 should fail fast if the expected module CRD is missing.
@@ -344,8 +343,8 @@ func TestMain(m *testing.M) {
 ```
 
 Assumes the operator is already deployed. For manual step-by-step deploy, use
-`test-e2e-run` after `cleanup-e2e` and `deploy-helm`. Composite `make test-e2e`
-runs cleanup, deploy, and tests in one target.
+`test-e2e-run` after `cleanup-e2e` and `deploy-crc` / `deploy-helm`. Composite
+`make test-e2e` runs cleanup, deploy, and tests in one target.
 
 ```go
 func Test$Kind(t *testing.T) {
@@ -380,6 +379,12 @@ testOwnerReferences     // owner refs on workload resources
 g.Eventually(k.Get(rt.operatorDeploy)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(
     jq.Match(`.spec.template.spec.containers[0].env[] | select(.name == "ODH_MODULE_OPERATOR_CONFIGURATION_PATH") | .value == "/etc/controller/config"`),
 )
+```
+
+Also assert the deployment carries:
+
+```go
+jq.Match(`.spec.template.spec.containers[0].env[] | select(.name == "ODH_MODULE_OPERATOR_NAMESPACE") | .valueFrom.fieldRef.fieldPath == "metadata.namespace"`)
 ```
 
 ### Module-specific e2e tests
@@ -422,3 +427,7 @@ Deployment and Service names.
    uses `ODH_MODULE_OPERATOR` — viper silently ignores mismatched vars
    during `Unmarshal()`. All env vars must use `ODH_MODULE_OPERATOR_`
    (see `controller-rules.md`).
+9. **Racey dependency mutation tests**: if an e2e test mutates a shared
+   cluster-scoped dependency (for example a CRD ownership label), pause the
+   controller while making the mutation and resume it only after the dependency
+   state is ready for reconciliation.

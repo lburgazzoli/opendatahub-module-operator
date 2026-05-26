@@ -49,7 +49,7 @@ instead of the module under test.
 | [manifest-rbac-audit.md](references/manifest-rbac-audit.md) | Step 5b — Owns + operand RBAC from kustomize |
 | [external-crds.md](references/external-crds.md) | Step 6 — OpenShift types (OwnsGVK only) |
 | [testing.md](references/testing.md) | Step 7 — unit, integration, e2e, timeouts |
-| [e2e-workflow.md](references/e2e-workflow.md) | Step 10 — IMG, helm, deploy, test targets |
+| [e2e-workflow.md](references/e2e-workflow.md) | Step 10 — IMG, helm, CRC-first deploy, test targets |
 | [verification-gates.md](references/verification-gates.md) | Steps 2b, 2c, 8 — grep gates |
 | [adversarial-review.md](references/adversarial-review.md) | Steps 9, 9b — subagent prompts |
 | [troubleshooting.md](references/troubleshooting.md) | In-cluster failures |
@@ -176,6 +176,15 @@ After `make get-manifests`, run the full audit in
   ClusterRoles (and Roles)
 - Run `make manifests generate`
 
+When you touch manager manifests or chart-generation code, keep the module-wide
+deployment conventions aligned:
+
+- base resource name `operator`, not `controller-manager`
+- operator Deployment env var `ODH_MODULE_OPERATOR_NAMESPACE` from
+  `metadata.namespace`
+- Helm image input via `image.fullRef`
+- generated Deployment `imagePullPolicy: Always`
+
 ### 6. OpenShift external types (if any)
 
 If the monolith `Owns` SCC, Route, or other OpenShift types: add `OwnsGVK` +
@@ -232,20 +241,23 @@ make manifests generate
 make cleanup-integration
 make test-integration-run
 
-export IMG="ttl.sh/${MODULE_NAME}-$(uuidgen | tr '[:upper:]' '[:lower:]'):1h"
+export IMG="${MODULE_NAME}:dev"
 echo "IMG=${IMG}"
 make container-prep         # host: manifests generate get-manifests
 make container-build IMG="${IMG}"        # binary compiled inside image
-make container-push IMG="${IMG}"
 make helm
 make cleanup-e2e
-make deploy-helm IMG="${IMG}"
+make deploy-crc IMG="${IMG}"             # CRC-first: push to internal registry + helm deploy
 make test-e2e-run
+make cleanup-e2e
 ```
 
-For e2e work, prefer a fresh **ephemeral `ttl.sh` image tag** like the one
-above instead of reusing a stable tag. That avoids stale image cache problems
-on the cluster and makes repeated local verification much more reliable.
+On CRC, prefer `deploy-crc` as the default local verification path. It uses the
+module-local registry helper scripts and deploys Helm with an internal registry
+pullspec that the cluster can resolve reliably.
+
+For non-CRC OpenShift clusters, keep using a cluster-reachable `IMG` and
+`make deploy-helm IMG="${IMG}"`.
 
 For the **first** integration/e2e verification pass, prefer short timeouts to
 surface setup bugs quickly. If deploy/test output stalls, stop waiting and check
