@@ -1,5 +1,5 @@
 ---
-name: odh-component-to-module
+name: odh-module-migrate
 description: >
   Scaffold a standalone module operator from an opendatahub-operator
   component on OpenShift. Use when creating modules/$name/ from the monolith
@@ -22,7 +22,7 @@ Split a monolith `ComponentHandler` into a standalone module under
 `modules/$MODULE_NAME/`. Follow the checklist in order; read reference docs
 only when a step points to them.
 
-**Test cluster:** OpenShift (CRC, ROSA, dev). See [testing.md](references/testing.md).
+**Test cluster:** OpenShift (CRC, ROSA, dev). See the **odh-module-test** skill.
 When validating a module, run integration/e2e/deploy Make targets from
 `modules/$MODULE_NAME/` (or set your tool `working_directory` there). Running
 the same target names from the repo root acts on `opendatahub-module-operator`
@@ -43,16 +43,24 @@ instead of the module under test.
 | [naming.md](references/naming.md) | Deriving `$MODULE_NAME`, env prefix rules |
 | [renaming.md](references/renaming.md) | After copying ray template — substitutions |
 | [extraction-checklist.md](references/extraction-checklist.md) | Step 1 — recording monolith findings |
-| [controller-rules.md](references/controller-rules.md) | Step 3 — pipeline, Watches, env prefix |
+| [controller-rules.md](references/controller-rules.md) | Step 3 — pipeline, Watches, RBAC |
+| [env-prefix.md](references/env-prefix.md) | Steps 2b, 3 — env prefix rule and sync table |
 | [crd-types.md](references/crd-types.md) | Step 4 — API types |
 | [manifest-script.md](references/manifest-script.md) | Step 5 — `get-manifests.sh` |
-| [manifest-rbac-audit.md](references/manifest-rbac-audit.md) | Step 5b — Owns + operand RBAC from kustomize |
 | [external-crds.md](references/external-crds.md) | Step 6 — OpenShift types (OwnsGVK only) |
-| [testing.md](references/testing.md) | Step 7 — unit, integration, e2e, timeouts |
-| [e2e-workflow.md](references/e2e-workflow.md) | Step 10 — IMG, helm, CRC-first deploy, test targets |
 | [verification-gates.md](references/verification-gates.md) | Steps 2b, 2c, 8 — grep gates |
 | [adversarial-review.md](references/adversarial-review.md) | Steps 9, 9b — subagent prompts |
 | [troubleshooting.md](references/troubleshooting.md) | In-cluster failures |
+| [components.md](references/components.md) | Step 1 — component catalog, deps, classification |
+| [migration-plan.md](references/migration-plan.md) | Phase planning, task breakdown, architecture |
+| [manifest-sources.md](references/manifest-sources.md) | Step 5 — per-component manifest repo/ref/path |
+| [upgrade-logic.md](references/upgrade-logic.md) | Step 3 — per-component upgrade mapping |
+| [webhook-logic.md](references/webhook-logic.md) | Step 6 — per-component webhook mapping |
+
+**Cross-skill references** (invoke these skills for detailed guidance):
+- **odh-manifest-audit** — Step 5b: Owns + operand RBAC from kustomize
+- **odh-module-test** — Step 7: unit, integration, e2e, timeouts
+- **odh-module-deploy** — Step 10: IMG, helm, CRC-first deploy, test targets
 
 ## Checklist
 
@@ -127,13 +135,6 @@ package instead of importing
 `github.com/opendatahub-io/opendatahub-operator/v2/pkg/cluster/gvk`
 directly.
 
-Before wiring `OwnsGVK`, `WatchesGVK`, sanity checks, or chart generation,
-create `pkg/resources/gvk/gvk.go` in the module and make it the module-local
-source of truth for all GVK constants. Module code must import that local
-package instead of importing
-`github.com/opendatahub-io/opendatahub-operator/v2/pkg/cluster/gvk`
-directly.
-
 ### 4. Port CRD types
 
 Per [crd-types.md](references/crd-types.md). The module must expose **its own**
@@ -157,8 +158,8 @@ Script must `rm -rf config/manifests/$COMPONENT/` before copy.
 
 ### 5b. Manifest RBAC audit (mandatory)
 
-After `make get-manifests`, run the full audit in
-[manifest-rbac-audit.md](references/manifest-rbac-audit.md):
+After `make get-manifests`, run the full audit using the **odh-manifest-audit**
+skill:
 
 - Resolve `config/manifests/${ContextDir}/${SourcePath}` from extraction
 - `kustomize build` must succeed
@@ -193,7 +194,7 @@ RBAC in the controller. **No CRD fetch on OpenShift** — see
 
 ### 7. Write tests and cleanup wiring
 
-Per [testing.md](references/testing.md):
+Per the **odh-module-test** skill:
 
 - Unit, integration, e2e tests (`testing.T` + Gomega)
 - If the module has dependency-gated preconditions (for example a required CRD,
@@ -226,7 +227,7 @@ both adversarial reviews have run and their findings have been addressed.
 ### 10. Fix findings and cluster verify
 
 Address all findings from steps 9 and 9b. Run **one command at a time** from
-`modules/$MODULE_NAME/` per [e2e-workflow.md](references/e2e-workflow.md). If
+`modules/$MODULE_NAME/` per the **odh-module-deploy** skill. If
 you are using a tool that supports `working_directory`, set it to the module
 path before running any integration/e2e/deploy target. This is mandatory: the
 repo root exposes the same target names for `opendatahub-module-operator`, so

@@ -48,7 +48,6 @@ It does not need the monolith's associative arrays, shared download helpers,
 or `--component=org:repo:ref:path` override handling unless a module has a
 real need for them.
 
-After fetch, run the manifest RBAC audit (skill step 5b /
-`.agents/skills/odh-component-to-module/references/manifest-rbac-audit.md`):
-`kustomize build` on `config/manifests/${ContextDir}/${SourcePath}`, then
-align controller `Owns` and operator RBAC with the build output.
+After fetch, run the manifest RBAC audit using the **odh-manifest-audit**
+skill: `kustomize build` on `config/manifests/${ContextDir}/${SourcePath}`,
+then align controller `Owns` and operator RBAC with the build output.

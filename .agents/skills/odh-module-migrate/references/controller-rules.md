@@ -96,35 +96,11 @@ r.Release = rel  // MODULE ADDITION: set release from config
 
 ## GVK Package Rule
 
-For split modules, `gvk` refers to the module-local package
-`pkg/resources/gvk/gvk.go`, not to
-`github.com/opendatahub-io/opendatahub-operator/v2/pkg/cluster/gvk`
-imported directly from controller or chartgen code.
-
-Use this rule consistently:
-
-1. Create `pkg/resources/gvk/gvk.go` in the module before porting GVK-based
-   `OwnsGVK`, `WatchesGVK`, or chartgen logic
-2. Re-export upstream GVK values there when upstream already defines them
-3. Define module-only GVKs there when upstream has no constant
-4. Keep shared chartgen GVKs there too, so the controller and `cmd/chartgen/`
-   use the same import path
-
-## GVK Package Rule
-
-For split modules, `gvk` refers to the module-local package
-`pkg/resources/gvk/gvk.go`, not to
-`github.com/opendatahub-io/opendatahub-operator/v2/pkg/cluster/gvk`
-imported directly from controller or chartgen code.
-
-Use this rule consistently:
-
-1. Create `pkg/resources/gvk/gvk.go` in the module before porting GVK-based
-   `OwnsGVK`, `WatchesGVK`, or chartgen logic
-2. Re-export upstream GVK values there when upstream already defines them
-3. Define module-only GVKs there when upstream has no constant
-4. Keep shared chartgen GVKs there too, so the controller and `cmd/chartgen/`
-   use the same import path
+See the **odh-module-dev** skill's
+[gvk-rule.md](../../odh-module-dev/references/gvk-rule.md) for the full rule.
+In short: each module defines `pkg/resources/gvk/gvk.go`; controller and
+chartgen code import that local package, never upstream `pkg/cluster/gvk`
+directly.
 
 ## Dependency Checks — Prefer Types and Instances
 
@@ -254,78 +230,12 @@ Without this, the controller fails at startup with:
 
 ## Env prefix
 
-**Rule:** `ODH_MODULE_OPERATOR_` for every module operator — identical to the
-example module. Never use `ODH_OPERATOR_`. Never embed the component name
-(e.g. `ODH_RAY_OPERATOR_*`). `pkg/config.EnvPrefix` and `ConfigPathEnvVar`
-must match deployment env vars and `make run`.
-
-Copy from the example module
-[`modules/opendatahub-mymodule-operator/pkg/config/config.go`](../../../../modules/opendatahub-mymodule-operator/pkg/config/config.go)
-and
-[`modules/opendatahub-mymodule-operator/config/manager/manager.yaml`](../../../../modules/opendatahub-mymodule-operator/config/manager/manager.yaml).
-
-These files must stay in sync:
-
-| File | Required env vars |
-|------|-------------------|
-| `pkg/config/config.go` | `EnvPrefix`, `ConfigPathEnvVar` |
-| `config/manager/manager.yaml` | `_CONFIGURATION_PATH`, `_MANIFESTS_PATH`, `_APPLICATIONS_NAMESPACE` |
-| `config/default/manager_metrics_patch.yaml` | `_METRICS_BIND_ADDRESS` |
-| `config/chart/templates/apps_v1_deployment.yaml` | same as manager |
-| `Makefile` `run` target | `ODH_MODULE_OPERATOR_MANIFESTS_PATH=...` |
-
-`RHAI_APPLICATIONS_NAMESPACE` is separate — set in deployments for
-opendatahub-operator framework compatibility, not part of module config.
-
-Verification grep (run from module root):
-
-```bash
-rg 'ODH_OPERATOR[^_M]|ODH_OPERATOR_|ODH_[A-Z]+_OPERATOR_' . && exit 1 || true
-```
+See [env-prefix.md](env-prefix.md) for the full rule and file sync table.
 
 ## Containerfile — Manifest Permissions
 
-OpenShift assigns arbitrary UIDs to containers. Manifests baked into the image
-must be world-readable so the init container (which copies them to a writable
-emptyDir) can access them regardless of the assigned UID.
-
-**Build split:** `make container-prep` runs on the host (`manifests`,
-`generate`, `get-manifests` for fetch modules). The Containerfile only runs
-`make build-bin` to compile the manager — generation and manifest fetch stay
-off the critical path inside the image layer cache.
-
-In the Containerfile:
-```dockerfile
-# In the builder stage — set permissions before copying to runtime
-RUN chmod -R a+rX config/manifests/
-
-# In the runtime stage — copy from builder (preserves permissions)
-COPY --from=builder /workspace/config/manifests/ /manifests/
-```
-
-The manager Deployment uses an init container to copy manifests to a writable
-volume, because `odhdeploy.ApplyParams` writes to `params.env` in-place:
-
-```yaml
-initContainers:
-- name: copy-manifests
-  image: controller:latest
-  command: ["cp", "-r", "/manifests/.", "/opt/manifests/"]
-  volumeMounts:
-  - name: manifests
-    mountPath: /opt/manifests
-containers:
-- name: manager
-  volumeMounts:
-  - name: manifests
-    mountPath: /opt/manifests
-  env:
-  - name: ODH_MODULE_OPERATOR_MANIFESTS_PATH
-    value: /opt/manifests
-volumes:
-- name: manifests
-  emptyDir: {}
-```
+See the **odh-module-deploy** skill's
+[containerfile.md](../../odh-module-deploy/references/containerfile.md).
 
 ## initialize — Per-Reconcile
 

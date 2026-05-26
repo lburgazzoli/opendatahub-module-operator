@@ -1,5 +1,17 @@
 # Implementation Plan — Module Operator Split
 
+## Source References
+
+| What | Path |
+|------|------|
+| Example module operator | `modules/opendatahub-mymodule-operator/` |
+| Completed ray module | `modules/opendatahub-ray-operator/` |
+| Component controllers | `/home/luca/work/dev/openshift-ai/opendatahub-operator/internal/controller/components/` |
+| Component API types | `/home/luca/work/dev/openshift-ai/opendatahub-operator/api/components/v1alpha1/` |
+| Upgrade logic | `/home/luca/work/dev/openshift-ai/opendatahub-operator/pkg/upgrade/` |
+| Webhook logic | `/home/luca/work/dev/openshift-ai/opendatahub-operator/internal/webhook/` |
+| Manifest fetcher | `/home/luca/work/dev/openshift-ai/opendatahub-operator/get_all_manifests.sh` |
+
 ## Architecture
 
 Each module is a standalone Go project under `modules/$name/` with:
