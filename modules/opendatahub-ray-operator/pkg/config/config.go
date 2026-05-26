@@ -44,7 +44,7 @@ const (
 	DefaultMetricsAddr      = ":8080"
 	DefaultHealthProbeAddr  = ":8081"
 	DefaultLeaderElect      = true
-	DefaultLeaderElectionID = "opendatahub-ray-operator-lock"
+	DefaultLeaderElectionID = "opendatahub-ray-lock"
 	DefaultApplicationsNS   = "opendatahub"
 	DefaultPlatformType     = "unknown"
 	DefaultPlatformVersion  = "unknown"

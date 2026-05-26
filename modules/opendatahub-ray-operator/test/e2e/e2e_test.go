@@ -56,7 +56,7 @@ const (
 	annotationType         = "platform.opendatahub.io/type"
 	annotationVersion      = "platform.opendatahub.io/version"
 
-	operatorConfigMapName = "opendatahub-ray-operator-config"
+	operatorConfigMapName = "opendatahub-ray-config"
 	moduleCRDName         = "rays.components.platform.opendatahub.io"
 )
 
@@ -109,7 +109,7 @@ type rayE2ETest struct {
 }
 
 func TestRay(t *testing.T) {
-	operatorNamespace := support.HelmNamespace()
+	operatorNamespace := support.OperatorNamespace()
 
 	rt := &rayE2ETest{
 		module: &componentsv1alpha1.Ray{
@@ -122,7 +122,7 @@ func TestRay(t *testing.T) {
 		},
 		operatorDeploy: &appsv1.Deployment{
 			ObjectMeta: metav1.ObjectMeta{
-				Name:      "opendatahub-ray-operator-controller-manager",
+				Name:      "opendatahub-ray-operator",
 				Namespace: operatorNamespace,
 			},
 		},

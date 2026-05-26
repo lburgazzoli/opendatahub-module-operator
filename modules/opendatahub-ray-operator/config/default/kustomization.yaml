@@ -1,6 +1,6 @@
-namespace: opendatahub-ray-operator-system
+namespace: opendatahub-ray-system
 
-namePrefix: opendatahub-ray-operator-
+namePrefix: opendatahub-ray-
 
 resources:
 - ../crd
