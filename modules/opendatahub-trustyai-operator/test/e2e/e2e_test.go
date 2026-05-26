@@ -56,7 +56,7 @@ const (
 	annotationType         = "platform.opendatahub.io/type"
 	annotationVersion      = "platform.opendatahub.io/version"
 
-	operatorConfigMapName = "opendatahub-trustyai-operator-config"
+	operatorConfigMapName = "opendatahub-trustyai-config"
 	moduleCRDName         = "trustyais.components.platform.opendatahub.io"
 )
 
@@ -109,7 +109,7 @@ type trustyAIE2ETest struct {
 }
 
 func TestTrustyAI(t *testing.T) {
-	operatorNamespace := support.HelmNamespace()
+	operatorNamespace := support.OperatorNamespace()
 
 	rt := &trustyAIE2ETest{
 		module: &componentsv1alpha1.TrustyAI{
@@ -122,7 +122,7 @@ func TestTrustyAI(t *testing.T) {
 		},
 		operatorDeploy: &appsv1.Deployment{
 			ObjectMeta: metav1.ObjectMeta{
-				Name:      "opendatahub-trustyai-operator-controller-manager",
+				Name:      "opendatahub-trustyai-operator",
 				Namespace: operatorNamespace,
 			},
 		},

@@ -4,7 +4,7 @@ metadata:
   labels:
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: opendatahub-trustyai-operator
-  name: opendatahub-trustyai-operator-components-trustyai-admin-role
+  name: opendatahub-trustyai-components-trustyai-admin-role
 rules:
 - apiGroups:
   - components.platform.opendatahub.io
@@ -25,7 +25,7 @@ metadata:
   labels:
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: opendatahub-trustyai-operator
-  name: opendatahub-trustyai-operator-components-trustyai-editor-role
+  name: opendatahub-trustyai-components-trustyai-editor-role
 rules:
 - apiGroups:
   - components.platform.opendatahub.io
@@ -52,7 +52,7 @@ metadata:
   labels:
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: opendatahub-trustyai-operator
-  name: opendatahub-trustyai-operator-components-trustyai-viewer-role
+  name: opendatahub-trustyai-components-trustyai-viewer-role
 rules:
 - apiGroups:
   - components.platform.opendatahub.io
@@ -72,7 +72,7 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: opendatahub-trustyai-operator-manager-role
+  name: opendatahub-trustyai-manager-role
 rules:
 - nonResourceURLs:
   - /metrics
@@ -374,7 +374,7 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: opendatahub-trustyai-operator-metrics-auth-role
+  name: opendatahub-trustyai-metrics-auth-role
 rules:
 - apiGroups:
   - authentication.k8s.io
@@ -392,7 +392,7 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: opendatahub-trustyai-operator-metrics-reader
+  name: opendatahub-trustyai-metrics-reader
 rules:
 - nonResourceURLs:
   - /metrics

@@ -57,8 +57,9 @@ import (
 )
 
 const (
-	timeout  = 3 * time.Minute
-	interval = 2 * time.Second
+	defaultTestNamespace = "integration-test"
+	timeout              = 3 * time.Minute
+	interval             = 2 * time.Second
 
 	labelPartOf            = "platform.opendatahub.io/part-of"
 	annotationInstanceName = "platform.opendatahub.io/instance.name"
@@ -77,6 +78,14 @@ var (
 	operatorCfgData map[string]string
 	testScheme      = runtime.NewScheme()
 )
+
+func envOrDefault(key string, defaultValue string) string {
+	if value := os.Getenv(key); value != "" {
+		return value
+	}
+
+	return defaultValue
+}
 
 func init() {
 	utilruntime.Must(clientgoscheme.AddToScheme(testScheme))
@@ -107,7 +116,7 @@ func runTestMain(m *testing.M) int {
 		return 1
 	}
 
-	testNamespace := support.HelmNamespace()
+	testNamespace := envOrDefault("INTEGRATION_TEST_NAMESPACE", defaultTestNamespace)
 
 	if err := support.EnsureNamespace(ctx, directClient, testNamespace); err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to create namespace: %v\n", err)
@@ -237,7 +246,7 @@ type trustyAITest struct {
 }
 
 func TestTrustyAI(t *testing.T) {
-	testNamespace := support.HelmNamespace()
+	testNamespace := envOrDefault("INTEGRATION_TEST_NAMESPACE", defaultTestNamespace)
 
 	rt := &trustyAITest{
 		module: &componentsv1alpha1.TrustyAI{

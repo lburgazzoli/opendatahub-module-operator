@@ -11,6 +11,9 @@
         "tag": {
           "type": "string"
         },
+        "fullRef": {
+          "type": "string"
+        },
         "pullPolicy": {
           "type": "string",
           "enum": [

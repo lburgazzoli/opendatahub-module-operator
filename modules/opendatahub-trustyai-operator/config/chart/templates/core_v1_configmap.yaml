@@ -13,5 +13,5 @@ metadata:
   labels:
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: opendatahub-trustyai-operator
-  name: opendatahub-trustyai-operator-config
+  name: opendatahub-trustyai-config
   namespace: {{ .Release.Namespace }}

@@ -4,7 +4,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 
-NAMESPACE="${1:-opendatahub-trustyai-operator-system}"
+NAMESPACE="${1:-opendatahub-trustyai-system}"
 HELM_RELEASE="${2:-opendatahub-trustyai-operator}"
 CR_RESOURCE="trustyais.components.platform.opendatahub.io"
 

@@ -1,6 +1,6 @@
-namespace: opendatahub-trustyai-operator-system
+namespace: opendatahub-trustyai-system
 
-namePrefix: opendatahub-trustyai-operator-
+namePrefix: opendatahub-trustyai-
 
 resources:
 - ../crd

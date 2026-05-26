@@ -74,6 +74,7 @@ type Values struct {
 type ImageSpec struct {
 	Repository string `json:"repository"`
 	Tag        string `json:"tag"`
+	FullRef    string `json:"fullRef,omitempty"`
 	PullPolicy string `json:"pullPolicy" jsonschema:"enum=Always,enum=IfNotPresent,enum=Never"`
 }
 
