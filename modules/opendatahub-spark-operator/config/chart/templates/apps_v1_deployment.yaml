@@ -4,7 +4,7 @@ metadata:
   labels:
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: opendatahub-spark-operator
-  name: opendatahub-spark-operator-controller-manager
+  name: opendatahub-spark-operator
   namespace: {{ .Release.Namespace }}
 spec:
   replicas: {{ .Values.replicas }}
@@ -27,6 +27,10 @@ spec:
           value: /etc/controller/config
         - name: ODH_MODULE_OPERATOR_MANIFESTS_PATH
           value: /opt/manifests
+        - name: ODH_MODULE_OPERATOR_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
         - name: ODH_MODULE_OPERATOR_APPLICATIONS_NAMESPACE
           valueFrom:
             fieldRef:
@@ -37,8 +41,8 @@ spec:
               fieldPath: metadata.namespace
         - name: ODH_MODULE_OPERATOR_METRICS_BIND_ADDRESS
           value: :8443
-        image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
-        imagePullPolicy: {{ .Values.image.pullPolicy }}
+        image: "{{ include "chart.imageRef" . }}"
+        imagePullPolicy: Always
         livenessProbe:
           httpGet:
             path: /healthz
@@ -76,8 +80,8 @@ spec:
         - -r
         - /manifests/.
         - /opt/manifests/
-        image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
-        imagePullPolicy: {{ .Values.image.pullPolicy }}
+        image: "{{ include "chart.imageRef" . }}"
+        imagePullPolicy: Always
         name: copy-manifests
         securityContext:
           allowPrivilegeEscalation: false
@@ -102,5 +106,5 @@ spec:
       - emptyDir: {}
         name: manifests
       - configMap:
-          name: opendatahub-spark-operator-config
+          name: opendatahub-spark-config
         name: config

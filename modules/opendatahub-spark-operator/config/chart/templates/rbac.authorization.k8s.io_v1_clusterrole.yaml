@@ -4,7 +4,7 @@ metadata:
   labels:
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: opendatahub-spark-operator
-  name: opendatahub-spark-operator-components-sparkoperator-admin-role
+  name: opendatahub-spark-components-sparkoperator-admin-role
 rules:
 - apiGroups:
   - components.platform.opendatahub.io
@@ -25,7 +25,7 @@ metadata:
   labels:
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: opendatahub-spark-operator
-  name: opendatahub-spark-operator-components-sparkoperator-editor-role
+  name: opendatahub-spark-components-sparkoperator-editor-role
 rules:
 - apiGroups:
   - components.platform.opendatahub.io
@@ -52,7 +52,7 @@ metadata:
   labels:
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: opendatahub-spark-operator
-  name: opendatahub-spark-operator-components-sparkoperator-viewer-role
+  name: opendatahub-spark-components-sparkoperator-viewer-role
 rules:
 - apiGroups:
   - components.platform.opendatahub.io
@@ -72,7 +72,7 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: opendatahub-spark-operator-manager-role
+  name: opendatahub-spark-manager-role
 rules:
 - apiGroups:
   - ""
@@ -259,7 +259,7 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: opendatahub-spark-operator-metrics-auth-role
+  name: opendatahub-spark-metrics-auth-role
 rules:
 - apiGroups:
   - authentication.k8s.io
@@ -277,7 +277,7 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: opendatahub-spark-operator-metrics-reader
+  name: opendatahub-spark-metrics-reader
 rules:
 - nonResourceURLs:
   - /metrics

@@ -11,21 +11,15 @@
         "tag": {
           "type": "string"
         },
-        "pullPolicy": {
-          "type": "string",
-          "enum": [
-            "Always",
-            "IfNotPresent",
-            "Never"
-          ]
+        "fullRef": {
+          "type": "string"
         }
       },
       "additionalProperties": false,
       "type": "object",
       "required": [
         "repository",
-        "tag",
-        "pullPolicy"
+        "tag"
       ]
     },
     "ResourceList": {

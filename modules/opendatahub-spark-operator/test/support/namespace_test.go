@@ -2,18 +2,34 @@ package support
 
 import "testing"
 
-func TestHelmNamespaceUsesEnvironmentOverride(t *testing.T) {
-	t.Setenv("HELM_NAMESPACE", "custom-namespace")
+func TestOperatorNamespaceUsesEnvironmentOverride(t *testing.T) {
+	t.Setenv("OPERATOR_NAMESPACE", "custom-namespace")
 
-	if got := HelmNamespace(); got != "custom-namespace" {
-		t.Fatalf("HelmNamespace() = %q, want %q", got, "custom-namespace")
+	if got := OperatorNamespace(); got != "custom-namespace" {
+		t.Fatalf("OperatorNamespace() = %q, want %q", got, "custom-namespace")
 	}
 }
 
-func TestHelmNamespaceFallsBackToDefault(t *testing.T) {
-	t.Setenv("HELM_NAMESPACE", "")
+func TestOperatorNamespaceFallsBackToDefault(t *testing.T) {
+	t.Setenv("OPERATOR_NAMESPACE", "")
 
-	if got := HelmNamespace(); got != DefaultHelmNamespace {
-		t.Fatalf("HelmNamespace() = %q, want %q", got, DefaultHelmNamespace)
+	if got := OperatorNamespace(); got != DefaultOperatorNamespace {
+		t.Fatalf("OperatorNamespace() = %q, want %q", got, DefaultOperatorNamespace)
+	}
+}
+
+func TestIntegrationTestNamespaceUsesEnvironmentOverride(t *testing.T) {
+	t.Setenv("INTEGRATION_TEST_NAMESPACE", "custom-integration")
+
+	if got := IntegrationTestNamespace(); got != "custom-integration" {
+		t.Fatalf("IntegrationTestNamespace() = %q, want %q", got, "custom-integration")
+	}
+}
+
+func TestIntegrationTestNamespaceFallsBackToDefault(t *testing.T) {
+	t.Setenv("INTEGRATION_TEST_NAMESPACE", "")
+
+	if got := IntegrationTestNamespace(); got != DefaultIntegrationTestNamespace {
+		t.Fatalf("IntegrationTestNamespace() = %q, want %q", got, DefaultIntegrationTestNamespace)
 	}
 }

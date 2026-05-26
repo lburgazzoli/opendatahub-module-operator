@@ -1,6 +1,6 @@
-namespace: opendatahub-spark-operator-system
+namespace: opendatahub-spark-system
 
-namePrefix: opendatahub-spark-operator-
+namePrefix: opendatahub-spark-
 
 resources:
 - ../crd

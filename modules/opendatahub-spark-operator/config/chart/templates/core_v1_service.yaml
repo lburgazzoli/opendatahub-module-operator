@@ -4,7 +4,7 @@ metadata:
   labels:
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: opendatahub-spark-operator
-  name: opendatahub-spark-operator-metrics-service
+  name: opendatahub-spark-metrics-service
   namespace: {{ .Release.Namespace }}
 spec:
   ports:

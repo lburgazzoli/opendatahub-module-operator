@@ -44,7 +44,7 @@ const (
 	DefaultMetricsAddr      = ":8080"
 	DefaultHealthProbeAddr  = ":8081"
 	DefaultLeaderElect      = true
-	DefaultLeaderElectionID = "opendatahub-spark-operator-lock"
+	DefaultLeaderElectionID = "opendatahub-spark-lock"
 	DefaultApplicationsNS   = "opendatahub"
 	DefaultPlatformType     = "unknown"
 	DefaultPlatformVersion  = "unknown"

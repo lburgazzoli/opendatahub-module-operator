@@ -56,7 +56,7 @@ const (
 	annotationType         = "platform.opendatahub.io/type"
 	annotationVersion      = "platform.opendatahub.io/version"
 
-	operatorConfigMapName = "opendatahub-spark-operator-config"
+	operatorConfigMapName = "opendatahub-spark-config"
 	moduleCRDName         = "sparkoperators.components.platform.opendatahub.io"
 )
 
@@ -109,7 +109,7 @@ type rayE2ETest struct {
 }
 
 func TestSparkOperator(t *testing.T) {
-	operatorNamespace := support.HelmNamespace()
+	operatorNamespace := support.OperatorNamespace()
 
 	rt := &rayE2ETest{
 		module: &componentsv1alpha1.SparkOperator{
@@ -122,7 +122,7 @@ func TestSparkOperator(t *testing.T) {
 		},
 		operatorDeploy: &appsv1.Deployment{
 			ObjectMeta: metav1.ObjectMeta{
-				Name:      "opendatahub-spark-operator-controller-manager",
+				Name:      "opendatahub-spark-operator",
 				Namespace: operatorNamespace,
 			},
 		},

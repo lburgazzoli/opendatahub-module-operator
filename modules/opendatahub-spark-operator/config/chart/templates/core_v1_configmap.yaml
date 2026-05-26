@@ -13,5 +13,5 @@ metadata:
   labels:
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: opendatahub-spark-operator
-  name: opendatahub-spark-operator-config
+  name: opendatahub-spark-config
   namespace: {{ .Release.Namespace }}
