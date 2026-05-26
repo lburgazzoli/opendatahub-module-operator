@@ -13,7 +13,7 @@ cleanup_test_managed_workflows_crd() {
   local managed_by
 
   managed_by="$(
-    kubectl get crd "${WORKFLOWS_CRD}" -o json 2>/dev/null \
+    { kubectl get crd "${WORKFLOWS_CRD}" -o json 2>/dev/null || true; } \
       | jq -r --arg key "${TEST_MANAGED_LABEL}" '.metadata.labels[$key] // ""'
   )"
 
