@@ -108,7 +108,7 @@ func runTestMain(m *testing.M) int {
 		return 1
 	}
 
-	testNamespace := support.HelmNamespace()
+	testNamespace := support.IntegrationTestNamespace()
 
 	if err := support.EnsureNamespace(ctx, directClient, testNamespace); err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to create namespace: %v\n", err)
@@ -220,7 +220,7 @@ type feastTest struct {
 }
 
 func TestMLflowOperator(t *testing.T) {
-	testNamespace := support.HelmNamespace()
+	testNamespace := support.IntegrationTestNamespace()
 
 	rt := &feastTest{
 		module: &componentsv1alpha1.MLflowOperator{

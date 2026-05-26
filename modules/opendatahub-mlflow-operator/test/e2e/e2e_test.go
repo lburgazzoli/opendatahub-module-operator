@@ -56,7 +56,7 @@ const (
 	annotationType         = "platform.opendatahub.io/type"
 	annotationVersion      = "platform.opendatahub.io/version"
 
-	operatorConfigMapName = "opendatahub-mlflow-operator-config"
+	operatorConfigMapName = "opendatahub-mlflow-config"
 	moduleCRDName = "mlflowoperators.components.platform.opendatahub.io"
 )
 
@@ -109,7 +109,7 @@ type mlflowE2ETest struct {
 }
 
 func TestMLflowOperator(t *testing.T) {
-	operatorNamespace := support.HelmNamespace()
+	operatorNamespace := support.OperatorNamespace()
 
 	rt := &mlflowE2ETest{
 		module: &componentsv1alpha1.MLflowOperator{
@@ -122,7 +122,7 @@ func TestMLflowOperator(t *testing.T) {
 		},
 		operatorDeploy: &appsv1.Deployment{
 			ObjectMeta: metav1.ObjectMeta{
-				Name:      "opendatahub-mlflow-operator-controller-manager",
+				Name:      "opendatahub-mlflow-operator",
 				Namespace: operatorNamespace,
 			},
 		},

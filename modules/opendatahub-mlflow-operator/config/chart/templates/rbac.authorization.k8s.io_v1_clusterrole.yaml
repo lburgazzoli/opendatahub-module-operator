@@ -4,7 +4,7 @@ metadata:
   labels:
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: opendatahub-mlflow-operator
-  name: opendatahub-mlflow-operator-components-mlflowoperator-admin-role
+  name: opendatahub-mlflow-components-mlflowoperator-admin-role
 rules:
 - apiGroups:
   - components.platform.opendatahub.io
@@ -25,7 +25,7 @@ metadata:
   labels:
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: opendatahub-mlflow-operator
-  name: opendatahub-mlflow-operator-components-mlflowoperator-editor-role
+  name: opendatahub-mlflow-components-mlflowoperator-editor-role
 rules:
 - apiGroups:
   - components.platform.opendatahub.io
@@ -52,7 +52,7 @@ metadata:
   labels:
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: opendatahub-mlflow-operator
-  name: opendatahub-mlflow-operator-components-mlflowoperator-viewer-role
+  name: opendatahub-mlflow-components-mlflowoperator-viewer-role
 rules:
 - apiGroups:
   - components.platform.opendatahub.io
@@ -72,7 +72,7 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: opendatahub-mlflow-operator-manager-role
+  name: opendatahub-mlflow-manager-role
 rules:
 - nonResourceURLs:
   - /metrics
@@ -115,8 +115,12 @@ rules:
   resources:
   - customresourcedefinitions
   verbs:
+  - create
+  - delete
   - get
   - list
+  - patch
+  - update
   - watch
 - apiGroups:
   - apps
@@ -302,7 +306,7 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: opendatahub-mlflow-operator-metrics-auth-role
+  name: opendatahub-mlflow-metrics-auth-role
 rules:
 - apiGroups:
   - authentication.k8s.io
@@ -320,7 +324,7 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: opendatahub-mlflow-operator-metrics-reader
+  name: opendatahub-mlflow-metrics-reader
 rules:
 - nonResourceURLs:
   - /metrics
