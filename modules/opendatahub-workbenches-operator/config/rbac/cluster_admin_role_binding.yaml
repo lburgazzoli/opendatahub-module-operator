@@ -14,5 +14,5 @@ roleRef:
   name: cluster-admin
 subjects:
 - kind: ServiceAccount
-  name: controller-manager
+  name: operator
   namespace: system

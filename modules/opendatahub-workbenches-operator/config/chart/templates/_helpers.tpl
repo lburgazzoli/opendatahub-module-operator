@@ -29,3 +29,14 @@ Selector labels (subset of standard labels for matchLabels).
 app.kubernetes.io/name: {{ include "chart.name" . }}
 app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end }}
+
+{{/*
+Canonical image reference. Prefer fullRef when explicitly set.
+*/}}
+{{- define "chart.imageRef" -}}
+{{- if .Values.image.fullRef -}}
+{{- .Values.image.fullRef -}}
+{{- else -}}
+{{- printf "%s:%s" .Values.image.repository .Values.image.tag -}}
+{{- end -}}
+{{- end }}

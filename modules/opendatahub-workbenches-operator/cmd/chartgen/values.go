@@ -32,7 +32,6 @@ import (
 const (
 	defaultImageRepository = "controller"
 	defaultImageTag        = "latest"
-	defaultImagePullPolicy = "Always"
 	defaultLimitsCPU       = "500m"
 	defaultLimitsMemory    = "128Mi"
 	defaultRequestsCPU     = "10m"
@@ -75,7 +74,7 @@ type Values struct {
 type ImageSpec struct {
 	Repository string `json:"repository"`
 	Tag        string `json:"tag"`
-	PullPolicy string `json:"pullPolicy" jsonschema:"enum=Always,enum=IfNotPresent,enum=Never"`
+	FullRef    string `json:"fullRef,omitempty"`
 }
 
 // ResourceSpec mirrors corev1.ResourceRequirements but with simpler
@@ -106,7 +105,6 @@ func DefaultValues() Values {
 		Image: ImageSpec{
 			Repository: defaultImageRepository,
 			Tag:        defaultImageTag,
-			PullPolicy: defaultImagePullPolicy,
 		},
 		Replicas: 1,
 		Resources: ResourceSpec{
@@ -147,10 +145,6 @@ func ExtractDefaults(resources []unstructured.Unstructured) Values {
 					parts := splitImageTag(img)
 					values.Image.Repository = parts[0]
 					values.Image.Tag = parts[1]
-				}
-
-				if policy, exists := c["imagePullPolicy"].(string); exists {
-					values.Image.PullPolicy = policy
 				}
 
 				if res, exists := c["resources"].(map[string]any); exists {

@@ -4,7 +4,7 @@ metadata:
   labels:
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: opendatahub-workbenches-operator
-  name: opendatahub-workbenches-operator-metrics-service
+  name: opendatahub-workbenches-metrics-service
   namespace: {{ .Release.Namespace }}
 spec:
   ports:
@@ -18,7 +18,7 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: opendatahub-workbenches-operator-webhook-service
+  name: opendatahub-workbenches-webhook-service
   namespace: {{ .Release.Namespace }}
 spec:
   ports:

@@ -4,7 +4,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 
-NAMESPACE="${1:-opendatahub-workbenches-operator-system}"
+NAMESPACE="${1:-opendatahub-workbenches-system}"
 HELM_RELEASE="${2:-opendatahub-workbenches-operator}"
 CR_RESOURCE="workbenches.components.platform.opendatahub.io"
 

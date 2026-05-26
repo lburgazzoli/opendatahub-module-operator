@@ -2,14 +2,14 @@ apiVersion: admissionregistration.k8s.io/v1
 kind: MutatingWebhookConfiguration
 metadata:
   annotations:
-    cert-manager.io/inject-ca-from: {{ .Release.Namespace }}/opendatahub-workbenches-operator-serving-cert
-  name: opendatahub-workbenches-operator-mutating-webhook-configuration
+    cert-manager.io/inject-ca-from: {{ .Release.Namespace }}/opendatahub-workbenches-serving-cert
+  name: opendatahub-workbenches-mutating-webhook-configuration
 webhooks:
 - admissionReviewVersions:
   - v1
   clientConfig:
     service:
-      name: opendatahub-workbenches-operator-webhook-service
+      name: opendatahub-workbenches-webhook-service
       namespace: {{ .Release.Namespace }}
       path: /platform-connection-notebook
   failurePolicy: Fail
@@ -29,7 +29,7 @@ webhooks:
   - v1
   clientConfig:
     service:
-      name: opendatahub-workbenches-operator-webhook-service
+      name: opendatahub-workbenches-webhook-service
       namespace: {{ .Release.Namespace }}
       path: /mutate-hardware-profile
   failurePolicy: Fail

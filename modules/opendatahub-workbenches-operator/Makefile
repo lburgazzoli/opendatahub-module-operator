@@ -67,7 +67,7 @@ test: manifests generate fmt vet ## Run unit tests.
 
 .PHONY: test-integration-run
 test-integration-run: ## Run integration tests only (cluster must be prepared).
-	HELM_NAMESPACE="$(HELM_NAMESPACE)" go test ./test/integration/ -tags=integration -v -timeout 5m -failfast
+	INTEGRATION_TEST_NAMESPACE="$(INTEGRATION_TEST_NAMESPACE)" go test ./test/integration/ -tags=integration -v -timeout 5m -failfast
 
 .PHONY: fetch-external-crds
 fetch-external-crds: ## Fetch external CRDs required for integration and e2e tests.
@@ -75,7 +75,7 @@ fetch-external-crds: ## Fetch external CRDs required for integration and e2e tes
 
 .PHONY: prepare-integration
 prepare-integration: manifests generate fetch-external-crds ## Clean cluster state and install CRDs for integration tests.
-	$(MAKE) cleanup-integration HELM_NAMESPACE="$(HELM_NAMESPACE)"
+	$(MAKE) cleanup-integration
 	$(MAKE) install
 
 .PHONY: test-integration
@@ -83,18 +83,18 @@ test-integration: prepare-integration test-integration-run ## Run integration te
 
 .PHONY: test-e2e-run
 test-e2e-run: ## Run e2e tests only (operator must already be deployed).
-	HELM_NAMESPACE="$(HELM_NAMESPACE)" go test ./test/e2e/ -tags=e2e -v -timeout 5m -failfast
+	OPERATOR_NAMESPACE="$(OPERATOR_NAMESPACE)" go test ./test/e2e/ -tags=e2e -v -timeout 5m -failfast
 
 .PHONY: test-e2e
 test-e2e: cleanup-e2e deploy-helm test-e2e-run ## Run e2e tests (cleans cluster, deploys operator, then tests).
 
 .PHONY: cleanup-integration
 cleanup-integration: ## Clean up integration test resources from the cluster.
-	HELM_NAMESPACE="$(HELM_NAMESPACE)" ./hack/scripts/cleanup-integration.sh "$(HELM_NAMESPACE)"
+	./hack/scripts/cleanup-integration.sh "$(INTEGRATION_TEST_NAMESPACE)"
 
 .PHONY: cleanup-e2e
 cleanup-e2e: ## Clean up e2e test resources and uninstall operator from the cluster.
-	HELM_NAMESPACE="$(HELM_NAMESPACE)" ./hack/scripts/cleanup-e2e.sh "$(HELM_NAMESPACE)" "$(HELM_RELEASE)"
+	./hack/scripts/cleanup-e2e.sh "$(OPERATOR_NAMESPACE)" "$(HELM_RELEASE)"
 
 .PHONY: lint
 lint: ## Run golangci-lint linter.
@@ -154,8 +154,10 @@ container-push: ## Push container image with the manager.
 
 ##@ Helm
 
-HELM_NAMESPACE ?= opendatahub-workbenches-operator-system
+HELM_NAMESPACE ?= opendatahub-workbenches-system
 HELM_RELEASE   ?= opendatahub-workbenches-operator
+OPERATOR_NAMESPACE ?= $(HELM_NAMESPACE)
+INTEGRATION_TEST_NAMESPACE ?= integration-test
 HELM_EXTRA_ARGS ?=
 
 .PHONY: helm
@@ -173,24 +175,26 @@ ifndef ignore-not-found
   ignore-not-found = false
 endif
 
-.PHONY: deploy-kustomize
-deploy-kustomize: install ## Deploy controller via kustomize (CRDs + manifests).
-	cd config/manager && $(KUSTOMIZE) edit set image controller=${IMG}
-	$(KUSTOMIZE) build config/default | $(KUBECTL) apply -f -
-
-.PHONY: undeploy-kustomize
-undeploy-kustomize: ## Undeploy controller installed via kustomize.
-	-$(KUSTOMIZE) build config/default | $(KUBECTL) delete --ignore-not-found=$(ignore-not-found) -f -
-	-@out="$$( $(KUSTOMIZE) build config/crd 2>/dev/null || true )"; \
-	if [ -n "$$out" ]; then echo "$$out" | $(KUBECTL) delete --ignore-not-found=$(ignore-not-found) -f -; fi
-
 .PHONY: deploy-helm
 deploy-helm: ## Deploy controller via Helm chart.
-	$(HELM) upgrade --install $(HELM_RELEASE) config/chart \
-		--namespace $(HELM_NAMESPACE) --create-namespace \
-		--set image.repository=$(word 1,$(subst :, ,$(IMG))) \
-		--set-string image.tag=$(word 2,$(subst :, ,$(IMG))) \
-		--wait --timeout 5m $(HELM_EXTRA_ARGS)
+	@resolved_img="$$(bash ./hack/scripts/resolve-image-ref.sh "$(IMG)")"; \
+		echo "Deploying image: $$resolved_img"; \
+		$(HELM) upgrade --install $(HELM_RELEASE) config/chart \
+			--namespace $(HELM_NAMESPACE) --create-namespace \
+			--set-string image.fullRef="$$resolved_img" \
+			--wait --timeout 5m $(HELM_EXTRA_ARGS)
+
+.PHONY: push-crc-image
+push-crc-image: ## Push a built image to the CRC internal registry and print the pullspec.
+	@bash ./hack/scripts/push-crc-image.sh "$(IMG)" "$(HELM_NAMESPACE)" "$(MODULE_NAME)"
+
+.PHONY: deploy-crc
+deploy-crc: ## Build locally, push to CRC internal registry, and deploy via Helm.
+	$(MAKE) container-build
+	@img="$$(bash ./hack/scripts/push-crc-image.sh "$(IMG)" "$(HELM_NAMESPACE)" "$(MODULE_NAME)")"; \
+		echo "Using image: $$img"; \
+		$(MAKE) helm; \
+		$(MAKE) deploy-helm IMG="$$img"
 
 .PHONY: undeploy-helm
 undeploy-helm: ## Undeploy controller installed via Helm.

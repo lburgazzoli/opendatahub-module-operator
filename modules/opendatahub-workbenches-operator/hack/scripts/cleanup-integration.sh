@@ -4,7 +4,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 
-NAMESPACE="${1:-${HELM_NAMESPACE:-opendatahub-workbenches-operator-system}}"
+NAMESPACE="${1:-integration-test}"
 CR_RESOURCE="workbenches.components.platform.opendatahub.io"
 
 echo "Cleaning up integration test resources..."

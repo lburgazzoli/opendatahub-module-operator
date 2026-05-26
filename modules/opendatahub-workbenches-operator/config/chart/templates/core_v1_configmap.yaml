@@ -13,5 +13,5 @@ metadata:
   labels:
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: opendatahub-workbenches-operator
-  name: opendatahub-workbenches-operator-config
+  name: opendatahub-workbenches-config
   namespace: {{ .Release.Namespace }}

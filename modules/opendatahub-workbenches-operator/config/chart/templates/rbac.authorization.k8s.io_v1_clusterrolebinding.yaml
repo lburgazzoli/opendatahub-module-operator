@@ -4,7 +4,7 @@ metadata:
   labels:
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: opendatahub-workbenches-operator
-  name: opendatahub-workbenches-operator-cluster-admin-rolebinding
+  name: opendatahub-workbenches-cluster-admin-rolebinding
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
@@ -20,11 +20,11 @@ metadata:
   labels:
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: opendatahub-workbenches-operator
-  name: opendatahub-workbenches-operator-manager-rolebinding
+  name: opendatahub-workbenches-manager-rolebinding
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
-  name: opendatahub-workbenches-operator-manager-role
+  name: opendatahub-workbenches-manager-role
 subjects:
 - kind: ServiceAccount
   name: {{ default (include "chart.fullname" .) .Values.serviceAccount.name }}
@@ -33,11 +33,11 @@ subjects:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
-  name: opendatahub-workbenches-operator-metrics-auth-rolebinding
+  name: opendatahub-workbenches-metrics-auth-rolebinding
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
-  name: opendatahub-workbenches-operator-metrics-auth-role
+  name: opendatahub-workbenches-metrics-auth-role
 subjects:
 - kind: ServiceAccount
   name: {{ default (include "chart.fullname" .) .Values.serviceAccount.name }}

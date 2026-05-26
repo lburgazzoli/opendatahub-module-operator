@@ -59,7 +59,7 @@ const (
 	annotationType         = "platform.opendatahub.io/type"
 	annotationVersion      = "platform.opendatahub.io/version"
 
-	operatorConfigMapName = "opendatahub-workbenches-operator-config"
+	operatorConfigMapName = "opendatahub-workbenches-config"
 	moduleCRDName         = "workbenches.components.platform.opendatahub.io"
 )
 
@@ -114,7 +114,7 @@ type workbenchesE2ETest struct {
 }
 
 func TestWorkbenches(t *testing.T) {
-	operatorNamespace := support.HelmNamespace()
+	operatorNamespace := support.OperatorNamespace()
 
 	wt := &workbenchesE2ETest{
 		module: &componentsv1alpha1.Workbenches{
@@ -127,7 +127,7 @@ func TestWorkbenches(t *testing.T) {
 		},
 		operatorDeploy: &appsv1.Deployment{
 			ObjectMeta: metav1.ObjectMeta{
-				Name:      "opendatahub-workbenches-operator-controller-manager",
+				Name:      "opendatahub-workbenches-operator",
 				Namespace: operatorNamespace,
 			},
 		},

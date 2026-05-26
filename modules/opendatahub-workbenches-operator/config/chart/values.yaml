@@ -2,7 +2,6 @@ config:
   platform-type: OpenDataHub
   platform-version: unknown
 image:
-  pullPolicy: Always
   repository: ttl.sh/opendatahub-workbenches-operator
   tag: latest
 leaderElect: true
