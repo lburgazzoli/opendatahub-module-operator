@@ -4,7 +4,7 @@ metadata:
   labels:
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: opendatahub-datasciencepipelines-operator
-  name: opendatahub-datasciencepipelines-operator-components-datasciencepipelines-admin-role
+  name: opendatahub-datasciencepipelines-components-datasciencepipelines-admin-role
 rules:
 - apiGroups:
   - components.platform.opendatahub.io
@@ -25,7 +25,7 @@ metadata:
   labels:
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: opendatahub-datasciencepipelines-operator
-  name: opendatahub-datasciencepipelines-operator-components-datasciencepipelines-editor-role
+  name: opendatahub-datasciencepipelines-components-datasciencepipelines-editor-role
 rules:
 - apiGroups:
   - components.platform.opendatahub.io
@@ -52,7 +52,7 @@ metadata:
   labels:
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: opendatahub-datasciencepipelines-operator
-  name: opendatahub-datasciencepipelines-operator-components-datasciencepipelines-viewer-role
+  name: opendatahub-datasciencepipelines-components-datasciencepipelines-viewer-role
 rules:
 - apiGroups:
   - components.platform.opendatahub.io
@@ -72,7 +72,7 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: opendatahub-datasciencepipelines-operator-manager-role
+  name: opendatahub-datasciencepipelines-manager-role
 rules:
 - nonResourceURLs:
   - /metrics
@@ -429,7 +429,7 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: opendatahub-datasciencepipelines-operator-metrics-auth-role
+  name: opendatahub-datasciencepipelines-metrics-auth-role
 rules:
 - apiGroups:
   - authentication.k8s.io
@@ -447,7 +447,7 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: opendatahub-datasciencepipelines-operator-metrics-reader
+  name: opendatahub-datasciencepipelines-metrics-reader
 rules:
 - nonResourceURLs:
   - /metrics

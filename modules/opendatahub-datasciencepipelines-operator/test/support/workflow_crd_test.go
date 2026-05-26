@@ -76,7 +76,7 @@ func TestRestoreWorkflowCRDStateRestoresOriginalLabels(t *testing.T) {
 	}
 }
 
-func TestRestoreWorkflowCRDStateDeletesTestManagedStubWhenOriginallyMissing(t *testing.T) {
+func TestRestoreWorkflowCRDStateKeepsTestManagedStubWhenOriginallyMissing(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
@@ -104,10 +104,11 @@ func TestRestoreWorkflowCRDStateDeletesTestManagedStubWhenOriginallyMissing(t *t
 	}
 
 	current := &apiextensionsv1.CustomResourceDefinition{}
-	if err := cli.Get(ctx, client.ObjectKey{Name: testWorkflowCRDName}, current); client.IgnoreNotFound(err) != nil {
+	if err := cli.Get(ctx, client.ObjectKey{Name: testWorkflowCRDName}, current); err != nil {
 		t.Fatalf("Get() after restore error = %v", err)
-	} else if err == nil {
-		t.Fatalf("stub CRD still exists after restore")
+	}
+	if got := current.Labels[testManagedLabel]; got != testManagedLabelValue {
+		t.Fatalf("test-managed label = %q, want %q", got, testManagedLabelValue)
 	}
 }
 

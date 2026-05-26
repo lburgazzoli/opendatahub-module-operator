@@ -13,5 +13,5 @@ metadata:
   labels:
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: opendatahub-datasciencepipelines-operator
-  name: opendatahub-datasciencepipelines-operator-config
+  name: opendatahub-datasciencepipelines-config
   namespace: {{ .Release.Namespace }}

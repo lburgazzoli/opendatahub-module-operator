@@ -3,6 +3,7 @@ package support
 import (
 	"context"
 	"fmt"
+	"time"
 
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	k8serr "k8s.io/apimachinery/pkg/api/errors"
@@ -53,18 +54,19 @@ func RestoreWorkflowCRDState(
 			return fmt.Errorf("recreating original CRD %s: %w", crdName, err)
 		}
 
+		if err := waitForWorkflowCRDState(ctx, cli, crdName, true); err != nil {
+			return err
+		}
+
 		return nil
 	} else if err != nil {
 		return fmt.Errorf("loading CRD %s for restore: %w", crdName, err)
 	}
 
 	if state.Original == nil {
-		if current.Labels[testManagedLabel] != testManagedValue {
-			return nil
-		}
-		if err := cli.Delete(ctx, current); err != nil && !k8serr.IsNotFound(err) {
-			return fmt.Errorf("deleting test-managed CRD %s: %w", crdName, err)
-		}
+		// E2E and integration cleanup scripts remove test-managed workflow CRDs
+		// after the suite finishes. Keeping them between subtests avoids races
+		// where a slow CRD delete overlaps the next setup path.
 		return nil
 	}
 
@@ -100,4 +102,40 @@ func sanitizeWorkflowCRD(crd *apiextensionsv1.CustomResourceDefinition) *apiexte
 	sanitized.ManagedFields = nil
 
 	return sanitized
+}
+
+func waitForWorkflowCRDState(
+	ctx context.Context,
+	cli client.Client,
+	crdName string,
+	shouldExist bool,
+) error {
+	waitCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+
+	ticker := time.NewTicker(500 * time.Millisecond)
+	defer ticker.Stop()
+
+	for {
+		current := &apiextensionsv1.CustomResourceDefinition{}
+		err := cli.Get(waitCtx, client.ObjectKey{Name: crdName}, current)
+
+		if shouldExist {
+			if err == nil {
+				return nil
+			}
+		} else if k8serr.IsNotFound(err) {
+			return nil
+		}
+
+		select {
+		case <-waitCtx.Done():
+			if shouldExist {
+				return fmt.Errorf("waiting for CRD %s to exist: %w", crdName, waitCtx.Err())
+			}
+
+			return fmt.Errorf("waiting for CRD %s to be deleted: %w", crdName, waitCtx.Err())
+		case <-ticker.C:
+		}
+	}
 }

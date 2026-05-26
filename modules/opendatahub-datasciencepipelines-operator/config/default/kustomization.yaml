@@ -1,6 +1,6 @@
-namespace: opendatahub-datasciencepipelines-operator-system
+namespace: opendatahub-datasciencepipelines-system
 
-namePrefix: opendatahub-datasciencepipelines-operator-
+namePrefix: opendatahub-datasciencepipelines-
 
 resources:
 - ../crd

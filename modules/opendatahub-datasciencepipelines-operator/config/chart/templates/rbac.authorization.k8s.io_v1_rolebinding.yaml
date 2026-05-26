@@ -4,12 +4,12 @@ metadata:
   labels:
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: opendatahub-datasciencepipelines-operator
-  name: opendatahub-datasciencepipelines-operator-leader-election-rolebinding
+  name: opendatahub-datasciencepipelines-leader-election-rolebinding
   namespace: {{ .Release.Namespace }}
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: Role
-  name: opendatahub-datasciencepipelines-operator-leader-election-role
+  name: opendatahub-datasciencepipelines-leader-election-role
 subjects:
 - kind: ServiceAccount
   name: {{ default (include "chart.fullname" .) .Values.serviceAccount.name }}

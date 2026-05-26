@@ -56,13 +56,13 @@ const (
 	annotationType         = "platform.opendatahub.io/type"
 	annotationVersion      = "platform.opendatahub.io/version"
 
-	operatorConfigMapName   = "opendatahub-datasciencepipelines-operator-config"
+	operatorConfigMapName   = "opendatahub-datasciencepipelines-config"
 	moduleCRDName           = "datasciencepipelines.components.platform.opendatahub.io"
 	argoWorkflowCRDName     = "workflows.argoproj.io"
 	testManagedByLabel      = "testing.opendatahub.io/managed-by"
 	testManagedByValue      = "dsp-e2e"
 	legacyComponentName     = "data-science-pipelines-operator"
-	operatorDeploymentName  = "opendatahub-datasciencepipelines-operator-controller-manager"
+	operatorDeploymentName  = "opendatahub-datasciencepipelines-operator"
 	workloadDeploymentName  = "data-science-pipelines-operator-controller-manager"
 	workloadServiceMonName  = "data-science-pipelines-operator-service-monitor"
 )
@@ -118,7 +118,7 @@ type dspE2ETest struct {
 }
 
 func TestDataSciencePipelines(t *testing.T) {
-	operatorNamespace := support.HelmNamespace()
+	operatorNamespace := support.OperatorNamespace()
 
 	dt := &dspE2ETest{
 		module: &componentsv1alpha1.DataSciencePipelines{
@@ -185,6 +185,69 @@ func cleanupModule(t *testing.T, module *componentsv1alpha1.DataSciencePipelines
 	}).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(Succeed())
 	module.ResourceVersion = ""
 	module.UID = ""
+}
+
+func withStoppedOperator(t *testing.T, run func()) {
+	t.Helper()
+
+	operatorNamespace := support.OperatorNamespace()
+	key := client.ObjectKey{
+		Name:      operatorDeploymentName,
+		Namespace: operatorNamespace,
+	}
+
+	deployment := &appsv1.Deployment{}
+	if err := k8sClient.Get(ctx, key, deployment); err != nil {
+		t.Fatalf("getting operator deployment: %v", err)
+	}
+
+	originalReplicas := int32(1)
+	if deployment.Spec.Replicas != nil {
+		originalReplicas = *deployment.Spec.Replicas
+	}
+
+	setOperatorReplicas(t, key, 0)
+	defer setOperatorReplicas(t, key, originalReplicas)
+
+	run()
+}
+
+func setOperatorReplicas(t *testing.T, key client.ObjectKey, replicas int32) {
+	t.Helper()
+
+	g := NewWithT(t)
+	g.Eventually(func() error {
+		deployment := &appsv1.Deployment{}
+		if err := k8sClient.Get(ctx, key, deployment); err != nil {
+			return err
+		}
+
+		if deployment.Spec.Replicas != nil && *deployment.Spec.Replicas == replicas {
+			return nil
+		}
+
+		deployment.Spec.Replicas = &replicas
+		return k8sClient.Update(ctx, deployment)
+	}).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(Succeed())
+
+	if replicas == 0 {
+		g.Eventually(func(g Gomega) {
+			deployment := &appsv1.Deployment{}
+			err := k8sClient.Get(ctx, key, deployment)
+			g.Expect(err).NotTo(HaveOccurred())
+			g.Expect(deployment.Status.Replicas).To(BeZero())
+			g.Expect(deployment.Status.ReadyReplicas).To(BeZero())
+		}).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(Succeed())
+
+		return
+	}
+
+	g.Eventually(func(g Gomega) {
+		deployment := &appsv1.Deployment{}
+		err := k8sClient.Get(ctx, key, deployment)
+		g.Expect(err).NotTo(HaveOccurred())
+		g.Expect(deployment.Status.ReadyReplicas).To(BeNumerically(">=", replicas))
+	}).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(Succeed())
 }
 
 func manageArgoWorkflowCRD(t *testing.T) {
@@ -320,9 +383,29 @@ func updateWorkflowCRDEventually(
 
 func createModule(t *testing.T, module *componentsv1alpha1.DataSciencePipelines) {
 	t.Helper()
-	cleanupModule(t, module)
-	if err := k8sClient.Create(ctx, module); err != nil {
-		t.Fatalf("creating module: %v", err)
+
+	if module.Annotations == nil {
+		module.Annotations = map[string]string{}
+	}
+	module.Annotations["testing.opendatahub.io/reconcile-at"] = time.Now().UTC().Format(time.RFC3339Nano)
+
+	current := &componentsv1alpha1.DataSciencePipelines{}
+	err := k8sClient.Get(ctx, client.ObjectKeyFromObject(module), current)
+	if k8serr.IsNotFound(err) {
+		if err := k8sClient.Create(ctx, module); err != nil {
+			t.Fatalf("creating module: %v", err)
+		}
+
+		return
+	}
+	if err != nil {
+		t.Fatalf("getting module before upsert: %v", err)
+	}
+
+	current.Spec = module.Spec
+	current.Annotations = module.Annotations
+	if err := k8sClient.Update(ctx, current); err != nil {
+		t.Fatalf("updating module: %v", err)
 	}
 }
 
@@ -342,13 +425,15 @@ func (dt *dspE2ETest) testOperatorConfigMap(t *testing.T) {
 }
 
 func (dt *dspE2ETest) testMissingArgoWorkflowCRD(t *testing.T) {
-	ensureArgoWorkflowCRDMissing(t)
-
 	module := dt.module.DeepCopy()
-	module.Spec.ArgoWorkflowsControllers = &componentsv1alpha1.ArgoWorkflowsControllersSpec{
-		ManagementState: "Removed",
-	}
-	createModule(t, module)
+	withStoppedOperator(t, func() {
+		ensureArgoWorkflowCRDMissing(t)
+
+		module.Spec.ArgoWorkflowsControllers = &componentsv1alpha1.ArgoWorkflowsControllersSpec{
+			ManagementState: "Removed",
+		}
+		createModule(t, module)
+	})
 
 	g := NewWithT(t)
 	g.Eventually(k.Get(module)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(And(
@@ -361,10 +446,11 @@ func (dt *dspE2ETest) testMissingArgoWorkflowCRD(t *testing.T) {
 }
 
 func (dt *dspE2ETest) testForeignOwnedArgoWorkflowCRD(t *testing.T) {
-	ensureArgoWorkflowCRDForeignOwned(t)
-
 	module := dt.module.DeepCopy()
-	createModule(t, module)
+	withStoppedOperator(t, func() {
+		ensureArgoWorkflowCRDForeignOwned(t)
+		createModule(t, module)
+	})
 
 	g := NewWithT(t)
 	g.Eventually(k.Get(module)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(And(
@@ -377,10 +463,11 @@ func (dt *dspE2ETest) testForeignOwnedArgoWorkflowCRD(t *testing.T) {
 }
 
 func (dt *dspE2ETest) testBecomesReady(t *testing.T) {
-	ensureArgoWorkflowCRDOwnedByODH(t)
-
 	module := dt.module.DeepCopy()
-	createModule(t, module)
+	withStoppedOperator(t, func() {
+		ensureArgoWorkflowCRDOwnedByODH(t)
+		createModule(t, module)
+	})
 
 	g := NewWithT(t)
 	g.Eventually(k.Get(module)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(And(
@@ -402,10 +489,11 @@ func (dt *dspE2ETest) testBecomesReady(t *testing.T) {
 }
 
 func (dt *dspE2ETest) testModuleStatus(t *testing.T) {
-	ensureArgoWorkflowCRDOwnedByODH(t)
-
 	module := dt.module.DeepCopy()
-	createModule(t, module)
+	withStoppedOperator(t, func() {
+		ensureArgoWorkflowCRDOwnedByODH(t)
+		createModule(t, module)
+	})
 
 	g := NewWithT(t)
 	g.Eventually(k.Get(module)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(And(
@@ -417,10 +505,11 @@ func (dt *dspE2ETest) testModuleStatus(t *testing.T) {
 }
 
 func (dt *dspE2ETest) testPlatformLabels(t *testing.T) {
-	ensureArgoWorkflowCRDOwnedByODH(t)
-
 	module := dt.module.DeepCopy()
-	createModule(t, module)
+	withStoppedOperator(t, func() {
+		ensureArgoWorkflowCRDOwnedByODH(t)
+		createModule(t, module)
+	})
 
 	g := NewWithT(t)
 	g.Eventually(k.Get(dt.workloadDeploy)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(And(
@@ -433,10 +522,11 @@ func (dt *dspE2ETest) testPlatformLabels(t *testing.T) {
 }
 
 func (dt *dspE2ETest) testOwnerReferences(t *testing.T) {
-	ensureArgoWorkflowCRDOwnedByODH(t)
-
 	module := dt.module.DeepCopy()
-	createModule(t, module)
+	withStoppedOperator(t, func() {
+		ensureArgoWorkflowCRDOwnedByODH(t)
+		createModule(t, module)
+	})
 
 	g := NewWithT(t)
 	g.Eventually(k.Get(dt.workloadDeploy)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(
