@@ -13,6 +13,17 @@ Release fullname, truncated to 63 chars.
 {{- end }}
 
 {{/*
+Canonical image reference. Prefer fullRef when explicitly set.
+*/}}
+{{- define "chart.imageRef" -}}
+{{- if .Values.image.fullRef -}}
+{{- .Values.image.fullRef -}}
+{{- else -}}
+{{- printf "%s:%s" .Values.image.repository .Values.image.tag -}}
+{{- end -}}
+{{- end }}
+
+{{/*
 Standard labels.
 */}}
 {{- define "chart.labels" -}}

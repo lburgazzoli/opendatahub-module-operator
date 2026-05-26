@@ -4,7 +4,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 
-NAMESPACE="${1:-opendatahub-modelregistry-operator-system}"
+NAMESPACE="${1:-opendatahub-modelregistry-system}"
 HELM_RELEASE="${2:-opendatahub-modelregistry-operator}"
 CR_RESOURCE="modelregistries.components.platform.opendatahub.io"
 

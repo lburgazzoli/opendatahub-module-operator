@@ -57,7 +57,7 @@ const (
 	annotationType         = "platform.opendatahub.io/type"
 	annotationVersion      = "platform.opendatahub.io/version"
 
-	operatorConfigMapName = "opendatahub-modelregistry-operator-config"
+	operatorConfigMapName = "opendatahub-modelregistry-config"
 	moduleCRDName         = "modelregistries.components.platform.opendatahub.io"
 )
 
@@ -110,7 +110,7 @@ type modelRegistryE2ETest struct {
 }
 
 func TestModelRegistry(t *testing.T) {
-	operatorNamespace := support.HelmNamespace()
+	operatorNamespace := support.OperatorNamespace()
 
 	// The gateway domain must be read from the cluster's ingress config in
 	// a real e2e run. Use the env var GATEWAY_DOMAIN if set, otherwise fail.
@@ -135,7 +135,7 @@ func TestModelRegistry(t *testing.T) {
 		},
 		operatorDeploy: &appsv1.Deployment{
 			ObjectMeta: metav1.ObjectMeta{
-				Name:      "opendatahub-modelregistry-operator-controller-manager",
+				Name:      "opendatahub-modelregistry-operator",
 				Namespace: operatorNamespace,
 			},
 		},

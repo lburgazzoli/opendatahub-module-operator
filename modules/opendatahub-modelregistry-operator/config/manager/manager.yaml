@@ -10,7 +10,7 @@ metadata:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: controller-manager
+  name: operator
   namespace: system
   labels:
 
@@ -120,6 +120,10 @@ spec:
           value: /etc/controller/config
         - name: ODH_MODULE_OPERATOR_MANIFESTS_PATH
           value: /opt/manifests
+        - name: ODH_MODULE_OPERATOR_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
         - name: ODH_MODULE_OPERATOR_APPLICATIONS_NAMESPACE
           valueFrom:
             fieldRef:
@@ -136,5 +140,5 @@ spec:
       - name: config
         configMap:
           name: config
-      serviceAccountName: controller-manager
+      serviceAccountName: operator
       terminationGracePeriodSeconds: 10
