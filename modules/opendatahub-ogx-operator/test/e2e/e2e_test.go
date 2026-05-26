@@ -56,7 +56,7 @@ const (
 	annotationType         = "platform.opendatahub.io/type"
 	annotationVersion      = "platform.opendatahub.io/version"
 
-	operatorConfigMapName = "opendatahub-ogx-operator-config"
+	operatorConfigMapName = "opendatahub-ogx-config"
 	moduleCRDName         = "ogxs.components.platform.opendatahub.io"
 )
 
@@ -109,7 +109,7 @@ type rayE2ETest struct {
 }
 
 func TestOGX(t *testing.T) {
-	operatorNamespace := support.HelmNamespace()
+	operatorNamespace := support.OperatorNamespace()
 
 	rt := &rayE2ETest{
 		module: &componentsv1alpha1.OGX{
@@ -122,7 +122,7 @@ func TestOGX(t *testing.T) {
 		},
 		operatorDeploy: &appsv1.Deployment{
 			ObjectMeta: metav1.ObjectMeta{
-				Name:      "opendatahub-ogx-operator-controller-manager",
+				Name:      "opendatahub-ogx-operator",
 				Namespace: operatorNamespace,
 			},
 		},

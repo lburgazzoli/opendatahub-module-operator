@@ -4,7 +4,7 @@ metadata:
   labels:
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: opendatahub-ogx-operator
-  name: opendatahub-ogx-operator-components-ogx-admin-role
+  name: opendatahub-ogx-components-ogx-admin-role
 rules:
 - apiGroups:
   - components.platform.opendatahub.io
@@ -25,7 +25,7 @@ metadata:
   labels:
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: opendatahub-ogx-operator
-  name: opendatahub-ogx-operator-components-ogx-editor-role
+  name: opendatahub-ogx-components-ogx-editor-role
 rules:
 - apiGroups:
   - components.platform.opendatahub.io
@@ -52,7 +52,7 @@ metadata:
   labels:
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: opendatahub-ogx-operator
-  name: opendatahub-ogx-operator-components-ogx-viewer-role
+  name: opendatahub-ogx-components-ogx-viewer-role
 rules:
 - apiGroups:
   - components.platform.opendatahub.io
@@ -72,7 +72,7 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: opendatahub-ogx-operator-manager-role
+  name: opendatahub-ogx-manager-role
 rules:
 - nonResourceURLs:
   - /metrics
@@ -135,8 +135,12 @@ rules:
   resources:
   - customresourcedefinitions
   verbs:
+  - create
+  - delete
   - get
   - list
+  - patch
+  - update
   - watch
 - apiGroups:
   - apps
@@ -276,7 +280,7 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: opendatahub-ogx-operator-metrics-auth-role
+  name: opendatahub-ogx-metrics-auth-role
 rules:
 - apiGroups:
   - authentication.k8s.io
@@ -294,7 +298,7 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: opendatahub-ogx-operator-metrics-reader
+  name: opendatahub-ogx-metrics-reader
 rules:
 - nonResourceURLs:
   - /metrics

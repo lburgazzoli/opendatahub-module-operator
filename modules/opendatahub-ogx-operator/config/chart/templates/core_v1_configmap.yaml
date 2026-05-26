@@ -13,5 +13,5 @@ metadata:
   labels:
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: opendatahub-ogx-operator
-  name: opendatahub-ogx-operator-config
+  name: opendatahub-ogx-config
   namespace: {{ .Release.Namespace }}

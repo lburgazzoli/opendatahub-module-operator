@@ -1,6 +1,6 @@
-namespace: opendatahub-ogx-operator-system
+namespace: opendatahub-ogx-system
 
-namePrefix: opendatahub-ogx-operator-
+namePrefix: opendatahub-ogx-
 
 resources:
 - ../crd
