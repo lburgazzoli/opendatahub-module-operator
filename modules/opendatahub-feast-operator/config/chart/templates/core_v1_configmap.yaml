@@ -13,5 +13,5 @@ metadata:
   labels:
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: opendatahub-feast-operator
-  name: opendatahub-feast-operator-config
+  name: opendatahub-feast-config
   namespace: {{ .Release.Namespace }}

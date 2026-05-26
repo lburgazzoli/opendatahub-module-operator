@@ -56,7 +56,7 @@ const (
 	annotationType         = "platform.opendatahub.io/type"
 	annotationVersion      = "platform.opendatahub.io/version"
 
-	operatorConfigMapName = "opendatahub-feast-operator-config"
+	operatorConfigMapName = "opendatahub-feast-config"
 	moduleCRDName         = "feastoperators.components.platform.opendatahub.io"
 )
 
@@ -109,7 +109,7 @@ type rayE2ETest struct {
 }
 
 func TestFeastOperator(t *testing.T) {
-	operatorNamespace := support.HelmNamespace()
+	operatorNamespace := support.OperatorNamespace()
 
 	rt := &rayE2ETest{
 		module: &componentsv1alpha1.FeastOperator{
@@ -122,7 +122,7 @@ func TestFeastOperator(t *testing.T) {
 		},
 		operatorDeploy: &appsv1.Deployment{
 			ObjectMeta: metav1.ObjectMeta{
-				Name:      "opendatahub-feast-operator-controller-manager",
+				Name:      "opendatahub-feast-operator",
 				Namespace: operatorNamespace,
 			},
 		},

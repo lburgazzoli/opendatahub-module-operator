@@ -4,7 +4,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 
-NAMESPACE="${1:-opendatahub-feast-operator-system}"
+NAMESPACE="${1:-opendatahub-feast-system}"
 HELM_RELEASE="${2:-opendatahub-feast-operator}"
 CR_RESOURCE="feastoperators.components.platform.opendatahub.io"
 

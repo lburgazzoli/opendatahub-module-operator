@@ -4,7 +4,7 @@ metadata:
   labels:
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: opendatahub-feast-operator
-  name: opendatahub-feast-operator-components-feastoperator-admin-role
+  name: opendatahub-feast-components-feastoperator-admin-role
 rules:
 - apiGroups:
   - components.platform.opendatahub.io
@@ -25,7 +25,7 @@ metadata:
   labels:
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: opendatahub-feast-operator
-  name: opendatahub-feast-operator-components-feastoperator-editor-role
+  name: opendatahub-feast-components-feastoperator-editor-role
 rules:
 - apiGroups:
   - components.platform.opendatahub.io
@@ -52,7 +52,7 @@ metadata:
   labels:
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: opendatahub-feast-operator
-  name: opendatahub-feast-operator-components-feastoperator-viewer-role
+  name: opendatahub-feast-components-feastoperator-viewer-role
 rules:
 - apiGroups:
   - components.platform.opendatahub.io
@@ -72,7 +72,7 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: opendatahub-feast-operator-manager-role
+  name: opendatahub-feast-manager-role
 rules:
 - nonResourceURLs:
   - /metrics
@@ -317,7 +317,7 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: opendatahub-feast-operator-metrics-auth-role
+  name: opendatahub-feast-metrics-auth-role
 rules:
 - apiGroups:
   - authentication.k8s.io
@@ -335,7 +335,7 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: opendatahub-feast-operator-metrics-reader
+  name: opendatahub-feast-metrics-reader
 rules:
 - nonResourceURLs:
   - /metrics

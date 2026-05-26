@@ -1,6 +1,6 @@
-namespace: opendatahub-feast-operator-system
+namespace: opendatahub-feast-system
 
-namePrefix: opendatahub-feast-operator-
+namePrefix: opendatahub-feast-
 
 resources:
 - ../crd
