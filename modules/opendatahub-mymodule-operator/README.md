@@ -43,5 +43,12 @@ make helm
 make test-e2e
 ```
 
-For e2e verification, prefer a fresh ephemeral `ttl.sh` image tag per run to
-avoid stale cluster image cache behavior while iterating locally.
+The controller image pull policy is intentionally kept at `Always` for both
+kustomize and Helm deployment paths.
+
+For local CRC/OpenShift development, you can build and deploy through the
+internal cluster registry with:
+
+```sh
+make deploy-crc
+```

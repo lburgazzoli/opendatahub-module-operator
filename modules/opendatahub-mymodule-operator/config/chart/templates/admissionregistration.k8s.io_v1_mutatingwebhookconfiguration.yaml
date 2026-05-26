@@ -2,14 +2,14 @@ apiVersion: admissionregistration.k8s.io/v1
 kind: MutatingWebhookConfiguration
 metadata:
   annotations:
-    cert-manager.io/inject-ca-from: {{ .Release.Namespace }}/opendatahub-mymodule-operator-serving-cert
-  name: opendatahub-mymodule-operator-mutating-webhook-configuration
+    cert-manager.io/inject-ca-from: {{ .Release.Namespace }}/opendatahub-mymodule-serving-cert
+  name: opendatahub-mymodule-mutating-webhook-configuration
 webhooks:
 - admissionReviewVersions:
   - v1
   clientConfig:
     service:
-      name: opendatahub-mymodule-operator-webhook-service
+      name: opendatahub-mymodule-webhook-service
       namespace: {{ .Release.Namespace }}
       path: /mymodule-mutate-deploy
   failurePolicy: Ignore

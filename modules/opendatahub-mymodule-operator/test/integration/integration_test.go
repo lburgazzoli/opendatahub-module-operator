@@ -58,9 +58,9 @@ import (
 )
 
 const (
-	testNamespace = "integration-test"
-	timeout       = 90 * time.Second
-	interval      = 2 * time.Second
+	defaultTestNamespace = "integration-test"
+	timeout              = 90 * time.Second
+	interval             = 2 * time.Second
 
 	labelPartOf            = "platform.opendatahub.io/part-of"
 	annotationInstanceName = "platform.opendatahub.io/instance.name"
@@ -71,6 +71,7 @@ const (
 )
 
 var (
+	testNamespace   = envOrDefault("INTEGRATION_TEST_NAMESPACE", defaultTestNamespace)
 	ctx             context.Context
 	cancel          context.CancelFunc
 	k8sClient       client.Client
@@ -78,6 +79,14 @@ var (
 	operatorCfgData map[string]string
 	testScheme      = runtime.NewScheme()
 )
+
+func envOrDefault(key string, defaultValue string) string {
+	if value := os.Getenv(key); value != "" {
+		return value
+	}
+
+	return defaultValue
+}
 
 func init() {
 	utilruntime.Must(clientgoscheme.AddToScheme(testScheme))

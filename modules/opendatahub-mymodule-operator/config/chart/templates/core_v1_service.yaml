@@ -4,7 +4,7 @@ metadata:
   labels:
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: opendatahub-mymodule-operator
-  name: opendatahub-mymodule-operator-manager-metrics
+  name: opendatahub-mymodule-manager-metrics
   namespace: {{ .Release.Namespace }}
 spec:
   ports:
@@ -18,7 +18,7 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: opendatahub-mymodule-operator-webhook-service
+  name: opendatahub-mymodule-webhook-service
   namespace: {{ .Release.Namespace }}
 spec:
   ports:

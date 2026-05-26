@@ -4,7 +4,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 
-NAMESPACE="${1:-opendatahub-mymodule-operator-system}"
+NAMESPACE="${1:-opendatahub-mymodule-system}"
 HELM_RELEASE="${2:-opendatahub-mymodule-operator}"
 CR_RESOURCE="mymodules.components.platform.opendatahub.io"
 

@@ -48,9 +48,9 @@ import (
 )
 
 const (
-	operatorNamespace = "opendatahub-mymodule-operator-system"
-	timeout           = 90 * time.Second
-	interval          = 2 * time.Second
+	defaultOperatorNamespace = "opendatahub-mymodule-system"
+	timeout                  = 90 * time.Second
+	interval                 = 2 * time.Second
 
 	labelPartOf            = "platform.opendatahub.io/part-of"
 	annotationInstanceName = "platform.opendatahub.io/instance.name"
@@ -58,11 +58,12 @@ const (
 	annotationType         = "platform.opendatahub.io/type"
 	annotationVersion      = "platform.opendatahub.io/version"
 
-	operatorConfigMapName = "opendatahub-mymodule-operator-config"
+	operatorConfigMapName = "opendatahub-mymodule-config"
 	moduleCRDName         = "mymodules.components.platform.opendatahub.io"
 )
 
 var (
+	operatorNamespace = envOrDefault("OPERATOR_NAMESPACE", defaultOperatorNamespace)
 	ctx       context.Context
 	cancel    context.CancelFunc
 	k8sClient client.Client
@@ -70,6 +71,14 @@ var (
 
 	testScheme = runtime.NewScheme()
 )
+
+func envOrDefault(key string, defaultValue string) string {
+	if value := os.Getenv(key); value != "" {
+		return value
+	}
+
+	return defaultValue
+}
 
 func init() {
 	utilruntime.Must(clientgoscheme.AddToScheme(testScheme))
@@ -139,7 +148,7 @@ func TestMyModule(t *testing.T) {
 		},
 		operatorDeploy: &appsv1.Deployment{
 			ObjectMeta: metav1.ObjectMeta{
-				Name:      "opendatahub-mymodule-operator-controller-manager",
+				Name:      "opendatahub-mymodule-operator",
 				Namespace: operatorNamespace,
 			},
 		},
@@ -230,6 +239,10 @@ func (mt *myModuleE2ETest) testConfigMapVolume(t *testing.T) {
 
 	g.Eventually(k.Get(mt.operatorDeploy)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(
 		jq.Match(`.spec.template.spec.containers[0].env[] | select(.name == "ODH_MODULE_OPERATOR_CONFIGURATION_PATH") | .value == "/etc/controller/config"`),
+	)
+
+	g.Eventually(k.Get(mt.operatorDeploy)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(
+		jq.Match(`.spec.template.spec.containers[0].env[] | select(.name == "ODH_MODULE_OPERATOR_NAMESPACE") | .valueFrom.fieldRef.fieldPath == "metadata.namespace"`),
 	)
 }
 

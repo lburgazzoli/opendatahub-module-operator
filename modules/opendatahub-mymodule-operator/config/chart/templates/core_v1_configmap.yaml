@@ -13,5 +13,5 @@ metadata:
   labels:
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: opendatahub-mymodule-operator
-  name: opendatahub-mymodule-operator-config
+  name: opendatahub-mymodule-config
   namespace: {{ .Release.Namespace }}
