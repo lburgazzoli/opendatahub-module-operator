@@ -2,18 +2,29 @@ package support
 
 import "testing"
 
-func TestHelmNamespaceUsesEnvironmentOverride(t *testing.T) {
-	t.Setenv("HELM_NAMESPACE", "custom-namespace")
+func TestOperatorNamespaceUsesEnvironmentOverride(t *testing.T) {
+	t.Setenv("OPERATOR_NAMESPACE", "custom-operator-ns")
+	t.Setenv("HELM_NAMESPACE", "helm-ns")
 
-	if got := HelmNamespace(); got != "custom-namespace" {
-		t.Fatalf("HelmNamespace() = %q, want %q", got, "custom-namespace")
+	if got := OperatorNamespace(); got != "custom-operator-ns" {
+		t.Fatalf("OperatorNamespace() = %q, want %q", got, "custom-operator-ns")
 	}
 }
 
-func TestHelmNamespaceFallsBackToDefault(t *testing.T) {
+func TestOperatorNamespaceFallsBackToHelmNamespace(t *testing.T) {
+	t.Setenv("OPERATOR_NAMESPACE", "")
+	t.Setenv("HELM_NAMESPACE", "helm-ns")
+
+	if got := OperatorNamespace(); got != "helm-ns" {
+		t.Fatalf("OperatorNamespace() = %q, want %q", got, "helm-ns")
+	}
+}
+
+func TestOperatorNamespaceFallsBackToDefault(t *testing.T) {
+	t.Setenv("OPERATOR_NAMESPACE", "")
 	t.Setenv("HELM_NAMESPACE", "")
 
-	if got := HelmNamespace(); got != DefaultHelmNamespace {
-		t.Fatalf("HelmNamespace() = %q, want %q", got, DefaultHelmNamespace)
+	if got := OperatorNamespace(); got != DefaultOperatorNamespace {
+		t.Fatalf("OperatorNamespace() = %q, want %q", got, DefaultOperatorNamespace)
 	}
 }

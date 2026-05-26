@@ -58,7 +58,7 @@ const (
 	annotationType         = "platform.opendatahub.io/type"
 	annotationVersion      = "platform.opendatahub.io/version"
 
-	operatorConfigMapName = "opendatahub-trainer-operator-config"
+	operatorConfigMapName = "opendatahub-trainer-config"
 	moduleCRDName         = "trainers.components.platform.opendatahub.io"
 	jobSetOperatorCRDName = "jobsetoperators.operator.openshift.io"
 	jobSetOperatorCRName  = "cluster"
@@ -146,7 +146,7 @@ type trainerE2ETest struct {
 }
 
 func TestTrainer(t *testing.T) {
-	operatorNamespace := support.HelmNamespace()
+	operatorNamespace := support.OperatorNamespace()
 
 	rt := &trainerE2ETest{
 		module: &componentsv1alpha1.Trainer{
@@ -159,7 +159,7 @@ func TestTrainer(t *testing.T) {
 		},
 		operatorDeploy: &appsv1.Deployment{
 			ObjectMeta: metav1.ObjectMeta{
-				Name:      "opendatahub-trainer-operator-controller-manager",
+				Name:      "opendatahub-trainer-operator",
 				Namespace: operatorNamespace,
 			},
 		},

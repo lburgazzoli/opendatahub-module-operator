@@ -276,7 +276,7 @@ func replaceImageField(raw string) string {
 		switch {
 		case strings.HasPrefix(trimmed, yamlFieldImage) && !strings.Contains(trimmed, "{{"):
 			indent := line[:len(line)-len(strings.TrimLeft(line, " "))]
-			result = append(result, indent+`image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"`)
+			result = append(result, indent+`image: "{{ include "chart.imageRef" . }}"`)
 			result = append(result, indent+"imagePullPolicy: {{ .Values.image.pullPolicy }}")
 		case strings.HasPrefix(trimmed, yamlFieldImagePullPolicy):
 			// Drop the original -- the templated version is injected above.

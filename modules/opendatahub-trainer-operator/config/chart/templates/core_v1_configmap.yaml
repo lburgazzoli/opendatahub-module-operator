@@ -13,5 +13,5 @@ metadata:
   labels:
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: opendatahub-trainer-operator
-  name: opendatahub-trainer-operator-config
+  name: opendatahub-trainer-config
   namespace: {{ .Release.Namespace }}
