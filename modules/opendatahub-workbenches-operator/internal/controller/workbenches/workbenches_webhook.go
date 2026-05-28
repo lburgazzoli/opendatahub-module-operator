@@ -20,7 +20,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
-	webhookutils "github.com/opendatahub-io/opendatahub-operator/v2/pkg/webhook"
+	webhookutils "github.com/opendatahub-io/odh-platform-utilities/pkg/webhook"
 )
 
 // RegisterWebhooks registers admission webhook handlers with the manager.

@@ -42,7 +42,6 @@ import (
 
 	infrav1 "github.com/opendatahub-io/opendatahub-operator/v2/api/infrastructure/v1"
 	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/cluster"
-	clustergvk "github.com/opendatahub-io/opendatahub-operator/v2/pkg/cluster/gvk"
 
 	gvk "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-workbenches-operator/pkg/resources/gvk"
 )
@@ -104,15 +103,6 @@ func migrateHardwareProfilesForNotebooks(ctx context.Context, cli client.Client,
 	}
 	if !hasInfraHWP {
 		log.Info("HardwareProfile CRD not present, skipping notebook HWP migration")
-		return nil
-	}
-
-	hasAccelProfile, err := cluster.HasCRD(ctx, cli, clustergvk.DashboardAcceleratorProfile)
-	if err != nil {
-		return fmt.Errorf("checking AcceleratorProfile CRD: %w", err)
-	}
-	if !hasAccelProfile {
-		log.Info("AcceleratorProfile CRD not present, skipping notebook AcceleratorProfile→HWP migration")
 		return nil
 	}
 
@@ -268,7 +258,7 @@ func attachHWPAnnotationsToNotebooks(ctx context.Context, cli client.Client, app
 
 func getOdhDashboardConfig(ctx context.Context, cli client.Client, applicationNS string) (*unstructured.Unstructured, bool, error) {
 	cfg := &unstructured.Unstructured{}
-	cfg.SetGroupVersionKind(clustergvk.OdhDashboardConfig)
+	cfg.SetGroupVersionKind(gvk.OdhDashboardConfig)
 	switch err := cli.Get(ctx, client.ObjectKey{Name: upgradeOdhDashboardConfigName, Namespace: applicationNS}, cfg); {
 	case err == nil:
 		return cfg, true, nil
@@ -281,7 +271,7 @@ func getOdhDashboardConfig(ctx context.Context, cli client.Client, applicationNS
 
 func listAcceleratorProfiles(ctx context.Context, cli client.Client) ([]unstructured.Unstructured, error) {
 	list := &unstructured.UnstructuredList{}
-	list.SetGroupVersionKind(clustergvk.DashboardAcceleratorProfile)
+	list.SetGroupVersionKind(gvk.DashboardAcceleratorProfile)
 	switch err := cli.List(ctx, list); {
 	case err == nil:
 		return list.Items, nil

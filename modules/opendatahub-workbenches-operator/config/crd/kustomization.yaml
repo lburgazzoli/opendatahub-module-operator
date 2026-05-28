@@ -1,5 +1,2 @@
 resources:
 - bases/components.platform.opendatahub.io_workbenches.yaml
-# External CRDs required for integration and e2e tests.
-# Run hack/scripts/fetch-external-crds.sh before make install.
-- external/infrastructure.opendatahub.io_hardwareprofiles.yaml

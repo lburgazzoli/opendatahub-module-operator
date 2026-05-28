@@ -26,35 +26,23 @@ import (
 	"time"
 
 	. "github.com/onsi/gomega"
-	"github.com/spf13/viper"
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
-	rbacv1 "k8s.io/api/rbac/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	k8serr "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/runtime"
-	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
-	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	ctrl "sigs.k8s.io/controller-runtime"
-	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/config"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
-	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
 	"github.com/lburgazzoli/gomega-matchers/pkg/matchers/jq"
 	k8sm "github.com/lburgazzoli/gomega-matchers/pkg/matchers/k8s"
 
-	infrav1 "github.com/opendatahub-io/opendatahub-operator/v2/api/infrastructure/v1"
-	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/cluster"
-	odhmanager "github.com/opendatahub-io/opendatahub-operator/v2/pkg/manager"
-	imagev1 "github.com/openshift/api/image/v1"
-
 	componentsv1alpha1 "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-workbenches-operator/api/components/v1alpha1"
-	workbenchescontroller "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-workbenches-operator/internal/controller/workbenches"
 	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-workbenches-operator/pkg/config"
+	workbenchesmanager "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-workbenches-operator/pkg/manager"
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-workbenches-operator/pkg/version"
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-workbenches-operator/test/support"
 )
@@ -78,16 +66,8 @@ var (
 	k                      *k8sm.Matcher
 	operatorCfgData        map[string]string
 	operatorReleaseVersion string
-	testScheme             = runtime.NewScheme()
+	testScheme             = workbenchesmanager.NewScheme()
 )
-
-func init() {
-	utilruntime.Must(clientgoscheme.AddToScheme(testScheme))
-	utilruntime.Must(apiextensionsv1.AddToScheme(testScheme))
-	utilruntime.Must(componentsv1alpha1.AddToScheme(testScheme))
-	utilruntime.Must(imagev1.Install(testScheme))
-	utilruntime.Must(infrav1.AddToScheme(testScheme))
-}
 
 func TestMain(m *testing.M) {
 	os.Exit(runTestMain(m))
@@ -99,13 +79,13 @@ func runTestMain(m *testing.M) int {
 
 	ctrl.SetLogger(zap.New(zap.UseDevMode(true)))
 
-	cfg, err := config.GetConfig()
+	kubeConfig, err := config.GetConfig()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to get kubeconfig: %v\n", err)
 		return 1
 	}
 
-	directClient, err := client.New(cfg, client.Options{Scheme: testScheme})
+	directClient, err := client.New(kubeConfig, client.Options{Scheme: testScheme})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to create client: %v\n", err)
 		return 1
@@ -131,50 +111,32 @@ func runTestMain(m *testing.M) int {
 	_ = directClient.DeleteAllOf(ctx, &appsv1.Deployment{}, client.InNamespace(testNamespace))
 	_ = directClient.DeleteAllOf(ctx, &corev1.Service{}, client.InNamespace(testNamespace))
 
-	viper.Set("rhai-applications-namespace", testNamespace)
-	cluster.SetRHAIApplicationNamespace(testNamespace)
-
 	operatorCfgData = support.MustReadConfigMapData(
 		support.MustProjectFile("config", "manager", "configmap.yaml"))
 
 	moduleCfg := &moduleconfig.Config{
 		PlatformType:          operatorCfgData[moduleconfig.KeyPlatformType],
 		PlatformVersion:       operatorCfgData[moduleconfig.KeyPlatformVersion],
+		MetricsAddr:           "0",
+		HealthProbeAddr:       "0",
+		LeaderElect:           false,
 		ApplicationsNamespace: testNamespace,
 		ManifestsPath:         support.MustProjectFile("config", "manifests"),
+		WebhooksEnabled:       false,
 	}
 	operatorReleaseVersion = moduleCfg.Release().Version.String()
 
-	ctrlMgr, err := ctrl.NewManager(cfg, ctrl.Options{
-		Scheme:         testScheme,
-		Metrics:        metricsserver.Options{BindAddress: "0"},
-		LeaderElection: false,
-		Cache: cache.Options{
-			DefaultNamespaces: map[string]cache.Config{
-				testNamespace:       {},
-				cache.AllNamespaces: {},
-			},
+	mgr, err := workbenchesmanager.New(
+		ctx,
+		kubeConfig,
+		moduleCfg,
+		func(opts *ctrl.Options) {
+			opts.Cache.DefaultTransform = nil
+			opts.Cache.ReaderFailOnMissingInformer = false
 		},
-		Client: client.Options{
-			Cache: &client.CacheOptions{
-				Unstructured: true,
-				DisableFor: []client.Object{
-					&corev1.ConfigMap{},
-					&corev1.Secret{},
-				},
-			},
-		},
-	})
+	)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to create manager: %v\n", err)
-		return 1
-	}
-
-	mgr := odhmanager.New(ctrlMgr, odhmanager.WithManifestsBasePath(
-		support.MustProjectFile("config", "manifests")))
-
-	if err := workbenchescontroller.NewReconciler(ctx, mgr, moduleCfg, moduleCfg.Release()); err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to create reconciler: %v\n", err)
 		return 1
 	}
 
@@ -191,28 +153,6 @@ func runTestMain(m *testing.M) int {
 
 	k8sClient = mgr.GetClient()
 	k = k8sm.New(k8sClient, testScheme)
-
-	_ = directClient.Create(ctx, &rbacv1.ClusterRole{
-		ObjectMeta: ctrl.ObjectMeta{Name: "integration-test-role"},
-		Rules: []rbacv1.PolicyRule{{
-			APIGroups: []string{"*"},
-			Resources: []string{"*"},
-			Verbs:     []string{"*"},
-		}},
-	})
-	_ = directClient.Create(ctx, &rbacv1.ClusterRoleBinding{
-		ObjectMeta: ctrl.ObjectMeta{Name: "integration-test-binding"},
-		RoleRef: rbacv1.RoleRef{
-			APIGroup: "rbac.authorization.k8s.io",
-			Kind:     "ClusterRole",
-			Name:     "integration-test-role",
-		},
-		Subjects: []rbacv1.Subject{{
-			Kind:     "Group",
-			Name:     "system:masters",
-			APIGroup: "rbac.authorization.k8s.io",
-		}},
-	})
 
 	return m.Run()
 }
@@ -314,8 +254,8 @@ func (wt *workbenchesTest) testModuleStatus(t *testing.T) {
 
 	g.Eventually(k.Get(wt.module)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(And(
 		jq.Match(`.status.module.version == "%s"`, version.Version),
-		jq.Match(`.status.module.buildSource == "%s@%s/%s"`,
-			version.Repo, version.Branch, version.Commit),
+		jq.Match(`.status.module.buildSource == "%s"`,
+			version.BuildSource()),
 		jq.Match(`.status.module.platform.name == "%s"`,
 			operatorCfgData[moduleconfig.KeyPlatformType]),
 		jq.Match(`.status.module.platform.version == "%s"`,

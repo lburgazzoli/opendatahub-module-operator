@@ -4,7 +4,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 
-NAMESPACE="${1:-integration-test}"
+NAMESPACE="${1:-opendatahub-workbenches-integration-tests}"
 CR_RESOURCE="workbenches.components.platform.opendatahub.io"
 
 echo "Cleaning up integration test resources..."
@@ -25,12 +25,16 @@ kubectl delete rolebindings --all -n "${NAMESPACE}" --ignore-not-found 2>/dev/nu
 # Delete cluster-scoped resources created by the controller
 kubectl delete clusterroles -l platform.opendatahub.io/part-of=workbenches --ignore-not-found 2>/dev/null || true
 kubectl delete clusterrolebindings -l platform.opendatahub.io/part-of=workbenches --ignore-not-found 2>/dev/null || true
-
-# Delete test RBAC
-kubectl delete clusterrole integration-test-role --ignore-not-found 2>/dev/null || true
-kubectl delete clusterrolebinding integration-test-binding --ignore-not-found 2>/dev/null || true
+kubectl delete mutatingwebhookconfiguration \
+  opendatahub-workbenches-mutating-webhook-configuration \
+  odh-notebook-controller-mutating-webhook-configuration \
+  --ignore-not-found 2>/dev/null || true
+kubectl delete validatingwebhookconfiguration \
+  odh-notebook-controller-validating-webhook-configuration \
+  --ignore-not-found 2>/dev/null || true
 
 # Delete CRD (so next run installs fresh)
 kubectl delete crd "${CR_RESOURCE}" --ignore-not-found 2>/dev/null || true
+KUBECTL="${KUBECTL:-kubectl}" ./hack/scripts/external-types-cleanup.sh "${NAMESPACE}"
 
 echo "Integration test cleanup complete."

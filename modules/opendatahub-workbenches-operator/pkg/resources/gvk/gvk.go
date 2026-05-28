@@ -46,6 +46,12 @@ var (
 	// HardwareProfile is fetched by the hardware profile webhook.
 	HardwareProfile = clustergvk.HardwareProfile
 
+	// OdhDashboardConfig drives notebook size migration and upgrade behavior.
+	OdhDashboardConfig = clustergvk.OdhDashboardConfig
+
+	// DashboardAcceleratorProfile is migrated to notebook HardwareProfiles on upgrade.
+	DashboardAcceleratorProfile = clustergvk.DashboardAcceleratorProfile
+
 	// LLMInferenceServiceV1Alpha1/V1Alpha2 — referenced only in the hardware profile
 	// webhook for kind validation (not owned/watched by the workbenches controller).
 	LLMInferenceServiceV1Alpha1 = clustergvk.LLMInferenceServiceV1Alpha1

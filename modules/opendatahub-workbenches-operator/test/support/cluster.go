@@ -23,63 +23,94 @@ import (
 	"path/filepath"
 
 	corev1 "k8s.io/api/core/v1"
-	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	k8serr "k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/runtime/serializer"
-	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	serializeryaml "k8s.io/apimachinery/pkg/runtime/serializer/yaml"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-// InstallCRDs reads all YAML files from the given directory and applies them
-// as CustomResourceDefinitions to the cluster. Existing CRDs are updated
-// to ensure our schema (including new status fields) takes effect.
-func InstallCRDs(
+// ApplyYAMLs reads all YAML files from the given directory and applies them
+// to the cluster. Existing resources are updated in place.
+func ApplyYAMLs(
 	ctx context.Context,
 	cli client.Client,
-	crdDir string,
+	manifestDir string,
 ) error {
-	entries, err := os.ReadDir(crdDir)
+	entries, err := os.ReadDir(manifestDir)
 	if err != nil {
-		return fmt.Errorf("reading CRD directory %s: %w", crdDir, err)
+		return fmt.Errorf("reading manifest directory %s: %w", manifestDir, err)
 	}
-
-	crdScheme := runtime.NewScheme()
-	utilruntime.Must(apiextensionsv1.AddToScheme(crdScheme))
-	codecs := serializer.NewCodecFactory(crdScheme)
 
 	for _, entry := range entries {
 		if entry.IsDir() || filepath.Ext(entry.Name()) != ".yaml" {
 			continue
 		}
 
-		crdBytes, err := os.ReadFile(filepath.Join(crdDir, entry.Name()))
-		if err != nil {
-			return fmt.Errorf("reading CRD file %s: %w", entry.Name(), err)
+		manifestPath := filepath.Join(manifestDir, entry.Name())
+		if err := ApplyYAML(ctx, cli, manifestPath); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// ApplyYAML reads one YAML manifest and applies it to the cluster. Existing
+// resources are updated in place.
+func ApplyYAML(
+	ctx context.Context,
+	cli client.Client,
+	manifestPath string,
+) error {
+	manifestBytes, err := os.ReadFile(manifestPath)
+	if err != nil {
+		return fmt.Errorf("reading manifest %s: %w", manifestPath, err)
+	}
+
+	obj := &unstructured.Unstructured{}
+	decoder := serializeryaml.NewDecodingSerializer(unstructured.UnstructuredJSONScheme)
+	if _, _, err := decoder.Decode(manifestBytes, nil, obj); err != nil {
+		return fmt.Errorf("decoding manifest %s: %w", manifestPath, err)
+	}
+
+	if err := validateObjectGVK(obj); err != nil {
+		return fmt.Errorf("validating manifest %s: %w", manifestPath, err)
+	}
+
+	existing := &unstructured.Unstructured{}
+	existing.SetGroupVersionKind(obj.GroupVersionKind())
+	if err := cli.Get(ctx, client.ObjectKeyFromObject(obj), existing); err != nil {
+		if !k8serr.IsNotFound(err) {
+			return fmt.Errorf("checking resource %s: %w", client.ObjectKeyFromObject(obj), err)
 		}
 
-		crd := &apiextensionsv1.CustomResourceDefinition{}
-		if err := runtime.DecodeInto(codecs.UniversalDeserializer(), crdBytes, crd); err != nil {
-			return fmt.Errorf("decoding CRD from %s: %w", entry.Name(), err)
+		if err := cli.Create(ctx, obj); err != nil {
+			return fmt.Errorf("creating resource %s: %w", client.ObjectKeyFromObject(obj), err)
 		}
 
-		existing := &apiextensionsv1.CustomResourceDefinition{}
-		if err := cli.Get(ctx, client.ObjectKeyFromObject(crd), existing); err != nil {
-			if !k8serr.IsNotFound(err) {
-				return fmt.Errorf("checking CRD %s: %w", crd.Name, err)
-			}
+		return nil
+	}
 
-			if err := cli.Create(ctx, crd); err != nil {
-				return fmt.Errorf("creating CRD %s: %w", crd.Name, err)
-			}
+	obj.SetResourceVersion(existing.GetResourceVersion())
+	if err := cli.Update(ctx, obj); err != nil {
+		return fmt.Errorf("updating resource %s: %w", client.ObjectKeyFromObject(obj), err)
+	}
 
-			continue
-		}
+	return nil
+}
 
-		crd.ResourceVersion = existing.ResourceVersion
-		if err := cli.Update(ctx, crd); err != nil {
-			return fmt.Errorf("updating CRD %s: %w", crd.Name, err)
-		}
+func validateObjectGVK(obj *unstructured.Unstructured) error {
+	gvk := obj.GroupVersionKind()
+	if gvk.Empty() {
+		return fmt.Errorf("manifest is missing apiVersion or kind")
+	}
+
+	if obj.GetAPIVersion() != gvk.GroupVersion().String() {
+		return fmt.Errorf("manifest apiVersion %q does not match decoded gvk %q", obj.GetAPIVersion(), gvk.GroupVersion().String())
+	}
+
+	if obj.GetKind() != gvk.Kind {
+		return fmt.Errorf("manifest kind %q does not match decoded gvk %q", obj.GetKind(), gvk.Kind)
 	}
 
 	return nil
