@@ -201,7 +201,7 @@ func (m *Module) reportStatus(_ context.Context, rr *types.ReconciliationRequest
 
 	obj.Status.Module = componentApi.ModuleStatus{
 		Version:     m.version,
-		BuildSource: version.Repo + "@" + version.Branch + "/" + version.Commit,
+		BuildSource: version.BuildSource(),
 		Platform: componentApi.PlatformStatus{
 			Name:    string(rr.Release.Name),
 			Version: componentApi.SemVer(rr.Release.Version.String()),

@@ -19,50 +19,14 @@ package operator
 import (
 	"fmt"
 
-	imagev1 "github.com/openshift/api/image/v1"
-	promv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
 	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
-	admissionv1 "k8s.io/api/admissionregistration/v1"
-	corev1 "k8s.io/api/core/v1"
-	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
-	"k8s.io/apimachinery/pkg/runtime"
-	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
-	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	ctrl "sigs.k8s.io/controller-runtime"
-	"sigs.k8s.io/controller-runtime/pkg/cache"
-	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
-	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
-	componentsv1alpha1 "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-trainer-operator/api/components/v1alpha1"
-	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-trainer-operator/internal/controller/trainer"
-	libcache "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-trainer-operator/pkg/cache"
 	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-trainer-operator/pkg/config"
-	modulegvk "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-trainer-operator/pkg/resources/gvk"
-	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/cluster"
-	odhmanager "github.com/opendatahub-io/opendatahub-operator/v2/pkg/manager"
-	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/resources"
+	modulemgr "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-trainer-operator/pkg/manager"
 )
 
-const (
-	healthCheckName = "healthz"
-	readyCheckName  = "readyz"
-)
-
-var scheme = runtime.NewScheme()
-
-func init() {
-	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
-	utilruntime.Must(admissionv1.AddToScheme(scheme))
-	utilruntime.Must(apiextensionsv1.AddToScheme(scheme))
-	utilruntime.Must(imagev1.AddToScheme(scheme))
-	utilruntime.Must(promv1.AddToScheme(scheme))
-	utilruntime.Must(componentsv1alpha1.AddToScheme(scheme))
-}
-
-// NewCommand returns the cobra command for the operator subcommand.
 func NewCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "operator",
@@ -74,7 +38,6 @@ func NewCommand() *cobra.Command {
 }
 
 func run(cmd *cobra.Command, _ []string) error {
-	// Load operator config from ConfigMap files, env vars.
 	cfg, err := moduleconfig.Load()
 	if err != nil {
 		return fmt.Errorf("loading operator config: %w", err)
@@ -82,84 +45,9 @@ func run(cmd *cobra.Command, _ []string) error {
 
 	ctrl.SetLogger(zap.New(zap.UseDevMode(false)))
 
-	// Set the applications namespace so that the operator's kustomize render
-	// action can determine the target namespace without requiring DSCI.
-	viper.Set("rhai-applications-namespace", cfg.ApplicationsNamespace)
-	cluster.SetRHAIApplicationNamespace(cfg.ApplicationsNamespace)
-
-	mgrOpts := ctrl.Options{
-		Scheme: scheme,
-		Metrics: metricsserver.Options{
-			BindAddress: cfg.MetricsAddr,
-		},
-		HealthProbeBindAddress:        cfg.HealthProbeAddr,
-		PprofBindAddress:              cfg.PprofAddr,
-		LeaderElection:                cfg.LeaderElect,
-		LeaderElectionID:              cfg.LeaderElectionID,
-		LeaderElectionReleaseOnCancel: true,
-
-		// Cache configuration:
-		// - Strip managedFields and last-applied-configuration to reduce memory.
-		// - Scope the default watch to the applications namespace and
-		//   cluster-scoped resources.
-		Cache: cache.Options{
-			DefaultTransform: libcache.StripUnusedFields(),
-			DefaultNamespaces: map[string]cache.Config{
-				cfg.ApplicationsNamespace: {},
-				cache.AllNamespaces:       {},
-			},
-			// Fail with ErrResourceNotCached if a Get/List is called for a
-			// resource type that has no informer running. This prevents
-			// silent live API calls for types the controller forgot to
-			// Owns() or Watches().
-			ReaderFailOnMissingInformer: true,
-		},
-
-		// Client configuration:
-		// - Enable cache reads for unstructured objects (used by kustomize rendering).
-		// - Disable caching for ConfigMaps and Secrets so they are always read
-		//   fresh (they change frequently and may contain sensitive data).
-		// - Temporarily bypass the cache for ClusterTrainingRuntime until the
-		//   first-reconcile dynamic watch/informer timing is resolved.
-		Client: client.Options{
-			Cache: &client.CacheOptions{
-				Unstructured: true,
-				DisableFor: []client.Object{
-					&corev1.ConfigMap{},
-					&corev1.Secret{},
-					resources.GvkToUnstructured(modulegvk.ClusterTrainingRuntime),
-				},
-			},
-		},
-	}
-
-	ctrlMgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), mgrOpts)
+	mgr, err := modulemgr.New(cmd.Context(), ctrl.GetConfigOrDie(), cfg)
 	if err != nil {
-		return fmt.Errorf("creating manager: %w", err)
-	}
-
-	// Wrap the manager with the manifests base path provider so that
-	// ReconcilerFor can read it via the manifestsBasePathProvider interface.
-	mgr := odhmanager.New(
-		ctrlMgr,
-		odhmanager.WithManifestsBasePath(cfg.ManifestsPath),
-	)
-
-	// Build the release once -- it is constant for the process lifetime.
-	// The reconciler framework's cluster.GetRelease() is not populated
-	// because this standalone operator does not call cluster.Init().
-	rel := cfg.Release()
-
-	// Register controllers.
-	if err := trainer.NewReconciler(cmd.Context(), mgr, cfg, rel); err != nil {
-		return fmt.Errorf("creating trainer reconciler: %w", err)
-	}
-
-	if err := mgr.AddHealthzCheck(healthCheckName, healthz.Ping); err != nil {
-		return fmt.Errorf("setting up health check: %w", err)
-	}
-	if err := mgr.AddReadyzCheck(readyCheckName, healthz.Ping); err != nil {
-		return fmt.Errorf("setting up ready check: %w", err)
+		return err
 	}
 
 	return mgr.Start(cmd.Context())

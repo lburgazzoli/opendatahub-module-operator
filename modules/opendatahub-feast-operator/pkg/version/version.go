@@ -16,6 +16,8 @@ limitations under the License.
 
 package version
 
+import "fmt"
+
 // Build metadata, overridden at build time via ldflags.
 // See Makefile LDFLAGS for the full list of -X flags.
 var (
@@ -24,3 +26,7 @@ var (
 	Branch  = "unknown"
 	Repo    = "unknown"
 )
+
+func BuildSource() string {
+	return fmt.Sprintf("%s@%s/%s", Repo, Branch, Commit)
+}

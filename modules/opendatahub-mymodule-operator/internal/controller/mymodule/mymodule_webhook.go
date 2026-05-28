@@ -21,7 +21,6 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"github.com/go-logr/logr"
 	appsv1 "k8s.io/api/apps/v1"
 	k8serr "k8s.io/apimachinery/pkg/api/errors"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -29,6 +28,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
 	"github.com/opendatahub-io/operator-actions-framework/resources"
+	webhookutils "github.com/opendatahub-io/odh-platform-utilities/pkg/webhook"
 
 	componentApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-mymodule-operator/api/components/v1alpha1"
 )
@@ -45,7 +45,7 @@ func (m *Module) RegisterWebhooks(mgr ctrl.Manager) error {
 
 	srv.Register("/mymodule-mutate-deploy", &admission.Webhook{
 		Handler:        admission.HandlerFunc(m.labelDeployment),
-		LogConstructor: newWebhookLogConstructor("mymodule-deploy-mutator"),
+		LogConstructor: webhookutils.NewWebhookLogConstructor("mymodule-deploy-mutator"),
 	})
 
 	return nil
@@ -93,20 +93,3 @@ func (m *Module) labelDeployment(ctx context.Context, req admission.Request) adm
 	return admission.PatchResponseFromRaw(req.Object.Raw, mutated)
 }
 
-func newWebhookLogConstructor(name string) func(logr.Logger, *admission.Request) logr.Logger {
-	return func(_ logr.Logger, req *admission.Request) logr.Logger {
-		l := admission.DefaultLogConstructor(ctrl.Log, req)
-
-		if req == nil {
-			return l.WithValues("webhook", name)
-		}
-
-		return l.WithValues(
-			"webhook", name,
-			"namespace", req.Namespace,
-			"name", req.Name,
-			"operation", req.Operation,
-			"kind", req.Kind.Kind,
-		)
-	}
-}

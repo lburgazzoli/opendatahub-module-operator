@@ -496,8 +496,8 @@ func (dt *dspIntegrationTest) testModuleStatus(t *testing.T) {
 	g := NewWithT(t)
 	g.Eventually(k.Get(module)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(And(
 		jq.Match(`.status.module.version == "%s"`, version.Version),
-		jq.Match(`.status.module.buildSource == "%s@%s/%s"`,
-			version.Repo, version.Branch, version.Commit),
+		jq.Match(`.status.module.buildSource == "%s"`,
+			version.BuildSource()),
 		jq.Match(`.status.module.platform.name == "%s"`,
 			operatorCfgData[moduleconfig.KeyPlatformType]),
 		jq.Match(`.status.module.platform.version == "%s"`,

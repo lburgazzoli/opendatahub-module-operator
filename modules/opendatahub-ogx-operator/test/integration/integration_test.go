@@ -311,8 +311,8 @@ func (rt *feastTest) testModuleStatus(t *testing.T) {
 
 	g.Eventually(k.Get(rt.module)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(And(
 		jq.Match(`.status.module.version == "%s"`, version.Version),
-		jq.Match(`.status.module.buildSource == "%s@%s/%s"`,
-			version.Repo, version.Branch, version.Commit),
+		jq.Match(`.status.module.buildSource == "%s"`,
+			version.BuildSource()),
 		jq.Match(`.status.module.platform.name == "%s"`,
 			operatorCfgData[moduleconfig.KeyPlatformType]),
 		jq.Match(`.status.module.platform.version == "%s"`,
