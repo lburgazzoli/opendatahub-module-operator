@@ -43,7 +43,6 @@ import (
 	componentsv1alpha1 "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-workbenches-operator/api/components/v1alpha1"
 	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-workbenches-operator/pkg/config"
 	workbenchesmanager "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-workbenches-operator/pkg/manager"
-	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-workbenches-operator/pkg/version"
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-workbenches-operator/test/support"
 )
 
@@ -157,7 +156,7 @@ func runTestMain(m *testing.M) int {
 	return m.Run()
 }
 
-type workbenchesTest struct {
+type workbenchesIntegrationTest struct {
 	module    *componentsv1alpha1.Workbenches
 	moduleCRD *apiextensionsv1.CustomResourceDefinition
 	nbcDeploy *appsv1.Deployment
@@ -166,7 +165,7 @@ type workbenchesTest struct {
 func TestWorkbenches(t *testing.T) {
 	testNamespace := support.IntegrationTestNamespace()
 
-	wt := &workbenchesTest{
+	suite := &workbenchesIntegrationTest{
 		module: &componentsv1alpha1.Workbenches{
 			ObjectMeta: metav1.ObjectMeta{
 				Name: componentsv1alpha1.WorkbenchesInstanceName,
@@ -182,43 +181,17 @@ func TestWorkbenches(t *testing.T) {
 			},
 		},
 	}
+	foundation := &foundationTests{workbenchesIntegrationTest: suite}
 
 	// Clean up any leftover CR from a previous run before starting.
-	_ = k8sClient.Delete(ctx, wt.module)
-	waitForSingletonDeleted(t, wt.module)
+	_ = k8sClient.Delete(ctx, suite.module)
+	waitForSingletonDeleted(t, suite.module)
 
 	t.Cleanup(func() {
-		_ = k8sClient.Delete(ctx, wt.module)
+		_ = k8sClient.Delete(ctx, suite.module)
 	})
 
-	t.Run("should have module CRD installed", wt.testModuleCRDInstalled)
-	t.Run("should become ready", wt.testBecomesReady)
-	t.Run("should report module version and platform", wt.testModuleStatus)
-	t.Run("should set platform labels and annotations", wt.testPlatformLabels)
-	t.Run("should set owner references", wt.testOwnerReferences)
-}
-
-func (wt *workbenchesTest) testModuleCRDInstalled(t *testing.T) {
-	g := NewWithT(t)
-
-	g.Eventually(k.Get(wt.moduleCRD)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(
-		jq.Match(`.metadata.name == "%s"`, moduleCRDName),
-	)
-}
-
-func (wt *workbenchesTest) testBecomesReady(t *testing.T) {
-	g := NewWithT(t)
-
-	wt.module.ResourceVersion = ""
-	g.Expect(k8sClient.Create(ctx, wt.module)).To(Succeed())
-
-	g.Eventually(k.Get(wt.module)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(And(
-		jq.Match(`.status.phase == "Ready"`),
-		jq.Match(`.status.conditions[] | select(.type == "Ready") | .status == "True"`),
-		jq.Match(`.status.conditions[] | select(.type == "ProvisioningSucceeded") | .status == "True"`),
-	))
-
-	eventuallyDeploymentReady(t, wt.nbcDeploy)
+	t.Run("foundation", foundation.Execute)
 }
 
 func waitForDeleted(t *testing.T, obj client.Object) {
@@ -246,51 +219,5 @@ func eventuallyDeploymentReady(t *testing.T, deploy *appsv1.Deployment) {
 	g := NewWithT(t)
 	g.Eventually(k.Get(deploy)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(
 		jq.Match(`.status.readyReplicas >= 1`),
-	)
-}
-
-func (wt *workbenchesTest) testModuleStatus(t *testing.T) {
-	g := NewWithT(t)
-
-	g.Eventually(k.Get(wt.module)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(And(
-		jq.Match(`.status.module.version == "%s"`, version.Version),
-		jq.Match(`.status.module.buildSource == "%s"`,
-			version.BuildSource()),
-		jq.Match(`.status.module.platform.name == "%s"`,
-			operatorCfgData[moduleconfig.KeyPlatformType]),
-		jq.Match(`.status.module.platform.version == "%s"`,
-			operatorReleaseVersion),
-		jq.Match(`.status.module.sources | length > 0`),
-		jq.Match(`.status.module.sources[0].path != ""`),
-		jq.Match(`.status.module.sources[0].renderer == "kustomize"`),
-	))
-}
-
-func (wt *workbenchesTest) testPlatformLabels(t *testing.T) {
-	g := NewWithT(t)
-
-	g.Eventually(k.Get(wt.nbcDeploy)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(And(
-		jq.Match(`.metadata.labels."%s" == "workbenches"`, labelPartOf),
-		jq.Match(`.metadata.annotations."%s" == "%s"`,
-			annotationInstanceName,
-			wt.module.GetName()),
-		jq.Match(`.metadata.annotations."%s" == "%s"`,
-			annotationInstanceUID,
-			string(wt.module.GetUID())),
-		jq.Match(`.metadata.annotations."%s" == "%s"`,
-			annotationType,
-			operatorCfgData[moduleconfig.KeyPlatformType]),
-		jq.Match(`.metadata.annotations."%s" == "%s"`,
-			annotationVersion,
-			operatorReleaseVersion),
-	))
-}
-
-func (wt *workbenchesTest) testOwnerReferences(t *testing.T) {
-	g := NewWithT(t)
-
-	g.Eventually(k.Get(wt.nbcDeploy)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(
-		jq.Match(`.metadata.ownerReferences[] | select(.kind == "Workbenches") | .name == "%s"`,
-			componentsv1alpha1.WorkbenchesInstanceName),
 	)
 }

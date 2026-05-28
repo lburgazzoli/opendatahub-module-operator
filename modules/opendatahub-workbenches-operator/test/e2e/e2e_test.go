@@ -29,7 +29,6 @@ import (
 
 	admissionv1 "k8s.io/api/admissionregistration/v1"
 	appsv1 "k8s.io/api/apps/v1"
-	corev1 "k8s.io/api/core/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	k8serr "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -107,59 +106,21 @@ func runTestMain(m *testing.M) int {
 }
 
 type workbenchesE2ETest struct {
-	module         *componentsv1alpha1.Workbenches
-	moduleCRD      *apiextensionsv1.CustomResourceDefinition
-	operatorDeploy *appsv1.Deployment
-	operatorCfgMap *corev1.ConfigMap
-	nbcDeploy      *appsv1.Deployment
-	webhookService *corev1.Service
-	webhookConfig  *admissionv1.MutatingWebhookConfiguration
+	module            *componentsv1alpha1.Workbenches
+	operatorNamespace string
 }
 
 func TestWorkbenches(t *testing.T) {
-	operatorNamespace := support.OperatorNamespace()
-
 	suite := &workbenchesE2ETest{
 		module: &componentsv1alpha1.Workbenches{
 			ObjectMeta: metav1.ObjectMeta{
 				Name: componentsv1alpha1.WorkbenchesInstanceName,
 			},
 		},
-		moduleCRD: &apiextensionsv1.CustomResourceDefinition{
-			ObjectMeta: metav1.ObjectMeta{Name: moduleCRDName},
-		},
-		operatorDeploy: &appsv1.Deployment{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "opendatahub-workbenches-operator",
-				Namespace: operatorNamespace,
-			},
-		},
-		operatorCfgMap: &corev1.ConfigMap{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      operatorConfigMapName,
-				Namespace: operatorNamespace,
-			},
-		},
-		nbcDeploy: &appsv1.Deployment{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "odh-notebook-controller-manager",
-				Namespace: operatorNamespace,
-			},
-		},
-		webhookService: &corev1.Service{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "opendatahub-workbenches-webhook-service",
-				Namespace: operatorNamespace,
-			},
-		},
-		webhookConfig: &admissionv1.MutatingWebhookConfiguration{
-			ObjectMeta: metav1.ObjectMeta{
-				Name: "opendatahub-workbenches-mutating-webhook-configuration",
-			},
-		},
+		operatorNamespace: support.OperatorNamespace(),
 	}
-	foundation := &foundationTests{workbenchesE2ETest: suite}
-	webhooks := &webhookTests{workbenchesE2ETest: suite}
+	foundation := newFoundationTests(suite)
+	webhooks := newWebhookTests(suite)
 
 	// Clean up any leftover CR from a previous run.
 	_ = k8sClient.Delete(ctx, suite.module)
@@ -170,7 +131,7 @@ func TestWorkbenches(t *testing.T) {
 	})
 
 	// Gate: if the operator is not running, fail immediately.
-	eventuallyDeploymentReady(t, suite.operatorDeploy)
+	eventuallyDeploymentReady(t, foundation.operatorDeploy)
 
 	t.Run("foundation", foundation.Execute)
 	t.Run("webhooks", webhooks.Execute)

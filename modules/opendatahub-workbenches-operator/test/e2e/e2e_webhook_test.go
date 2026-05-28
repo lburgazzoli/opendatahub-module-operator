@@ -9,6 +9,7 @@ import (
 
 	"github.com/rs/xid"
 	. "github.com/onsi/gomega"
+	admissionv1 "k8s.io/api/admissionregistration/v1"
 	corev1 "k8s.io/api/core/v1"
 	k8serr "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -30,6 +31,25 @@ const (
 
 type webhookTests struct {
 	*workbenchesE2ETest
+	webhookService *corev1.Service
+	webhookConfig  *admissionv1.MutatingWebhookConfiguration
+}
+
+func newWebhookTests(suite *workbenchesE2ETest) *webhookTests {
+	return &webhookTests{
+		workbenchesE2ETest: suite,
+		webhookService: &corev1.Service{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "opendatahub-workbenches-webhook-service",
+				Namespace: suite.operatorNamespace,
+			},
+		},
+		webhookConfig: &admissionv1.MutatingWebhookConfiguration{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: "opendatahub-workbenches-mutating-webhook-configuration",
+			},
+		},
+	}
 }
 
 func (wt *webhookTests) Execute(t *testing.T) {

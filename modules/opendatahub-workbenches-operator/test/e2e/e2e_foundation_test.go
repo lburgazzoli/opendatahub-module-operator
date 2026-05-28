@@ -8,6 +8,7 @@ import (
 	. "github.com/onsi/gomega"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -22,6 +23,37 @@ import (
 
 type foundationTests struct {
 	*workbenchesE2ETest
+	moduleCRD      *apiextensionsv1.CustomResourceDefinition
+	operatorDeploy *appsv1.Deployment
+	operatorCfgMap *corev1.ConfigMap
+	nbcDeploy      *appsv1.Deployment
+}
+
+func newFoundationTests(suite *workbenchesE2ETest) *foundationTests {
+	return &foundationTests{
+		workbenchesE2ETest: suite,
+		moduleCRD: &apiextensionsv1.CustomResourceDefinition{
+			ObjectMeta: metav1.ObjectMeta{Name: moduleCRDName},
+		},
+		operatorDeploy: &appsv1.Deployment{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "opendatahub-workbenches-operator",
+				Namespace: suite.operatorNamespace,
+			},
+		},
+		operatorCfgMap: &corev1.ConfigMap{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      operatorConfigMapName,
+				Namespace: suite.operatorNamespace,
+			},
+		},
+		nbcDeploy: &appsv1.Deployment{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "odh-notebook-controller-manager",
+				Namespace: suite.operatorNamespace,
+			},
+		},
+	}
 }
 
 func (ft *foundationTests) Execute(t *testing.T) {
