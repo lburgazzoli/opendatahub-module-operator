@@ -32,6 +32,7 @@ import (
 
 	"github.com/hashicorp/go-multierror"
 	corev1 "k8s.io/api/core/v1"
+	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	k8serr "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -65,6 +66,7 @@ const (
 	upgradeEventSourceComponent       = "opendatahub-workbenches-operator"
 	upgradeEventReasonHWPMigSkipped   = "HardwareProfileMigrationSkipped"
 
+	upgradeHardwareProfileCRDName = "hardwareprofiles.infrastructure.opendatahub.io"
 	upgradeOdhDashboardConfigName = "odh-dashboard-config"
 	upgradeNotebooks              = "notebooks"
 	upgradeDefaultMinMemory       = "1Mi"
@@ -94,10 +96,11 @@ type ContainerSize struct {
 //
 // All three steps are idempotent. Errors from individual notebooks are collected and
 // returned as a multierror so a single failure does not abort the rest.
-func migrateHardwareProfilesForNotebooks(ctx context.Context, cli client.Client, applicationNS string, _ string) error {
+func (m *Module) migrateHardwareProfilesForNotebooks(ctx context.Context, writer client.Client) error {
 	log := logf.FromContext(ctx)
+	log.Info("Starting notebook hardware profile migration", "applicationsNamespace", m.cfg.ApplicationsNamespace)
 
-	hasInfraHWP, err := cluster.HasCRD(ctx, cli, gvk.HardwareProfile)
+	hasInfraHWP, err := m.hasCRD(ctx, upgradeHardwareProfileCRDName)
 	if err != nil {
 		return fmt.Errorf("checking HardwareProfile CRD: %w", err)
 	}
@@ -106,7 +109,7 @@ func migrateHardwareProfilesForNotebooks(ctx context.Context, cli client.Client,
 		return nil
 	}
 
-	odhConfig, found, err := getOdhDashboardConfig(ctx, cli, applicationNS)
+	odhConfig, found, err := m.getOdhDashboardConfig(ctx)
 	if err != nil {
 		return fmt.Errorf("getting OdhDashboardConfig: %w", err)
 	}
@@ -114,21 +117,26 @@ func migrateHardwareProfilesForNotebooks(ctx context.Context, cli client.Client,
 		log.Info("OdhDashboardConfig not found, skipping notebook HWP migration")
 		return nil
 	}
+	log.Info("Notebook hardware profile migration preconditions satisfied", "odhDashboardConfig", upgradeOdhDashboardConfigName)
 
 	var multiErr *multierror.Error
-	multiErr = multierror.Append(multiErr, migrateAcceleratorProfilesToHWPForNotebooks(ctx, cli, odhConfig))
-	multiErr = multierror.Append(multiErr, migrateContainerSizesToHWPForNotebooks(ctx, cli, applicationNS, odhConfig))
-	multiErr = multierror.Append(multiErr, attachHWPAnnotationsToNotebooks(ctx, cli, applicationNS, odhConfig))
+	multiErr = multierror.Append(multiErr, m.migrateAcceleratorProfilesToHWPForNotebooks(ctx, writer, odhConfig))
+	multiErr = multierror.Append(multiErr, m.migrateContainerSizesToHWPForNotebooks(ctx, writer, odhConfig))
+	multiErr = multierror.Append(multiErr, m.attachHWPAnnotationsToNotebooks(ctx, writer, odhConfig))
 	return multiErr.ErrorOrNil()
 }
 
 // migrateAcceleratorProfilesToHWPForNotebooks creates a notebook-typed HardwareProfile
 // for each AcceleratorProfile found in the cluster.
-func migrateAcceleratorProfilesToHWPForNotebooks(ctx context.Context, cli client.Client, odhConfig *unstructured.Unstructured) error {
+func (m *Module) migrateAcceleratorProfilesToHWPForNotebooks(
+	ctx context.Context,
+	writer client.Client,
+	odhConfig *unstructured.Unstructured,
+) error {
 	log := logf.FromContext(ctx)
 	var multiErr *multierror.Error
 
-	aps, err := listAcceleratorProfiles(ctx, cli)
+	aps, err := m.listAcceleratorProfiles(ctx)
 	if err != nil {
 		return fmt.Errorf("listing AcceleratorProfiles: %w", err)
 	}
@@ -149,7 +157,7 @@ func migrateAcceleratorProfilesToHWPForNotebooks(ctx context.Context, cli client
 			multiErr = multierror.Append(multiErr, fmt.Errorf("generating notebook HWP for AP %s: %w", ap.GetName(), err))
 			continue
 		}
-		if err := cluster.CreateHardwareProfile(ctx, cli, hwp); err != nil {
+		if err := cluster.CreateHardwareProfile(ctx, writer, hwp); err != nil {
 			multiErr = multierror.Append(multiErr, fmt.Errorf("creating notebook HWP for AP %s: %w", ap.GetName(), err))
 			continue
 		}
@@ -160,7 +168,11 @@ func migrateAcceleratorProfilesToHWPForNotebooks(ctx context.Context, cli client
 
 // migrateContainerSizesToHWPForNotebooks creates a notebook-typed HardwareProfile
 // for each notebook container size in OdhDashboardConfig.
-func migrateContainerSizesToHWPForNotebooks(ctx context.Context, cli client.Client, applicationNS string, odhConfig *unstructured.Unstructured) error {
+func (m *Module) migrateContainerSizesToHWPForNotebooks(
+	ctx context.Context,
+	writer client.Client,
+	odhConfig *unstructured.Unstructured,
+) error {
 	log := logf.FromContext(ctx)
 	var multiErr *multierror.Error
 
@@ -173,9 +185,10 @@ func migrateContainerSizesToHWPForNotebooks(ctx context.Context, cli client.Clie
 	if err != nil {
 		multiErr = multierror.Append(multiErr, fmt.Errorf("getting notebook sizes: %w", err))
 	}
+	log.Info("Discovered notebook container sizes for migration", "count", len(notebookSizes))
 	for _, size := range notebookSizes {
-		hwp := generateHWPFromContainerSize(ctx, size, upgradeNotebooks, notebooksOnlyToleration, applicationNS)
-		if err := cluster.CreateHardwareProfile(ctx, cli, hwp); err != nil {
+		hwp := generateHWPFromContainerSize(ctx, size, upgradeNotebooks, notebooksOnlyToleration, m.cfg.ApplicationsNamespace)
+		if err := cluster.CreateHardwareProfile(ctx, writer, hwp); err != nil {
 			multiErr = multierror.Append(multiErr, fmt.Errorf("creating notebook size HWP %s: %w", size.Name, err))
 			continue
 		}
@@ -186,14 +199,19 @@ func migrateContainerSizesToHWPForNotebooks(ctx context.Context, cli client.Clie
 
 // attachHWPAnnotationsToNotebooks migrates AcceleratorProfile and container-size annotations
 // on existing Notebook resources to opendatahub.io/hardware-profile-name annotations.
-func attachHWPAnnotationsToNotebooks(ctx context.Context, cli client.Client, applicationNS string, odhConfig *unstructured.Unstructured) error {
+func (m *Module) attachHWPAnnotationsToNotebooks(
+	ctx context.Context,
+	writer client.Client,
+	odhConfig *unstructured.Unstructured,
+) error {
 	log := logf.FromContext(ctx)
 	var multiErr *multierror.Error
 
-	notebooks, err := listNotebooks(ctx, cli)
+	notebooks, err := m.listNotebooks(ctx)
 	if err != nil {
 		return fmt.Errorf("listing notebooks: %w", err)
 	}
+	log.Info("Discovered notebooks for hardware profile annotation migration", "count", len(notebooks))
 	if len(notebooks) == 0 {
 		log.Info("No Notebooks found, skipping HWP annotation migration")
 		return nil
@@ -227,21 +245,21 @@ func attachHWPAnnotationsToNotebooks(ctx context.Context, cli client.Client, app
 			continue
 		}
 
-		kueueNS, err := isNamespaceManagedByKueue(ctx, cli, nb.GetNamespace())
+		kueueNS, err := m.isNamespaceManagedByKueue(ctx, nb.GetNamespace())
 		if err != nil {
 			log.Error(err, "Failed to check Kueue namespace, continuing", "notebook", nb.GetName())
 		} else if kueueNS && nb.GetLabels()[cluster.KueueQueueNameLabel] == "" {
 			msg := fmt.Sprintf("Skipping HWP migration for Notebook %s: namespace is Kueue-managed but missing label %q", nb.GetName(), cluster.KueueQueueNameLabel)
 			log.Info(msg)
-			_ = recordUpgradeEvent(ctx, cli, nb, upgradeEventReasonHWPMigSkipped, msg)
+			_ = recordUpgradeEvent(ctx, writer, nb, upgradeEventReasonHWPMigSkipped, msg)
 			continue
 		}
 
-		if err := setHWPAnnotation(ctx, cli, nb, hwpName, hwpNamespace, applicationNS); err != nil {
+		if err := m.setHWPAnnotation(ctx, writer, nb, hwpName, hwpNamespace); err != nil {
 			if strings.Contains(err.Error(), "Kueue label validation failed") ||
 				(strings.Contains(err.Error(), "missing required label") && strings.Contains(err.Error(), "kueue")) {
 				log.Info("Skipping HWP migration after Kueue webhook rejection", "notebook", nb.GetName())
-				_ = recordUpgradeEvent(ctx, cli, nb, upgradeEventReasonHWPMigSkipped, err.Error())
+				_ = recordUpgradeEvent(ctx, writer, nb, upgradeEventReasonHWPMigSkipped, err.Error())
 				continue
 			}
 			multiErr = multierror.Append(multiErr, fmt.Errorf("setting HWP annotation on notebook %s: %w", nb.GetName(), err))
@@ -256,10 +274,23 @@ func attachHWPAnnotationsToNotebooks(ctx context.Context, cli client.Client, app
 // Helpers
 // ---------------------------------------------------------------------------
 
-func getOdhDashboardConfig(ctx context.Context, cli client.Client, applicationNS string) (*unstructured.Unstructured, bool, error) {
+func (m *Module) hasCRD(ctx context.Context, name string) (bool, error) {
+	crd := &apiextensionsv1.CustomResourceDefinition{}
+	err := m.apiReader.Get(ctx, client.ObjectKey{Name: name}, crd)
+	switch {
+	case err == nil:
+		return true, nil
+	case k8serr.IsNotFound(err), meta.IsNoMatchError(err):
+		return false, nil
+	default:
+		return false, err
+	}
+}
+
+func (m *Module) getOdhDashboardConfig(ctx context.Context) (*unstructured.Unstructured, bool, error) {
 	cfg := &unstructured.Unstructured{}
 	cfg.SetGroupVersionKind(gvk.OdhDashboardConfig)
-	switch err := cli.Get(ctx, client.ObjectKey{Name: upgradeOdhDashboardConfigName, Namespace: applicationNS}, cfg); {
+	switch err := m.apiReader.Get(ctx, client.ObjectKey{Name: upgradeOdhDashboardConfigName, Namespace: m.cfg.ApplicationsNamespace}, cfg); {
 	case err == nil:
 		return cfg, true, nil
 	case k8serr.IsNotFound(err), meta.IsNoMatchError(err):
@@ -269,10 +300,10 @@ func getOdhDashboardConfig(ctx context.Context, cli client.Client, applicationNS
 	}
 }
 
-func listAcceleratorProfiles(ctx context.Context, cli client.Client) ([]unstructured.Unstructured, error) {
+func (m *Module) listAcceleratorProfiles(ctx context.Context) ([]unstructured.Unstructured, error) {
 	list := &unstructured.UnstructuredList{}
 	list.SetGroupVersionKind(gvk.DashboardAcceleratorProfile)
-	switch err := cli.List(ctx, list); {
+	switch err := m.apiReader.List(ctx, list); {
 	case err == nil:
 		return list.Items, nil
 	case meta.IsNoMatchError(err):
@@ -282,10 +313,10 @@ func listAcceleratorProfiles(ctx context.Context, cli client.Client) ([]unstruct
 	}
 }
 
-func listNotebooks(ctx context.Context, cli client.Client) ([]*unstructured.Unstructured, error) {
+func (m *Module) listNotebooks(ctx context.Context) ([]*unstructured.Unstructured, error) {
 	list := &unstructured.UnstructuredList{}
 	list.SetGroupVersionKind(gvk.Notebook)
-	switch err := cli.List(ctx, list); {
+	switch err := m.apiReader.List(ctx, list); {
 	case err == nil:
 	case meta.IsNoMatchError(err):
 		return nil, nil
@@ -426,20 +457,34 @@ func findCpuMemoryMinMaxFromSizes(sizes []ContainerSize) (map[string]string, err
 	return result, multiErr.ErrorOrNil()
 }
 
-func isNamespaceManagedByKueue(ctx context.Context, cli client.Reader, namespaceName string) (bool, error) {
+func (m *Module) isNamespaceManagedByKueue(ctx context.Context, namespaceName string) (bool, error) {
 	if namespaceName == "" {
 		return false, nil
 	}
 	ns := &corev1.Namespace{}
-	if err := cli.Get(ctx, client.ObjectKey{Name: namespaceName}, ns); err != nil {
+	if err := m.apiReader.Get(ctx, client.ObjectKey{Name: namespaceName}, ns); err != nil {
 		return false, err
 	}
 	return ns.Labels[cluster.KueueManagedLabelKey] == "true" ||
 		ns.Labels[cluster.KueueLegacyManagedLabelKey] == "true", nil
 }
 
+func (m *Module) getHardwareProfile(ctx context.Context, name string, namespace string) (*infrav1.HardwareProfile, error) {
+	hwp := &infrav1.HardwareProfile{}
+	if err := m.apiReader.Get(ctx, client.ObjectKey{Name: name, Namespace: namespace}, hwp); err != nil {
+		return nil, err
+	}
+	return hwp, nil
+}
+
 // setHWPAnnotation sets the HWP name (and namespace) annotation on a Notebook and updates it.
-func setHWPAnnotation(ctx context.Context, cli client.Client, obj *unstructured.Unstructured, hwpName, apNamespace, applicationNS string) error {
+func (m *Module) setHWPAnnotation(
+	ctx context.Context,
+	writer client.Client,
+	obj *unstructured.Unstructured,
+	hwpName string,
+	apNamespace string,
+) error {
 	log := logf.FromContext(ctx)
 	ann := obj.GetAnnotations()
 	if ann == nil {
@@ -455,13 +500,13 @@ func setHWPAnnotation(ctx context.Context, cli client.Client, obj *unstructured.
 	if objNS != "" && objNS != apNamespace {
 		namespacesToCheck = append(namespacesToCheck, objNS)
 	}
-	if applicationNS != apNamespace && applicationNS != objNS {
-		namespacesToCheck = append(namespacesToCheck, applicationNS)
+	if m.cfg.ApplicationsNamespace != apNamespace && m.cfg.ApplicationsNamespace != objNS {
+		namespacesToCheck = append(namespacesToCheck, m.cfg.ApplicationsNamespace)
 	}
 
 	hwpFound := false
 	for _, ns := range namespacesToCheck {
-		switch _, err := cluster.GetHardwareProfile(ctx, cli, hwpName, ns); {
+		switch _, err := m.getHardwareProfile(ctx, hwpName, ns); {
 		case err == nil:
 			ann[upgradeAnnotationHWPNamespace] = ns
 			hwpFound = true
@@ -478,12 +523,12 @@ func setHWPAnnotation(ctx context.Context, cli client.Client, obj *unstructured.
 
 	if !hwpFound {
 		log.Info("HWP not found in any namespace, skipping annotation", "hwp", hwpName, "object", obj.GetName())
-		_ = recordUpgradeEvent(ctx, cli, obj, upgradeEventReasonHWPMigSkipped,
+		_ = recordUpgradeEvent(ctx, writer, obj, upgradeEventReasonHWPMigSkipped,
 			fmt.Sprintf("HWP %q not found in any namespace", hwpName))
 	}
 
 	obj.SetAnnotations(ann)
-	return cli.Update(ctx, obj)
+	return writer.Update(ctx, obj)
 }
 
 func generateHWPFromAcceleratorProfile(ctx context.Context, ap unstructured.Unstructured, profileType string, containerCounts map[string]string, notebooksToleration []corev1.Toleration) (*infrav1.HardwareProfile, error) {

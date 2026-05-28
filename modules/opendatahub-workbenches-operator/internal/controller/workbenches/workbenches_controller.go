@@ -100,6 +100,7 @@ func NewReconciler(
 	if err != nil {
 		return err
 	}
+	m.apiReader = mgr.GetAPIReader()
 
 	r, err := reconciler.ReconcilerFor(mgr, &componentApi.Workbenches{}).
 		Owns(&corev1.ConfigMap{}).

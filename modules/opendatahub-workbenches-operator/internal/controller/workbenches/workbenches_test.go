@@ -21,7 +21,13 @@ import (
 	"testing"
 
 	. "github.com/onsi/gomega"
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
+	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
 	componentApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-workbenches-operator/api/components/v1alpha1"
 	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-workbenches-operator/pkg/config"
@@ -40,6 +46,18 @@ func newTestModule(t *testing.T) *Module {
 	m, err := NewModule(cfg)
 	NewWithT(t).Expect(err).NotTo(HaveOccurred())
 	return m
+}
+
+func seedTestAPIReader(t *testing.T, m *Module, objs ...client.Object) {
+	t.Helper()
+	scheme := runtime.NewScheme()
+	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
+	utilruntime.Must(corev1.AddToScheme(scheme))
+	utilruntime.Must(componentApi.AddToScheme(scheme))
+	m.apiReader = fake.NewClientBuilder().
+		WithScheme(scheme).
+		WithObjects(objs...).
+		Build()
 }
 
 func newTestRR(obj *componentApi.Workbenches) *odhtypes.ReconciliationRequest {
@@ -94,6 +112,7 @@ func TestUpgradeIfNeededFreshInstall(t *testing.T) {
 	m := newTestModule(t)
 	obj := newTestWorkbenches()
 	rr := newTestRR(obj)
+	seedTestAPIReader(t, m, obj.DeepCopy())
 
 	g.Expect(m.upgradeIfNeeded(context.Background(), rr)).To(Succeed())
 }
@@ -109,6 +128,7 @@ func TestUpgradeIfNeededSameVersion(t *testing.T) {
 
 	obj.Status.Module.Version = v
 	rr := newTestRR(obj)
+	seedTestAPIReader(t, m, obj.DeepCopy())
 
 	g.Expect(m.upgradeIfNeeded(context.Background(), rr)).To(Succeed())
 }

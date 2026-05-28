@@ -40,6 +40,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/config"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
+	"k8s.io/client-go/rest"
 
 	"github.com/lburgazzoli/gomega-matchers/pkg/matchers/jq"
 	k8sm "github.com/lburgazzoli/gomega-matchers/pkg/matchers/k8s"
@@ -48,6 +49,7 @@ import (
 	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-workbenches-operator/pkg/config"
 	workbenchesmanager "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-workbenches-operator/pkg/manager"
 	gvk "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-workbenches-operator/pkg/resources/gvk"
+	workbenchesversion "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-workbenches-operator/pkg/version"
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-workbenches-operator/test/support"
 	infrav1 "github.com/opendatahub-io/opendatahub-operator/v2/api/infrastructure/v1"
 )
@@ -56,6 +58,9 @@ const (
 	timeout   = 90 * time.Second
 	interval  = 2 * time.Second
 	retryWait = 20 * time.Second
+
+	appliedUpgradeVersion = "0.1.0"
+	desiredUpgradeVersion = "0.2.0"
 
 	upgradeTriggerAnnotation = "opendatahub.io/upgrade-test-trigger"
 	notebookSizeAnnotation   = "notebooks.opendatahub.io/last-size-selection"
@@ -68,6 +73,8 @@ const (
 var (
 	ctx             context.Context
 	cancel          context.CancelFunc
+	kubeConfig      *rest.Config
+	moduleCfg       *moduleconfig.Config
 	directClient    client.Client
 	k8sClient       client.Client
 	k               *k8sm.Matcher
@@ -83,10 +90,11 @@ func TestMain(m *testing.M) {
 func runTestMain(m *testing.M) int {
 	ctx, cancel = context.WithCancel(context.Background())
 	defer cancel()
+	var err error
 
 	ctrl.SetLogger(zap.New(zap.UseDevMode(true)))
 
-	kubeConfig, err := config.GetConfig()
+	kubeConfig, err = config.GetConfig()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to get kubeconfig: %v\n", err)
 		return 1
@@ -119,15 +127,28 @@ func runTestMain(m *testing.M) int {
 	operatorCfgData = support.MustReadConfigMapData(
 		support.MustProjectFile("config", "manager", "configmap.yaml"))
 
-	moduleCfg := &moduleconfig.Config{
+	workbenchesversion.Version = desiredUpgradeVersion
+
+	moduleCfg = &moduleconfig.Config{
 		PlatformType:          operatorCfgData[moduleconfig.KeyPlatformType],
-		PlatformVersion:       operatorCfgData[moduleconfig.KeyPlatformVersion],
+		PlatformVersion:       desiredUpgradeVersion,
 		MetricsAddr:           "0",
 		HealthProbeAddr:       "0",
 		LeaderElect:           false,
 		ApplicationsNamespace: operatorNamespace,
 		ManifestsPath:         support.MustProjectFile("config", "manifests"),
 		WebhooksEnabled:       false,
+	}
+
+	directK = k8sm.New(directClient, testScheme)
+
+	return m.Run()
+}
+
+func startManager(t *testing.T) {
+	t.Helper()
+	if k8sClient != nil {
+		return
 	}
 
 	mgr, err := workbenchesmanager.New(
@@ -139,10 +160,7 @@ func runTestMain(m *testing.M) int {
 			opts.Cache.ReaderFailOnMissingInformer = false
 		},
 	)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to create manager: %v\n", err)
-		return 1
-	}
+	NewWithT(t).Expect(err).NotTo(HaveOccurred())
 
 	go func() {
 		if err := mgr.Start(ctx); err != nil {
@@ -151,15 +169,11 @@ func runTestMain(m *testing.M) int {
 	}()
 
 	if !mgr.GetCache().WaitForCacheSync(ctx) {
-		fmt.Fprintf(os.Stderr, "Failed to sync manager cache\n")
-		return 1
+		t.Fatal("failed to sync manager cache")
 	}
 
 	k8sClient = mgr.GetClient()
 	k = k8sm.New(k8sClient, testScheme)
-	directK = k8sm.New(directClient, testScheme)
-
-	return m.Run()
 }
 
 func TestWorkbenchesUpgradeContainerSizeMigration(t *testing.T) {
@@ -169,6 +183,11 @@ func TestWorkbenchesUpgradeContainerSizeMigration(t *testing.T) {
 	module := &componentsv1alpha1.Workbenches{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: componentsv1alpha1.WorkbenchesInstanceName,
+		},
+		Spec: componentsv1alpha1.WorkbenchesSpec{
+			WorkbenchesCommonSpec: componentsv1alpha1.WorkbenchesCommonSpec{
+				WorkbenchNamespace: "opendatahub",
+			},
 		},
 	}
 	moduleCRD := &apiextensionsv1.CustomResourceDefinition{
@@ -196,27 +215,35 @@ func TestWorkbenchesUpgradeContainerSizeMigration(t *testing.T) {
 		deleteIfExists(t, module)
 	})
 
-	g.Eventually(k.Get(moduleCRD)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(
-		jq.Match(`.metadata.name == "%s"`, moduleCRDName),
-	)
-
 	g.Expect(directClient.Create(ctx, module)).To(Succeed())
-	g.Eventually(directK.Get(module)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(
-		jq.Match(`.status.module.version != ""`),
-	)
 
+	seededModule := &componentsv1alpha1.Workbenches{
+		ObjectMeta: metav1.ObjectMeta{Name: componentsv1alpha1.WorkbenchesInstanceName},
+	}
+	g.Expect(directClient.Get(ctx, client.ObjectKeyFromObject(seededModule), seededModule)).To(Succeed())
+	seededModule.Status.Module.Version = componentsv1alpha1.SemVer(appliedUpgradeVersion)
+	seededModule.Status.Module.Platform.Version = componentsv1alpha1.SemVer(appliedUpgradeVersion)
+	g.Expect(directClient.Status().Update(ctx, seededModule)).To(Succeed())
 	g.Expect(directClient.Create(ctx, odhDashboardConfig)).To(Succeed())
 	g.Expect(directClient.Create(ctx, notebook)).To(Succeed())
-	g.Eventually(k.Get(odhDashboardConfig)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(And(
+
+	g.Expect(directClient.Get(ctx, client.ObjectKeyFromObject(seededModule), seededModule)).To(Succeed())
+	g.Expect(seededModule.Status.Module.Version).To(Equal(componentsv1alpha1.SemVer(appliedUpgradeVersion)))
+	g.Expect(seededModule.Status.Module.Platform.Version).To(Equal(componentsv1alpha1.SemVer(appliedUpgradeVersion)))
+	g.Eventually(directK.Get(odhDashboardConfig)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(And(
 		jq.Match(`.metadata.name == "odh-dashboard-config"`),
 		jq.Match(`.metadata.namespace == "%s"`, operatorNamespace),
 	))
-	g.Eventually(k.Get(notebook)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(And(
+	g.Eventually(directK.Get(notebook)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(And(
 		jq.Match(`.metadata.name == "upgrade-notebook"`),
 		jq.Match(`.metadata.namespace == "%s"`, operatorNamespace),
 	))
 
-	triggerUpgradeReconcileUntilHardwareProfile(t, module.GetName(), hardwareProfile)
+	startManager(t)
+
+	g.Eventually(k.Get(moduleCRD)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(
+		jq.Match(`.metadata.name == "%s"`, moduleCRDName),
+	)
 
 	g.Eventually(directK.Get(hardwareProfile)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(And(
 		jq.Match(`.metadata.name == "containersize-small-notebooks"`),
@@ -228,15 +255,21 @@ func TestWorkbenchesUpgradeContainerSizeMigration(t *testing.T) {
 		jq.Match(`.metadata.annotations."%s" == "%s"`, hwpNamespaceAnnotation, operatorNamespace),
 	))
 
-	triggerUpgradeReconcile(t, module.GetName())
-
 	g.Eventually(directK.Get(module)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(
-		jq.Match(`.status.module.version != "0.0.0-0"`),
+		jq.Match(`.status.module.version == "%s"`, desiredUpgradeVersion),
+	)
+	g.Eventually(directK.Get(module)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(
+		jq.Match(`.status.module.platform.version == "%s"`, desiredUpgradeVersion),
 	)
 	g.Eventually(directK.Get(notebook)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(And(
 		jq.Match(`.metadata.annotations."%s" == "containersize-small-notebooks"`, hwpNameAnnotation),
 		jq.Match(`.metadata.annotations."%s" == "%s"`, hwpNamespaceAnnotation, operatorNamespace),
 	))
+	g.Eventually(moduleHasEventReason(componentsv1alpha1.WorkbenchesInstanceName, "UpgradeStarted")).
+		WithContext(ctx).
+		WithTimeout(timeout).
+		WithPolling(interval).
+		Should(BeTrue())
 }
 
 func newNotebook(namespace string, name string) *unstructured.Unstructured {
@@ -305,12 +338,12 @@ func triggerUpgradeReconcile(t *testing.T, moduleName string) {
 	}
 
 	g.Expect(directClient.Get(ctx, client.ObjectKeyFromObject(module), module)).To(Succeed())
-	module.Status.Module.Version = componentsv1alpha1.SemVer("0.0.0-0")
-	module.Status.Module.Platform.Version = componentsv1alpha1.SemVer("0.0.0-0")
+	module.Status.Module.Version = componentsv1alpha1.SemVer(appliedUpgradeVersion)
+	module.Status.Module.Platform.Version = componentsv1alpha1.SemVer(appliedUpgradeVersion)
 	g.Expect(directClient.Status().Update(ctx, module)).To(Succeed())
 	g.Eventually(directK.Get(module)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(And(
-		jq.Match(`.status.module.version == "0.0.0-0"`),
-		jq.Match(`.status.module.platform.version == "0.0.0-0"`),
+		jq.Match(`.status.module.version == "%s"`, appliedUpgradeVersion),
+		jq.Match(`.status.module.platform.version == "%s"`, appliedUpgradeVersion),
 	))
 
 	g.Expect(directClient.Get(ctx, client.ObjectKeyFromObject(module), module)).To(Succeed())
@@ -345,6 +378,29 @@ func triggerUpgradeReconcileUntilHardwareProfile(
 		hardwareProfile.GetName(),
 		lastErr,
 	)
+}
+
+func moduleHasEventReason(moduleName string, reason string) func() bool {
+	return func() bool {
+		events := &corev1.EventList{}
+		if err := directClient.List(ctx, events, client.InNamespace(support.OperatorNamespace())); err != nil {
+			return false
+		}
+		for i := range events.Items {
+			event := &events.Items[i]
+			if event.Reason != reason {
+				continue
+			}
+			if event.InvolvedObject.Kind != componentsv1alpha1.WorkbenchesKind {
+				continue
+			}
+			if event.InvolvedObject.Name != moduleName {
+				continue
+			}
+			return true
+		}
+		return false
+	}
 }
 
 func waitForObjectDirect(obj client.Object, timeout time.Duration) error {

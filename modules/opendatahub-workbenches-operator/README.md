@@ -21,17 +21,6 @@ make test-integration-run
 make cleanup-integration
 ```
 
-Single-command variant that preserves the test exit code and always cleans up:
-
-```bash
-make cleanup-integration && \
-make test-integration-setup && \
-make test-integration-run; \
-STATUS=$?; \
-make cleanup-integration; \
-exit $STATUS
-```
-
 ## Upgrade tests
 
 Run from this module directory:
@@ -41,17 +30,6 @@ make cleanup-upgrade
 make test-upgrade-setup
 make test-upgrade-run
 make cleanup-upgrade
-```
-
-Single-command variant that preserves the test exit code and always cleans up:
-
-```bash
-make cleanup-upgrade && \
-make test-upgrade-setup && \
-make test-upgrade-run; \
-STATUS=$?; \
-make cleanup-upgrade; \
-exit $STATUS
 ```
 
 ## E2E tests
@@ -74,21 +52,6 @@ echo "Using CRC image: $CRC_IMG"
 make deploy-helm IMG="$CRC_IMG"
 make test-e2e-run
 make cleanup-e2e
-```
-
-Single-command variant that preserves the test exit code and always cleans up:
-
-```bash
-LOCAL_IMG="localhost/opendatahub-workbenches-operator:e2e-$(uuidgen | tr '[:upper:]' '[:lower:]')" && \
-make cleanup-e2e && \
-make container-build IMG="$LOCAL_IMG" && \
-CRC_IMG="$(make push-crc-image IMG="$LOCAL_IMG")" && \
-echo "Using CRC image: $CRC_IMG" && \
-make deploy-helm IMG="$CRC_IMG" && \
-make test-e2e-run; \
-STATUS=$?; \
-make cleanup-e2e; \
-exit $STATUS
 ```
 
 If `make push-crc-image IMG="$LOCAL_IMG"` fails once, retry it once. If it

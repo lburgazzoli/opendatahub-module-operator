@@ -73,8 +73,8 @@ func ApplyYAML(
 		return fmt.Errorf("decoding manifest %s: %w", manifestPath, err)
 	}
 
-	if err := validateObjectGVK(obj); err != nil {
-		return fmt.Errorf("validating manifest %s: %w", manifestPath, err)
+	if obj.GroupVersionKind().Empty() {
+		return fmt.Errorf("validating manifest %s: manifest is missing apiVersion or kind", manifestPath)
 	}
 
 	existing := &unstructured.Unstructured{}
@@ -94,23 +94,6 @@ func ApplyYAML(
 	obj.SetResourceVersion(existing.GetResourceVersion())
 	if err := cli.Update(ctx, obj); err != nil {
 		return fmt.Errorf("updating resource %s: %w", client.ObjectKeyFromObject(obj), err)
-	}
-
-	return nil
-}
-
-func validateObjectGVK(obj *unstructured.Unstructured) error {
-	gvk := obj.GroupVersionKind()
-	if gvk.Empty() {
-		return fmt.Errorf("manifest is missing apiVersion or kind")
-	}
-
-	if obj.GetAPIVersion() != gvk.GroupVersion().String() {
-		return fmt.Errorf("manifest apiVersion %q does not match decoded gvk %q", obj.GetAPIVersion(), gvk.GroupVersion().String())
-	}
-
-	if obj.GetKind() != gvk.Kind {
-		return fmt.Errorf("manifest kind %q does not match decoded gvk %q", obj.GetKind(), gvk.Kind)
 	}
 
 	return nil

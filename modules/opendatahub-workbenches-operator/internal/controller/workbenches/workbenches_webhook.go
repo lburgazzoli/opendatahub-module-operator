@@ -27,7 +27,6 @@ import (
 // Only call this when cfg.WebhooksEnabled is true.
 func (m *Module) RegisterWebhooks(mgr ctrl.Manager) error {
 	m.decoder = admission.NewDecoder(mgr.GetScheme())
-	m.apiReader = mgr.GetAPIReader()
 	m.webhookClient = mgr.GetClient()
 
 	srv := mgr.GetWebhookServer()

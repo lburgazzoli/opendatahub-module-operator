@@ -7,21 +7,12 @@ import (
 	"testing"
 
 	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
 	. "github.com/onsi/gomega"
 )
-
-func TestValidateObjectGVKRejectsMissingGVK(t *testing.T) {
-	g := NewWithT(t)
-
-	err := validateObjectGVK(&unstructured.Unstructured{})
-
-	g.Expect(err).To(MatchError(ContainSubstring("missing apiVersion or kind")))
-}
 
 func TestApplyYAMLCreatesObject(t *testing.T) {
 	g := NewWithT(t)
