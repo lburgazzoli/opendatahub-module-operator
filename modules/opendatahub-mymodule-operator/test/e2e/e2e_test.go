@@ -44,8 +44,6 @@ import (
 
 	componentsv1alpha1 "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-mymodule-operator/api/components/v1alpha1"
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-mymodule-operator/internal/controller/mymodule"
-	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-mymodule-operator/pkg/config"
-	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-mymodule-operator/pkg/version"
 )
 
 const (
@@ -124,7 +122,7 @@ type myModuleE2ETest struct {
 }
 
 func TestMyModule(t *testing.T) {
-	mt := &myModuleE2ETest{
+	suite := &myModuleE2ETest{
 		module: &componentsv1alpha1.MyModule{
 			ObjectMeta: metav1.ObjectMeta{
 				Name: componentsv1alpha1.MyModuleInstanceName,
@@ -172,304 +170,22 @@ func TestMyModule(t *testing.T) {
 			},
 		},
 	}
+	foundation := &foundationTests{myModuleE2ETest: suite}
 
 	// Clean up any leftover singleton objects from a previous run.
-	_ = k8sClient.Delete(ctx, mt.module)
-	_ = k8sClient.Delete(ctx, mt.ingress)
-	waitForSingletonDeleted(t, mt.module)
-	waitForSingletonDeleted(t, mt.ingress)
+	_ = k8sClient.Delete(ctx, suite.module)
+	_ = k8sClient.Delete(ctx, suite.ingress)
+	waitForSingletonDeleted(t, suite.module)
+	waitForSingletonDeleted(t, suite.ingress)
 
 	t.Cleanup(func() {
-		_ = k8sClient.Delete(ctx, mt.module)
-		_ = k8sClient.Delete(ctx, mt.ingress)
+		_ = k8sClient.Delete(ctx, suite.module)
+		_ = k8sClient.Delete(ctx, suite.ingress)
 	})
 
-	eventuallyDeploymentReady(t, mt.operatorDeploy)
+	eventuallyDeploymentReady(t, suite.operatorDeploy)
 
-	t.Run("should have module CRD installed", mt.testModuleCRDInstalled)
-	t.Run("should have ConfigMap volume mounted", mt.testConfigMapVolume)
-	t.Run("should have operator ConfigMap deployed", mt.testOperatorConfigMap)
-	t.Run("should block when Ingress is missing", mt.testIngressBlocks)
-	t.Run("should recover when Ingress is created", mt.testIngressRecovers)
-	t.Run("should expose config values", mt.testConfigValues)
-	t.Run("should report module version and platform", mt.testModuleStatus)
-	t.Run("should set platform labels and annotations", mt.testPlatformLabels)
-	t.Run("should have webhook-injected labels", mt.testWebhookLabels)
-	t.Run("should set owner references", mt.testOwnerReferences)
-	t.Run("should not annotate ingress on fresh deploy", mt.testUpgradeAnnotationAbsentOnFreshDeploy)
-	t.Run("should annotate ingress on upgrade via configmap restart", mt.testUpgradeViaConfigMapRestart)
-	t.Run("should not update version on upgrade fault", mt.testUpgradeFaultInjection)
-}
-
-func (mt *myModuleE2ETest) testModuleCRDInstalled(t *testing.T) {
-	g := NewWithT(t)
-
-	g.Eventually(k.Get(mt.moduleCRD)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(
-		jq.Match(`.metadata.name == "%s"`, moduleCRDName),
-	)
-}
-
-func (mt *myModuleE2ETest) testConfigMapVolume(t *testing.T) {
-	g := NewWithT(t)
-
-	g.Eventually(k.Get(mt.operatorDeploy)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(
-		jq.Match(`.spec.template.spec.volumes[] | select(.name == "config") | .configMap.name != ""`),
-	)
-
-	g.Eventually(k.Get(mt.operatorDeploy)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(
-		jq.Match(`.spec.template.spec.containers[0].volumeMounts[] | select(.name == "config") | .mountPath == "/etc/controller/config"`),
-	)
-
-	g.Eventually(k.Get(mt.operatorDeploy)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(
-		jq.Match(`.spec.template.spec.containers[0].env[] | select(.name == "ODH_MODULE_OPERATOR_CONFIGURATION_PATH") | .value == "/etc/controller/config"`),
-	)
-
-	g.Eventually(k.Get(mt.operatorDeploy)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(
-		jq.Match(`.spec.template.spec.containers[0].env[] | select(.name == "ODH_MODULE_OPERATOR_NAMESPACE") | .valueFrom.fieldRef.fieldPath == "metadata.namespace"`),
-	)
-}
-
-func (mt *myModuleE2ETest) testOperatorConfigMap(t *testing.T) {
-	g := NewWithT(t)
-
-	g.Eventually(k.Get(mt.operatorCfgMap)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(And(
-		jq.Match(`.data."%s" != ""`, moduleconfig.KeyPlatformType),
-		jq.Match(`.data."%s" != ""`, moduleconfig.KeyPlatformVersion),
-	))
-}
-
-func (mt *myModuleE2ETest) testIngressBlocks(t *testing.T) {
-	g := NewWithT(t)
-
-	_ = k8sClient.Delete(ctx, mt.module)
-	_ = k8sClient.Delete(ctx, mt.ingress)
-
-	mt.module.ResourceVersion = ""
-	g.Expect(k8sClient.Create(ctx, mt.module)).To(Succeed())
-
-	g.Eventually(k.Get(mt.module)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(And(
-		jq.Match(`.status.phase == "Not Ready"`),
-		jq.Match(`[(.status.conditions // [])[] | select(.type == "%s" and .status == "False")] | length > 0`,
-			mymodule.ConditionIngressAvailable),
-	))
-}
-
-func (mt *myModuleE2ETest) testIngressRecovers(t *testing.T) {
-	g := NewWithT(t)
-
-	mt.ingress.ResourceVersion = ""
-	g.Expect(k8sClient.Create(ctx, mt.ingress)).To(Succeed())
-
-	g.Eventually(k.Get(mt.module)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(And(
-		jq.Match(`.status.phase == "Ready"`),
-		jq.Match(`.status.conditions[] | select(.type == "Ready") | .status == "True"`),
-		jq.Match(`.status.conditions[] | select(.type == "%s") | .status == "True"`,
-			mymodule.ConditionIngressAvailable),
-		jq.Match(`.status.conditions[] | select(.type == "ProvisioningSucceeded") | .status == "True"`),
-	))
-
-	eventuallyDeploymentReady(t, mt.workloadDeploy)
-}
-
-func (mt *myModuleE2ETest) testConfigValues(t *testing.T) {
-	g := NewWithT(t)
-
-	g.Eventually(k.Get(mt.module)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(And(
-		jq.Match(`.status.configValues."%s" != ""`, moduleconfig.KeyPlatformType),
-		jq.Match(`.status.configValues."%s" != ""`, moduleconfig.KeyPlatformVersion),
-	))
-}
-
-func (mt *myModuleE2ETest) testModuleStatus(t *testing.T) {
-	g := NewWithT(t)
-	operatorCfg := &corev1.ConfigMap{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      operatorConfigMapName,
-			Namespace: defaultOperatorNamespace,
-		},
-	}
-	workloadDeploy := &appsv1.Deployment{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "mymodule-workload",
-			Namespace: defaultOperatorNamespace,
-		},
-	}
-
-	g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(operatorCfg), operatorCfg)).To(Succeed())
-	g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(workloadDeploy), workloadDeploy)).To(Succeed())
-
-	platformType := operatorCfg.Data[moduleconfig.KeyPlatformType]
-	workloadVersion := workloadDeploy.Annotations[annotationVersion]
-
-	g.Eventually(k.Get(mt.module)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(And(
-		jq.Match(`.status.module.version == "%s"`, version.Version),
-		jq.Match(`.status.module.buildSource == "%s"`,
-			version.BuildSource()),
-		jq.Match(`.status.module.platform.name == "%s"`, platformType),
-		jq.Match(`.status.module.platform.version == "%s"`, workloadVersion),
-		jq.Match(`.status.module.sources | length > 0`),
-		jq.Match(`.status.module.sources[0].path != ""`),
-		jq.Match(`.status.module.sources[0].renderer == "kustomize"`),
-	))
-}
-
-func (mt *myModuleE2ETest) testPlatformLabels(t *testing.T) {
-	g := NewWithT(t)
-	module := mt.module.DeepCopy()
-	operatorCfg := &corev1.ConfigMap{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      operatorConfigMapName,
-			Namespace: defaultOperatorNamespace,
-		},
-	}
-
-	g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(module), module)).To(Succeed())
-	g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(operatorCfg), operatorCfg)).To(Succeed())
-
-	g.Eventually(k.Get(mt.workloadDeploy)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(And(
-		jq.Match(`.metadata.labels."%s" == "mymodule"`, labelPartOf),
-		jq.Match(`.metadata.annotations."%s" == "%s"`,
-			annotationInstanceName,
-			module.GetName()),
-		jq.Match(`.metadata.annotations."%s" == "%s"`,
-			annotationInstanceUID,
-			string(module.GetUID())),
-		jq.Match(`.metadata.annotations."%s" == "%s"`,
-			annotationType,
-			operatorCfg.Data[moduleconfig.KeyPlatformType]),
-		jq.Match(`.metadata.annotations."%s" == "%s"`,
-			annotationVersion,
-			module.Status.Module.Platform.Version.String()),
-	))
-
-	g.Eventually(k.Get(mt.workloadService)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(And(
-		jq.Match(`.metadata.labels."%s" == "mymodule"`, labelPartOf),
-		jq.Match(`.metadata.annotations."%s" == "%s"`,
-			annotationType,
-			operatorCfg.Data[moduleconfig.KeyPlatformType]),
-		jq.Match(`.metadata.annotations."%s" == "%s"`,
-			annotationVersion,
-			module.Status.Module.Platform.Version.String()),
-	))
-}
-
-func (mt *myModuleE2ETest) testWebhookLabels(t *testing.T) {
-	g := NewWithT(t)
-
-	g.Eventually(k.Get(mt.workloadDeploy)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(And(
-		jq.Match(`.metadata.labels."mymodule.opendatahub.io/version" != ""`),
-		jq.Match(`.metadata.labels."mymodule.opendatahub.io/platform" != ""`),
-	))
-}
-
-func (mt *myModuleE2ETest) testOwnerReferences(t *testing.T) {
-	g := NewWithT(t)
-
-	g.Eventually(k.Get(mt.workloadDeploy)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(
-		jq.Match(`.metadata.ownerReferences[] | select(.kind == "MyModule") | .name == "%s"`,
-			componentsv1alpha1.MyModuleInstanceName),
-	)
-
-	g.Eventually(k.Get(mt.workloadService)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(
-		jq.Match(`.metadata.ownerReferences[] | select(.kind == "MyModule") | .name == "%s"`,
-			componentsv1alpha1.MyModuleInstanceName),
-	)
-}
-
-func (mt *myModuleE2ETest) testUpgradeAnnotationAbsentOnFreshDeploy(t *testing.T) {
-	g := NewWithT(t)
-
-	g.Eventually(k.Get(mt.ingress)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(And(
-		jq.Match(`.metadata.annotations // {} | has("%s") | not`, mymodule.AnnotationManagedVersion),
-		jq.Match(`.metadata.annotations // {} | has("%s") | not`, mymodule.AnnotationUpgradedFrom),
-	))
-}
-
-func (mt *myModuleE2ETest) testUpgradeViaConfigMapRestart(t *testing.T) {
-	g := NewWithT(t)
-
-	// Get a fresh copy of the operator ConfigMap.
-	g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(mt.operatorCfgMap), mt.operatorCfgMap)).To(Succeed())
-
-	// Patch the ConfigMap to set platform-version to "1.0.0".
-	patch := client.MergeFrom(mt.operatorCfgMap.DeepCopy())
-	mt.operatorCfgMap.Data[moduleconfig.KeyPlatformVersion] = "1.0.0"
-	g.Expect(k8sClient.Patch(ctx, mt.operatorCfgMap, patch)).To(Succeed())
-
-	// Delete operator pods to trigger restart.
-	g.Expect(k8sClient.DeleteAllOf(ctx, &corev1.Pod{},
-		client.InNamespace(operatorNamespace),
-		client.MatchingLabels{"app.kubernetes.io/name": "opendatahub-mymodule-operator"},
-	)).To(Succeed())
-
-	// Wait for the operator to be running again.
-	eventuallyDeploymentReady(t, mt.operatorDeploy)
-
-	// Wait for the Ingress to get both upgrade annotations after upgrade.
-	g.Eventually(k.Get(mt.ingress)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(And(
-		jq.Match(`.metadata.annotations."%s" != ""`, mymodule.AnnotationManagedVersion),
-		jq.Match(`.metadata.annotations."%s" != ""`, mymodule.AnnotationUpgradedFrom),
-	))
-}
-
-func (mt *myModuleE2ETest) testUpgradeFaultInjection(t *testing.T) {
-	g := NewWithT(t)
-
-	// Record the current platform version from module status.
-	g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(mt.module), mt.module)).To(Succeed())
-	platformVersionBefore := mt.module.Status.Module.Platform.Version.String()
-
-	// Add the fault injection annotation to the Ingress.
-	g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(mt.ingress), mt.ingress)).To(Succeed())
-
-	ingressPatch := client.MergeFrom(mt.ingress.DeepCopy())
-	if mt.ingress.Annotations == nil {
-		mt.ingress.Annotations = map[string]string{}
-	}
-	mt.ingress.Annotations[mymodule.AnnotationInjectUpgradeFault] = "true"
-	g.Expect(k8sClient.Patch(ctx, mt.ingress, ingressPatch)).To(Succeed())
-
-	// Bump platform version in ConfigMap and restart the operator.
-	g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(mt.operatorCfgMap), mt.operatorCfgMap)).To(Succeed())
-
-	cfgPatch := client.MergeFrom(mt.operatorCfgMap.DeepCopy())
-	mt.operatorCfgMap.Data[moduleconfig.KeyPlatformVersion] = "2.0.0"
-	g.Expect(k8sClient.Patch(ctx, mt.operatorCfgMap, cfgPatch)).To(Succeed())
-
-	// Delete operator pod to restart with new config.
-	pods := &corev1.PodList{}
-	g.Expect(k8sClient.List(ctx, pods,
-		client.InNamespace(operatorNamespace),
-		client.MatchingLabels{"app.kubernetes.io/name": "opendatahub-mymodule-operator"},
-	)).To(Succeed())
-
-	for i := range pods.Items {
-		g.Expect(k8sClient.Delete(ctx, &pods.Items[i])).To(Succeed())
-	}
-
-	// Wait for the operator to restart.
-	eventuallyDeploymentReady(t, mt.operatorDeploy)
-
-	// The upgrade should fail because of the fault annotation. The platform
-	// version in status should remain unchanged.
-	g.Consistently(k.Get(mt.module)).WithContext(ctx).WithTimeout(10 * time.Second).WithPolling(interval).Should(
-		jq.Match(`.status.module.platform.version == "%s"`, platformVersionBefore),
-	)
-
-	// Clean up: remove the fault annotation.
-	g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(mt.ingress), mt.ingress)).To(Succeed())
-
-	cleanPatch := client.MergeFrom(mt.ingress.DeepCopy())
-	ann := mt.ingress.GetAnnotations()
-	delete(ann, mymodule.AnnotationInjectUpgradeFault)
-	mt.ingress.SetAnnotations(ann)
-	g.Expect(k8sClient.Patch(ctx, mt.ingress, cleanPatch)).To(Succeed())
-
-	// After removing the fault, the upgrade should succeed and platform version
-	// should update to 2.0.0.
-	g.Eventually(k.Get(mt.module)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(
-		jq.Match(`.status.module.platform.version == "2.0.0"`),
-	)
+	t.Run("foundation", foundation.Execute)
 }
 
 func waitForDeleted(t *testing.T, obj client.Object) {

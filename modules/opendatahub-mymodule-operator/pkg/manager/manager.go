@@ -37,8 +37,8 @@ import (
 
 	componentsv1alpha1 "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-mymodule-operator/api/components/v1alpha1"
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-mymodule-operator/internal/controller/mymodule"
-	libcache "github.com/opendatahub-io/odh-platform-utilities/pkg/cache"
 	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-mymodule-operator/pkg/config"
+	libcache "github.com/opendatahub-io/odh-platform-utilities/pkg/cache"
 	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/cluster"
 	odhmanager "github.com/opendatahub-io/opendatahub-operator/v2/pkg/manager"
 	odhLabels "github.com/opendatahub-io/opendatahub-operator/v2/pkg/metadata/labels"
@@ -103,7 +103,15 @@ func New(
 			},
 			ByObject: map[client.Object]cache.ByObject{
 				&componentsv1alpha1.MyModule{}: {Label: k8slabels.Everything()},
-				&networkingv1.Ingress{}:        {Label: k8slabels.Everything()},
+				// Ingress is an external dependency, so it must stay visible even
+				// before the controller has had a chance to label managed resources.
+				&networkingv1.Ingress{}: {
+					Namespaces: map[string]cache.Config{
+						cfg.ApplicationsNamespace: {
+							LabelSelector: k8slabels.Everything(),
+						},
+					},
+				},
 			},
 			ReaderFailOnMissingInformer: true,
 		},

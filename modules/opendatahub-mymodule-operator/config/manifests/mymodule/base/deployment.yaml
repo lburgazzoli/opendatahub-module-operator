@@ -16,9 +16,9 @@ spec:
     spec:
       containers:
       - name: nginx
-        image: nginx:stable-alpine
+        image: nginxinc/nginx-unprivileged:stable-alpine
         ports:
-        - containerPort: 80
+        - containerPort: 8080
         resources:
           limits:
             cpu: 100m

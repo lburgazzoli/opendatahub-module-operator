@@ -170,6 +170,10 @@ func (m *Module) upgrade(ctx context.Context, prev componentApi.ModuleStatus, rr
 	}
 
 	if err := rr.Client.Get(ctx, key, existing); err != nil {
+		if k8serr.IsNotFound(err) {
+			return nil
+		}
+
 		return fmt.Errorf("checking ingress for upgrade: %w", err)
 	}
 

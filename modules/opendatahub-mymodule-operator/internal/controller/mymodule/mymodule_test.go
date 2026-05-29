@@ -17,7 +17,6 @@ limitations under the License.
 package mymodule
 
 import (
-	"context"
 	"testing"
 
 	. "github.com/onsi/gomega"
@@ -149,7 +148,7 @@ func TestInitialize(t *testing.T) {
 	obj := newTestMyModule()
 	rr := newTestRR(obj)
 
-	g.Expect(m.initialize(context.Background(), rr)).To(Succeed())
+	g.Expect(m.initialize(t.Context(), rr)).To(Succeed())
 	g.Expect(rr.Manifests).To(HaveLen(1))
 	g.Expect(rr.Manifests[0].Path).To(Equal("/manifests"))
 	g.Expect(rr.Manifests[0].ContextDir).To(Equal(componentName))
@@ -163,7 +162,7 @@ func TestInitializeRHOAI(t *testing.T) {
 	obj := newTestMyModule()
 	rr := newTestRR(obj)
 
-	g.Expect(m.initialize(context.Background(), rr)).To(Succeed())
+	g.Expect(m.initialize(t.Context(), rr)).To(Succeed())
 	g.Expect(rr.Manifests).To(HaveLen(1))
 	g.Expect(rr.Manifests[0].SourcePath).To(Equal(overlayRhoai))
 }
@@ -175,7 +174,7 @@ func TestInitializeUnknownPlatformFallsBackToODH(t *testing.T) {
 	obj := newTestMyModule()
 	rr := newTestRR(obj)
 
-	g.Expect(m.initialize(context.Background(), rr)).To(Succeed())
+	g.Expect(m.initialize(t.Context(), rr)).To(Succeed())
 	g.Expect(rr.Manifests).To(HaveLen(1))
 	g.Expect(rr.Manifests[0].SourcePath).To(Equal(overlayODH))
 }
@@ -190,11 +189,11 @@ func TestUpgradeIfNeededFreshInstall(t *testing.T) {
 	rr := newTestRRWithClient(obj, cl)
 
 	// Fresh install: status version is zero, upgrade skipped.
-	g.Expect(m.upgradeIfNeeded(context.Background(), rr)).To(Succeed())
+	g.Expect(m.upgradeIfNeeded(t.Context(), rr)).To(Succeed())
 
 	// Ingress must not have upgrade annotations.
 	got := &networkingv1.Ingress{}
-	g.Expect(cl.Get(context.Background(), client.ObjectKeyFromObject(ingress), got)).To(Succeed())
+	g.Expect(cl.Get(t.Context(), client.ObjectKeyFromObject(ingress), got)).To(Succeed())
 	g.Expect(got.Annotations).NotTo(HaveKey(AnnotationManagedVersion))
 	g.Expect(got.Annotations).NotTo(HaveKey(AnnotationUpgradedFrom))
 }
@@ -215,11 +214,11 @@ func TestUpgradeIfNeededSameVersion(t *testing.T) {
 	rr := newTestRRWithClient(obj, cl)
 
 	// Same version: no upgrade.
-	g.Expect(m.upgradeIfNeeded(context.Background(), rr)).To(Succeed())
+	g.Expect(m.upgradeIfNeeded(t.Context(), rr)).To(Succeed())
 
 	// Ingress must not have upgrade annotations.
 	got := &networkingv1.Ingress{}
-	g.Expect(cl.Get(context.Background(), client.ObjectKeyFromObject(ingress), got)).To(Succeed())
+	g.Expect(cl.Get(t.Context(), client.ObjectKeyFromObject(ingress), got)).To(Succeed())
 	g.Expect(got.Annotations).NotTo(HaveKey(AnnotationManagedVersion))
 	g.Expect(got.Annotations).NotTo(HaveKey(AnnotationUpgradedFrom))
 }
@@ -245,12 +244,12 @@ func TestUpgradeIfNeededPlatformVersionChange(t *testing.T) {
 	rr := newTestRRWithClient(obj, cl)
 
 	// Platform version advanced: upgrade runs.
-	g.Expect(m.upgradeIfNeeded(context.Background(), rr)).To(Succeed())
+	g.Expect(m.upgradeIfNeeded(t.Context(), rr)).To(Succeed())
 
 	// Ingress must have both upgrade annotations.
 	// upgraded-from records the previous module version, not the platform version.
 	got := &networkingv1.Ingress{}
-	g.Expect(cl.Get(context.Background(), client.ObjectKeyFromObject(ingress), got)).To(Succeed())
+	g.Expect(cl.Get(t.Context(), client.ObjectKeyFromObject(ingress), got)).To(Succeed())
 	g.Expect(got.Annotations).To(HaveKeyWithValue(AnnotationManagedVersion, version.Version))
 	g.Expect(got.Annotations).To(HaveKeyWithValue(AnnotationUpgradedFrom, version.Version))
 }
@@ -272,11 +271,11 @@ func TestUpgradeIfNeededVersionAdvance(t *testing.T) {
 	rr := newTestRRWithClient(obj, cl)
 
 	// Version advanced: upgrade runs.
-	g.Expect(m.upgradeIfNeeded(context.Background(), rr)).To(Succeed())
+	g.Expect(m.upgradeIfNeeded(t.Context(), rr)).To(Succeed())
 
 	// Ingress must have both upgrade annotations.
 	got := &networkingv1.Ingress{}
-	g.Expect(cl.Get(context.Background(), client.ObjectKeyFromObject(ingress), got)).To(Succeed())
+	g.Expect(cl.Get(t.Context(), client.ObjectKeyFromObject(ingress), got)).To(Succeed())
 	g.Expect(got.Annotations).To(HaveKeyWithValue(AnnotationManagedVersion, testVersionNew))
 	g.Expect(got.Annotations).To(HaveKeyWithValue(AnnotationUpgradedFrom, testVersionOld))
 }
@@ -297,9 +296,7 @@ func TestUpgradeIngressNotFound(t *testing.T) {
 	cl := fake.NewClientBuilder().WithScheme(newTestScheme(t)).Build()
 	rr := newTestRRWithClient(obj, cl)
 
-	err := m.upgradeIfNeeded(context.Background(), rr)
-	g.Expect(err).To(HaveOccurred())
-	g.Expect(err.Error()).To(ContainSubstring("checking ingress for upgrade"))
+	g.Expect(m.upgradeIfNeeded(t.Context(), rr)).To(Succeed())
 }
 
 func TestUpgradeFaultInjection(t *testing.T) {
@@ -322,7 +319,7 @@ func TestUpgradeFaultInjection(t *testing.T) {
 	cl := fake.NewClientBuilder().WithScheme(newTestScheme(t)).WithObjects(ingress).Build()
 	rr := newTestRRWithClient(obj, cl)
 
-	err := m.upgradeIfNeeded(context.Background(), rr)
+	err := m.upgradeIfNeeded(t.Context(), rr)
 	g.Expect(err).To(HaveOccurred())
 	g.Expect(err.Error()).To(ContainSubstring("upgrade fault injected"))
 }
@@ -335,9 +332,9 @@ func TestReportStatus(t *testing.T) {
 	rr := newTestRR(obj)
 
 	// Populate manifests as initialize would.
-	g.Expect(m.initialize(context.Background(), rr)).To(Succeed())
+	g.Expect(m.initialize(t.Context(), rr)).To(Succeed())
 
-	g.Expect(m.reportStatus(context.Background(), rr)).To(Succeed())
+	g.Expect(m.reportStatus(t.Context(), rr)).To(Succeed())
 
 	g.Expect(obj.Status.Module.Version.String()).To(Equal(version.Version))
 	g.Expect(obj.Status.Module.Platform.Name).To(Equal(string(cluster.OpenDataHub)))

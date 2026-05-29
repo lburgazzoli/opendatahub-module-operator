@@ -51,11 +51,9 @@ import (
 	componentsv1alpha1 "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-mymodule-operator/api/components/v1alpha1"
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-mymodule-operator/internal/controller/mymodule"
 	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-mymodule-operator/pkg/config"
-	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-mymodule-operator/pkg/version"
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-mymodule-operator/test/support"
 	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/cluster"
 	odhmanager "github.com/opendatahub-io/opendatahub-operator/v2/pkg/manager"
-	"github.com/opendatahub-io/operator-actions-framework/resources"
 )
 
 const (
@@ -230,7 +228,7 @@ type myModuleTest struct {
 }
 
 func TestMyModule(t *testing.T) {
-	mt := &myModuleTest{
+	suite := &myModuleTest{
 		module: &componentsv1alpha1.MyModule{
 			ObjectMeta: metav1.ObjectMeta{
 				Name: componentsv1alpha1.MyModuleInstanceName,
@@ -266,69 +264,20 @@ func TestMyModule(t *testing.T) {
 			},
 		},
 	}
+	foundation := &foundationTests{myModuleTest: suite}
 
 	// Clean up any leftover singleton objects from a previous run.
-	_ = k8sClient.Delete(ctx, mt.module)
-	_ = k8sClient.Delete(ctx, mt.ingress)
-	waitForSingletonDeleted(t, mt.module)
-	waitForSingletonDeleted(t, mt.ingress)
+	_ = k8sClient.Delete(ctx, suite.module)
+	_ = k8sClient.Delete(ctx, suite.ingress)
+	waitForSingletonDeleted(t, suite.module)
+	waitForSingletonDeleted(t, suite.ingress)
 
 	t.Cleanup(func() {
-		_ = k8sClient.Delete(ctx, mt.module)
-		_ = k8sClient.Delete(ctx, mt.ingress)
+		_ = k8sClient.Delete(ctx, suite.module)
+		_ = k8sClient.Delete(ctx, suite.ingress)
 	})
 
-	t.Run("should have module CRD installed", mt.testModuleCRDInstalled)
-	t.Run("should block when Ingress is missing", mt.testIngressBlocks)
-	t.Run("should recover when Ingress is created", mt.testIngressRecovers)
-	t.Run("should expose config values", mt.testConfigValues)
-	t.Run("should report module version and platform", mt.testModuleStatus)
-	t.Run("should set platform labels and annotations", mt.testPlatformLabels)
-	t.Run("should set owner references", mt.testOwnerReferences)
-	t.Run("should not annotate ingress on fresh install", mt.testUpgradeAnnotationAbsentOnFreshInstall)
-	t.Run("should annotate ingress on upgrade", mt.testUpgradeAnnotatesIngress)
-	t.Run("should not update version on upgrade fault", mt.testUpgradeFaultInjection)
-}
-
-func (mt *myModuleTest) testModuleCRDInstalled(t *testing.T) {
-	g := NewWithT(t)
-
-	g.Eventually(k.Get(mt.moduleCRD)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(
-		jq.Match(`.metadata.name == "%s"`, moduleCRDName),
-	)
-}
-
-func (mt *myModuleTest) testIngressBlocks(t *testing.T) {
-	g := NewWithT(t)
-
-	_ = k8sClient.Delete(ctx, mt.module)
-	_ = k8sClient.Delete(ctx, mt.ingress)
-
-	mt.module.ResourceVersion = ""
-	g.Expect(k8sClient.Create(ctx, mt.module)).To(Succeed())
-
-	g.Eventually(k.Get(mt.module)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(And(
-		jq.Match(`.status.phase == "Not Ready"`),
-		jq.Match(`[(.status.conditions // [])[] | select(.type == "%s" and .status == "False")] | length > 0`,
-			mymodule.ConditionIngressAvailable),
-	))
-}
-
-func (mt *myModuleTest) testIngressRecovers(t *testing.T) {
-	g := NewWithT(t)
-
-	mt.ingress.ResourceVersion = ""
-	g.Expect(k8sClient.Create(ctx, mt.ingress)).To(Succeed())
-
-	g.Eventually(k.Get(mt.module)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(And(
-		jq.Match(`.status.phase == "Ready"`),
-		jq.Match(`.status.conditions[] | select(.type == "Ready") | .status == "True"`),
-		jq.Match(`.status.conditions[] | select(.type == "%s") | .status == "True"`,
-			mymodule.ConditionIngressAvailable),
-		jq.Match(`.status.conditions[] | select(.type == "ProvisioningSucceeded") | .status == "True"`),
-	))
-
-	eventuallyDeploymentReady(t, mt.workloadDeploy)
+	t.Run("foundation", foundation.Execute)
 }
 
 func waitForDeleted(t *testing.T, obj client.Object) {
@@ -359,162 +308,3 @@ func eventuallyDeploymentReady(t *testing.T, deploy *appsv1.Deployment) {
 	)
 }
 
-func (mt *myModuleTest) testConfigValues(t *testing.T) {
-	g := NewWithT(t)
-
-	g.Eventually(k.Get(mt.module)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(And(
-		jq.Match(`.status.configValues."%s" == "%s"`,
-			moduleconfig.KeyPlatformType,
-			operatorCfgData[moduleconfig.KeyPlatformType]),
-		jq.Match(`.status.configValues."%s" == "%s"`,
-			moduleconfig.KeyPlatformVersion,
-			operatorCfgData[moduleconfig.KeyPlatformVersion]),
-	))
-}
-
-func (mt *myModuleTest) testModuleStatus(t *testing.T) {
-	g := NewWithT(t)
-
-	g.Eventually(k.Get(mt.module)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(And(
-		jq.Match(`.status.module.version == "%s"`, version.Version),
-		jq.Match(`.status.module.buildSource == "%s"`,
-			version.BuildSource()),
-		jq.Match(`.status.module.platform.name == "%s"`,
-			operatorCfgData[moduleconfig.KeyPlatformType]),
-		jq.Match(`.status.module.platform.version == "%s"`,
-			operatorReleaseVersion),
-		jq.Match(`.status.module.sources | length > 0`),
-		jq.Match(`.status.module.sources[0].path != ""`),
-		jq.Match(`.status.module.sources[0].renderer == "kustomize"`),
-	))
-}
-
-func (mt *myModuleTest) testPlatformLabels(t *testing.T) {
-	g := NewWithT(t)
-
-	g.Eventually(k.Get(mt.workloadDeploy)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(And(
-		jq.Match(`.metadata.labels."%s" == "mymodule"`, labelPartOf),
-		jq.Match(`.metadata.annotations."%s" == "%s"`,
-			annotationInstanceName,
-			mt.module.GetName()),
-		jq.Match(`.metadata.annotations."%s" == "%s"`,
-			annotationInstanceUID,
-			string(mt.module.GetUID())),
-		jq.Match(`.metadata.annotations."%s" == "%s"`,
-			annotationType,
-			operatorCfgData[moduleconfig.KeyPlatformType]),
-		jq.Match(`.metadata.annotations."%s" == "%s"`,
-			annotationVersion,
-			operatorReleaseVersion),
-	))
-
-	g.Eventually(k.Get(mt.workloadService)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(And(
-		jq.Match(`.metadata.labels."%s" == "mymodule"`, labelPartOf),
-		jq.Match(`.metadata.annotations."%s" == "%s"`,
-			annotationType,
-			operatorCfgData[moduleconfig.KeyPlatformType]),
-		jq.Match(`.metadata.annotations."%s" == "%s"`,
-			annotationVersion,
-			operatorReleaseVersion),
-	))
-}
-
-func (mt *myModuleTest) testOwnerReferences(t *testing.T) {
-	g := NewWithT(t)
-
-	g.Eventually(k.Get(mt.workloadDeploy)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(
-		jq.Match(`.metadata.ownerReferences[] | select(.kind == "MyModule") | .name == "%s"`,
-			componentsv1alpha1.MyModuleInstanceName),
-	)
-
-	g.Eventually(k.Get(mt.workloadService)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(
-		jq.Match(`.metadata.ownerReferences[] | select(.kind == "MyModule") | .name == "%s"`,
-			componentsv1alpha1.MyModuleInstanceName),
-	)
-}
-
-func (mt *myModuleTest) testUpgradeAnnotationAbsentOnFreshInstall(t *testing.T) {
-	g := NewWithT(t)
-
-	g.Eventually(k.Get(mt.ingress)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(And(
-		jq.Match(`.metadata.annotations // {} | has("%s") | not`, mymodule.AnnotationManagedVersion),
-		jq.Match(`.metadata.annotations // {} | has("%s") | not`, mymodule.AnnotationUpgradedFrom),
-	))
-}
-
-func (mt *myModuleTest) testUpgradeAnnotatesIngress(t *testing.T) {
-	g := NewWithT(t)
-
-	// Re-read the module to get the latest resourceVersion.
-	g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(mt.module), mt.module)).To(Succeed())
-
-	// Patch the module status to simulate a previous lower version.
-	patch := client.MergeFrom(mt.module.DeepCopy())
-	mt.module.Status.Module.Version = "0.0.0-0"
-	g.Expect(k8sClient.Status().Patch(ctx, mt.module, patch)).To(Succeed())
-
-	// Re-read after status patch changed resourceVersion, then trigger reconcile
-	// by touching an annotation.
-	g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(mt.module), mt.module)).To(Succeed())
-
-	annPatch := client.MergeFrom(mt.module.DeepCopy())
-	resources.SetAnnotation(mt.module, "test-trigger", time.Now().String())
-	g.Expect(k8sClient.Patch(ctx, mt.module, annPatch)).To(Succeed())
-
-	// Wait for the Ingress to get both upgrade annotations.
-	g.Eventually(k.Get(mt.ingress)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(And(
-		jq.Match(`.metadata.annotations."%s" != ""`, mymodule.AnnotationManagedVersion),
-		jq.Match(`.metadata.annotations."%s" == "0.0.0-0"`, mymodule.AnnotationUpgradedFrom),
-	))
-}
-
-func (mt *myModuleTest) testUpgradeFaultInjection(t *testing.T) {
-	g := NewWithT(t)
-
-	// Record the current module version from status before injecting the fault.
-	g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(mt.module), mt.module)).To(Succeed())
-	versionBefore := mt.module.Status.Module.Version.String()
-
-	// Add the fault injection annotation to the Ingress.
-	g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(mt.ingress), mt.ingress)).To(Succeed())
-
-	ingressPatch := client.MergeFrom(mt.ingress.DeepCopy())
-	resources.SetAnnotation(mt.ingress, mymodule.AnnotationInjectUpgradeFault, "true")
-	g.Expect(k8sClient.Patch(ctx, mt.ingress, ingressPatch)).To(Succeed())
-
-	// Patch the module status to simulate a lower version, triggering upgrade.
-	g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(mt.module), mt.module)).To(Succeed())
-
-	statusPatch := client.MergeFrom(mt.module.DeepCopy())
-	mt.module.Status.Module.Version = "0.0.0-0"
-	g.Expect(k8sClient.Status().Patch(ctx, mt.module, statusPatch)).To(Succeed())
-
-	// Trigger a reconcile.
-	g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(mt.module), mt.module)).To(Succeed())
-
-	annPatch := client.MergeFrom(mt.module.DeepCopy())
-	resources.SetAnnotation(mt.module, "test-trigger", time.Now().String())
-	g.Expect(k8sClient.Patch(ctx, mt.module, annPatch)).To(Succeed())
-
-	// Give the controller time to attempt the upgrade. The upgrade will
-	// fail because of the fault annotation, so the status version should
-	// remain at "0.0.1" (the patched value) rather than being updated
-	// to the current operator version.
-	g.Consistently(k.Get(mt.module)).WithContext(ctx).WithTimeout(10 * time.Second).WithPolling(interval).Should(
-		jq.Match(`.status.module.version == "0.0.0-0"`),
-	)
-
-	// Clean up: remove the fault annotation so subsequent tests are not affected.
-	g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(mt.ingress), mt.ingress)).To(Succeed())
-
-	cleanPatch := client.MergeFrom(mt.ingress.DeepCopy())
-	ann := mt.ingress.GetAnnotations()
-	delete(ann, mymodule.AnnotationInjectUpgradeFault)
-	mt.ingress.SetAnnotations(ann)
-	g.Expect(k8sClient.Patch(ctx, mt.ingress, cleanPatch)).To(Succeed())
-
-	// After removing the fault, the upgrade should succeed and version should update.
-	g.Eventually(k.Get(mt.module)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(
-		jq.Match(`.status.module.version == "%s"`, versionBefore),
-	)
-}
