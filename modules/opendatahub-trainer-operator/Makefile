@@ -69,28 +69,41 @@ test: manifests generate fmt vet ## Run unit tests.
 test-integration-run: ## Run integration tests only (cluster must be prepared).
 	INTEGRATION_TEST_NAMESPACE="$(INTEGRATION_TEST_NAMESPACE)" go test -ldflags "$(LDFLAGS)" ./test/integration/ -tags=integration -v -timeout 5m -failfast
 
-.PHONY: prepare-integration
-prepare-integration: manifests generate ## Clean cluster state and install CRDs for integration tests.
+.PHONY: test-integration-setup
+test-integration-setup: manifests generate ## Prepare the cluster for integration tests.
 	$(MAKE) cleanup-integration
 	$(MAKE) install
 
+.PHONY: prepare-integration
+prepare-integration: test-integration-setup ## Alias for test-integration-setup.
+
 .PHONY: test-integration
-test-integration: prepare-integration test-integration-run ## Run integration tests (assumes cluster is available, starts in-process manager).
+test-integration: test-integration-setup test-integration-run ## Run integration tests (prepare cluster, then run tests).
 
 .PHONY: test-e2e-run
 test-e2e-run: ## Run e2e tests only (operator must already be deployed).
 	OPERATOR_NAMESPACE="$(OPERATOR_NAMESPACE)" go test -ldflags "$(LDFLAGS)" ./test/e2e/ -tags=e2e -v -timeout 5m -failfast
 
-.PHONY: test-e2e
-test-e2e: cleanup-e2e deploy-helm test-e2e-run ## Run e2e tests (cleans cluster, deploys operator, then tests).
+.PHONY: test-e2e-setup
+test-e2e-setup: ## Prepare the cluster for e2e tests.
+	@:
 
-.PHONY: cleanup-integration
-cleanup-integration: ## Clean up integration test resources from the cluster.
+.PHONY: test-e2e
+test-e2e: test-e2e-cleanup test-e2e-setup deploy-helm test-e2e-run ## Run e2e tests (clean, prepare, deploy, then run).
+
+.PHONY: test-integration-cleanup
+test-integration-cleanup: ## Clean up integration test resources from the cluster.
 	./hack/scripts/cleanup-integration.sh "$(INTEGRATION_TEST_NAMESPACE)"
 
-.PHONY: cleanup-e2e
-cleanup-e2e: ## Clean up e2e test resources and uninstall operator from the cluster.
+.PHONY: cleanup-integration
+cleanup-integration: test-integration-cleanup ## Alias for test-integration-cleanup.
+
+.PHONY: test-e2e-cleanup
+test-e2e-cleanup: ## Clean up e2e test resources and uninstall operator from the cluster.
 	./hack/scripts/cleanup-e2e.sh "$(OPERATOR_NAMESPACE)" "$(HELM_RELEASE)"
+
+.PHONY: cleanup-e2e
+cleanup-e2e: test-e2e-cleanup ## Alias for test-e2e-cleanup.
 
 .PHONY: lint
 lint: ## Run golangci-lint linter.

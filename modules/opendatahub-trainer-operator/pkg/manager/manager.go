@@ -39,9 +39,9 @@ import (
 
 	componentsv1alpha1 "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-trainer-operator/api/components/v1alpha1"
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-trainer-operator/internal/controller/trainer"
-	libcache "github.com/opendatahub-io/odh-platform-utilities/pkg/cache"
 	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-trainer-operator/pkg/config"
 	modulegvk "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-trainer-operator/pkg/resources/gvk"
+	libcache "github.com/opendatahub-io/odh-platform-utilities/pkg/cache"
 	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/cluster"
 	odhmanager "github.com/opendatahub-io/opendatahub-operator/v2/pkg/manager"
 	odhLabels "github.com/opendatahub-io/opendatahub-operator/v2/pkg/metadata/labels"
@@ -112,7 +112,6 @@ func New(
 			ByObject: map[client.Object]cache.ByObject{
 				&componentsv1alpha1.Trainer{}:               {Label: k8slabels.Everything()},
 				&apiextensionsv1.CustomResourceDefinition{}: {Label: k8slabels.Everything()},
-				resources.GvkToUnstructured(modulegvk.JobSetOperatorV1): {Label: k8slabels.Everything()},
 			},
 			ReaderFailOnMissingInformer: true,
 		},
@@ -122,6 +121,7 @@ func New(
 				DisableFor: []client.Object{
 					&corev1.ConfigMap{},
 					&corev1.Secret{},
+					resources.GvkToUnstructured(modulegvk.JobSetOperatorV1),
 					resources.GvkToUnstructured(modulegvk.ClusterTrainingRuntime),
 				},
 			},
