@@ -38,9 +38,9 @@ import (
 
 	componentsv1alpha1 "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-mlflow-operator/api/components/v1alpha1"
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-mlflow-operator/internal/controller/mlflowoperator"
-	libcache "github.com/opendatahub-io/odh-platform-utilities/pkg/cache"
 	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-mlflow-operator/pkg/config"
 	modulegvk "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-mlflow-operator/pkg/resources/gvk"
+	libcache "github.com/opendatahub-io/odh-platform-utilities/pkg/cache"
 	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/cluster"
 	odhmanager "github.com/opendatahub-io/opendatahub-operator/v2/pkg/manager"
 	odhLabels "github.com/opendatahub-io/opendatahub-operator/v2/pkg/metadata/labels"
@@ -110,8 +110,7 @@ func New(
 			ByObject: map[client.Object]cache.ByObject{
 				&componentsv1alpha1.MLflowOperator{}:        {Label: k8slabels.Everything()},
 				&apiextensionsv1.CustomResourceDefinition{}: {Label: k8slabels.Everything()},
-				&gwapiv1.HTTPRoute{}:                                    {Label: k8slabels.Everything()},
-				resources.GvkToUnstructured(modulegvk.GatewayConfig):    {Label: k8slabels.Everything()},
+				&gwapiv1.HTTPRoute{}:                        {Label: k8slabels.Everything()},
 			},
 			ReaderFailOnMissingInformer: true,
 		},
@@ -121,6 +120,7 @@ func New(
 				DisableFor: []client.Object{
 					&corev1.ConfigMap{},
 					&corev1.Secret{},
+					resources.GvkToUnstructured(modulegvk.GatewayConfig),
 				},
 			},
 		},

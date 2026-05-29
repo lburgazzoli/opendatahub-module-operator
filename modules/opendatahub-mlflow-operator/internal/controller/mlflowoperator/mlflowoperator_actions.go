@@ -37,11 +37,11 @@ var errGatewayDomainEmpty = fmt.Errorf("GatewayConfig.Status.Domain is empty")
 
 // getGatewayDomain reads the gateway domain from the GatewayConfig singleton CR using
 // an unstructured client so no OpenShift service API import is needed.
-func getGatewayDomain(ctx context.Context, cli client.Client) (string, error) {
+func getGatewayDomain(ctx context.Context, reader client.Reader) (string, error) {
 	obj := &unstructured.Unstructured{}
 	obj.SetGroupVersionKind(gvk.GatewayConfig)
 
-	if err := cli.Get(ctx, client.ObjectKey{Name: "default-gateway"}, obj); err != nil {
+	if err := reader.Get(ctx, client.ObjectKey{Name: "default-gateway"}, obj); err != nil {
 		return "", err
 	}
 

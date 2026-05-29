@@ -21,13 +21,162 @@ import (
 	"testing"
 
 	. "github.com/onsi/gomega"
+	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	componentApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-mlflow-operator/api/components/v1alpha1"
 	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-mlflow-operator/pkg/config"
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-mlflow-operator/pkg/version"
 	odhtypes "github.com/opendatahub-io/opendatahub-operator/v2/pkg/controller/types"
 )
+
+type staticErrReader struct {
+	err error
+}
+
+type staticErrSubResourceClient struct {
+	err error
+}
+
+type staticErrClient struct {
+	staticErrReader
+}
+
+func (r staticErrReader) Get(
+	_ context.Context,
+	_ client.ObjectKey,
+	_ client.Object,
+	_ ...client.GetOption,
+) error {
+	return r.err
+}
+
+func (r staticErrReader) List(
+	_ context.Context,
+	_ client.ObjectList,
+	_ ...client.ListOption,
+) error {
+	return r.err
+}
+
+func (c staticErrSubResourceClient) Get(
+	_ context.Context,
+	_ client.Object,
+	_ client.Object,
+	_ ...client.SubResourceGetOption,
+) error {
+	return c.err
+}
+
+func (c staticErrSubResourceClient) Create(
+	_ context.Context,
+	_ client.Object,
+	_ client.Object,
+	_ ...client.SubResourceCreateOption,
+) error {
+	return c.err
+}
+
+func (c staticErrSubResourceClient) Update(
+	_ context.Context,
+	_ client.Object,
+	_ ...client.SubResourceUpdateOption,
+) error {
+	return c.err
+}
+
+func (c staticErrSubResourceClient) Patch(
+	_ context.Context,
+	_ client.Object,
+	_ client.Patch,
+	_ ...client.SubResourcePatchOption,
+) error {
+	return c.err
+}
+
+func (c staticErrSubResourceClient) Apply(
+	_ context.Context,
+	_ runtime.ApplyConfiguration,
+	_ ...client.SubResourceApplyOption,
+) error {
+	return c.err
+}
+
+func (c staticErrClient) Apply(
+	_ context.Context,
+	_ runtime.ApplyConfiguration,
+	_ ...client.ApplyOption,
+) error {
+	return c.err
+}
+
+func (c staticErrClient) Create(
+	_ context.Context,
+	_ client.Object,
+	_ ...client.CreateOption,
+) error {
+	return c.err
+}
+
+func (c staticErrClient) Delete(
+	_ context.Context,
+	_ client.Object,
+	_ ...client.DeleteOption,
+) error {
+	return c.err
+}
+
+func (c staticErrClient) Update(
+	_ context.Context,
+	_ client.Object,
+	_ ...client.UpdateOption,
+) error {
+	return c.err
+}
+
+func (c staticErrClient) Patch(
+	_ context.Context,
+	_ client.Object,
+	_ client.Patch,
+	_ ...client.PatchOption,
+) error {
+	return c.err
+}
+
+func (c staticErrClient) DeleteAllOf(
+	_ context.Context,
+	_ client.Object,
+	_ ...client.DeleteAllOfOption,
+) error {
+	return c.err
+}
+
+func (c staticErrClient) Status() client.SubResourceWriter {
+	return staticErrSubResourceClient{err: c.err}
+}
+
+func (c staticErrClient) SubResource(_ string) client.SubResourceClient {
+	return staticErrSubResourceClient{err: c.err}
+}
+
+func (c staticErrClient) Scheme() *runtime.Scheme {
+	return nil
+}
+
+func (c staticErrClient) RESTMapper() meta.RESTMapper {
+	return nil
+}
+
+func (c staticErrClient) GroupVersionKindFor(_ runtime.Object) (schema.GroupVersionKind, error) {
+	return schema.GroupVersionKind{}, c.err
+}
+
+func (c staticErrClient) IsObjectNamespaced(_ runtime.Object) (bool, error) {
+	return false, c.err
+}
 
 func newTestModule(t *testing.T) *Module {
 	t.Helper()
@@ -148,4 +297,23 @@ func TestReportStatus(t *testing.T) {
 	g.Expect(obj.Status.Module.Platform.Version.String()).To(Equal("1.0.0"))
 	g.Expect(obj.Status.Module.Sources).To(HaveLen(1))
 	g.Expect(obj.Status.Module.Sources[0].Renderer).To(Equal(componentApi.SourceRendererKustomize))
+}
+
+func TestSetKustomizedParamsIgnoresMissingGatewayConfigAPI(t *testing.T) {
+	g := NewWithT(t)
+
+	m := newTestModule(t)
+	rr := newTestRR(newTestMLflowOperator())
+	rr.Client = staticErrClient{
+		staticErrReader: staticErrReader{
+			err: &meta.NoResourceMatchError{
+				PartialResource: schema.GroupVersionResource{
+					Group:    "services.platform.opendatahub.io",
+					Version:  "v1alpha1",
+					Resource: "gatewayconfigs",
+				},
+			},
+		},
+	}
+	g.Expect(m.setKustomizedParams(context.Background(), rr)).To(Succeed())
 }
