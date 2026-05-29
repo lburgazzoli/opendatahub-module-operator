@@ -51,7 +51,6 @@ import (
 	componentsv1alpha1 "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-feast-operator/api/components/v1alpha1"
 	feastoperatorcontroller "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-feast-operator/internal/controller/feastoperator"
 	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-feast-operator/pkg/config"
-	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-feast-operator/pkg/version"
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-feast-operator/test/support"
 	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/cluster"
 	odhmanager "github.com/opendatahub-io/opendatahub-operator/v2/pkg/manager"
@@ -223,7 +222,7 @@ type feastTest struct {
 func TestFeastOperator(t *testing.T) {
 	testNamespace := support.IntegrationTestNamespace()
 
-	rt := &feastTest{
+	suite := &feastTest{
 		module: &componentsv1alpha1.FeastOperator{
 			ObjectMeta: metav1.ObjectMeta{
 				Name: componentsv1alpha1.FeastOperatorInstanceName,
@@ -239,43 +238,17 @@ func TestFeastOperator(t *testing.T) {
 			},
 		},
 	}
+	foundation := &foundationTests{feastTest: suite}
 
 	// Delete any leftover CR from a previous run before starting.
-	_ = k8sClient.Delete(ctx, rt.module)
-	waitForSingletonDeleted(t, rt.module)
+	_ = k8sClient.Delete(ctx, suite.module)
+	waitForSingletonDeleted(t, suite.module)
 
 	t.Cleanup(func() {
-		_ = k8sClient.Delete(ctx, rt.module)
+		_ = k8sClient.Delete(ctx, suite.module)
 	})
 
-	t.Run("should have module CRD installed", rt.testModuleCRDInstalled)
-	t.Run("should become ready", rt.testBecomesReady)
-	t.Run("should report module version and platform", rt.testModuleStatus)
-	t.Run("should set platform labels and annotations", rt.testPlatformLabels)
-	t.Run("should set owner references", rt.testOwnerReferences)
-}
-
-func (rt *feastTest) testModuleCRDInstalled(t *testing.T) {
-	g := NewWithT(t)
-
-	g.Eventually(k.Get(rt.moduleCRD)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(
-		jq.Match(`.metadata.name == "%s"`, moduleCRDName),
-	)
-}
-
-func (rt *feastTest) testBecomesReady(t *testing.T) {
-	g := NewWithT(t)
-
-	rt.module.ResourceVersion = ""
-	g.Expect(k8sClient.Create(ctx, rt.module)).To(Succeed())
-
-	g.Eventually(k.Get(rt.module)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(And(
-		jq.Match(`.status.phase == "Ready"`),
-		jq.Match(`.status.conditions[] | select(.type == "Ready") | .status == "True"`),
-		jq.Match(`.status.conditions[] | select(.type == "ProvisioningSucceeded") | .status == "True"`),
-	))
-
-	eventuallyDeploymentReady(t, rt.workloadDeploy)
+	t.Run("foundation", foundation.Execute)
 }
 
 func waitForDeleted(t *testing.T, obj client.Object) {
@@ -303,51 +276,5 @@ func eventuallyDeploymentReady(t *testing.T, deploy *appsv1.Deployment) {
 	g := NewWithT(t)
 	g.Eventually(k.Get(deploy)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(
 		jq.Match(`.status.readyReplicas >= 1`),
-	)
-}
-
-func (rt *feastTest) testModuleStatus(t *testing.T) {
-	g := NewWithT(t)
-
-	g.Eventually(k.Get(rt.module)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(And(
-		jq.Match(`.status.module.version == "%s"`, version.Version),
-		jq.Match(`.status.module.buildSource == "%s"`,
-			version.BuildSource()),
-		jq.Match(`.status.module.platform.name == "%s"`,
-			operatorCfgData[moduleconfig.KeyPlatformType]),
-		jq.Match(`.status.module.platform.version == "%s"`,
-			operatorReleaseVersion),
-		jq.Match(`.status.module.sources | length > 0`),
-		jq.Match(`.status.module.sources[0].path != ""`),
-		jq.Match(`.status.module.sources[0].renderer == "kustomize"`),
-	))
-}
-
-func (rt *feastTest) testPlatformLabels(t *testing.T) {
-	g := NewWithT(t)
-
-	g.Eventually(k.Get(rt.workloadDeploy)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(And(
-		jq.Match(`.metadata.labels."%s" == "feastoperator"`, labelPartOf),
-		jq.Match(`.metadata.annotations."%s" == "%s"`,
-			annotationInstanceName,
-			rt.module.GetName()),
-		jq.Match(`.metadata.annotations."%s" == "%s"`,
-			annotationInstanceUID,
-			string(rt.module.GetUID())),
-		jq.Match(`.metadata.annotations."%s" == "%s"`,
-			annotationType,
-			operatorCfgData[moduleconfig.KeyPlatformType]),
-		jq.Match(`.metadata.annotations."%s" == "%s"`,
-			annotationVersion,
-			operatorReleaseVersion),
-	))
-}
-
-func (rt *feastTest) testOwnerReferences(t *testing.T) {
-	g := NewWithT(t)
-
-	g.Eventually(k.Get(rt.workloadDeploy)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(
-		jq.Match(`.metadata.ownerReferences[] | select(.kind == "FeastOperator") | .name == "%s"`,
-			componentsv1alpha1.FeastOperatorInstanceName),
 	)
 }
