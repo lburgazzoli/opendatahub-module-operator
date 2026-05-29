@@ -30,11 +30,9 @@ import (
 	componentsv1alpha1 "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-datasciencepipelines-operator/api/components/v1alpha1"
 	dspcontroller "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-datasciencepipelines-operator/internal/controller/datasciencepipelines"
 	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-datasciencepipelines-operator/pkg/config"
-	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-datasciencepipelines-operator/pkg/version"
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-datasciencepipelines-operator/test/support"
 	. "github.com/onsi/gomega"
 	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/cluster"
-	operatorstatus "github.com/opendatahub-io/opendatahub-operator/v2/pkg/controller/status"
 	odhmanager "github.com/opendatahub-io/opendatahub-operator/v2/pkg/manager"
 	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/metadata/labels"
 	promv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
@@ -235,7 +233,7 @@ type dspIntegrationTest struct {
 func TestDataSciencePipelines(t *testing.T) {
 	testNamespace := support.IntegrationTestNamespace()
 
-	dt := &dspIntegrationTest{
+	suite := &dspIntegrationTest{
 		module: &componentsv1alpha1.DataSciencePipelines{
 			ObjectMeta: metav1.ObjectMeta{
 				Name: componentsv1alpha1.DataSciencePipelinesInstanceName,
@@ -263,17 +261,12 @@ func TestDataSciencePipelines(t *testing.T) {
 			},
 		},
 	}
+	foundation := &foundationTests{dspIntegrationTest: suite}
 
-	cleanupModule(t, dt.module)
-	t.Cleanup(func() { cleanupModule(t, dt.module) })
+	cleanupModule(t, suite.module)
+	t.Cleanup(func() { cleanupModule(t, suite.module) })
 
-	t.Run("should have module CRD installed", dt.testModuleCRDInstalled)
-	t.Run("should fail when workflows CRD is missing and Argo is removed", dt.testMissingArgoWorkflowCRD)
-	t.Run("should fail when workflows CRD is not ODH-owned", dt.testForeignOwnedArgoWorkflowCRD)
-	t.Run("should become ready when workflows CRD is ODH-owned", dt.testBecomesReady)
-	t.Run("should report module version and platform", dt.testModuleStatus)
-	t.Run("should set platform labels and annotations", dt.testPlatformLabels)
-	t.Run("should set owner references", dt.testOwnerReferences)
+	t.Run("foundation", foundation.Execute)
 }
 
 func cleanupModule(t *testing.T, module *componentsv1alpha1.DataSciencePipelines) {
@@ -415,134 +408,6 @@ func createModule(t *testing.T, module *componentsv1alpha1.DataSciencePipelines)
 	if err := k8sClient.Create(ctx, module); err != nil {
 		t.Fatalf("creating module: %v", err)
 	}
-}
-
-func (dt *dspIntegrationTest) testModuleCRDInstalled(t *testing.T) {
-	g := NewWithT(t)
-	g.Eventually(k.Get(dt.moduleCRD)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(
-		jq.Match(`.metadata.name == "%s"`, moduleCRDName),
-	)
-}
-
-func (dt *dspIntegrationTest) testMissingArgoWorkflowCRD(t *testing.T) {
-	ensureArgoWorkflowCRDMissing(t)
-
-	module := dt.module.DeepCopy()
-	module.Spec.ArgoWorkflowsControllers = &componentsv1alpha1.ArgoWorkflowsControllersSpec{
-		ManagementState: "Removed",
-	}
-	createModule(t, module)
-
-	g := NewWithT(t)
-	g.Eventually(k.Get(module)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(And(
-		jq.Match(`.status.conditions[]? | select(.type == "%s") | .status == "False"`,
-			operatorstatus.ConditionArgoWorkflowAvailable),
-		jq.Match(`.status.conditions[]? | select(.type == "%s") | .reason == "%s"`,
-			operatorstatus.ConditionArgoWorkflowAvailable,
-			operatorstatus.DataSciencePipelinesArgoWorkflowsCRDMissingReason),
-		jq.Match(`.status.conditions[]? | select(.type == "%s") | .status == "False"`,
-			operatorstatus.ConditionTypeReady),
-	))
-}
-
-func (dt *dspIntegrationTest) testForeignOwnedArgoWorkflowCRD(t *testing.T) {
-	ensureArgoWorkflowCRDForeignOwned(t)
-
-	module := dt.module.DeepCopy()
-	createModule(t, module)
-
-	g := NewWithT(t)
-	g.Eventually(k.Get(module)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(And(
-		jq.Match(`.status.conditions[]? | select(.type == "%s") | .status == "False"`,
-			operatorstatus.ConditionArgoWorkflowAvailable),
-		jq.Match(`.status.conditions[]? | select(.type == "%s") | .reason == "%s"`,
-			operatorstatus.ConditionArgoWorkflowAvailable,
-			operatorstatus.DataSciencePipelinesDoesntOwnArgoCRDReason),
-	))
-}
-
-func (dt *dspIntegrationTest) testBecomesReady(t *testing.T) {
-	ensureArgoWorkflowCRDOwnedByODH(t)
-
-	module := dt.module.DeepCopy()
-	createModule(t, module)
-
-	g := NewWithT(t)
-	g.Eventually(k.Get(module)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(And(
-		jq.Match(`.status.phase == "Ready"`),
-		jq.Match(`.status.conditions[]? | select(.type == "%s") | .status == "True"`,
-			operatorstatus.ConditionTypeReady),
-		jq.Match(`.status.conditions[]? | select(.type == "%s") | .status == "True"`,
-			operatorstatus.ConditionArgoWorkflowAvailable),
-		jq.Match(`.status.conditions[]? | select(.type == "%s") | .status == "True"`,
-			operatorstatus.ConditionTypeProvisioningSucceeded),
-	))
-
-	eventuallyDeploymentReady(t, dt.workloadDeploy)
-	g.Eventually(k.Get(dt.workloadConfigMap)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(
-		jq.Match(`.metadata.name == "%s"`, workloadConfigMapName),
-	)
-	g.Eventually(k.Get(dt.workloadServiceMon)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(
-		jq.Match(`.metadata.name == "%s"`, workloadServiceMonName),
-	)
-}
-
-func (dt *dspIntegrationTest) testModuleStatus(t *testing.T) {
-	ensureArgoWorkflowCRDOwnedByODH(t)
-
-	module := dt.module.DeepCopy()
-	createModule(t, module)
-
-	g := NewWithT(t)
-	g.Eventually(k.Get(module)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(And(
-		jq.Match(`.status.module.version == "%s"`, version.Version),
-		jq.Match(`.status.module.buildSource == "%s"`,
-			version.BuildSource()),
-		jq.Match(`.status.module.platform.name == "%s"`,
-			operatorCfgData[moduleconfig.KeyPlatformType]),
-		jq.Match(`.status.module.platform.version == "%s"`,
-			operatorReleaseVersion),
-		jq.Match(`.status.module.sources | length > 0`),
-		jq.Match(`.status.module.sources[0].path != ""`),
-		jq.Match(`.status.module.sources[0].renderer == "kustomize"`),
-	))
-}
-
-func (dt *dspIntegrationTest) testPlatformLabels(t *testing.T) {
-	ensureArgoWorkflowCRDOwnedByODH(t)
-
-	module := dt.module.DeepCopy()
-	createModule(t, module)
-
-	g := NewWithT(t)
-	g.Eventually(k.Get(dt.workloadDeploy)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(And(
-		jq.Match(`.metadata.labels."%s" == "%s"`, labelPartOf, componentsv1alpha1.DataSciencePipelinesComponentName),
-		jq.Match(`.metadata.annotations."%s" == "%s"`,
-			annotationInstanceName,
-			module.GetName()),
-		jq.Match(`.metadata.annotations."%s" == "%s"`,
-			annotationInstanceUID,
-			string(module.GetUID())),
-		jq.Match(`.metadata.annotations."%s" == "%s"`,
-			annotationType,
-			operatorCfgData[moduleconfig.KeyPlatformType]),
-		jq.Match(`.metadata.annotations."%s" == "%s"`,
-			annotationVersion,
-			operatorReleaseVersion),
-	))
-}
-
-func (dt *dspIntegrationTest) testOwnerReferences(t *testing.T) {
-	ensureArgoWorkflowCRDOwnedByODH(t)
-
-	module := dt.module.DeepCopy()
-	createModule(t, module)
-
-	g := NewWithT(t)
-	g.Eventually(k.Get(dt.workloadDeploy)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(
-		jq.Match(`.metadata.ownerReferences[] | select(.kind == "DataSciencePipelines") | .name == "%s"`,
-			componentsv1alpha1.DataSciencePipelinesInstanceName),
-	)
 }
 
 func waitForDeleted(t *testing.T, obj client.Object) {

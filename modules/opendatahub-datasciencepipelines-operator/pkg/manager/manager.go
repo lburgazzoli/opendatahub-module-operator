@@ -37,8 +37,8 @@ import (
 
 	componentsv1alpha1 "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-datasciencepipelines-operator/api/components/v1alpha1"
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-datasciencepipelines-operator/internal/controller/datasciencepipelines"
-	libcache "github.com/opendatahub-io/odh-platform-utilities/pkg/cache"
 	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-datasciencepipelines-operator/pkg/config"
+	libcache "github.com/opendatahub-io/odh-platform-utilities/pkg/cache"
 	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/cluster"
 	odhmanager "github.com/opendatahub-io/opendatahub-operator/v2/pkg/manager"
 	odhLabels "github.com/opendatahub-io/opendatahub-operator/v2/pkg/metadata/labels"
@@ -104,7 +104,7 @@ func New(
 				},
 			},
 			ByObject: map[client.Object]cache.ByObject{
-				&componentsv1alpha1.DataSciencePipelines{}: {Label: k8slabels.Everything()},
+				&componentsv1alpha1.DataSciencePipelines{}:  {Label: k8slabels.Everything()},
 				&apiextensionsv1.CustomResourceDefinition{}: {Label: k8slabels.Everything()},
 			},
 			ReaderFailOnMissingInformer: true,
