@@ -1,6 +1,6 @@
 module github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-modelregistry-operator
 
-go 1.26.0
+go 1.26.4
 
 require (
 	github.com/blang/semver/v4 v4.0.0
