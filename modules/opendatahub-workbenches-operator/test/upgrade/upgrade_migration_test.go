@@ -5,7 +5,9 @@ package upgrade
 import (
 	"testing"
 
+	"github.com/blang/semver/v4"
 	. "github.com/onsi/gomega"
+	ofVersion "github.com/operator-framework/api/pkg/lib/version"
 	corev1 "k8s.io/api/core/v1"
 	k8serr "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
@@ -22,9 +24,9 @@ import (
 )
 
 const (
-	notebookSizeAnnotation   = "notebooks.opendatahub.io/last-size-selection"
-	hwpNameAnnotation        = "opendatahub.io/hardware-profile-name"
-	hwpNamespaceAnnotation   = "opendatahub.io/hardware-profile-namespace"
+	notebookSizeAnnotation = "notebooks.opendatahub.io/last-size-selection"
+	hwpNameAnnotation      = "opendatahub.io/hardware-profile-name"
+	hwpNamespaceAnnotation = "opendatahub.io/hardware-profile-namespace"
 )
 
 type migrationTests struct {
@@ -74,16 +76,15 @@ func (mt *migrationTests) testContainerSizeMigration(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{Name: componentsv1alpha1.WorkbenchesInstanceName},
 	}
 	g.Expect(directClient.Get(ctx, client.ObjectKeyFromObject(seededModule), seededModule)).To(Succeed())
-	seededModule.Status.Module.Version = componentsv1alpha1.SemVer(appliedUpgradeVersion)
-	seededModule.Status.Module.Platform.Version = componentsv1alpha1.SemVer(appliedUpgradeVersion)
+	seededModule.Status.Release.Version = ofVersion.OperatorVersion{Version: semver.MustParse(appliedUpgradeVersion)}
 	g.Expect(directClient.Status().Update(ctx, seededModule)).To(Succeed())
 	g.Expect(directClient.Create(ctx, mt.odhDashboardConfig)).To(Succeed())
 	g.Expect(directClient.Create(ctx, mt.notebook)).To(Succeed())
 
 	g.Expect(directClient.Get(ctx, client.ObjectKeyFromObject(seededModule), seededModule)).To(Succeed())
-	g.Expect(seededModule.Status.Module.Version).To(Equal(componentsv1alpha1.SemVer(appliedUpgradeVersion)))
-	g.Expect(seededModule.Status.Module.Platform.Version).To(Equal(componentsv1alpha1.SemVer(appliedUpgradeVersion)))
-	g.Eventually(directK.Get(mt.odhDashboardConfig)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(And(
+	g.Expect(seededModule.Status.Release.Version.String()).To(Equal(appliedUpgradeVersion))
+	g.Eventually(directK.Get(mt.odhDashboardConfig)).
+		WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(And(
 		jq.Match(`.metadata.name == "odh-dashboard-config"`),
 		jq.Match(`.metadata.namespace == "%s"`, mt.operatorNamespace),
 	))
@@ -109,10 +110,7 @@ func (mt *migrationTests) testContainerSizeMigration(t *testing.T) {
 	))
 
 	g.Eventually(directK.Get(mt.module)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(
-		jq.Match(`.status.module.version == "%s"`, desiredUpgradeVersion),
-	)
-	g.Eventually(directK.Get(mt.module)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(
-		jq.Match(`.status.module.platform.version == "%s"`, desiredUpgradeVersion),
+		jq.Match(`.status.release.version == "%s"`, desiredUpgradeVersion),
 	)
 	g.Eventually(directK.Get(mt.notebook)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(And(
 		jq.Match(`.metadata.annotations."%s" == "containersize-small-notebooks"`, hwpNameAnnotation),

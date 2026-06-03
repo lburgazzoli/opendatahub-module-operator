@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/rs/xid"
 	. "github.com/onsi/gomega"
+	"github.com/rs/xid"
 	admissionv1 "k8s.io/api/admissionregistration/v1"
 	corev1 "k8s.io/api/core/v1"
 	k8serr "k8s.io/apimachinery/pkg/api/errors"
@@ -18,9 +18,9 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/lburgazzoli/gomega-matchers/pkg/matchers/jq"
+	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-workbenches-operator/test/support"
 	infrav1 "github.com/opendatahub-io/opendatahub-operator/v2/api/infrastructure/v1"
 	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/metadata/annotations"
-	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-workbenches-operator/test/support"
 )
 
 const (
@@ -67,8 +67,10 @@ func (wt *webhookTests) testWebhookResources(t *testing.T) {
 
 	g.Eventually(k.Get(wt.webhookConfig)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(And(
 		jq.Match(`.metadata.name == "opendatahub-workbenches-mutating-webhook-configuration"`),
-		jq.Match(`.webhooks[] | select(.name == "connection-notebook.opendatahub.io") | .clientConfig.service.name == "opendatahub-workbenches-webhook-service"`),
-		jq.Match(`.webhooks[] | select(.name == "hardwareprofile-notebook-injector.opendatahub.io") | .clientConfig.service.name == "opendatahub-workbenches-webhook-service"`),
+		jq.Match(`.webhooks[] | select(.name == "connection-notebook.opendatahub.io")`+
+			` | .clientConfig.service.name == "opendatahub-workbenches-webhook-service"`),
+		jq.Match(`.webhooks[] | select(.name == "hardwareprofile-notebook-injector.opendatahub.io")`+
+			` | .clientConfig.service.name == "opendatahub-workbenches-webhook-service"`),
 	))
 }
 

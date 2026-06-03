@@ -20,17 +20,16 @@ import (
 	"context"
 	"fmt"
 	"path"
-	"sort"
 
 	corev1 "k8s.io/api/core/v1"
 
+	"github.com/opendatahub-io/opendatahub-operator/v2/api/common"
 	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/cluster"
 	odhtypes "github.com/opendatahub-io/opendatahub-operator/v2/pkg/controller/types"
 	odhdeploy "github.com/opendatahub-io/opendatahub-operator/v2/pkg/deploy"
 	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/metadata/labels"
 
 	localapi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-workbenches-operator/api/components/v1alpha1"
-	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-workbenches-operator/pkg/version"
 )
 
 // initialize assigns the pre-computed manifest infos for this reconcile cycle.
@@ -67,8 +66,7 @@ func (m *Module) configureDependencies(_ context.Context, rr *odhtypes.Reconcili
 	return nil
 }
 
-// reportStatus populates the module status with version, platform, source information,
-// and workbench-specific fields (WorkbenchNamespace).
+// reportStatus populates the release status and workbench-specific fields (WorkbenchNamespace).
 func (m *Module) reportStatus(_ context.Context, rr *odhtypes.ReconciliationRequest) error {
 	obj, ok := rr.Instance.(*localapi.Workbenches)
 	if !ok {
@@ -77,32 +75,10 @@ func (m *Module) reportStatus(_ context.Context, rr *odhtypes.ReconciliationRequ
 
 	obj.Status.WorkbenchNamespace = obj.Spec.WorkbenchNamespace
 
-	obj.Status.Module = localapi.ModuleStatus{
-		Version:     m.version,
-		BuildSource: version.BuildSource(),
-		Platform: localapi.PlatformStatus{
-			Name:    string(rr.Release.Name),
-			Version: localapi.SemVer(rr.Release.Version.String()),
-		},
+	obj.Status.Release = common.Release{
+		Name:    rr.Release.Name,
+		Version: rr.Release.Version,
 	}
-
-	var sources []localapi.SourceStatus
-	for _, manifest := range rr.Manifests {
-		sources = append(sources, localapi.SourceStatus{
-			Path:     manifest.String(),
-			Renderer: localapi.SourceRendererKustomize,
-		})
-	}
-
-	sort.Slice(sources, func(i int, j int) bool {
-		if sources[i].Path == sources[j].Path {
-			return sources[i].Renderer < sources[j].Renderer
-		}
-
-		return sources[i].Path < sources[j].Path
-	})
-
-	obj.Status.Module.Sources = sources
 
 	return nil
 }

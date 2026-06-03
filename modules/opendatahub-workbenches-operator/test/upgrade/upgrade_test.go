@@ -31,11 +31,11 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/rest"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/config"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
-	"k8s.io/client-go/rest"
 
 	k8sm "github.com/lburgazzoli/gomega-matchers/pkg/matchers/k8s"
 
@@ -116,7 +116,7 @@ func runTestMain(m *testing.M) int {
 	workbenchesversion.Version = desiredUpgradeVersion
 
 	moduleCfg = &moduleconfig.Config{
-		PlatformType:          operatorCfgData[moduleconfig.KeyPlatformType],
+		PlatformName:          operatorCfgData[moduleconfig.KeyPlatformName],
 		PlatformVersion:       desiredUpgradeVersion,
 		MetricsAddr:           "0",
 		HealthProbeAddr:       "0",

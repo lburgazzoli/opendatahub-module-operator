@@ -1,5 +1,5 @@
 config:
-  platform-type: OpenDataHub
+  platform-name: OpenDataHub
   platform-version: unknown
 image:
   repository: ttl.sh/opendatahub-workbenches-operator

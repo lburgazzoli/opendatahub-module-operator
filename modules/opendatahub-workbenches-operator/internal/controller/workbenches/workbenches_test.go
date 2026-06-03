@@ -20,7 +20,9 @@ import (
 	"context"
 	"testing"
 
+	"github.com/blang/semver/v4"
 	. "github.com/onsi/gomega"
+	ofVersion "github.com/operator-framework/api/pkg/lib/version"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -31,14 +33,13 @@ import (
 
 	componentApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-workbenches-operator/api/components/v1alpha1"
 	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-workbenches-operator/pkg/config"
-	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-workbenches-operator/pkg/version"
 	odhtypes "github.com/opendatahub-io/opendatahub-operator/v2/pkg/controller/types"
 )
 
 func newTestModule(t *testing.T) *Module {
 	t.Helper()
 	cfg := &moduleconfig.Config{
-		PlatformType:          "OpenDataHub",
+		PlatformName:          "OpenDataHub",
 		PlatformVersion:       "1.0.0",
 		ManifestsPath:         "/manifests",
 		ApplicationsNamespace: "test-ns",
@@ -65,7 +66,7 @@ func newTestRR(obj *componentApi.Workbenches) *odhtypes.ReconciliationRequest {
 		Instance:          obj,
 		ManifestsBasePath: "/manifests",
 		Release: (&moduleconfig.Config{
-			PlatformType:    "OpenDataHub",
+			PlatformName:    "OpenDataHub",
 			PlatformVersion: "1.0.0",
 		}).Release(),
 	}
@@ -77,18 +78,6 @@ func newTestWorkbenches() *componentApi.Workbenches {
 			Name: componentApi.WorkbenchesInstanceName,
 		},
 	}
-}
-
-func TestNewModuleInvalidVersion(t *testing.T) {
-	g := NewWithT(t)
-
-	orig := version.Version
-	version.Version = "not-a-version"
-	t.Cleanup(func() { version.Version = orig })
-
-	_, err := NewModule(&moduleconfig.Config{})
-	g.Expect(err).To(HaveOccurred())
-	g.Expect(err.Error()).To(ContainSubstring("invalid semver"))
 }
 
 func TestInitialize(t *testing.T) {
@@ -123,10 +112,7 @@ func TestUpgradeIfNeededSameVersion(t *testing.T) {
 	m := newTestModule(t)
 	obj := newTestWorkbenches()
 
-	v, err := componentApi.NewSemVer(version.Version)
-	g.Expect(err).NotTo(HaveOccurred())
-
-	obj.Status.Module.Version = v
+	obj.Status.Release.Version = ofVersion.OperatorVersion{Version: semver.MustParse("1.0.0")}
 	rr := newTestRR(obj)
 	seedTestAPIReader(t, m, obj.DeepCopy())
 
@@ -141,14 +127,8 @@ func TestReportStatus(t *testing.T) {
 	rr := newTestRR(obj)
 
 	g.Expect(m.initialize(context.Background(), rr)).To(Succeed())
-	rr.Manifests[0], rr.Manifests[2] = rr.Manifests[2], rr.Manifests[0]
 	g.Expect(m.reportStatus(context.Background(), rr)).To(Succeed())
 
-	g.Expect(obj.Status.Module.Version.String()).To(Equal(version.Version))
-	g.Expect(obj.Status.Module.Platform.Name).To(Equal("OpenDataHub"))
-	g.Expect(obj.Status.Module.Platform.Version.String()).To(Equal("1.0.0"))
-	g.Expect(obj.Status.Module.Sources).To(HaveLen(3))
-	g.Expect(obj.Status.Module.Sources[0].Renderer).To(Equal(componentApi.SourceRendererKustomize))
-	g.Expect(obj.Status.Module.Sources[0].Path <= obj.Status.Module.Sources[1].Path).To(BeTrue())
-	g.Expect(obj.Status.Module.Sources[1].Path <= obj.Status.Module.Sources[2].Path).To(BeTrue())
+	g.Expect(obj.Status.Release.Version.String()).To(Equal("1.0.0"))
+	g.Expect(string(obj.Status.Release.Name)).To(Equal("OpenDataHub"))
 }

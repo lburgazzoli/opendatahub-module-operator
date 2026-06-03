@@ -124,7 +124,7 @@ cleanup-upgrade: test-upgrade-cleanup ## Alias for test-upgrade-cleanup.
 
 .PHONY: lint
 lint: ## Run golangci-lint linter.
-	$(GOLANGCI_LINT) run
+	$(GOLANGCI_LINT) run --build-tags integration,e2e,upgrade
 
 .PHONY: lint-fix
 lint-fix: ## Run golangci-lint linter and perform fixes.

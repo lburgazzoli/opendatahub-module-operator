@@ -11,7 +11,6 @@ import (
 
 	componentsv1alpha1 "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-workbenches-operator/api/components/v1alpha1"
 	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-workbenches-operator/pkg/config"
-	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-workbenches-operator/pkg/version"
 )
 
 type foundationTests struct {
@@ -21,7 +20,7 @@ type foundationTests struct {
 func (ft *foundationTests) Execute(t *testing.T) {
 	t.Run("should have module CRD installed", ft.testModuleCRDInstalled)
 	t.Run("should become ready", ft.testBecomesReady)
-	t.Run("should report module version and platform", ft.testModuleStatus)
+	t.Run("should report release version and platform", ft.testReleaseStatus)
 	t.Run("should set platform labels and annotations", ft.testPlatformLabels)
 	t.Run("should set owner references", ft.testOwnerReferences)
 }
@@ -49,20 +48,13 @@ func (ft *foundationTests) testBecomesReady(t *testing.T) {
 	eventuallyDeploymentReady(t, ft.nbcDeploy)
 }
 
-func (ft *foundationTests) testModuleStatus(t *testing.T) {
+func (ft *foundationTests) testReleaseStatus(t *testing.T) {
 	g := NewWithT(t)
 
 	g.Eventually(k.Get(ft.module)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(And(
-		jq.Match(`.status.module.version == "%s"`, version.Version),
-		jq.Match(`.status.module.buildSource == "%s"`,
-			version.BuildSource()),
-		jq.Match(`.status.module.platform.name == "%s"`,
-			operatorCfgData[moduleconfig.KeyPlatformType]),
-		jq.Match(`.status.module.platform.version == "%s"`,
-			operatorReleaseVersion),
-		jq.Match(`.status.module.sources | length > 0`),
-		jq.Match(`.status.module.sources[0].path != ""`),
-		jq.Match(`.status.module.sources[0].renderer == "kustomize"`),
+		jq.Match(`.status.release.version == "%s"`, operatorReleaseVersion),
+		jq.Match(`.status.release.name == "%s"`,
+			operatorCfgData[moduleconfig.KeyPlatformName]),
 	))
 }
 
@@ -79,7 +71,7 @@ func (ft *foundationTests) testPlatformLabels(t *testing.T) {
 			string(ft.module.GetUID())),
 		jq.Match(`.metadata.annotations."%s" == "%s"`,
 			annotationType,
-			operatorCfgData[moduleconfig.KeyPlatformType]),
+			operatorCfgData[moduleconfig.KeyPlatformName]),
 		jq.Match(`.metadata.annotations."%s" == "%s"`,
 			annotationVersion,
 			operatorReleaseVersion),

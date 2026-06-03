@@ -17,7 +17,6 @@ import (
 
 	componentsv1alpha1 "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-workbenches-operator/api/components/v1alpha1"
 	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-workbenches-operator/pkg/config"
-	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-workbenches-operator/pkg/version"
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-workbenches-operator/test/support"
 )
 
@@ -60,7 +59,7 @@ func (ft *foundationTests) Execute(t *testing.T) {
 	t.Run("should have module CRD installed", ft.testModuleCRDInstalled)
 	t.Run("should have operator ConfigMap deployed", ft.testOperatorConfigMap)
 	t.Run("should become ready", ft.testBecomesReady)
-	t.Run("should report module version and platform", ft.testModuleStatus)
+	t.Run("should report release version and platform", ft.testReleaseStatus)
 	t.Run("should set platform labels and annotations", ft.testPlatformLabels)
 	t.Run("should set owner references", ft.testOwnerReferences)
 }
@@ -77,7 +76,7 @@ func (ft *foundationTests) testOperatorConfigMap(t *testing.T) {
 	g := NewWithT(t)
 
 	g.Eventually(k.Get(ft.operatorCfgMap)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(And(
-		jq.Match(`.data."%s" != ""`, moduleconfig.KeyPlatformType),
+		jq.Match(`.data."%s" != ""`, moduleconfig.KeyPlatformName),
 		jq.Match(`.data."%s" != ""`, moduleconfig.KeyPlatformVersion),
 	))
 }
@@ -95,7 +94,7 @@ func (ft *foundationTests) testBecomesReady(t *testing.T) {
 			return false
 		}
 
-		return string(current.Status.Phase) == "Ready" &&
+		return current.Status.Phase == "Ready" &&
 			hasConditionStatus(current.Status.Conditions, "Ready", "True") &&
 			hasConditionStatus(current.Status.Conditions, "ProvisioningSucceeded", "True")
 	}).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(BeTrue())
@@ -103,7 +102,7 @@ func (ft *foundationTests) testBecomesReady(t *testing.T) {
 	eventuallyDeploymentReady(t, ft.nbcDeploy)
 }
 
-func (ft *foundationTests) testModuleStatus(t *testing.T) {
+func (ft *foundationTests) testReleaseStatus(t *testing.T) {
 	g := NewWithT(t)
 	operatorCfg := &corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{
@@ -111,28 +110,18 @@ func (ft *foundationTests) testModuleStatus(t *testing.T) {
 			Namespace: support.OperatorNamespace(),
 		},
 	}
-	workloadDeploy := &appsv1.Deployment{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "odh-notebook-controller-manager",
-			Namespace: support.OperatorNamespace(),
-		},
-	}
 
 	g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(operatorCfg), operatorCfg)).To(Succeed())
-	g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(workloadDeploy), workloadDeploy)).To(Succeed())
 
-	platformType := operatorCfg.Data[moduleconfig.KeyPlatformType]
-	workloadVersion := workloadDeploy.Annotations[annotationVersion]
+	cfg := &moduleconfig.Config{
+		PlatformName:    operatorCfg.Data[moduleconfig.KeyPlatformName],
+		PlatformVersion: operatorCfg.Data[moduleconfig.KeyPlatformVersion],
+	}
+	expectedRelease := cfg.Release()
 
 	g.Eventually(k.Get(ft.module)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(And(
-		jq.Match(`.status.module.version == "%s"`, version.Version),
-		jq.Match(`.status.module.buildSource == "%s"`,
-			version.BuildSource()),
-		jq.Match(`.status.module.platform.name == "%s"`, platformType),
-		jq.Match(`.status.module.platform.version == "%s"`, workloadVersion),
-		jq.Match(`.status.module.sources | length > 0`),
-		jq.Match(`.status.module.sources[0].path != ""`),
-		jq.Match(`.status.module.sources[0].renderer == "kustomize"`),
+		jq.Match(`.status.release.version == "%s"`, expectedRelease.Version.String()),
+		jq.Match(`.status.release.name == "%s"`, string(expectedRelease.Name)),
 	))
 }
 
@@ -159,10 +148,10 @@ func (ft *foundationTests) testPlatformLabels(t *testing.T) {
 			string(module.GetUID())),
 		jq.Match(`.metadata.annotations."%s" == "%s"`,
 			annotationType,
-			operatorCfg.Data[moduleconfig.KeyPlatformType]),
+			operatorCfg.Data[moduleconfig.KeyPlatformName]),
 		jq.Match(`.metadata.annotations."%s" == "%s"`,
 			annotationVersion,
-			module.Status.Module.Platform.Version.String()),
+			module.Status.Release.Version.String()),
 	))
 }
 

@@ -27,15 +27,12 @@ import (
 	odhtypes "github.com/opendatahub-io/opendatahub-operator/v2/pkg/controller/types"
 	odhdeploy "github.com/opendatahub-io/opendatahub-operator/v2/pkg/deploy"
 
-	componentApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-workbenches-operator/api/components/v1alpha1"
 	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-workbenches-operator/pkg/config"
-	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-workbenches-operator/pkg/version"
 )
 
 // Module holds process-lifetime state for the workbenches controller.
 type Module struct {
-	cfg     *moduleconfig.Config
-	version componentApi.SemVer
+	cfg *moduleconfig.Config
 	// manifestInfos is computed once at startup from the fixed platform and manifests path.
 	manifestInfos []odhtypes.ManifestInfo
 
@@ -49,12 +46,7 @@ type Module struct {
 
 // NewModule creates a Module, pre-computes manifest paths, and applies image parameter substitutions.
 func NewModule(cfg *moduleconfig.Config) (*Module, error) {
-	v, err := componentApi.NewSemVer(version.Version)
-	if err != nil {
-		return nil, fmt.Errorf("parsing module version %q: %w", version.Version, err)
-	}
-
-	platform := common.Platform(cfg.PlatformType)
+	platform := common.Platform(cfg.PlatformName)
 
 	imgSourcePath, ok := notebookImagesManifestSourcePath[platform]
 	if !ok {
@@ -88,7 +80,6 @@ func NewModule(cfg *moduleconfig.Config) (*Module, error) {
 
 	return &Module{
 		cfg:           cfg,
-		version:       v,
 		manifestInfos: manifests,
 	}, nil
 }

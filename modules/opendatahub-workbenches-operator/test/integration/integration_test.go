@@ -114,7 +114,7 @@ func runTestMain(m *testing.M) int {
 		support.MustProjectFile("config", "manager", "configmap.yaml"))
 
 	moduleCfg := &moduleconfig.Config{
-		PlatformType:          operatorCfgData[moduleconfig.KeyPlatformType],
+		PlatformName:          operatorCfgData[moduleconfig.KeyPlatformName],
 		PlatformVersion:       operatorCfgData[moduleconfig.KeyPlatformVersion],
 		MetricsAddr:           "0",
 		HealthProbeAddr:       "0",

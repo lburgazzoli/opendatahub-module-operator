@@ -53,8 +53,8 @@ type WorkbenchesStatus struct {
 	common.Status           `json:",inline"`
 	WorkbenchesCommonStatus `json:",inline"`
 
-	// Module reports the module operator's runtime information.
-	Module ModuleStatus `json:"module,omitempty"`
+	// Release reports the operator version and platform.
+	Release common.Release `json:"release,omitempty"`
 }
 
 // DeepCopy returns a deep copy of WorkbenchesCommonStatus.
@@ -73,7 +73,7 @@ func (in *WorkbenchesCommonStatus) DeepCopy() *WorkbenchesCommonStatus {
 // +kubebuilder:validation:XValidation:rule="self.metadata.name == 'default-workbenches'",message="Workbenches name must be default-workbenches"
 // +kubebuilder:printcolumn:name="Ready",type=string,JSONPath=`.status.conditions[?(@.type=="Ready")].status`,description="Ready"
 // +kubebuilder:printcolumn:name="Reason",type=string,JSONPath=`.status.conditions[?(@.type=="Ready")].reason`,description="Reason"
-// +kubebuilder:printcolumn:name="Version",type=string,JSONPath=`.status.module.version`,description="Module Version"
+// +kubebuilder:printcolumn:name="Version",type=string,JSONPath=`.status.release.version`,description="Module Version"
 
 // Workbenches is the Schema for the workbenches API.
 type Workbenches struct {

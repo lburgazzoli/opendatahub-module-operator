@@ -25,15 +25,17 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
+	"github.com/opendatahub-io/opendatahub-operator/v2/api/common"
+
 	componentApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-workbenches-operator/api/components/v1alpha1"
 	odhtypes "github.com/opendatahub-io/opendatahub-operator/v2/pkg/controller/types"
 )
 
 const upgradeEventReasonStarted = "UpgradeStarted"
 
-// upgradeIfNeeded compares the desired versions from config/build metadata with
-// the last applied versions recorded in status, and runs idempotent migrations
-// when either desired version advances.
+// upgradeIfNeeded compares the desired platform version from the release with
+// the last applied version recorded in status, and runs idempotent migrations
+// when the version advances.
 func (m *Module) upgradeIfNeeded(ctx context.Context, rr *odhtypes.ReconciliationRequest) error {
 	log := logf.FromContext(ctx)
 	obj, ok := rr.Instance.(*componentApi.Workbenches)
@@ -41,49 +43,33 @@ func (m *Module) upgradeIfNeeded(ctx context.Context, rr *odhtypes.Reconciliatio
 		return fmt.Errorf("instance is not a Workbenches")
 	}
 
-	applied := obj.Status.Module
-	desiredModuleVersion := m.version
-	desiredPlatformVersion := componentApi.SemVer(rr.Release.Version.String())
+	prev := obj.Status.Release
 
-	moduleVersionChanged := !applied.Version.IsZero() && desiredModuleVersion.GT(applied.Version)
-	platformVersionChanged := !applied.Platform.Version.IsZero() &&
-		desiredPlatformVersion.GT(applied.Platform.Version)
+	if prev.Version.String() == "" || prev.Version.String() == "0.0.0" {
+		return nil
+	}
 
-	log.Info(
-		"Evaluated upgrade requirements",
-		"module", obj.GetName(),
-		"appliedModuleVersion", applied.Version.String(),
-		"desiredModuleVersion", desiredModuleVersion.String(),
-		"appliedPlatformVersion", applied.Platform.Version.String(),
-		"desiredPlatformVersion", desiredPlatformVersion.String(),
-		"moduleVersionChanged", moduleVersionChanged,
-		"platformVersionChanged", platformVersionChanged,
-	)
-
-	if !moduleVersionChanged && !platformVersionChanged {
-		log.Info("Upgrade not required", "module", obj.GetName())
+	if !rr.Release.Version.GT(prev.Version.Version) {
 		return nil
 	}
 
 	message := fmt.Sprintf(
-		"Upgrade started: applied module %s -> desired %s, applied platform %s -> desired %s",
-		applied.Version.String(),
-		desiredModuleVersion.String(),
-		applied.Platform.Version.String(),
-		desiredPlatformVersion.String(),
+		"Upgrade started: applied %s -> desired %s",
+		prev.Version.String(),
+		rr.Release.Version.String(),
 	)
 	if err := m.recordModuleUpgradeEvent(ctx, rr.Client, obj, upgradeEventReasonStarted, corev1.EventTypeNormal, message); err != nil {
 		return fmt.Errorf("recording upgrade started event: %w", err)
 	}
 	log.Info("Upgrade triggered", "module", obj.GetName(), "message", message)
 
-	return m.upgrade(ctx, applied, rr)
+	return m.upgrade(ctx, prev, rr)
 }
 
-// upgrade runs idempotent migrations when the module version advances or the platform version changes.
+// upgrade runs idempotent migrations when the platform version advances.
 // It migrates AcceleratorProfile and container-size annotations on Notebooks to HardwareProfile
 // annotations, and creates the corresponding HardwareProfile CRs when they do not yet exist.
-func (m *Module) upgrade(ctx context.Context, _ componentApi.ModuleStatus, rr *odhtypes.ReconciliationRequest) error {
+func (m *Module) upgrade(ctx context.Context, _ common.Release, rr *odhtypes.ReconciliationRequest) error {
 	return m.migrateHardwareProfilesForNotebooks(ctx, rr.Client)
 }
 
