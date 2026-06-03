@@ -38,7 +38,7 @@ const (
 	KeyLeaderElectionID = "leader-election-id"
 	KeyManifestsPath    = "manifests-path"
 	KeyApplicationsNS   = "applications-namespace"
-	KeyPlatformType     = "platform-type"
+	KeyPlatformName     = "platform-name"
 	KeyPlatformVersion  = "platform-version"
 	KeyWebhooksEnabled  = "webhooks-enabled"
 	KeyWebhookPort      = "webhook-port"
@@ -49,7 +49,7 @@ const (
 	DefaultLeaderElect      = true
 	DefaultLeaderElectionID = "opendatahub-mymodule-operator-lock"
 	DefaultApplicationsNS   = "opendatahub"
-	DefaultPlatformType     = "unknown"
+	DefaultPlatformName     = "unknown"
 	DefaultPlatformVersion  = "unknown"
 	DefaultWebhooksEnabled  = true
 	DefaultWebhookPort      = 9443
@@ -94,8 +94,8 @@ type Config struct {
 	// ApplicationsNamespace is the namespace where module workloads are deployed.
 	ApplicationsNamespace string `mapstructure:"applications-namespace"`
 
-	// PlatformType is the platform identifier (e.g. "OpenDataHub", "SelfManagedRHOAI").
-	PlatformType string `mapstructure:"platform-type"`
+	// PlatformName is the platform identifier (e.g. "OpenDataHub", "SelfManagedRHOAI").
+	PlatformName string `mapstructure:"platform-name"`
 	// PlatformVersion is the platform operator version.
 	PlatformVersion string `mapstructure:"platform-version"`
 
@@ -115,7 +115,7 @@ type Config struct {
 // to 0.0.0.
 func (c *Config) Release() common.Release {
 	rel := common.Release{
-		Name: common.Platform(c.PlatformType),
+		Name: common.Platform(c.PlatformName),
 	}
 
 	if c.PlatformVersion != "" {
@@ -178,7 +178,7 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault(KeyLeaderElectionID, DefaultLeaderElectionID)
 	v.SetDefault(KeyApplicationsNS, DefaultApplicationsNS)
 	v.SetDefault(KeyManifestsPath, "")
-	v.SetDefault(KeyPlatformType, DefaultPlatformType)
+	v.SetDefault(KeyPlatformName, DefaultPlatformName)
 	v.SetDefault(KeyPlatformVersion, DefaultPlatformVersion)
 	v.SetDefault(KeyWebhooksEnabled, DefaultWebhooksEnabled)
 	v.SetDefault(KeyWebhookPort, DefaultWebhookPort)

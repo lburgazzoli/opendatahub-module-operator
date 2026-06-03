@@ -8,12 +8,14 @@ import (
 
 	. "github.com/onsi/gomega"
 
+	"github.com/blang/semver/v4"
+	ofVersion "github.com/operator-framework/api/pkg/lib/version"
+
 	"github.com/lburgazzoli/gomega-matchers/pkg/matchers/jq"
 
 	componentsv1alpha1 "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-mymodule-operator/api/components/v1alpha1"
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-mymodule-operator/internal/controller/mymodule"
 	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-mymodule-operator/pkg/config"
-	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-mymodule-operator/pkg/version"
 	"github.com/opendatahub-io/operator-actions-framework/resources"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -27,7 +29,7 @@ func (ft *foundationTests) Execute(t *testing.T) {
 	t.Run("should block when Ingress is missing", ft.testIngressBlocks)
 	t.Run("should recover when Ingress is created", ft.testIngressRecovers)
 	t.Run("should expose config values", ft.testConfigValues)
-	t.Run("should report module version and platform", ft.testModuleStatus)
+	t.Run("should report release version and platform", ft.testReleaseStatus)
 	t.Run("should set platform labels and annotations", ft.testPlatformLabels)
 	t.Run("should set owner references", ft.testOwnerReferences)
 	t.Run("should not annotate ingress on fresh install", ft.testUpgradeAnnotationAbsentOnFreshInstall)
@@ -81,28 +83,21 @@ func (ft *foundationTests) testConfigValues(t *testing.T) {
 
 	g.Eventually(k.Get(ft.module)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(And(
 		jq.Match(`.status.configValues."%s" == "%s"`,
-			moduleconfig.KeyPlatformType,
-			operatorCfgData[moduleconfig.KeyPlatformType]),
+			moduleconfig.KeyPlatformName,
+			operatorCfgData[moduleconfig.KeyPlatformName]),
 		jq.Match(`.status.configValues."%s" == "%s"`,
 			moduleconfig.KeyPlatformVersion,
 			operatorCfgData[moduleconfig.KeyPlatformVersion]),
 	))
 }
 
-func (ft *foundationTests) testModuleStatus(t *testing.T) {
+func (ft *foundationTests) testReleaseStatus(t *testing.T) {
 	g := NewWithT(t)
 
 	g.Eventually(k.Get(ft.module)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(And(
-		jq.Match(`.status.module.version == "%s"`, version.Version),
-		jq.Match(`.status.module.buildSource == "%s"`,
-			version.BuildSource()),
-		jq.Match(`.status.module.platform.name == "%s"`,
-			operatorCfgData[moduleconfig.KeyPlatformType]),
-		jq.Match(`.status.module.platform.version == "%s"`,
-			operatorReleaseVersion),
-		jq.Match(`.status.module.sources | length > 0`),
-		jq.Match(`.status.module.sources[0].path != ""`),
-		jq.Match(`.status.module.sources[0].renderer == "kustomize"`),
+		jq.Match(`.status.release.version == "%s"`, operatorReleaseVersion),
+		jq.Match(`.status.release.name == "%s"`,
+			operatorCfgData[moduleconfig.KeyPlatformName]),
 	))
 }
 
@@ -119,7 +114,7 @@ func (ft *foundationTests) testPlatformLabels(t *testing.T) {
 			string(ft.module.GetUID())),
 		jq.Match(`.metadata.annotations."%s" == "%s"`,
 			annotationType,
-			operatorCfgData[moduleconfig.KeyPlatformType]),
+			operatorCfgData[moduleconfig.KeyPlatformName]),
 		jq.Match(`.metadata.annotations."%s" == "%s"`,
 			annotationVersion,
 			operatorReleaseVersion),
@@ -129,7 +124,7 @@ func (ft *foundationTests) testPlatformLabels(t *testing.T) {
 		jq.Match(`.metadata.labels."%s" == "mymodule"`, labelPartOf),
 		jq.Match(`.metadata.annotations."%s" == "%s"`,
 			annotationType,
-			operatorCfgData[moduleconfig.KeyPlatformType]),
+			operatorCfgData[moduleconfig.KeyPlatformName]),
 		jq.Match(`.metadata.annotations."%s" == "%s"`,
 			annotationVersion,
 			operatorReleaseVersion),
@@ -165,7 +160,7 @@ func (ft *foundationTests) testUpgradeAnnotatesIngress(t *testing.T) {
 	g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(ft.module), ft.module)).To(Succeed())
 
 	patch := client.MergeFrom(ft.module.DeepCopy())
-	ft.module.Status.Module.Version = "0.0.0-0"
+	ft.module.Status.Release.Version = ofVersion.OperatorVersion{Version: semver.MustParse("0.0.0-0")}
 	g.Expect(k8sClient.Status().Patch(ctx, ft.module, patch)).To(Succeed())
 
 	g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(ft.module), ft.module)).To(Succeed())
@@ -184,12 +179,12 @@ func (ft *foundationTests) testUpgradeFaultInjection(t *testing.T) {
 	g := NewWithT(t)
 
 	g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(ft.module), ft.module)).To(Succeed())
-	versionBefore := ft.module.Status.Module.Version.String()
+	versionBefore := ft.module.Status.Release.Version.String()
 
 	g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(ft.module), ft.module)).To(Succeed())
 
 	statusPatch := client.MergeFrom(ft.module.DeepCopy())
-	ft.module.Status.Module.Version = "0.0.0-0"
+	ft.module.Status.Release.Version = ofVersion.OperatorVersion{Version: semver.MustParse("0.0.0-0")}
 	g.Expect(k8sClient.Status().Patch(ctx, ft.module, statusPatch)).To(Succeed())
 
 	g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(ft.ingress), ft.ingress)).To(Succeed())
@@ -199,7 +194,7 @@ func (ft *foundationTests) testUpgradeFaultInjection(t *testing.T) {
 	g.Expect(k8sClient.Patch(ctx, ft.ingress, ingressPatch)).To(Succeed())
 
 	g.Consistently(k.Get(ft.module)).WithContext(ctx).WithTimeout(10 * time.Second).WithPolling(interval).Should(
-		jq.Match(`.status.module.version == "0.0.0-0"`),
+		jq.Match(`.status.release.version == "0.0.0-0"`),
 	)
 
 	g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(ft.ingress), ft.ingress)).To(Succeed())
@@ -211,6 +206,6 @@ func (ft *foundationTests) testUpgradeFaultInjection(t *testing.T) {
 	g.Expect(k8sClient.Patch(ctx, ft.ingress, cleanPatch)).To(Succeed())
 
 	g.Eventually(k.Get(ft.module)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(
-		jq.Match(`.status.module.version == "%s"`, versionBefore),
+		jq.Match(`.status.release.version == "%s"`, versionBefore),
 	)
 }

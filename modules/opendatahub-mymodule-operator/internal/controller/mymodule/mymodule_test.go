@@ -26,9 +26,11 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
+	"github.com/blang/semver/v4"
+	ofVersion "github.com/operator-framework/api/pkg/lib/version"
+
 	componentApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-mymodule-operator/api/components/v1alpha1"
 	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-mymodule-operator/pkg/config"
-	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-mymodule-operator/pkg/version"
 	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/cluster"
 	actionapi "github.com/opendatahub-io/operator-actions-framework/api"
 	"github.com/opendatahub-io/operator-actions-framework/controller/types"
@@ -55,7 +57,7 @@ func newTestModule(t *testing.T, platformType string) *Module {
 	t.Helper()
 
 	cfg := &moduleconfig.Config{
-		PlatformType:          platformType,
+		PlatformName:          platformType,
 		PlatformVersion:       "1.0.0",
 		ManifestsPath:         "/manifests",
 		ApplicationsNamespace: "test-ns",
@@ -69,7 +71,7 @@ func newTestModule(t *testing.T, platformType string) *Module {
 
 func newTestRR(obj *componentApi.MyModule) *types.ReconciliationRequest {
 	rel := (&moduleconfig.Config{
-		PlatformType:    string(cluster.OpenDataHub),
+		PlatformName:    string(cluster.OpenDataHub),
 		PlatformVersion: "1.0.0",
 	}).Release()
 
@@ -81,9 +83,17 @@ func newTestRR(obj *componentApi.MyModule) *types.ReconciliationRequest {
 }
 
 func newTestRRWithClient(obj *componentApi.MyModule, cl client.Client) *types.ReconciliationRequest {
+	return newTestRRWithClientAndVersion(obj, cl, "1.0.0")
+}
+
+func newTestRRWithClientAndVersion(
+	obj *componentApi.MyModule,
+	cl client.Client,
+	platformVersion string,
+) *types.ReconciliationRequest {
 	rel := (&moduleconfig.Config{
-		PlatformType:    string(cluster.OpenDataHub),
-		PlatformVersion: "1.0.0",
+		PlatformName:    string(cluster.OpenDataHub),
+		PlatformVersion: platformVersion,
 	}).Release()
 
 	return &types.ReconciliationRequest{
@@ -115,30 +125,15 @@ func TestNewModule(t *testing.T) {
 	g := NewWithT(t)
 
 	cfg := &moduleconfig.Config{
-		PlatformType:    string(cluster.OpenDataHub),
+		PlatformName:    string(cluster.OpenDataHub),
 		PlatformVersion: "1.0.0",
 	}
 
 	m, err := NewModule(cfg)
 	g.Expect(err).NotTo(HaveOccurred())
-	g.Expect(m.version.String()).To(Equal(version.Version))
 	g.Expect(m.cfg).To(Equal(cfg))
 	g.Expect(m.manifestInfo.Path).To(Equal(cfg.ManifestsPath))
 	g.Expect(m.manifestInfo.ContextDir).To(Equal(componentName))
-}
-
-func TestNewModuleInvalidVersion(t *testing.T) {
-	g := NewWithT(t)
-
-	// Override version to something unparseable.
-	orig := version.Version
-	version.Version = "not-a-version"
-
-	t.Cleanup(func() { version.Version = orig })
-
-	_, err := NewModule(&moduleconfig.Config{})
-	g.Expect(err).To(HaveOccurred())
-	g.Expect(err.Error()).To(ContainSubstring("invalid semver"))
 }
 
 func TestInitialize(t *testing.T) {
@@ -203,77 +198,33 @@ func TestUpgradeIfNeededSameVersion(t *testing.T) {
 
 	m := newTestModule(t, string(cluster.OpenDataHub))
 	obj := newTestMyModule()
-
-	v, err := componentApi.NewSemVer(version.Version)
-	g.Expect(err).NotTo(HaveOccurred())
-
-	obj.Status.Module.Version = v
+	obj.Status.Release.Version = ofVersion.OperatorVersion{Version: semver.MustParse("1.0.0")}
 
 	ingress := newTestIngress(m.cfg.ApplicationsNamespace)
 	cl := fake.NewClientBuilder().WithScheme(newTestScheme(t)).WithObjects(ingress).Build()
 	rr := newTestRRWithClient(obj, cl)
 
-	// Same version: no upgrade.
 	g.Expect(m.upgradeIfNeeded(t.Context(), rr)).To(Succeed())
 
-	// Ingress must not have upgrade annotations.
 	got := &networkingv1.Ingress{}
 	g.Expect(cl.Get(t.Context(), client.ObjectKeyFromObject(ingress), got)).To(Succeed())
 	g.Expect(got.Annotations).NotTo(HaveKey(AnnotationManagedVersion))
 	g.Expect(got.Annotations).NotTo(HaveKey(AnnotationUpgradedFrom))
 }
 
-func TestUpgradeIfNeededPlatformVersionChange(t *testing.T) {
-	g := NewWithT(t)
-
-	m := newTestModule(t, string(cluster.OpenDataHub))
-	obj := newTestMyModule()
-
-	v, err := componentApi.NewSemVer(version.Version)
-	g.Expect(err).NotTo(HaveOccurred())
-
-	prevPV, err := componentApi.NewSemVer("0.9.0")
-	g.Expect(err).NotTo(HaveOccurred())
-
-	// Same module version but older platform version in status.
-	obj.Status.Module.Version = v
-	obj.Status.Module.Platform.Version = prevPV
-
-	ingress := newTestIngress(m.cfg.ApplicationsNamespace)
-	cl := fake.NewClientBuilder().WithScheme(newTestScheme(t)).WithObjects(ingress).Build()
-	rr := newTestRRWithClient(obj, cl)
-
-	// Platform version advanced: upgrade runs.
-	g.Expect(m.upgradeIfNeeded(t.Context(), rr)).To(Succeed())
-
-	// Ingress must have both upgrade annotations.
-	// upgraded-from records the previous module version, not the platform version.
-	got := &networkingv1.Ingress{}
-	g.Expect(cl.Get(t.Context(), client.ObjectKeyFromObject(ingress), got)).To(Succeed())
-	g.Expect(got.Annotations).To(HaveKeyWithValue(AnnotationManagedVersion, version.Version))
-	g.Expect(got.Annotations).To(HaveKeyWithValue(AnnotationUpgradedFrom, version.Version))
-}
-
 func TestUpgradeIfNeededVersionAdvance(t *testing.T) {
 	g := NewWithT(t)
 
-	orig := version.Version
-	version.Version = testVersionNew
-
-	t.Cleanup(func() { version.Version = orig })
-
 	m := newTestModule(t, string(cluster.OpenDataHub))
 	obj := newTestMyModule()
-	obj.Status.Module.Version = testVersionOld
+	obj.Status.Release.Version = ofVersion.OperatorVersion{Version: semver.MustParse(testVersionOld)}
 
 	ingress := newTestIngress(m.cfg.ApplicationsNamespace)
 	cl := fake.NewClientBuilder().WithScheme(newTestScheme(t)).WithObjects(ingress).Build()
-	rr := newTestRRWithClient(obj, cl)
+	rr := newTestRRWithClientAndVersion(obj, cl, testVersionNew)
 
-	// Version advanced: upgrade runs.
 	g.Expect(m.upgradeIfNeeded(t.Context(), rr)).To(Succeed())
 
-	// Ingress must have both upgrade annotations.
 	got := &networkingv1.Ingress{}
 	g.Expect(cl.Get(t.Context(), client.ObjectKeyFromObject(ingress), got)).To(Succeed())
 	g.Expect(got.Annotations).To(HaveKeyWithValue(AnnotationManagedVersion, testVersionNew))
@@ -283,18 +234,12 @@ func TestUpgradeIfNeededVersionAdvance(t *testing.T) {
 func TestUpgradeIngressNotFound(t *testing.T) {
 	g := NewWithT(t)
 
-	orig := version.Version
-	version.Version = testVersionNew
-
-	t.Cleanup(func() { version.Version = orig })
-
 	m := newTestModule(t, string(cluster.OpenDataHub))
 	obj := newTestMyModule()
-	obj.Status.Module.Version = testVersionOld
+	obj.Status.Release.Version = ofVersion.OperatorVersion{Version: semver.MustParse(testVersionOld)}
 
-	// No Ingress in the fake client.
 	cl := fake.NewClientBuilder().WithScheme(newTestScheme(t)).Build()
-	rr := newTestRRWithClient(obj, cl)
+	rr := newTestRRWithClientAndVersion(obj, cl, testVersionNew)
 
 	g.Expect(m.upgradeIfNeeded(t.Context(), rr)).To(Succeed())
 }
@@ -302,14 +247,9 @@ func TestUpgradeIngressNotFound(t *testing.T) {
 func TestUpgradeFaultInjection(t *testing.T) {
 	g := NewWithT(t)
 
-	orig := version.Version
-	version.Version = testVersionNew
-
-	t.Cleanup(func() { version.Version = orig })
-
 	m := newTestModule(t, string(cluster.OpenDataHub))
 	obj := newTestMyModule()
-	obj.Status.Module.Version = testVersionOld
+	obj.Status.Release.Version = ofVersion.OperatorVersion{Version: semver.MustParse(testVersionOld)}
 
 	ingress := newTestIngress(m.cfg.ApplicationsNamespace)
 	ingress.Annotations = map[string]string{
@@ -317,7 +257,7 @@ func TestUpgradeFaultInjection(t *testing.T) {
 	}
 
 	cl := fake.NewClientBuilder().WithScheme(newTestScheme(t)).WithObjects(ingress).Build()
-	rr := newTestRRWithClient(obj, cl)
+	rr := newTestRRWithClientAndVersion(obj, cl, testVersionNew)
 
 	err := m.upgradeIfNeeded(t.Context(), rr)
 	g.Expect(err).To(HaveOccurred())
@@ -336,12 +276,9 @@ func TestReportStatus(t *testing.T) {
 
 	g.Expect(m.reportStatus(t.Context(), rr)).To(Succeed())
 
-	g.Expect(obj.Status.Module.Version.String()).To(Equal(version.Version))
-	g.Expect(obj.Status.Module.Platform.Name).To(Equal(string(cluster.OpenDataHub)))
-	g.Expect(obj.Status.Module.Platform.Version.String()).To(Equal("1.0.0"))
-	g.Expect(obj.Status.Module.Sources).To(HaveLen(1))
-	g.Expect(obj.Status.Module.Sources[0].Renderer).To(Equal(componentApi.SourceRendererKustomize))
+	g.Expect(obj.Status.Release.Version.String()).To(Equal("1.0.0"))
+	g.Expect(string(obj.Status.Release.Name)).To(Equal(string(cluster.OpenDataHub)))
 
-	g.Expect(obj.Status.ConfigValues).To(HaveKeyWithValue(moduleconfig.KeyPlatformType, string(cluster.OpenDataHub)))
+	g.Expect(obj.Status.ConfigValues).To(HaveKeyWithValue(moduleconfig.KeyPlatformName, string(cluster.OpenDataHub)))
 	g.Expect(obj.Status.ConfigValues).To(HaveKeyWithValue(moduleconfig.KeyPlatformVersion, "1.0.0"))
 }

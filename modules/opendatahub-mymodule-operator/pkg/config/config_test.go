@@ -63,7 +63,7 @@ func TestLoadFromFS_Defaults(t *testing.T) {
 	cfg, err := config.LoadFromFS(nil)
 	g.Expect(err).NotTo(HaveOccurred())
 
-	g.Expect(cfg.PlatformType).To(Equal(config.DefaultPlatformType))
+	g.Expect(cfg.PlatformName).To(Equal(config.DefaultPlatformName))
 	g.Expect(cfg.PlatformVersion).To(Equal(config.DefaultPlatformVersion))
 	g.Expect(cfg.MetricsAddr).To(Equal(config.DefaultMetricsAddr))
 	g.Expect(cfg.HealthProbeAddr).To(Equal(config.DefaultHealthProbeAddr))
@@ -78,14 +78,14 @@ func TestLoadFromFS_FlatFiles(t *testing.T) {
 	g := NewWithT(t)
 
 	fsys := fstest.MapFS{
-		config.KeyPlatformType:    {Data: []byte(platformTypeSelfManaged)},
+		config.KeyPlatformName:    {Data: []byte(platformTypeSelfManaged)},
 		config.KeyPlatformVersion: {Data: []byte(platformVersion225)},
 	}
 
 	cfg, err := config.LoadFromFS(fsys)
 	g.Expect(err).NotTo(HaveOccurred())
 
-	g.Expect(cfg.PlatformType).To(Equal(platformTypeSelfManaged))
+	g.Expect(cfg.PlatformName).To(Equal(platformTypeSelfManaged))
 	g.Expect(cfg.PlatformVersion).To(Equal(platformVersion225))
 	g.Expect(cfg.MetricsAddr).To(Equal(config.DefaultMetricsAddr))
 	g.Expect(cfg.LeaderElect).To(BeTrue())
@@ -95,14 +95,14 @@ func TestLoadFromFS_FlatFilesWithWhitespace(t *testing.T) {
 	g := NewWithT(t)
 
 	fsys := fstest.MapFS{
-		config.KeyPlatformType:    {Data: []byte("  " + platformTypeODH + "  \n")},
+		config.KeyPlatformName:    {Data: []byte("  " + platformTypeODH + "  \n")},
 		config.KeyPlatformVersion: {Data: []byte("\t" + platformVersion300 + "\n")},
 	}
 
 	cfg, err := config.LoadFromFS(fsys)
 	g.Expect(err).NotTo(HaveOccurred())
 
-	g.Expect(cfg.PlatformType).To(Equal(platformTypeODH))
+	g.Expect(cfg.PlatformName).To(Equal(platformTypeODH))
 	g.Expect(cfg.PlatformVersion).To(Equal(platformVersion300))
 }
 
@@ -111,7 +111,7 @@ func TestLoadFromFS_YAMLFile(t *testing.T) {
 
 	fsys := fstest.MapFS{
 		fileConfigYAML: {Data: toYAML(map[string]string{
-			config.KeyPlatformType:    platformTypeManagedRhai,
+			config.KeyPlatformName:    platformTypeManagedRhai,
 			config.KeyPlatformVersion: platformVersion220,
 			config.KeyApplicationsNS:  namespaceRHAI,
 		})},
@@ -120,7 +120,7 @@ func TestLoadFromFS_YAMLFile(t *testing.T) {
 	cfg, err := config.LoadFromFS(fsys)
 	g.Expect(err).NotTo(HaveOccurred())
 
-	g.Expect(cfg.PlatformType).To(Equal(platformTypeManagedRhai))
+	g.Expect(cfg.PlatformName).To(Equal(platformTypeManagedRhai))
 	g.Expect(cfg.PlatformVersion).To(Equal(platformVersion220))
 	g.Expect(cfg.ApplicationsNamespace).To(Equal(namespaceRHAI))
 }
@@ -129,7 +129,7 @@ func TestLoadFromFS_MixedFiles(t *testing.T) {
 	g := NewWithT(t)
 
 	fsys := fstest.MapFS{
-		config.KeyPlatformType:    {Data: []byte(platformTypeODH)},
+		config.KeyPlatformName:    {Data: []byte(platformTypeODH)},
 		config.KeyPlatformVersion: {Data: []byte(platformVersion225)},
 		fileConfigYAML: {Data: toYAML(map[string]string{
 			config.KeyApplicationsNS: namespaceCustom,
@@ -140,7 +140,7 @@ func TestLoadFromFS_MixedFiles(t *testing.T) {
 	cfg, err := config.LoadFromFS(fsys)
 	g.Expect(err).NotTo(HaveOccurred())
 
-	g.Expect(cfg.PlatformType).To(Equal(platformTypeODH))
+	g.Expect(cfg.PlatformName).To(Equal(platformTypeODH))
 	g.Expect(cfg.PlatformVersion).To(Equal(platformVersion225))
 	g.Expect(cfg.ApplicationsNamespace).To(Equal(namespaceCustom))
 	g.Expect(cfg.ManifestsPath).To(Equal(manifestsPathOpt))
@@ -152,28 +152,28 @@ func TestLoadFromFS_SkipsDotFiles(t *testing.T) {
 	fsys := fstest.MapFS{
 		".hidden":              {Data: []byte("should-be-ignored")},
 		"..data":               {Data: []byte("k8s-projected-volume-symlink")},
-		config.KeyPlatformType: {Data: []byte(platformTypeODH)},
+		config.KeyPlatformName: {Data: []byte(platformTypeODH)},
 	}
 
 	cfg, err := config.LoadFromFS(fsys)
 	g.Expect(err).NotTo(HaveOccurred())
 
-	g.Expect(cfg.PlatformType).To(Equal(platformTypeODH))
+	g.Expect(cfg.PlatformName).To(Equal(platformTypeODH))
 }
 
 func TestLoadFromFS_EnvOverride(t *testing.T) {
 	g := NewWithT(t)
 
-	t.Setenv(config.EnvPrefix+"_PLATFORM_TYPE", platformTypeXKS)
+	t.Setenv(config.EnvPrefix+"_PLATFORM_NAME", platformTypeXKS)
 
 	fsys := fstest.MapFS{
-		config.KeyPlatformType: {Data: []byte(platformTypeODH)},
+		config.KeyPlatformName: {Data: []byte(platformTypeODH)},
 	}
 
 	cfg, err := config.LoadFromFS(fsys)
 	g.Expect(err).NotTo(HaveOccurred())
 
-	g.Expect(cfg.PlatformType).To(Equal(platformTypeXKS))
+	g.Expect(cfg.PlatformName).To(Equal(platformTypeXKS))
 }
 
 func TestLoadFromFS_EmptyFS(t *testing.T) {
@@ -182,7 +182,7 @@ func TestLoadFromFS_EmptyFS(t *testing.T) {
 	cfg, err := config.LoadFromFS(fstest.MapFS{})
 	g.Expect(err).NotTo(HaveOccurred())
 
-	g.Expect(cfg.PlatformType).To(Equal(config.DefaultPlatformType))
+	g.Expect(cfg.PlatformName).To(Equal(config.DefaultPlatformName))
 	g.Expect(cfg.PlatformVersion).To(Equal(config.DefaultPlatformVersion))
 	g.Expect(cfg.MetricsAddr).To(Equal(config.DefaultMetricsAddr))
 }
@@ -204,7 +204,7 @@ func TestLoadFromFS_StructuredYAMLOverridesDefaults(t *testing.T) {
 	g.Expect(cfg.LeaderElect).To(BeFalse())
 	g.Expect(cfg.LeaderElectionID).To(Equal(leaderElectionIDCustom))
 	g.Expect(cfg.MetricsAddr).To(Equal(metricsAddr9090))
-	g.Expect(cfg.PlatformType).To(Equal(config.DefaultPlatformType))
+	g.Expect(cfg.PlatformName).To(Equal(config.DefaultPlatformName))
 }
 
 func TestLoadFromFS_StructuredJSONFile(t *testing.T) {
@@ -212,7 +212,7 @@ func TestLoadFromFS_StructuredJSONFile(t *testing.T) {
 
 	fsys := fstest.MapFS{
 		fileConfigJSON: {Data: toJSON(map[string]string{
-			config.KeyPlatformType:    platformTypeXKS,
+			config.KeyPlatformName:    platformTypeXKS,
 			config.KeyPlatformVersion: platformVersion100,
 		})},
 	}
@@ -220,7 +220,7 @@ func TestLoadFromFS_StructuredJSONFile(t *testing.T) {
 	cfg, err := config.LoadFromFS(fsys)
 	g.Expect(err).NotTo(HaveOccurred())
 
-	g.Expect(cfg.PlatformType).To(Equal(platformTypeXKS))
+	g.Expect(cfg.PlatformName).To(Equal(platformTypeXKS))
 	g.Expect(cfg.PlatformVersion).To(Equal(platformVersion100))
 }
 
@@ -229,7 +229,7 @@ func TestLoadFromFS_StructuredYMLExtension(t *testing.T) {
 
 	fsys := fstest.MapFS{
 		fileSettingsYML: {Data: toYAML(map[string]string{
-			config.KeyPlatformType:   platformTypeSelfManaged,
+			config.KeyPlatformName:   platformTypeSelfManaged,
 			config.KeyApplicationsNS: namespaceCustom,
 		})},
 	}
@@ -237,7 +237,7 @@ func TestLoadFromFS_StructuredYMLExtension(t *testing.T) {
 	cfg, err := config.LoadFromFS(fsys)
 	g.Expect(err).NotTo(HaveOccurred())
 
-	g.Expect(cfg.PlatformType).To(Equal(platformTypeSelfManaged))
+	g.Expect(cfg.PlatformName).To(Equal(platformTypeSelfManaged))
 	g.Expect(cfg.ApplicationsNamespace).To(Equal(namespaceCustom))
 }
 
@@ -269,32 +269,32 @@ func TestLoadFromFS_NonStructuredExtensionTreatedAsKeyValue(t *testing.T) {
 	g := NewWithT(t)
 
 	fsys := fstest.MapFS{
-		config.KeyPlatformType: {Data: []byte(platformTypeODH)},
+		config.KeyPlatformName: {Data: []byte(platformTypeODH)},
 		"some-setting.txt":     {Data: []byte("some-value")},
 	}
 
 	cfg, err := config.LoadFromFS(fsys)
 	g.Expect(err).NotTo(HaveOccurred())
 
-	g.Expect(cfg.PlatformType).To(Equal(platformTypeODH))
+	g.Expect(cfg.PlatformName).To(Equal(platformTypeODH))
 }
 
 func TestLoadFromFS_FlatFileOverridesStructuredFile(t *testing.T) {
 	g := NewWithT(t)
 
-	// Both set platform-type. Directory entries are in lexical order:
-	// fileConfigYAML < "platform-type", so the flat file wins (processed last).
+	// Both set platform-name. Directory entries are in lexical order:
+	// fileConfigYAML < "platform-name", so the flat file wins (processed last).
 	fsys := fstest.MapFS{
 		fileConfigYAML: {Data: toYAML(map[string]string{
-			config.KeyPlatformType: "FromYAML",
+			config.KeyPlatformName: "FromYAML",
 		})},
-		config.KeyPlatformType: {Data: []byte(platformTypeSelfManaged)},
+		config.KeyPlatformName: {Data: []byte(platformTypeSelfManaged)},
 	}
 
 	cfg, err := config.LoadFromFS(fsys)
 	g.Expect(err).NotTo(HaveOccurred())
 
-	g.Expect(cfg.PlatformType).To(Equal(platformTypeSelfManaged))
+	g.Expect(cfg.PlatformName).To(Equal(platformTypeSelfManaged))
 }
 
 func TestLoadFromFS_MultipleStructuredFilesMerge(t *testing.T) {
@@ -302,7 +302,7 @@ func TestLoadFromFS_MultipleStructuredFilesMerge(t *testing.T) {
 
 	fsys := fstest.MapFS{
 		fileBaseYAML: {Data: toYAML(map[string]string{
-			config.KeyPlatformType:    platformTypeODH,
+			config.KeyPlatformName:    platformTypeODH,
 			config.KeyPlatformVersion: platformVersion100,
 			config.KeyApplicationsNS:  namespaceBase,
 		})},
@@ -315,7 +315,7 @@ func TestLoadFromFS_MultipleStructuredFilesMerge(t *testing.T) {
 	cfg, err := config.LoadFromFS(fsys)
 	g.Expect(err).NotTo(HaveOccurred())
 
-	g.Expect(cfg.PlatformType).To(Equal(platformTypeODH))
+	g.Expect(cfg.PlatformName).To(Equal(platformTypeODH))
 	g.Expect(cfg.PlatformVersion).To(Equal(platformVersion200))
 	g.Expect(cfg.ApplicationsNamespace).To(Equal(namespaceOverride))
 }
@@ -324,13 +324,13 @@ func TestLoadFromFS_EmptyFlatFileKeepsDefault(t *testing.T) {
 	g := NewWithT(t)
 
 	fsys := fstest.MapFS{
-		config.KeyPlatformType: {Data: []byte("")},
+		config.KeyPlatformName: {Data: []byte("")},
 	}
 
 	cfg, err := config.LoadFromFS(fsys)
 	g.Expect(err).NotTo(HaveOccurred())
 
-	g.Expect(cfg.PlatformType).To(BeEmpty())
+	g.Expect(cfg.PlatformName).To(BeEmpty())
 }
 
 func TestLoadFromFS_EmptyStructuredFileKeepsDefaults(t *testing.T) {
@@ -343,7 +343,7 @@ func TestLoadFromFS_EmptyStructuredFileKeepsDefaults(t *testing.T) {
 	cfg, err := config.LoadFromFS(fsys)
 	g.Expect(err).NotTo(HaveOccurred())
 
-	g.Expect(cfg.PlatformType).To(Equal(config.DefaultPlatformType))
+	g.Expect(cfg.PlatformName).To(Equal(config.DefaultPlatformName))
 	g.Expect(cfg.MetricsAddr).To(Equal(config.DefaultMetricsAddr))
 }
 
@@ -354,7 +354,7 @@ func TestLoadFromFS_EnvOverridesStructuredFile(t *testing.T) {
 
 	fsys := fstest.MapFS{
 		fileConfigYAML: {Data: toYAML(map[string]string{
-			config.KeyPlatformType:    platformTypeODH,
+			config.KeyPlatformName:    platformTypeODH,
 			config.KeyPlatformVersion: platformVersion100,
 		})},
 	}
@@ -362,7 +362,7 @@ func TestLoadFromFS_EnvOverridesStructuredFile(t *testing.T) {
 	cfg, err := config.LoadFromFS(fsys)
 	g.Expect(err).NotTo(HaveOccurred())
 
-	g.Expect(cfg.PlatformType).To(Equal(platformTypeODH))
+	g.Expect(cfg.PlatformName).To(Equal(platformTypeODH))
 	g.Expect(cfg.PlatformVersion).To(Equal(platformVersion300))
 }
 

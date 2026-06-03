@@ -73,7 +73,7 @@ func (m *Module) labelDeployment(ctx context.Context, req admission.Request) adm
 		return admission.Errored(http.StatusInternalServerError, err)
 	}
 
-	if mod.Status.Module.Version.IsZero() {
+	if mod.Status.Release.Version.String() == "" || mod.Status.Release.Version.String() == "0.0.0" {
 		return admission.Allowed("")
 	}
 
@@ -82,8 +82,8 @@ func (m *Module) labelDeployment(ctx context.Context, req admission.Request) adm
 		return admission.Errored(http.StatusBadRequest, err)
 	}
 
-	resources.SetLabel(deploy, "mymodule.opendatahub.io/version", mod.Status.Module.Version.String())
-	resources.SetLabel(deploy, "mymodule.opendatahub.io/platform", mod.Status.Module.Platform.Name)
+	resources.SetLabel(deploy, "mymodule.opendatahub.io/version", mod.Status.Release.Version.String())
+	resources.SetLabel(deploy, "mymodule.opendatahub.io/platform", string(mod.Status.Release.Name))
 
 	mutated, err := json.Marshal(deploy)
 	if err != nil {

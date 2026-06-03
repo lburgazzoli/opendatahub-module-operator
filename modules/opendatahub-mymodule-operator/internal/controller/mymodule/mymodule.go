@@ -19,12 +19,13 @@ package mymodule
 import (
 	"context"
 	"fmt"
-	"sort"
 
 	networkingv1 "k8s.io/api/networking/v1"
 	k8serr "k8s.io/apimachinery/pkg/api/errors"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
+
+	ofVersion "github.com/operator-framework/api/pkg/lib/version"
 
 	"github.com/opendatahub-io/opendatahub-operator/v2/api/common"
 	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/cluster"
@@ -34,7 +35,6 @@ import (
 
 	componentApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-mymodule-operator/api/components/v1alpha1"
 	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-mymodule-operator/pkg/config"
-	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-mymodule-operator/pkg/version"
 )
 
 const (
@@ -70,7 +70,6 @@ const (
 // are registered as actions.Fn in the reconciliation pipeline.
 type Module struct {
 	cfg          *moduleconfig.Config
-	version      componentApi.SemVer
 	manifestInfo types.ManifestInfo
 
 	// Webhook fields — set by RegisterWebhooks.
@@ -81,10 +80,6 @@ type Module struct {
 // NewModule creates a Module with one-shot computed state. Called once
 // from NewReconciler at module registration; no sync.Once needed.
 func NewModule(cfg *moduleconfig.Config) (*Module, error) {
-	v, err := componentApi.NewSemVer(version.Version)
-	if err != nil {
-		return nil, fmt.Errorf("parsing module version %q: %w", version.Version, err)
-	}
 
 	mi := types.ManifestInfo{
 		Path:       cfg.ManifestsPath,
@@ -92,13 +87,12 @@ func NewModule(cfg *moduleconfig.Config) (*Module, error) {
 		SourcePath: overlayODH,
 	}
 
-	if common.Platform(cfg.PlatformType) == cluster.SelfManagedRhoai {
+	if common.Platform(cfg.PlatformName) == cluster.SelfManagedRhoai {
 		mi.SourcePath = overlayRhoai
 	}
 
 	return &Module{
 		cfg:          cfg,
-		version:      v,
 		manifestInfo: mi,
 	}, nil
 }
@@ -146,23 +140,23 @@ func (m *Module) upgradeIfNeeded(ctx context.Context, rr *types.ReconciliationRe
 		return fmt.Errorf("instance is not a MyModule")
 	}
 
-	prev := obj.Status.Module
+	prev := obj.Status.Release
 
-	moduleVersionChanged := !prev.Version.IsZero() && m.version.GT(prev.Version)
-	platformVersionChanged := !prev.Platform.Version.IsZero() &&
-		componentApi.SemVer(rr.Release.Version.String()).GT(prev.Platform.Version)
+	if prev.Version.String() == "" || prev.Version.String() == "0.0.0" {
+		return nil
+	}
 
-	if !moduleVersionChanged && !platformVersionChanged {
+	if !rr.Release.Version.GT(prev.Version.Version) {
 		return nil
 	}
 
 	return m.upgrade(ctx, prev, rr)
 }
 
-// upgrade runs idempotent migrations when the module version advances
-// or the platform version changes. It amends existing resources before
-// the new manifests are applied by the deploy action.
-func (m *Module) upgrade(ctx context.Context, prev componentApi.ModuleStatus, rr *types.ReconciliationRequest) error {
+// upgrade runs idempotent migrations when the platform version advances.
+// It amends existing resources before the new manifests are applied by
+// the deploy action.
+func (m *Module) upgrade(ctx context.Context, prev common.Release, rr *types.ReconciliationRequest) error {
 	existing := &networkingv1.Ingress{}
 	key := client.ObjectKey{
 		Namespace: m.cfg.ApplicationsNamespace,
@@ -185,7 +179,7 @@ func (m *Module) upgrade(ctx context.Context, prev componentApi.ModuleStatus, rr
 	ingress.SetName(IngressName)
 	ingress.SetNamespace(m.cfg.ApplicationsNamespace)
 
-	resources.SetAnnotation(ingress, AnnotationManagedVersion, m.version.String())
+	resources.SetAnnotation(ingress, AnnotationManagedVersion, rr.Release.Version.String())
 	resources.SetAnnotation(ingress, AnnotationUpgradedFrom, prev.Version.String())
 
 	if err := resources.Apply(ctx, rr.Client, ingress, client.FieldOwner(componentName+"-upgrade"), client.ForceOwnership); err != nil {
@@ -195,58 +189,20 @@ func (m *Module) upgrade(ctx context.Context, prev componentApi.ModuleStatus, rr
 	return nil
 }
 
-// reportStatus populates the module status with version, platform,
-// source information, and config values.
+// reportStatus populates the release status and config values.
 func (m *Module) reportStatus(_ context.Context, rr *types.ReconciliationRequest) error {
 	obj, ok := rr.Instance.(*componentApi.MyModule)
 	if !ok {
 		return fmt.Errorf("instance is not a MyModule")
 	}
 
-	obj.Status.Module = componentApi.ModuleStatus{
-		Version:     m.version,
-		BuildSource: version.BuildSource(),
-		Platform: componentApi.PlatformStatus{
-			Name:    string(rr.Release.Name),
-			Version: componentApi.SemVer(rr.Release.Version.String()),
-		},
+	obj.Status.Release = common.Release{
+		Name:    rr.Release.Name,
+		Version: ofVersion.OperatorVersion{Version: rr.Release.Version},
 	}
-
-	var sources []componentApi.SourceStatus
-
-	for _, manifest := range rr.Manifests {
-		sources = append(sources, componentApi.SourceStatus{
-			Path:     manifest.String(),
-			Renderer: componentApi.SourceRendererKustomize,
-		})
-	}
-
-	for _, t := range rr.Templates {
-		sources = append(sources, componentApi.SourceStatus{
-			Path:     t.Path,
-			Renderer: componentApi.SourceRendererTemplate,
-		})
-	}
-
-	for _, h := range rr.HelmCharts {
-		sources = append(sources, componentApi.SourceStatus{
-			Path:     h.Chart,
-			Renderer: componentApi.SourceRendererHelm,
-		})
-	}
-
-	sort.Slice(sources, func(i int, j int) bool {
-		if sources[i].Path == sources[j].Path {
-			return sources[i].Renderer < sources[j].Renderer
-		}
-
-		return sources[i].Path < sources[j].Path
-	})
-
-	obj.Status.Module.Sources = sources
 
 	obj.Status.ConfigValues = map[string]string{
-		moduleconfig.KeyPlatformType:    m.cfg.PlatformType,
+		moduleconfig.KeyPlatformName:    m.cfg.PlatformName,
 		moduleconfig.KeyPlatformVersion: m.cfg.PlatformVersion,
 	}
 

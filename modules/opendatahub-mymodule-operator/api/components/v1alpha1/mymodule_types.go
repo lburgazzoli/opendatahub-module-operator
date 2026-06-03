@@ -47,8 +47,8 @@ type MyModuleStatus struct {
 	common.Status                 `json:",inline"`
 	common.ComponentReleaseStatus `json:",inline"`
 
-	// Module reports the module operator's runtime information.
-	Module ModuleStatus `json:"module,omitempty"`
+	// Release reports the operator version and platform.
+	Release common.Release `json:"release,omitempty"`
 
 	// ConfigValues holds the parsed controller ConfigMap entries for observability.
 	ConfigValues map[string]string `json:"configValues,omitempty"`
@@ -60,7 +60,7 @@ type MyModuleStatus struct {
 // +kubebuilder:validation:XValidation:rule="self.metadata.name == 'default-mymodule'",message="MyModule name must be default-mymodule"
 // +kubebuilder:printcolumn:name="Ready",type=string,JSONPath=`.status.conditions[?(@.type=="Ready")].status`,description="Ready"
 // +kubebuilder:printcolumn:name="Reason",type=string,JSONPath=`.status.conditions[?(@.type=="Ready")].reason`,description="Reason"
-// +kubebuilder:printcolumn:name="Version",type=string,JSONPath=`.status.module.version`,description="Module Version"
+// +kubebuilder:printcolumn:name="Version",type=string,JSONPath=`.status.release.version`,description="Module Version"
 
 // MyModule is the Schema for the mymodules API.
 type MyModule struct {
