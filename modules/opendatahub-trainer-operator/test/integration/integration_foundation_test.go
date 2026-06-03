@@ -7,14 +7,13 @@ import (
 
 	. "github.com/onsi/gomega"
 	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/lburgazzoli/gomega-matchers/pkg/matchers/jq"
 
 	componentsv1alpha1 "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-trainer-operator/api/components/v1alpha1"
 	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-trainer-operator/pkg/config"
-	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-trainer-operator/pkg/version"
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-trainer-operator/test/support"
 	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/controller/status"
 )
@@ -42,7 +41,7 @@ func (ft *foundationTests) cleanupModuleWorkload(t *testing.T) {
 func (ft *foundationTests) Execute(t *testing.T) {
 	t.Run("should have module CRD installed", ft.testModuleCRDInstalled)
 	t.Run("should become ready", ft.testBecomesReady)
-	t.Run("should report module version and platform", ft.testModuleStatus)
+	t.Run("should report release version and platform", ft.testReleaseStatus)
 	t.Run("should set platform labels and annotations", ft.testPlatformLabels)
 	t.Run("should set owner references", ft.testOwnerReferences)
 	t.Run("should report not ready when JobSet operator CRD is missing", ft.testJobSetOperatorCRDMissing)
@@ -176,20 +175,13 @@ func (ft *foundationTests) testBecomesReady(t *testing.T) {
 	eventuallyDeploymentReady(t, ft.workloadDeploy)
 }
 
-func (ft *foundationTests) testModuleStatus(t *testing.T) {
+func (ft *foundationTests) testReleaseStatus(t *testing.T) {
 	g := NewWithT(t)
 
 	g.Eventually(k.Get(ft.module)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(And(
-		jq.Match(`.status.module.version == "%s"`, version.Version),
-		jq.Match(`.status.module.buildSource == "%s"`,
-			version.BuildSource()),
-		jq.Match(`.status.module.platform.name == "%s"`,
-			operatorCfgData[moduleconfig.KeyPlatformType]),
-		jq.Match(`.status.module.platform.version == "%s"`,
-			operatorReleaseVersion),
-		jq.Match(`.status.module.sources | length > 0`),
-		jq.Match(`.status.module.sources[0].path != ""`),
-		jq.Match(`.status.module.sources[0].renderer == "kustomize"`),
+		jq.Match(`.status.release.version == "%s"`, operatorReleaseVersion),
+		jq.Match(`.status.release.name == "%s"`,
+			operatorCfgData[moduleconfig.KeyPlatformName]),
 	))
 }
 
@@ -206,7 +198,7 @@ func (ft *foundationTests) testPlatformLabels(t *testing.T) {
 			string(ft.module.GetUID())),
 		jq.Match(`.metadata.annotations."%s" == "%s"`,
 			annotationType,
-			operatorCfgData[moduleconfig.KeyPlatformType]),
+			operatorCfgData[moduleconfig.KeyPlatformName]),
 		jq.Match(`.metadata.annotations."%s" == "%s"`,
 			annotationVersion,
 			operatorReleaseVersion),

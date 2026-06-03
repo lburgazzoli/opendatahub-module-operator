@@ -35,7 +35,7 @@ var _ common.PlatformObject = (*Trainer)(nil)
 // +kubebuilder:validation:XValidation:rule="self.metadata.name == 'default-trainer'",message="Trainer name must be default-trainer"
 // +kubebuilder:printcolumn:name="Ready",type=string,JSONPath=`.status.conditions[?(@.type=="Ready")].status`,description="Ready"
 // +kubebuilder:printcolumn:name="Reason",type=string,JSONPath=`.status.conditions[?(@.type=="Ready")].reason`,description="Reason"
-// +kubebuilder:printcolumn:name="Version",type=string,JSONPath=`.status.module.version`,description="Module Version"
+// +kubebuilder:printcolumn:name="Version",type=string,JSONPath=`.status.release.version`,description="Module Version"
 
 // Trainer is the Schema for the trainers API.
 type Trainer struct {
@@ -63,7 +63,8 @@ type TrainerStatus struct {
 	common.Status       `json:",inline"`
 	TrainerCommonStatus `json:",inline"`
 
-	Module ModuleStatus `json:"module,omitempty"`
+	// Release reports the operator version and platform.
+	Release common.Release `json:"release,omitempty"`
 }
 
 func (c *Trainer) GetStatus() *common.Status {

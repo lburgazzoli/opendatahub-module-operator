@@ -48,14 +48,22 @@ make test-integration-run       # run tests only
 make test-integration-cleanup   # clean up
 ```
 
-**E2E tests** — requires a cluster (deploys the operator via Helm, then tests):
+**E2E tests** — requires a cluster with the operator image published:
 ```sh
-make test-e2e                   # cleanup + deploy + run in one step
-# or split:
-make test-e2e-setup             # prepare cluster
-make deploy-helm                # deploy operator
-make test-e2e-run               # run tests only
-make test-e2e-cleanup           # clean up and undeploy
+# build and push the image, then run:
+IMG="localhost/opendatahub-trainer-operator:e2e-$(uuidgen | tr '[:upper:]' '[:lower:]')"
+make container-build IMG="$IMG"
+OCP_IMG="$(make push-openshift-image IMG="$IMG")"
+make test-e2e-cleanup
+make deploy-helm IMG="$OCP_IMG"
+make test-e2e-run
+make test-e2e-cleanup
+
+# or use deploy-openshift which builds, pushes, and deploys:
+make test-e2e-cleanup
+make deploy-openshift
+make test-e2e-run
+make test-e2e-cleanup
 ```
 
 ## Key Make Targets
