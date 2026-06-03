@@ -30,3 +30,6 @@ config/manifests/datasciencepipelines/
 # Makefile overrides
 local.mk
 *.mktmp.*
+
+# direnv
+.envrc

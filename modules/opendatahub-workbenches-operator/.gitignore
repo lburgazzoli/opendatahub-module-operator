@@ -30,3 +30,6 @@ config/manifests/workbenches/
 # Makefile overrides
 local.mk
 *.mktmp.*
+
+# direnv
+.envrc

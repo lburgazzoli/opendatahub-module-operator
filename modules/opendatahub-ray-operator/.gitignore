@@ -30,3 +30,6 @@ config/manifests/ray/
 # Makefile overrides
 local.mk
 *.mktmp.*
+
+# direnv
+.envrc

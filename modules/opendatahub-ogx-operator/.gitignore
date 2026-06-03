@@ -30,3 +30,6 @@ config/manifests/ogx/
 # Makefile overrides
 local.mk
 *.mktmp.*
+
+# direnv
+.envrc

@@ -30,3 +30,6 @@ config/manifests/trustyai/
 # Makefile overrides
 local.mk
 *.mktmp.*
+
+# direnv
+.envrc

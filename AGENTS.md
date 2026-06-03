@@ -30,6 +30,7 @@ Do NOT delete `// +kubebuilder:scaffold:*` comments.
 
 - Uses `Containerfile` (not Dockerfile) and `podman` (not docker)
 - Use `local.mk` (gitignored) for local Makefile overrides
+- Use `direnv` with `.envrc` (gitignored) for local environment variables
 - Root `Makefile` is monorepo orchestration; run module targets from `modules/$name/`
 - The `go.mod` uses a `replace` directive for `lburgazzoli/opendatahub-operator`
   (moves `internal/controller/status` → `pkg/controller/status`)
