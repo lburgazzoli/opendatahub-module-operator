@@ -38,8 +38,8 @@ type MLflowOperatorStatus struct {
 	common.Status                 `json:",inline"`
 	common.ComponentReleaseStatus `json:",inline"`
 
-	// Module reports the module operator's runtime information.
-	Module ModuleStatus `json:"module,omitempty"`
+	// Release reports the operator version and platform.
+	Release common.Release `json:"release,omitempty"`
 }
 
 // +kubebuilder:object:root=true
@@ -48,6 +48,7 @@ type MLflowOperatorStatus struct {
 // +kubebuilder:validation:XValidation:rule="self.metadata.name == 'default-mlflowoperator'",message="MLflowOperator name must be default-mlflowoperator"
 // +kubebuilder:printcolumn:name="Ready",type=string,JSONPath=`.status.conditions[?(@.type=="Ready")].status`,description="Ready"
 // +kubebuilder:printcolumn:name="Reason",type=string,JSONPath=`.status.conditions[?(@.type=="Ready")].reason`,description="Reason"
+// +kubebuilder:printcolumn:name="Version",type=string,JSONPath=`.status.release.version`,description="Module Version"
 
 // MLflowOperator is the Schema for the mlflowoperators API.
 type MLflowOperator struct {

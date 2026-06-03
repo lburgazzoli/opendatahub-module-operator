@@ -6,5 +6,5 @@ metadata:
   labels:
     app.kubernetes.io/name: opendatahub-mlflow-operator
 data:
-  platform-type: "OpenDataHub"
+  platform-name: "OpenDataHub"
   platform-version: "unknown"

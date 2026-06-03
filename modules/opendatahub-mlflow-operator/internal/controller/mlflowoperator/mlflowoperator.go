@@ -20,7 +20,6 @@ import (
 	"context"
 	"fmt"
 	"path"
-	"sort"
 
 	"github.com/opendatahub-io/opendatahub-operator/v2/api/common"
 	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/cluster"
@@ -29,7 +28,6 @@ import (
 
 	componentApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-mlflow-operator/api/components/v1alpha1"
 	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-mlflow-operator/pkg/config"
-	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-mlflow-operator/pkg/version"
 )
 
 const (
@@ -53,7 +51,6 @@ var imageParamMap = map[string]string{
 // Module holds process-lifetime state for the mlflowoperator controller.
 type Module struct {
 	cfg          *moduleconfig.Config
-	version      componentApi.SemVer
 	manifestInfo odhtypes.ManifestInfo
 	// consoleSectionTitle is the section-title kustomize variable, computed once from platform.
 	consoleSectionTitle string
@@ -68,12 +65,7 @@ func consoleSectionTitleFor(platform common.Platform) string {
 
 // NewModule creates a Module with one-shot computed state.
 func NewModule(cfg *moduleconfig.Config) (*Module, error) {
-	v, err := componentApi.NewSemVer(version.Version)
-	if err != nil {
-		return nil, fmt.Errorf("parsing module version %q: %w", version.Version, err)
-	}
-
-	platform := common.Platform(cfg.PlatformType)
+	platform := common.Platform(cfg.PlatformName)
 	overlay := overlayODH
 	if platform == cluster.SelfManagedRhoai || platform == cluster.ManagedRhoai {
 		overlay = overlayRhoai
@@ -93,7 +85,6 @@ func NewModule(cfg *moduleconfig.Config) (*Module, error) {
 
 	return &Module{
 		cfg:                 cfg,
-		version:             v,
 		manifestInfo:        mi,
 		consoleSectionTitle: consoleSectionTitleFor(platform),
 	}, nil
@@ -105,45 +96,17 @@ func (m *Module) initialize(_ context.Context, rr *odhtypes.ReconciliationReques
 	return nil
 }
 
-// reportStatus populates the module status with version, platform, and source information.
+// reportStatus populates the release status and config values.
 func (m *Module) reportStatus(_ context.Context, rr *odhtypes.ReconciliationRequest) error {
 	obj, ok := rr.Instance.(*componentApi.MLflowOperator)
 	if !ok {
 		return fmt.Errorf("instance is not a MLflowOperator")
 	}
 
-	obj.Status.Module = componentApi.ModuleStatus{
-		Version:     m.version,
-		BuildSource: version.BuildSource(),
-		Platform: componentApi.PlatformStatus{
-			Name:    string(rr.Release.Name),
-			Version: componentApi.SemVer(rr.Release.Version.String()),
-		},
+	obj.Status.Release = common.Release{
+		Name:    rr.Release.Name,
+		Version: rr.Release.Version,
 	}
-
-	var sources []componentApi.SourceStatus
-	for _, manifest := range rr.Manifests {
-		sources = append(sources, componentApi.SourceStatus{
-			Path:     manifest.String(),
-			Renderer: componentApi.SourceRendererKustomize,
-		})
-	}
-	for _, t := range rr.Templates {
-		sources = append(sources, componentApi.SourceStatus{Path: t.Path, Renderer: componentApi.SourceRendererTemplate})
-	}
-	for _, h := range rr.HelmCharts {
-		sources = append(sources, componentApi.SourceStatus{Path: h.Chart, Renderer: componentApi.SourceRendererHelm})
-	}
-
-	sort.Slice(sources, func(i int, j int) bool {
-		if sources[i].Path == sources[j].Path {
-			return sources[i].Renderer < sources[j].Renderer
-		}
-
-		return sources[i].Path < sources[j].Path
-	})
-
-	obj.Status.Module.Sources = sources
 
 	return nil
 }
