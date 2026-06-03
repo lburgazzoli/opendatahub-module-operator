@@ -49,8 +49,8 @@ generate: ## Generate code containing DeepCopy, DeepCopyInto, and DeepCopyObject
 	$(CONTROLLER_GEN) object:headerFile="hack/boilerplate.go.txt",year=$(YEAR) paths="./..."
 
 .PHONY: fmt
-fmt: ## Run go fmt against code.
-	go fmt ./...
+fmt: ## Run golangci-lint formatters against code.
+	$(GOLANGCI_LINT) fmt
 
 .PHONY: vet
 vet: ## Run go vet against code.

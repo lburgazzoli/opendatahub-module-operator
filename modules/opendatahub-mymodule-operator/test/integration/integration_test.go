@@ -307,4 +307,3 @@ func eventuallyDeploymentReady(t *testing.T, deploy *appsv1.Deployment) {
 		jq.Match(`.status.readyReplicas >= 1`),
 	)
 }
-
