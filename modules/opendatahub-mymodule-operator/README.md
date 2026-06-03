@@ -46,9 +46,9 @@ make test-e2e
 The controller image pull policy is intentionally kept at `Always` for both
 kustomize and Helm deployment paths.
 
-For local CRC/OpenShift development, you can build and deploy through the
+For local OpenShift development, you can build and deploy through the
 internal cluster registry with:
 
 ```sh
-make deploy-crc
+make deploy-openshift
 ```

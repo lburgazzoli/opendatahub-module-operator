@@ -36,7 +36,7 @@ make cleanup-upgrade
 
 When using the internal OpenShift registry, do not use `make test-e2e`
 directly. That target starts with `cleanup-e2e`, and that cleanup can remove
-the namespace and image stream where `push-crc-image` just published the image.
+the namespace and image stream where `push-openshift-image` just published the image.
 
 Use the split flow instead:
 
@@ -46,14 +46,14 @@ LOCAL_IMG="localhost/opendatahub-workbenches-operator:e2e-$(uuidgen | tr '[:uppe
 make cleanup-e2e
 make container-build IMG="$LOCAL_IMG"
 
-CRC_IMG="$(make push-crc-image IMG="$LOCAL_IMG")"
-echo "Using CRC image: $CRC_IMG"
+OCP_IMG="$(make push-openshift-image IMG="$LOCAL_IMG")"
+echo "Using OpenShift image: $OCP_IMG"
 
-make deploy-helm IMG="$CRC_IMG"
+make deploy-helm IMG="$OCP_IMG"
 make test-e2e-run
 make cleanup-e2e
 ```
 
-If `make push-crc-image IMG="$LOCAL_IMG"` fails once, retry it once. If it
+If `make push-openshift-image IMG="$LOCAL_IMG"` fails once, retry it once. If it
 fails again, stop there and switch to a `ttl.sh` image instead of continuing
 with the internal-registry flow.

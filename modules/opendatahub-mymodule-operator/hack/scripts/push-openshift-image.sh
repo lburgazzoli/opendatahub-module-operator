@@ -4,17 +4,17 @@ set -euo pipefail
 source_img="${1:?source image is required}"
 image_namespace="${2:?image namespace is required}"
 image_name="${3:?image name is required}"
-crc_tag="$(uuidgen | tr '[:upper:]' '[:lower:]')"
+ocp_tag="$(uuidgen | tr '[:upper:]' '[:lower:]')"
 
-crc_registry_route_name="${CRC_REGISTRY_ROUTE_NAME:-default-route}"
-crc_registry_route_namespace="${CRC_REGISTRY_ROUTE_NAMESPACE:-openshift-image-registry}"
-crc_internal_registry_host="${CRC_INTERNAL_REGISTRY_HOST:-image-registry.openshift-image-registry.svc:5000}"
+ocp_registry_route_name="${OCP_REGISTRY_ROUTE_NAME:-default-route}"
+ocp_registry_route_namespace="${OCP_REGISTRY_ROUTE_NAMESPACE:-openshift-image-registry}"
+ocp_internal_registry_host="${OCP_INTERNAL_REGISTRY_HOST:-image-registry.openshift-image-registry.svc:5000}"
 container_tool="${CONTAINER_TOOL:-podman}"
 
-external_host="$(oc get route "${crc_registry_route_name}" -n "${crc_registry_route_namespace}" -o jsonpath='{.spec.host}' 2>/dev/null || true)"
+external_host="$(oc get route "${ocp_registry_route_name}" -n "${ocp_registry_route_namespace}" -o jsonpath='{.spec.host}' 2>/dev/null || true)"
 if [[ -z "${external_host}" ]]; then
-    echo "OpenShift image registry route ${crc_registry_route_name} not found in namespace ${crc_registry_route_namespace}" >&2
-    echo "Verify CRC exposes the default route and that 'oc registry login --insecure=true' works." >&2
+    echo "OpenShift image registry route ${ocp_registry_route_name} not found in namespace ${ocp_registry_route_namespace}" >&2
+    echo "Verify the cluster exposes the default route and that 'oc registry login --insecure=true' works." >&2
     exit 1
 fi
 
@@ -23,8 +23,8 @@ if [[ -z "$(kubectl get namespace "${image_namespace}" -o name --ignore-not-foun
     kubectl create namespace "${image_namespace}" >/dev/null
 fi
 
-external_image="${external_host}/${image_namespace}/${image_name}:${crc_tag}"
-internal_image="${crc_internal_registry_host}/${image_namespace}/${image_name}:${crc_tag}"
+external_image="${external_host}/${image_namespace}/${image_name}:${ocp_tag}"
+internal_image="${ocp_internal_registry_host}/${image_namespace}/${image_name}:${ocp_tag}"
 
 echo "Logging into ${external_host}" >&2
 oc registry login --insecure=true --registry "${external_host}" >/dev/null

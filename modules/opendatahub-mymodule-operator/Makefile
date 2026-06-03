@@ -189,14 +189,14 @@ deploy-helm: ## Deploy controller via Helm chart.
 			--set-string image.fullRef="$$resolved_img" \
 			--wait --timeout 5m $(HELM_EXTRA_ARGS)
 
-.PHONY: push-crc-image
-push-crc-image: ## Push a built image to the CRC internal registry and print the pullspec.
-	@bash ./hack/scripts/push-crc-image.sh "$(IMG)" "$(HELM_NAMESPACE)" "$(MODULE_NAME)"
+.PHONY: push-openshift-image
+push-openshift-image: ## Push a built image to the OpenShift internal registry and print the pullspec.
+	@bash ./hack/scripts/push-openshift-image.sh "$(IMG)" "$(HELM_NAMESPACE)" "$(MODULE_NAME)"
 
-.PHONY: deploy-crc
-deploy-crc: ## Build locally, push to CRC internal registry, and deploy via Helm.
+.PHONY: deploy-openshift
+deploy-openshift: ## Build locally, push to OpenShift internal registry, and deploy via Helm.
 	$(MAKE) container-build
-	@img="$$(bash ./hack/scripts/push-crc-image.sh "$(IMG)" "$(HELM_NAMESPACE)" "$(MODULE_NAME)")"; \
+	@img="$$(bash ./hack/scripts/push-openshift-image.sh "$(IMG)" "$(HELM_NAMESPACE)" "$(MODULE_NAME)")"; \
 		echo "Using image: $$img"; \
 		$(MAKE) helm; \
 		$(MAKE) deploy-helm IMG="$$img"
