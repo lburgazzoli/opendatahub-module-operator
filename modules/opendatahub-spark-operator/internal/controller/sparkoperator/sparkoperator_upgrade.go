@@ -20,8 +20,10 @@ import (
 	"context"
 	"fmt"
 
-	componentApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-spark-operator/api/components/v1alpha1"
+	"github.com/opendatahub-io/opendatahub-operator/v2/api/common"
 	odhtypes "github.com/opendatahub-io/opendatahub-operator/v2/pkg/controller/types"
+
+	componentApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-spark-operator/api/components/v1alpha1"
 )
 
 func (m *Module) upgradeIfNeeded(ctx context.Context, rr *odhtypes.ReconciliationRequest) error {
@@ -30,25 +32,25 @@ func (m *Module) upgradeIfNeeded(ctx context.Context, rr *odhtypes.Reconciliatio
 		return fmt.Errorf("instance is not a SparkOperator")
 	}
 
-	prev := obj.Status.Module
+	prev := obj.Status.Release
 
-	moduleVersionChanged := !prev.Version.IsZero() && m.version.GT(prev.Version)
-	platformVersionChanged := !prev.Platform.Version.IsZero() &&
-		componentApi.SemVer(rr.Release.Version.String()).GT(prev.Platform.Version)
+	if prev.Version.String() == "" || prev.Version.String() == "0.0.0" {
+		return nil
+	}
 
-	if !moduleVersionChanged && !platformVersionChanged {
+	if !rr.Release.Version.GT(prev.Version.Version) {
 		return nil
 	}
 
 	return m.upgrade(ctx, prev, rr)
 }
 
-// upgrade runs idempotent migrations when the module version advances
-// or the platform version changes. Implement version-gated migrations here.
-func (m *Module) upgrade(_ context.Context, prev componentApi.ModuleStatus, rr *odhtypes.ReconciliationRequest) error {
+// upgrade runs idempotent migrations when the platform version advances.
+// Implement version-gated migrations here.
+func (m *Module) upgrade(_ context.Context, prev common.Release, rr *odhtypes.ReconciliationRequest) error {
 	_ = prev
 	_ = rr
 	// Add version-gated migrations here, e.g.:
-	// if m.version.GT("1.0.0") && prev.Version.LT("1.0.0") { ... }
+	// if rr.Release.Version.GT(semver.MustParse("1.0.0")) { ... }
 	return nil
 }
