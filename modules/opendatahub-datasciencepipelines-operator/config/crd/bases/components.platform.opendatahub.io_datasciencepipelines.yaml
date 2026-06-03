@@ -24,7 +24,7 @@ spec:
       name: Reason
       type: string
     - description: Module Version
-      jsonPath: .status.module.version
+      jsonPath: .status.release.version
       name: Version
       type: string
     name: v1alpha1
@@ -122,64 +122,20 @@ spec:
                   type: object
                 type: array
                 x-kubernetes-list-type: atomic
-              module:
-                description: Module reports the standalone module operator runtime
-                  information.
-                properties:
-                  buildSource:
-                    description: |-
-                      BuildSource identifies the source the operator was built from
-                      in the format repo@branch/commit (e.g. github.com/org/repo@main/abc1234).
-                    type: string
-                  platform:
-                    description: Platform reports the detected platform identity and
-                      version.
-                    properties:
-                      name:
-                        description: Name is the platform identifier (e.g. OpenDataHub,
-                          SelfManagedRHOAI).
-                        type: string
-                      version:
-                        description: Version is the platform operator version.
-                        type: string
-                    required:
-                    - name
-                    type: object
-                  sources:
-                    description: Sources lists the manifest sources loaded during
-                      reconciliation.
-                    items:
-                      description: SourceStatus describes a manifest source loaded
-                        during reconciliation.
-                      properties:
-                        path:
-                          description: Path is the resolved manifest source path.
-                          type: string
-                        renderer:
-                          description: Renderer is the rendering engine used for this
-                            source.
-                          enum:
-                          - kustomize
-                          - helm
-                          - template
-                          type: string
-                      required:
-                      - path
-                      - renderer
-                      type: object
-                    type: array
-                  version:
-                    description: Version is the module operator version.
-                    type: string
-                required:
-                - version
-                type: object
               observedGeneration:
                 description: The generation observed by the resource controller.
                 format: int64
                 type: integer
               phase:
                 type: string
+              release:
+                description: Release reports the operator version and platform.
+                properties:
+                  name:
+                    type: string
+                  version:
+                    type: string
+                type: object
               releases:
                 items:
                   description: ComponentRelease represents the detailed status of

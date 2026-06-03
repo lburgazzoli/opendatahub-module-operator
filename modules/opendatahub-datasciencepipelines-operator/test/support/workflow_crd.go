@@ -3,6 +3,7 @@ package support
 import (
 	"context"
 	"fmt"
+	"maps"
 	"time"
 
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
@@ -83,12 +84,7 @@ func cloneLabels(labels map[string]string) map[string]string {
 		return nil
 	}
 
-	cloned := make(map[string]string, len(labels))
-	for key, value := range labels {
-		cloned[key] = value
-	}
-
-	return cloned
+	return maps.Clone(labels)
 }
 
 func sanitizeWorkflowCRD(crd *apiextensionsv1.CustomResourceDefinition) *apiextensionsv1.CustomResourceDefinition {

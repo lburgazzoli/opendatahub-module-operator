@@ -56,8 +56,8 @@ type DataSciencePipelinesStatus struct {
 	common.Status                    `json:",inline"`
 	DataSciencePipelinesCommonStatus `json:",inline"`
 
-	// Module reports the standalone module operator runtime information.
-	Module ModuleStatus `json:"module,omitempty"`
+	// Release reports the operator version and platform.
+	Release common.Release `json:"release,omitempty"`
 }
 
 // +kubebuilder:object:root=true
@@ -66,7 +66,7 @@ type DataSciencePipelinesStatus struct {
 // +kubebuilder:validation:XValidation:rule="self.metadata.name == 'default-datasciencepipelines'",message="DataSciencePipelines name must be default-datasciencepipelines"
 // +kubebuilder:printcolumn:name="Ready",type=string,JSONPath=`.status.conditions[?(@.type=="Ready")].status`,description="Ready"
 // +kubebuilder:printcolumn:name="Reason",type=string,JSONPath=`.status.conditions[?(@.type=="Ready")].reason`,description="Reason"
-// +kubebuilder:printcolumn:name="Version",type=string,JSONPath=`.status.module.version`,description="Module Version"
+// +kubebuilder:printcolumn:name="Version",type=string,JSONPath=`.status.release.version`,description="Module Version"
 type DataSciencePipelines struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`

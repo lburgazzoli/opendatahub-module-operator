@@ -30,8 +30,8 @@ import (
 	componentsv1alpha1 "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-datasciencepipelines-operator/api/components/v1alpha1"
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-datasciencepipelines-operator/test/support"
 	. "github.com/onsi/gomega"
-	promv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
 	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/metadata/labels"
+	promv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
@@ -280,11 +280,11 @@ func ensureArgoWorkflowCRDOwnedByODH(t *testing.T) {
 
 	crd := loadOrCreateWorkflowCRD(t)
 	odhLabel := labels.ODH.Component(legacyComponentName)
-	if crd.Labels[odhLabel] == "true" {
+	if crd.Labels[odhLabel] == labels.True {
 		return
 	}
 	updateWorkflowCRDEventually(t, func(crd *apiextensionsv1.CustomResourceDefinition) {
-		crd.Labels[odhLabel] = "true"
+		crd.Labels[odhLabel] = labels.True
 		crd.Labels[testManagedByLabel] = testManagedByValue
 	})
 }
@@ -295,7 +295,7 @@ func ensureArgoWorkflowCRDForeignOwned(t *testing.T) {
 
 	crd := loadOrCreateWorkflowCRD(t)
 	odhLabel := labels.ODH.Component(legacyComponentName)
-	if crd.Labels[odhLabel] != "true" && crd.Labels[testManagedByLabel] == testManagedByValue {
+	if crd.Labels[odhLabel] != labels.True && crd.Labels[testManagedByLabel] == testManagedByValue {
 		return
 	}
 	updateWorkflowCRDEventually(t, func(crd *apiextensionsv1.CustomResourceDefinition) {
@@ -384,13 +384,6 @@ func createModule(t *testing.T, module *componentsv1alpha1.DataSciencePipelines)
 	if err := k8sClient.Update(ctx, current); err != nil {
 		t.Fatalf("updating module: %v", err)
 	}
-}
-
-func (dt *dspE2ETest) testModuleCRDInstalled(t *testing.T) {
-	g := NewWithT(t)
-	g.Eventually(k.Get(dt.moduleCRD)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(
-		jq.Match(`.metadata.name == "%s"`, moduleCRDName),
-	)
 }
 
 func waitForDeleted(t *testing.T, obj client.Object) {

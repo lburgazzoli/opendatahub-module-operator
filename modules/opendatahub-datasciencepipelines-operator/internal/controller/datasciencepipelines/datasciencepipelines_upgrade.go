@@ -21,6 +21,7 @@ import (
 	"fmt"
 
 	componentApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-datasciencepipelines-operator/api/components/v1alpha1"
+	"github.com/opendatahub-io/opendatahub-operator/v2/api/common"
 	odhtypes "github.com/opendatahub-io/opendatahub-operator/v2/pkg/controller/types"
 )
 
@@ -33,11 +34,13 @@ func (m *Module) upgradeIfNeeded(
 		return fmt.Errorf("instance is not a DataSciencePipelines")
 	}
 
-	prev := obj.Status.Module
-	moduleVersionChanged := !prev.Version.IsZero() && m.version.GT(prev.Version)
-	platformVersionChanged := !prev.Platform.Version.IsZero() &&
-		componentApi.SemVer(rr.Release.Version.String()).GT(prev.Platform.Version)
-	if !moduleVersionChanged && !platformVersionChanged {
+	prev := obj.Status.Release
+
+	if prev.Version.String() == "" || prev.Version.String() == "0.0.0" {
+		return nil
+	}
+
+	if !rr.Release.Version.GT(prev.Version.Version) {
 		return nil
 	}
 
@@ -46,7 +49,7 @@ func (m *Module) upgradeIfNeeded(
 
 func (m *Module) upgrade(
 	_ context.Context,
-	prev componentApi.ModuleStatus,
+	prev common.Release,
 	rr *odhtypes.ReconciliationRequest,
 ) error {
 	_ = prev

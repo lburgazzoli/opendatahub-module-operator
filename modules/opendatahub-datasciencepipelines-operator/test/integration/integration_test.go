@@ -142,7 +142,7 @@ func runTestMain(m *testing.M) int {
 	)
 
 	moduleCfg := &moduleconfig.Config{
-		PlatformType:          operatorCfgData[moduleconfig.KeyPlatformType],
+		PlatformName:          operatorCfgData[moduleconfig.KeyPlatformName],
 		PlatformVersion:       operatorCfgData[moduleconfig.KeyPlatformVersion],
 		ApplicationsNamespace: testNamespace,
 		ManifestsPath:         support.MustProjectFile("config", "manifests"),
@@ -324,11 +324,11 @@ func ensureArgoWorkflowCRDOwnedByODH(t *testing.T) {
 
 	crd := loadOrCreateWorkflowCRD(t)
 	odhLabel := labels.ODH.Component(legacyComponentName)
-	if crd.Labels[odhLabel] == "true" {
+	if crd.Labels[odhLabel] == labels.True {
 		return
 	}
 	updateWorkflowCRDEventually(t, func(crd *apiextensionsv1.CustomResourceDefinition) {
-		crd.Labels[odhLabel] = "true"
+		crd.Labels[odhLabel] = labels.True
 		crd.Labels[testManagedByLabel] = testManagedByValue
 	})
 }
@@ -339,7 +339,7 @@ func ensureArgoWorkflowCRDForeignOwned(t *testing.T) {
 
 	crd := loadOrCreateWorkflowCRD(t)
 	odhLabel := labels.ODH.Component(legacyComponentName)
-	if crd.Labels[odhLabel] != "true" && crd.Labels[testManagedByLabel] == testManagedByValue {
+	if crd.Labels[odhLabel] != labels.True && crd.Labels[testManagedByLabel] == testManagedByValue {
 		return
 	}
 	updateWorkflowCRDEventually(t, func(crd *apiextensionsv1.CustomResourceDefinition) {
