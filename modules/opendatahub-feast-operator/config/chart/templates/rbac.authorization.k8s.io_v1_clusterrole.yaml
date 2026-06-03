@@ -2,7 +2,6 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
   labels:
-    app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: opendatahub-feast-operator
   name: opendatahub-feast-components-feastoperator-admin-role
 rules:
@@ -23,7 +22,6 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
   labels:
-    app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: opendatahub-feast-operator
   name: opendatahub-feast-components-feastoperator-editor-role
 rules:
@@ -50,7 +48,6 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
   labels:
-    app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: opendatahub-feast-operator
   name: opendatahub-feast-components-feastoperator-viewer-role
 rules:

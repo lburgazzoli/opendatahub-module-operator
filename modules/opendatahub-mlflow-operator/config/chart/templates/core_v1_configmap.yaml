@@ -11,7 +11,6 @@ data:
 kind: ConfigMap
 metadata:
   labels:
-    app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: opendatahub-mlflow-operator
   name: opendatahub-mlflow-config
   namespace: {{ .Release.Namespace }}

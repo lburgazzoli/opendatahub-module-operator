@@ -3,6 +3,5 @@ kind: DataSciencePipelines
 metadata:
   labels:
     app.kubernetes.io/name: opendatahub-datasciencepipelines-operator
-    app.kubernetes.io/managed-by: kustomize
   name: default-datasciencepipelines
 spec: {}

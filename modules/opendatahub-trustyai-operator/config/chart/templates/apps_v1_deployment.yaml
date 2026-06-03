@@ -2,7 +2,6 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   labels:
-    app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: opendatahub-trustyai-operator
   name: opendatahub-trustyai-operator
   namespace: {{ .Release.Namespace }}

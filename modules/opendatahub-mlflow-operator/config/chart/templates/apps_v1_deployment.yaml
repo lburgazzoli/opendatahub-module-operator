@@ -2,7 +2,6 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   labels:
-    app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: opendatahub-mlflow-operator
   name: opendatahub-mlflow-operator
   namespace: {{ .Release.Namespace }}

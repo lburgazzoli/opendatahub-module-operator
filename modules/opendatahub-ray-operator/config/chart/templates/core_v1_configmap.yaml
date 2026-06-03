@@ -11,7 +11,6 @@ data:
 kind: ConfigMap
 metadata:
   labels:
-    app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: opendatahub-ray-operator
   name: opendatahub-ray-config
   namespace: {{ .Release.Namespace }}

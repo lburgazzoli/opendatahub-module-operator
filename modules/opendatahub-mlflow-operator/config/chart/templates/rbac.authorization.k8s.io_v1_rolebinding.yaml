@@ -2,7 +2,6 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
   labels:
-    app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: opendatahub-mlflow-operator
   name: opendatahub-mlflow-leader-election-rolebinding
   namespace: {{ .Release.Namespace }}

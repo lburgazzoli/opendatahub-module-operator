@@ -10,7 +10,6 @@ kind: ClusterRole
 metadata:
   labels:
     app.kubernetes.io/name: opendatahub-spark-operator
-    app.kubernetes.io/managed-by: kustomize
   name: components-sparkoperator-viewer-role
 rules:
 - apiGroups:

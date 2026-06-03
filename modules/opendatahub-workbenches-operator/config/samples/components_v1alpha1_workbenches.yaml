@@ -3,6 +3,5 @@ kind: Workbenches
 metadata:
   labels:
     app.kubernetes.io/name: opendatahub-workbenches-operator
-    app.kubernetes.io/managed-by: kustomize
   name: default-workbenches
 spec: {}

@@ -2,7 +2,6 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   labels:
-    app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: opendatahub-ogx-operator
   name: opendatahub-ogx-operator
   namespace: {{ .Release.Namespace }}

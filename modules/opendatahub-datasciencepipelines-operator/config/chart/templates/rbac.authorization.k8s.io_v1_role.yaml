@@ -2,7 +2,6 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
   labels:
-    app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: opendatahub-datasciencepipelines-operator
   name: opendatahub-datasciencepipelines-leader-election-role
   namespace: {{ .Release.Namespace }}

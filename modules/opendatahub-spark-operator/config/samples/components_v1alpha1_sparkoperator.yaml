@@ -3,6 +3,5 @@ kind: MyModule
 metadata:
   labels:
     app.kubernetes.io/name: opendatahub-spark-operator
-    app.kubernetes.io/managed-by: kustomize
   name: default-sparkoperator
 spec: {}

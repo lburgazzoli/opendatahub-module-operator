@@ -3,6 +3,5 @@ kind: MyModule
 metadata:
   labels:
     app.kubernetes.io/name: opendatahub-mlflow-operator
-    app.kubernetes.io/managed-by: kustomize
   name: default-mlflowoperator
 spec: {}

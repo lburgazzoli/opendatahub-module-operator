@@ -65,12 +65,35 @@ func renderGroup(
 	return strings.Join(parts, "\n---\n"), nil
 }
 
+var stripLabelKeys = []string{
+	"app.kubernetes.io/managed-by",
+}
+
+func stripLabels(obj *unstructured.Unstructured) {
+	labels := obj.GetLabels()
+	if len(labels) == 0 {
+		return
+	}
+
+	for _, key := range stripLabelKeys {
+		delete(labels, key)
+	}
+
+	if len(labels) == 0 {
+		obj.SetLabels(nil)
+	} else {
+		obj.SetLabels(labels)
+	}
+}
+
 // transformResource applies Helm template transformations to a resource
 // based on its kind.
 func transformResource(
 	resourceGVK schema.GroupVersionKind,
 	obj *unstructured.Unstructured,
 ) (string, error) {
+	stripLabels(obj)
+
 	switch resourceGVK {
 	case gvk.Deployment:
 		return transformDeployment(obj)

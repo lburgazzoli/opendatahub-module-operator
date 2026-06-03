@@ -3,7 +3,6 @@ kind: ModelRegistry
 metadata:
   labels:
     app.kubernetes.io/name: opendatahub-modelregistry-operator
-    app.kubernetes.io/managed-by: kustomize
   name: default-modelregistry
 spec:
   gateway:
