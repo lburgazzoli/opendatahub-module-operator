@@ -74,9 +74,6 @@ test-integration-setup: manifests generate ## Prepare the cluster for integratio
 	$(MAKE) test-integration-cleanup
 	$(MAKE) install
 
-.PHONY: prepare-integration
-prepare-integration: test-integration-setup ## Alias for test-integration-setup.
-
 .PHONY: test-integration
 test-integration: test-integration-setup test-integration-run ## Run integration tests (prepare cluster, then run tests).
 
