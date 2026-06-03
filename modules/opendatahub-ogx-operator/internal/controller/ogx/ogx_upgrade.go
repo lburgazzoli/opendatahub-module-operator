@@ -20,6 +20,8 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/opendatahub-io/opendatahub-operator/v2/api/common"
+
 	componentApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-ogx-operator/api/components/v1alpha1"
 	odhtypes "github.com/opendatahub-io/opendatahub-operator/v2/pkg/controller/types"
 )
@@ -30,21 +32,19 @@ func (m *Module) upgradeIfNeeded(ctx context.Context, rr *odhtypes.Reconciliatio
 		return fmt.Errorf("instance is not an OGX")
 	}
 
-	prev := obj.Status.Module
+	prev := obj.Status.Release
 
-	moduleVersionChanged := !prev.Version.IsZero() && m.version.GT(prev.Version)
-	platformVersionChanged := !prev.Platform.Version.IsZero() &&
-		componentApi.SemVer(rr.Release.Version.String()).GT(prev.Platform.Version)
+	if prev.Version.String() == "" || prev.Version.String() == "0.0.0" {
+		return nil
+	}
 
-	if !moduleVersionChanged && !platformVersionChanged {
+	if !rr.Release.Version.GT(prev.Version.Version) {
 		return nil
 	}
 
 	return m.upgrade(ctx, prev, rr)
 }
 
-func (m *Module) upgrade(_ context.Context, prev componentApi.ModuleStatus, rr *odhtypes.ReconciliationRequest) error {
-	_ = prev
-	_ = rr
+func (m *Module) upgrade(_ context.Context, _ common.Release, _ *odhtypes.ReconciliationRequest) error {
 	return nil
 }
