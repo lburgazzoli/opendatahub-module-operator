@@ -35,7 +35,7 @@ jobs:
 
       - name: Detect changed module paths
         id: filter
-        uses: dorny/paths-filter@3b5e8027d2c8e1d8c5f8f6c9e3d6f7c2b3c7a9cd # v3.0.2
+        uses: dorny/paths-filter@v4.0.0
         with:
           filters: |
             mymodule:
