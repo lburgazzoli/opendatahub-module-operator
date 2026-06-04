@@ -49,6 +49,30 @@ Do NOT delete `// +kubebuilder:scaffold:*` comments.
 `opendatahub-datasciencepipelines-operator`,
 `opendatahub-workbenches-operator`
 
+## Test Parallelism
+
+Unit tests (`make test`) are always parallel-safe — no cluster access.
+Integration/e2e tests share a cluster and can conflict on non-core CRDs.
+
+**Parallel-safe** (no shared non-core CRD writes — can all run together):
+`mymodule`, `spark`, `feast`, `ogx`, `trainer`, `modelregistry`
+
+**Sequential** (shared writable non-core CRDs — must run one at a time):
+`datasciencepipelines`, `ray`, `trustyai`, `mlflow`, `workbenches`
+
+Conflict edges (reason modules are sequential):
+
+| CRD group | Modules |
+|---|---|
+| `ray.io/*` | ray, datasciencepipelines |
+| `serving.kserve.io/*` | trustyai, datasciencepipelines |
+| `mlflow.kubeflow.org/experiments` | mlflow, trustyai |
+| `datasciencepipelinesapplications.opendatahub.io/*` | datasciencepipelines, workbenches |
+
+When adding a new module: check its `config/rbac/role.yaml` for non-core
+API groups. If none overlap with existing modules, add to parallel-safe.
+Otherwise add to sequential.
+
 ## Root Make Targets
 
 | Target | Purpose |
