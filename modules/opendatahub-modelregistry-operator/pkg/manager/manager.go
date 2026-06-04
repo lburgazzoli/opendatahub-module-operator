@@ -80,12 +80,12 @@ func New(
 	mgrOpts := ctrl.Options{
 		Scheme: scheme,
 		Metrics: metricsserver.Options{
-			BindAddress: cfg.MetricsAddr,
+			BindAddress: cfg.Controller.Metrics.BindAddress,
 		},
-		HealthProbeBindAddress:        cfg.HealthProbeAddr,
-		PprofBindAddress:              cfg.PprofAddr,
-		LeaderElection:                cfg.LeaderElect,
-		LeaderElectionID:              cfg.LeaderElectionID,
+		HealthProbeBindAddress:        cfg.Controller.Health.BindAddress,
+		PprofBindAddress:              cfg.Controller.Pprof.BindAddress,
+		LeaderElection:                cfg.Controller.LeaderElection.Enabled,
+		LeaderElectionID:              cfg.Controller.LeaderElection.ID,
 		LeaderElectionReleaseOnCancel: true,
 		Cache: cache.Options{
 			DefaultTransform: libcache.StripUnusedFields(),

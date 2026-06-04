@@ -24,7 +24,7 @@ import (
 )
 
 // RegisterWebhooks registers admission webhook handlers with the manager.
-// Only call this when cfg.WebhooksEnabled is true.
+// Only call this when cfg.Controller.Webhook.Enabled is true.
 func (m *Module) RegisterWebhooks(mgr ctrl.Manager) error {
 	m.decoder = admission.NewDecoder(mgr.GetScheme())
 	m.webhookClient = mgr.GetClient()

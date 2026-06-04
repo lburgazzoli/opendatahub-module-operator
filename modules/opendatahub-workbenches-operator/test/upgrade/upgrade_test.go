@@ -118,12 +118,14 @@ func runTestMain(m *testing.M) int {
 	moduleCfg = &moduleconfig.Config{
 		PlatformName:          operatorCfgData[moduleconfig.KeyPlatformName],
 		PlatformVersion:       desiredUpgradeVersion,
-		MetricsAddr:           "0",
-		HealthProbeAddr:       "0",
-		LeaderElect:           false,
 		ApplicationsNamespace: operatorNamespace,
 		ManifestsPath:         support.MustProjectFile("config", "manifests"),
-		WebhooksEnabled:       false,
+		Controller: moduleconfig.ControllerConfig{
+			Metrics:        moduleconfig.MetricsConfig{BindAddress: "0"},
+			Health:         moduleconfig.HealthConfig{BindAddress: "0"},
+			LeaderElection: moduleconfig.LeaderElectionConfig{Enabled: false},
+			Webhook:        moduleconfig.WebhookConfig{Enabled: false},
+		},
 	}
 
 	directK = k8sm.New(directClient, testScheme)

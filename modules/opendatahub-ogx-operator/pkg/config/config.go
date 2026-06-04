@@ -31,23 +31,29 @@ import (
 )
 
 const (
-	KeyMetricsAddr      = "metrics-bind-address"
-	KeyHealthProbeAddr  = "health-probe-bind-address"
-	KeyPprofAddr        = "pprof-addr"
-	KeyLeaderElect      = "leader-elect"
-	KeyLeaderElectionID = "leader-election-id"
-	KeyManifestsPath    = "manifests-path"
-	KeyApplicationsNS   = "applications-namespace"
-	KeyPlatformName     = "platform-name"
-	KeyPlatformVersion  = "platform-version"
+	KeyManifestsPath   = "manifests-path"
+	KeyApplicationsNS  = "applications-namespace"
+	KeyPlatformName    = "platform-name"
+	KeyPlatformVersion = "platform-version"
 
-	DefaultMetricsAddr      = ":8080"
-	DefaultHealthProbeAddr  = ":8081"
-	DefaultLeaderElect      = true
-	DefaultLeaderElectionID = "opendatahub-ogx-operator-lock"
-	DefaultApplicationsNS   = "opendatahub"
-	DefaultPlatformName     = "unknown"
-	DefaultPlatformVersion  = "unknown"
+	KeyMetricsBindAddr    = "controller.metrics.bind-address"
+	KeyHealthBindAddr     = "controller.health.bind-address"
+	KeyLeaderElectEnabled = "controller.leader-election.enabled"
+	KeyLeaderElectID      = "controller.leader-election.id"
+	KeyZapLevel           = "controller.zap.level"
+	KeyPprofEnabled       = "controller.pprof.enabled"
+	KeyPprofBindAddr      = "controller.pprof.bind-address"
+
+	DefaultApplicationsNS  = "opendatahub"
+	DefaultPlatformName    = "unknown"
+	DefaultPlatformVersion = "unknown"
+
+	DefaultMetricsBindAddr    = ":8080"
+	DefaultHealthBindAddr     = ":8081"
+	DefaultLeaderElectEnabled = true
+	DefaultLeaderElectID      = "opendatahub-ogx-operator-lock"
+	DefaultZapLevel           = "info"
+	DefaultPprofEnabled       = false
 
 	// ConfigPathEnvVar is the environment variable that points to the mounted
 	// ConfigMap directory (or a single config file).
@@ -72,26 +78,45 @@ var structuredExtensions = map[string]bool{
 //  1. Struct field defaults
 //  2. ConfigMap files (from ODH_MODULE_OPERATOR_CONFIGURATION_PATH)
 //  3. Environment variables (ODH_MODULE_OPERATOR_ prefix)
+//
+// Controller-runtime fields use dot-separated ConfigMap keys under
+// the "controller." prefix (e.g. "controller.leader-election.enabled").
 type Config struct {
-	// MetricsAddr is the address the metrics endpoint binds to (0 to disable).
-	MetricsAddr string `mapstructure:"metrics-bind-address"`
-	// HealthProbeAddr is the address the health probe endpoint binds to.
-	HealthProbeAddr string `mapstructure:"health-probe-bind-address"`
-	// PprofAddr is the address the pprof endpoint binds to (empty = disabled).
-	PprofAddr string `mapstructure:"pprof-addr"`
-	// LeaderElect enables leader election for high availability.
-	LeaderElect bool `mapstructure:"leader-elect"`
-	// LeaderElectionID is the name of the leader election lock resource.
-	LeaderElectionID string `mapstructure:"leader-election-id"`
-	// ManifestsPath is the base path for component manifests.
-	ManifestsPath string `mapstructure:"manifests-path"`
-	// ApplicationsNamespace is the namespace where module workloads are deployed.
-	ApplicationsNamespace string `mapstructure:"applications-namespace"`
+	ManifestsPath         string           `mapstructure:"manifests-path"`
+	ApplicationsNamespace string           `mapstructure:"applications-namespace"`
+	PlatformName          string           `mapstructure:"platform-name"`
+	PlatformVersion       string           `mapstructure:"platform-version"`
+	Controller            ControllerConfig `mapstructure:"controller"`
+}
 
-	// PlatformName is the platform identifier (e.g. "OpenDataHub", "SelfManagedRHOAI").
-	PlatformName string `mapstructure:"platform-name"`
-	// PlatformVersion is the platform operator version.
-	PlatformVersion string `mapstructure:"platform-version"`
+type ControllerConfig struct {
+	Metrics        MetricsConfig        `mapstructure:"metrics"`
+	Health         HealthConfig         `mapstructure:"health"`
+	LeaderElection LeaderElectionConfig `mapstructure:"leader-election"`
+	Zap            ZapConfig            `mapstructure:"zap"`
+	Pprof          PprofConfig          `mapstructure:"pprof"`
+}
+
+type MetricsConfig struct {
+	BindAddress string `mapstructure:"bind-address"`
+}
+
+type HealthConfig struct {
+	BindAddress string `mapstructure:"bind-address"`
+}
+
+type LeaderElectionConfig struct {
+	Enabled bool   `mapstructure:"enabled"`
+	ID      string `mapstructure:"id"`
+}
+
+type ZapConfig struct {
+	Level string `mapstructure:"level"`
+}
+
+type PprofConfig struct {
+	Enabled     bool   `mapstructure:"enabled"`
+	BindAddress string `mapstructure:"bind-address"`
 }
 
 // Release builds a common.Release from the configured platform type and
@@ -156,19 +181,23 @@ func LoadFromFS(fsys fs.FS) (*Config, error) {
 }
 
 func setDefaults(v *viper.Viper) {
-	v.SetDefault(KeyMetricsAddr, DefaultMetricsAddr)
-	v.SetDefault(KeyHealthProbeAddr, DefaultHealthProbeAddr)
-	v.SetDefault(KeyLeaderElect, DefaultLeaderElect)
-	v.SetDefault(KeyLeaderElectionID, DefaultLeaderElectionID)
-	v.SetDefault(KeyApplicationsNS, DefaultApplicationsNS)
 	v.SetDefault(KeyManifestsPath, "")
+	v.SetDefault(KeyApplicationsNS, DefaultApplicationsNS)
 	v.SetDefault(KeyPlatformName, DefaultPlatformName)
 	v.SetDefault(KeyPlatformVersion, DefaultPlatformVersion)
+
+	v.SetDefault(KeyMetricsBindAddr, DefaultMetricsBindAddr)
+	v.SetDefault(KeyHealthBindAddr, DefaultHealthBindAddr)
+	v.SetDefault(KeyLeaderElectEnabled, DefaultLeaderElectEnabled)
+	v.SetDefault(KeyLeaderElectID, DefaultLeaderElectID)
+	v.SetDefault(KeyZapLevel, DefaultZapLevel)
+	v.SetDefault(KeyPprofEnabled, DefaultPprofEnabled)
+	v.SetDefault(KeyPprofBindAddr, "")
 }
 
 func bindEnv(v *viper.Viper) error {
 	v.SetEnvPrefix(EnvPrefix)
-	v.SetEnvKeyReplacer(strings.NewReplacer("-", "_"))
+	v.SetEnvKeyReplacer(strings.NewReplacer("-", "_", ".", "_"))
 	v.AutomaticEnv()
 
 	// Explicit BindEnv so Unmarshal picks up env vars.
@@ -182,15 +211,19 @@ func bindEnv(v *viper.Viper) error {
 	return nil
 }
 
-// loadFromFS reads all files from the given fs.FS and sets them as
-// viper key-value pairs. Structured files (YAML/JSON) are parsed and
-// their keys merged. Plain files are treated as simple key-value pairs
-// where the filename is the key and the content is the value.
+// loadFromFS reads all files from the given fs.FS into a temporary viper
+// instance, then merges the result into v. Structured files (YAML/JSON)
+// are parsed normally. Plain files use the filename as a dot-separated
+// key path (e.g. "controller.zap.level" expands to a nested map).
+// The single MergeConfigMap at the end writes to viper's config layer,
+// so environment variables still take precedence.
 func loadFromFS(v *viper.Viper, fsys fs.FS) error {
 	entries, err := fs.ReadDir(fsys, ".")
 	if err != nil {
 		return fmt.Errorf("reading config directory: %w", err)
 	}
+
+	tmp := viper.New()
 
 	for _, entry := range entries {
 		if entry.IsDir() || strings.HasPrefix(entry.Name(), ".") {
@@ -205,12 +238,16 @@ func loadFromFS(v *viper.Viper, fsys fs.FS) error {
 		ext := strings.TrimPrefix(filepath.Ext(entry.Name()), ".")
 
 		if structuredExtensions[ext] {
-			if err := mergeStructuredFile(v, entry.Name(), ext, data); err != nil {
+			if err := mergeStructuredFile(tmp, entry.Name(), ext, data); err != nil {
 				return err
 			}
-		} else if err := mergeKeyValue(v, entry.Name(), data); err != nil {
-			return err
+		} else {
+			tmp.Set(entry.Name(), strings.TrimSpace(string(data)))
 		}
+	}
+
+	if err := v.MergeConfigMap(tmp.AllSettings()); err != nil {
+		return fmt.Errorf("merging config from filesystem: %w", err)
 	}
 
 	return nil
@@ -227,19 +264,6 @@ func mergeStructuredFile(v *viper.Viper, name string, ext string, data []byte) e
 
 	if err := v.MergeConfigMap(fv.AllSettings()); err != nil {
 		return fmt.Errorf("merging config from %s: %w", name, err)
-	}
-
-	return nil
-}
-
-// mergeKeyValue treats a file as a simple key-value pair: the filename is
-// the key and the trimmed content is the value. Uses MergeConfigMap so
-// environment variables take precedence over file values.
-func mergeKeyValue(v *viper.Viper, name string, data []byte) error {
-	if err := v.MergeConfigMap(map[string]any{
-		name: strings.TrimSpace(string(data)),
-	}); err != nil {
-		return fmt.Errorf("merging key %s: %w", name, err)
 	}
 
 	return nil

@@ -172,7 +172,7 @@ func NewReconciler(
 
 	r.Release = rel
 
-	if cfg.WebhooksEnabled {
+	if cfg.Controller.Webhook.Enabled {
 		if err := m.RegisterWebhooks(mgr); err != nil {
 			return err
 		}

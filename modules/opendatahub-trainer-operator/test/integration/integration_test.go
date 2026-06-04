@@ -158,10 +158,11 @@ func runTestMain(m *testing.M) int {
 		PlatformVersion:       operatorCfgData[moduleconfig.KeyPlatformVersion],
 		ApplicationsNamespace: testNamespace,
 		ManifestsPath:         support.MustProjectFile("config", "manifests"),
-		MetricsAddr:           "0",
-		HealthProbeAddr:       "0",
-		PprofAddr:             "",
-		LeaderElect:           false,
+		Controller: moduleconfig.ControllerConfig{
+			Metrics:        moduleconfig.MetricsConfig{BindAddress: "0"},
+			Health:         moduleconfig.HealthConfig{BindAddress: "0"},
+			LeaderElection: moduleconfig.LeaderElectionConfig{Enabled: false},
+		},
 	}
 	operatorReleaseVersion = moduleCfg.Release().Version.String()
 
