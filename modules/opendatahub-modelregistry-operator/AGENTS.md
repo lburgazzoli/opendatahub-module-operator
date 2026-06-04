@@ -48,8 +48,11 @@ make test-integration-run       # run tests only
 make test-integration-cleanup   # clean up
 ```
 
-**E2E tests** — requires a cluster with the operator image published:
+**E2E tests** — requires a cluster with the operator image published.
+`GATEWAY_DOMAIN` must be set to the cluster's ingress domain:
 ```sh
+export GATEWAY_DOMAIN="$(kubectl get ingresses.config.openshift.io cluster -o jsonpath='{.spec.domain}')"
+
 # build and push the image, then run:
 IMG="localhost/opendatahub-modelregistry-operator:e2e-$(uuidgen | tr '[:upper:]' '[:lower:]')"
 make container-build IMG="$IMG"
