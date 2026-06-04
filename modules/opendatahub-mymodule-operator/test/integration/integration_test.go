@@ -146,7 +146,9 @@ func runTestMain(m *testing.M) int {
 		PlatformVersion:       operatorCfgData[moduleconfig.KeyPlatformVersion],
 		ApplicationsNamespace: testNamespace,
 		ManifestsPath:         support.MustProjectFile("config", "manifests"),
-		WebhooksEnabled:       false,
+		Controller: moduleconfig.ControllerConfig{
+			Webhook: moduleconfig.WebhookConfig{Enabled: false},
+		},
 	}
 	operatorReleaseVersion = moduleCfg.Release().Version.String()
 

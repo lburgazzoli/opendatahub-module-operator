@@ -34,7 +34,7 @@ import (
 )
 
 // RegisterWebhooks registers admission webhook handlers with the manager.
-// The caller is responsible for checking cfg.WebhooksEnabled before calling
+// The caller is responsible for checking cfg.Controller.Webhook.Enabled before calling
 // this method — when webhooks are disabled, skip this call entirely so the
 // manager does not start the webhook server or require TLS certs.
 func (m *Module) RegisterWebhooks(mgr ctrl.Manager) error {
