@@ -1,0 +1,168 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.20.1
+  name: platformoperators.config.opendatahub.io
+spec:
+  group: config.opendatahub.io
+  names:
+    kind: PlatformOperator
+    listKind: PlatformOperatorList
+    plural: platformoperators
+    singular: platformoperator
+  scope: Cluster
+  versions:
+  - name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: |-
+          PlatformOperator is created per module (named after the module, e.g. "ray",
+          "spark"). Tracks deployed resources for GC and drift detection.
+          Managed exclusively by the orchestrator — not user-facing.
+          Module resources use this CR as ownerRef so deleting it triggers
+          Kubernetes garbage collection of all module resources.
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: |-
+              PlatformOperatorSpec is intentionally empty — this CR is managed
+              exclusively by the orchestrator, not by users.
+            type: object
+          status:
+            description: PlatformOperatorStatus tracks what the orchestrator deployed
+              for this module.
+            properties:
+              chart:
+                description: Chart describes the Helm chart used to render this module's
+                  resources.
+                properties:
+                  appVersion:
+                    description: AppVersion is the chart appVersion from Chart.yaml.
+                    type: string
+                  name:
+                    description: Name is the chart name from Chart.yaml.
+                    type: string
+                  path:
+                    description: Path is the location of the chart.
+                    type: string
+                  version:
+                    description: Version is the chart version from Chart.yaml.
+                    type: string
+                required:
+                - path
+                type: object
+              conditions:
+                items:
+                  description: Condition represents an observation of an object's
+                    state.
+                  properties:
+                    lastHeartbeatTime:
+                      description: |-
+                        The last time we got an update on a given condition, this should not be set and is
+                        present only for backward compatibility reasons.
+                      format: date-time
+                      type: string
+                    lastTransitionTime:
+                      description: lastTransitionTime is the last time the condition
+                        transitioned from one status to another.
+                      format: date-time
+                      type: string
+                    message:
+                      description: message is a human-readable message indicating
+                        details about the transition.
+                      type: string
+                    observedGeneration:
+                      description: observedGeneration represents the .metadata.generation
+                        that the condition was set based upon.
+                      format: int64
+                      minimum: 0
+                      type: integer
+                    reason:
+                      description: reason contains a programmatic identifier indicating
+                        the reason for the condition's last transition.
+                      type: string
+                    severity:
+                      description: |-
+                        Severity with which to treat failures of this type of condition.
+                        When this is not specified, it defaults to Error.
+                      type: string
+                    status:
+                      description: status of the condition, one of True, False, Unknown.
+                      enum:
+                      - "True"
+                      - "False"
+                      - Unknown
+                      type: string
+                    type:
+                      description: type of condition in CamelCase or in foo.example.com/CamelCase.
+                      maxLength: 316
+                      pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
+                      type: string
+                  required:
+                  - status
+                  - type
+                  type: object
+                type: array
+                x-kubernetes-list-type: atomic
+              config:
+                additionalProperties:
+                  type: string
+                description: Config holds the config values merged into Values.config.
+                type: object
+              deployedVersion:
+                description: DeployedVersion is the module version reported by the
+                  module CR status.
+                type: string
+              observedGeneration:
+                description: The generation observed by the resource controller.
+                format: int64
+                type: integer
+              phase:
+                type: string
+              resources:
+                description: Resources lists all resources deployed for this module.
+                items:
+                  description: ResourceRef identifies a deployed Kubernetes resource.
+                  properties:
+                    apiVersion:
+                      type: string
+                    kind:
+                      type: string
+                    name:
+                      type: string
+                    namespace:
+                      type: string
+                  required:
+                  - apiVersion
+                  - kind
+                  - name
+                  type: object
+                type: array
+              runlevel:
+                description: Runlevel is the module's runlevel in the orchestration
+                  DAG.
+                type: integer
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}
