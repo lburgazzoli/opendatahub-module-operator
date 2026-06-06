@@ -18,85 +18,43 @@ package platformoperator
 
 import (
 	"context"
-	"fmt"
 
-	"github.com/k8s-manifest-kit/engine/pkg/transformer/meta/labels"
-	"github.com/k8s-manifest-kit/engine/pkg/transformer/meta/namespace"
-	helm "github.com/k8s-manifest-kit/renderer-helm/pkg"
-	"helm.sh/helm/v4/pkg/chart"
 	ctrl "sigs.k8s.io/controller-runtime"
-	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/predicate"
+	"sigs.k8s.io/controller-runtime/pkg/handler"
+	"sigs.k8s.io/controller-runtime/pkg/source"
 
 	configApi "github.com/lburgazzoli/opendatahub-module-operator/orchestrator/api/config/v1alpha1"
-	"github.com/lburgazzoli/opendatahub-module-operator/orchestrator/internal/controller/platform"
+	orchestratorconfig "github.com/lburgazzoli/opendatahub-module-operator/orchestrator/pkg/config"
 	"github.com/lburgazzoli/opendatahub-module-operator/orchestrator/pkg/module"
-	odhLabels "github.com/opendatahub-io/opendatahub-operator/v2/pkg/metadata/labels"
 	"github.com/opendatahub-io/operator-actions-framework/controller/actions/deploy"
 	"github.com/opendatahub-io/operator-actions-framework/controller/actions/status/deployments"
 	"github.com/opendatahub-io/operator-actions-framework/controller/reconciler"
 )
 
-// SpawnModuleReconciler creates and starts a ReconcilerFor for a specific module.
-func SpawnModuleReconciler(
+// NewModuleReconciler creates a single controller that handles all
+// PlatformOperator CRs. It looks up the module by CR name, lazily creates
+// the Helm engine, and gates reconciliation via the Orchestration state.
+func NewModuleReconciler(
 	ctx context.Context,
 	mgr ctrl.Manager,
-	o *platform.Orchestrator,
-	m *module.Module,
+	o module.Orchestration,
+	cfg *orchestratorconfig.Config,
 ) error {
-	e, err := helm.NewEngine(
-		helm.Source{
-			Chart:       m.ChartPath,
-			ReleaseName: m.EffectiveName(),
-			Values: helm.Values(map[string]any{
-				"module": map[string]any{
-					"group":   m.GVK.Group,
-					"version": m.GVK.Version,
-					"kind":    m.GVK.Kind,
-				},
-				"distribution": map[string]any{
-					"name":    o.Config().PlatformName,
-					"version": o.Config().PlatformVersion,
-				},
-			}),
-		},
-		helm.WithTransformer(namespace.EnsureDefault(m.Namespace)),
-		helm.WithTransformer(labels.Set(map[string]string{
-			odhLabels.PlatformPartOf: m.EffectiveName(),
-		})),
-	)
-	if err != nil {
-		return fmt.Errorf("creating engine for module %q: %w", m.EffectiveName(), err)
+	r := &ModuleReconciler{
+		o:        o,
+		cfg:      cfg,
+		client:   mgr.GetClient(),
+		contexts: make(map[string]*moduleContext),
 	}
 
-	ci := configApi.ChartInfo{Path: m.ChartPath}
-
-	if chrt, chartErr := m.Chart(); chartErr == nil && chrt != nil {
-		if acc, accErr := chart.NewAccessor(chrt); accErr == nil {
-			ci.Name = acc.Name()
-			if md := acc.MetadataAsMap(); md != nil {
-				if v, ok := md["version"].(string); ok {
-					ci.Version = v
-				}
-				if v, ok := md["appVersion"].(string); ok {
-					ci.AppVersion = v
-				}
-			}
-		}
-	}
-
-	r := &ModuleReconciler{o: o, m: m, engine: e, chartInfo: ci}
-
-	_, err = reconciler.ReconcilerFor(
-		mgr,
-		&configApi.PlatformOperator{},
-		builder.WithPredicates(predicate.NewPredicateFuncs(func(obj client.Object) bool {
-			return obj.GetName() == m.EffectiveName()
-		})),
-	).
-		WithInstanceName(m.EffectiveName()).
+	_, err := reconciler.ReconcilerFor(mgr, &configApi.PlatformOperator{}).
 		WithDynamicOwnership().
+		WatchesRawSource(source.Channel(
+			o.StateChanges(),
+			handler.EnqueueRequestsFromMapFunc(r.enqueueAllPlatformOperators),
+		)).
+		WithAction(r.resolveModule).
 		WithAction(r.checkRunlevel).
 		WithAction(r.renderChart).
 		WithAction(deploy.NewAction(
@@ -104,11 +62,32 @@ func SpawnModuleReconciler(
 			deploy.WithApplyOrder(),
 		)).
 		WithAction(deployments.NewAction(
-			deployments.InNamespace(m.Namespace),
+			deployments.InNamespaceFn(r.moduleNamespace),
 		)).
 		WithAction(r.pruneOrphans).
 		WithAction(r.reportStatus).
 		Build(ctx)
 
 	return err
+}
+
+// enqueueAllPlatformOperators maps a state-change event to reconcile requests
+// for every existing PlatformOperator CR.
+func (r *ModuleReconciler) enqueueAllPlatformOperators(
+	ctx context.Context,
+	_ client.Object,
+) []ctrl.Request {
+	var list configApi.PlatformOperatorList
+	if err := r.client.List(ctx, &list); err != nil {
+		return nil
+	}
+
+	requests := make([]ctrl.Request, 0, len(list.Items))
+	for i := range list.Items {
+		requests = append(requests, ctrl.Request{
+			NamespacedName: client.ObjectKeyFromObject(&list.Items[i]),
+		})
+	}
+
+	return requests
 }

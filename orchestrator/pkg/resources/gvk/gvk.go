@@ -16,7 +16,10 @@ limitations under the License.
 
 package gvk
 
-import "k8s.io/apimachinery/pkg/runtime/schema"
+import (
+	odhGVK "github.com/opendatahub-io/opendatahub-operator/v2/pkg/cluster/gvk"
+	"k8s.io/apimachinery/pkg/runtime/schema"
+)
 
 var ComponentsGV = schema.GroupVersion{
 	Group:   "components.platform.opendatahub.io",
@@ -24,6 +27,8 @@ var ComponentsGV = schema.GroupVersion{
 }
 
 var (
+	CustomResourceDefinition = odhGVK.CustomResourceDefinition
+
 	Ray                  = ComponentsGV.WithKind("Ray")
 	Spark                = ComponentsGV.WithKind("Spark")
 	Feast                = ComponentsGV.WithKind("Feast")

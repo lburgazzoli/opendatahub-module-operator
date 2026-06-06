@@ -57,23 +57,32 @@ func (o *Orchestrator) checkAdminAcks(_ context.Context, _ *types.Reconciliation
 	return nil
 }
 
-// ensureModules diffs spec.modules against existing PlatformOperator CRs.
-// Creates missing PlatformOperator CRs and spawns their ReconcilerFor.
-// Deletes PlatformOperator CRs for removed modules.
+// ensureModules builds PlatformOperator resources from spec.modules into
+// rr.Resources. The deploy action creates/updates them via SSA (setting
+// ownerRef and tracking annotations); the GC action deletes PlatformOperator
+// CRs for modules removed from spec.
 func (o *Orchestrator) ensureModules(_ context.Context, rr *types.ReconciliationRequest) error {
 	obj, ok := rr.Instance.(*configApi.Platform)
 	if !ok {
 		return fmt.Errorf("instance is not a Platform")
 	}
 
-	_ = obj.Spec.Modules
+	for _, name := range obj.Spec.Modules {
+		m := o.ModuleByName(name)
+		if m == nil {
+			return fmt.Errorf("module %q not registered", name)
+		}
 
-	// TODO:
-	// 1. List existing PlatformOperator CRs
-	// 2. For each name in spec.modules:
-	//    - Look up Module from registry (o.ModuleByName)
-	//    - If PlatformOperator CR missing: create it + spawn ReconcilerFor
-	// 3. For PlatformOperator CRs not in spec.modules: delete them
+		po := configApi.PlatformOperator{}
+		po.SetName(m.EffectiveName())
+
+		err := rr.AddResources(&po)
+		if err != nil {
+			return fmt.Errorf("%w", err)
+		}
+	}
+
+	rr.Generated = true
 
 	return nil
 }

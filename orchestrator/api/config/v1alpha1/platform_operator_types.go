@@ -120,7 +120,3 @@ type PlatformOperatorList struct {
 	metav1.ListMeta `json:"metadata,omitempty"`
 	Items           []PlatformOperator `json:"items"`
 }
-
-func init() {
-	SchemeBuilder.Register(&PlatformOperator{}, &PlatformOperatorList{})
-}

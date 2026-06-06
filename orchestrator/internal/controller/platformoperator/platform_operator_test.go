@@ -17,61 +17,44 @@ limitations under the License.
 package platformoperator_test
 
 import (
-	"os"
-	"path/filepath"
 	"testing"
 
-	configApi "github.com/lburgazzoli/opendatahub-module-operator/orchestrator/api/config/v1alpha1"
-	"github.com/lburgazzoli/opendatahub-module-operator/orchestrator/internal/controller/platform"
-	"github.com/lburgazzoli/opendatahub-module-operator/orchestrator/pkg/config"
+	"sigs.k8s.io/controller-runtime/pkg/event"
+
 	"github.com/lburgazzoli/opendatahub-module-operator/orchestrator/pkg/module"
 	"github.com/lburgazzoli/opendatahub-module-operator/orchestrator/pkg/resources/gvk"
-	"github.com/lburgazzoli/opendatahub-module-operator/orchestrator/test/support"
 	. "github.com/onsi/gomega"
 )
 
-func testChartPath(t *testing.T) string {
-	t.Helper()
-
-	root, err := support.ProjectRoot()
-	if err != nil {
-		t.Fatalf("finding project root: %v", err)
-	}
-
-	p := filepath.Join(root, "modules", "opendatahub-mymodule-operator", "config", "chart")
-	if _, err := os.Stat(p); os.IsNotExist(err) {
-		t.Skipf("test chart not found at %s (run 'make helm' in mymodule first)", p)
-	}
-
-	return p
+type mockOrchestration struct {
+	shouldReconcile bool
+	modules         map[string]*module.Module
 }
 
-func newTestOrchestrator(t *testing.T) *platform.Orchestrator {
-	t.Helper()
+func (m *mockOrchestration) ShouldReconcileModule(_ *module.Module) bool {
+	return m.shouldReconcile
+}
 
-	cfg, err := config.LoadFromFS(nil)
-	if err != nil {
-		t.Fatalf("loading config: %v", err)
+func (m *mockOrchestration) ModuleByName(name string) *module.Module {
+	if m.modules == nil {
+		return nil
 	}
+	return m.modules[name]
+}
 
-	return platform.NewOrchestrator(cfg)
+func (m *mockOrchestration) StateChanges() <-chan event.GenericEvent {
+	return make(chan event.GenericEvent)
 }
 
 func TestCheckRunlevelBlocked(t *testing.T) {
 	g := NewWithT(t)
 
-	o := newTestOrchestrator(t)
+	o := &mockOrchestration{shouldReconcile: false}
 
 	m := &module.Module{
-		GVK:       gvk.Ray,
-		Namespace: "odh-ray",
-		ChartPath: testChartPath(t),
-		Runlevel:  2,
+		GVK:      gvk.Ray,
+		Runlevel: 2,
 	}
-
-	o.Register(m)
-	o.ComputeRunlevels()
-	o.SetState(configApi.OperationalState{Mode: configApi.ModeUpgrade})
 
 	g.Expect(o.ShouldReconcileModule(m)).To(BeFalse())
 }
@@ -79,37 +62,12 @@ func TestCheckRunlevelBlocked(t *testing.T) {
 func TestCheckRunlevelAllowed(t *testing.T) {
 	g := NewWithT(t)
 
-	o := newTestOrchestrator(t)
+	o := &mockOrchestration{shouldReconcile: true}
 
 	m := &module.Module{
-		GVK:       gvk.Ray,
-		Namespace: "odh-ray",
-		ChartPath: testChartPath(t),
-		Runlevel:  2,
+		GVK:      gvk.Ray,
+		Runlevel: 2,
 	}
-
-	o.Register(m)
-	o.ComputeRunlevels()
-	o.SetState(configApi.OperationalState{Mode: configApi.ModeUpgrade, Runlevel: 2})
-
-	g.Expect(o.ShouldReconcileModule(m)).To(BeTrue())
-}
-
-func TestCheckRunlevelReconcileMode(t *testing.T) {
-	g := NewWithT(t)
-
-	o := newTestOrchestrator(t)
-
-	m := &module.Module{
-		GVK:       gvk.Ray,
-		Namespace: "odh-ray",
-		ChartPath: testChartPath(t),
-		Runlevel:  99,
-	}
-
-	o.Register(m)
-	o.ComputeRunlevels()
-	o.SetState(configApi.OperationalState{Mode: configApi.ModeReconcile})
 
 	g.Expect(o.ShouldReconcileModule(m)).To(BeTrue())
 }

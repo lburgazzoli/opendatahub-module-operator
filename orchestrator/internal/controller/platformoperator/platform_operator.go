@@ -17,17 +17,28 @@ limitations under the License.
 package platformoperator
 
 import (
+	"sync"
+
 	engine "github.com/k8s-manifest-kit/engine/pkg"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	configApi "github.com/lburgazzoli/opendatahub-module-operator/orchestrator/api/config/v1alpha1"
-	"github.com/lburgazzoli/opendatahub-module-operator/orchestrator/internal/controller/platform"
+	orchestratorconfig "github.com/lburgazzoli/opendatahub-module-operator/orchestrator/pkg/config"
 	"github.com/lburgazzoli/opendatahub-module-operator/orchestrator/pkg/module"
 )
 
-// ModuleReconciler handles deployment of a single module.
+// ModuleReconciler handles deployment of all modules via a single controller.
 type ModuleReconciler struct {
-	o         *platform.Orchestrator
-	m         *module.Module
+	o      module.Orchestration
+	cfg    *orchestratorconfig.Config
+	client client.Client
+
+	mu       sync.RWMutex
+	contexts map[string]*moduleContext
+}
+
+type moduleContext struct {
+	module    *module.Module
 	engine    *engine.Engine
 	chartInfo configApi.ChartInfo
 }

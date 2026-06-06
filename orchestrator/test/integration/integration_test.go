@@ -67,7 +67,7 @@ var (
 	betaGVK  = componentsGV.WithKind("Beta")
 	gammaGVK = componentsGV.WithKind("Gamma")
 
-	ctx context.Context
+	ctx       context.Context
 	cancel    context.CancelFunc
 	k8sClient client.Client
 	k         *k8sm.Matcher
@@ -179,11 +179,9 @@ func runTestMain(m *testing.M) int {
 		return 1
 	}
 
-	for _, mod := range testModules {
-		if err := platformoperator.SpawnModuleReconciler(ctx, ctrlMgr, o, mod); err != nil {
-			fmt.Fprintf(os.Stderr, "Failed to spawn module reconciler for %s: %v\n", mod.EffectiveName(), err)
-			return 1
-		}
+	if err := platformoperator.NewModuleReconciler(ctx, ctrlMgr, o, cfg); err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to create module reconciler: %v\n", err)
+		return 1
 	}
 
 	go func() {
@@ -222,25 +220,39 @@ func TestPlatformOperator(t *testing.T) {
 		modules: testModules,
 	}
 
+	moduleNames := make([]string, 0, len(testModules))
+	for _, mod := range testModules {
+		moduleNames = append(moduleNames, mod.EffectiveName())
+	}
+
+	p := &configApi.Platform{
+		ObjectMeta: metav1.ObjectMeta{Name: configApi.PlatformInstanceName},
+		Spec: configApi.PlatformSpec{
+			Modules: moduleNames,
+		},
+	}
+
+	_ = k8sClient.Delete(ctx, p)
+	waitForDeleted(t, p)
+	p.ResourceVersion = ""
+
+	g.Expect(k8sClient.Create(ctx, p)).To(Succeed())
+
+	t.Cleanup(func() {
+		_ = k8sClient.Delete(ctx, p)
+	})
+
 	for _, mod := range suite.modules {
 		po := &configApi.PlatformOperator{
 			ObjectMeta: metav1.ObjectMeta{Name: mod.EffectiveName()},
 		}
 
-		_ = k8sClient.Delete(ctx, po)
-		waitForDeleted(t, po)
-		po.ResourceVersion = ""
-
-		g.Expect(k8sClient.Create(ctx, po)).To(Succeed())
+		g.Eventually(func() error {
+			return k8sClient.Get(ctx, client.ObjectKeyFromObject(po), po)
+		}).WithContext(ctx).Should(Succeed())
 
 		suite.pos = append(suite.pos, po)
 	}
-
-	t.Cleanup(func() {
-		for _, po := range suite.pos {
-			_ = k8sClient.Delete(ctx, po)
-		}
-	})
 
 	foundation := &foundationTests{suite: suite}
 	t.Run("foundation", foundation.Execute)

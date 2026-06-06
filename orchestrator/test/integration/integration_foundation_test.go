@@ -88,9 +88,8 @@ func (ft *foundationTests) testEachModuleHasOwnCRD(t *testing.T) {
 		crdName := fmt.Sprintf("%ss.%s", mod.EffectiveName(), mod.GVK.Group)
 
 		t.Run(mod.EffectiveName(), func(t *testing.T) {
-			g.Eventually(k.Get(po)).WithContext(ctx).Should(
-				jq.Match(`[.status.resources[] | select(.kind == "CustomResourceDefinition" and .name == "%s")] | length > 0`, crdName),
-			)
+			q := `[.status.resources[] | select(.kind == "CustomResourceDefinition" and .name == "%s")] | length > 0`
+			g.Eventually(k.Get(po)).WithContext(ctx).Should(jq.Match(q, crdName))
 		})
 	}
 }

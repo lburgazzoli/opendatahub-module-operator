@@ -155,6 +155,7 @@ require (
 	k8s.io/kube-openapi v0.0.0-20260414162039-ec9c827d403f // indirect
 	k8s.io/utils v0.0.0-20260507154919-ff6756f316d2 // indirect
 	oras.land/oras-go/v2 v2.6.0 // indirect
+	sigs.k8s.io/gateway-api v1.3.0 // indirect
 	sigs.k8s.io/json v0.0.0-20250730193827-2d320260d730 // indirect
 	sigs.k8s.io/randfill v1.0.0 // indirect
 	sigs.k8s.io/structured-merge-diff/v6 v6.4.0 // indirect
@@ -163,4 +164,4 @@ require (
 
 replace github.com/opendatahub-io/opendatahub-operator/v2 => github.com/lburgazzoli/opendatahub-operator/v2 v2.0.0-20260605212627-052ab054008d
 
-replace github.com/opendatahub-io/operator-actions-framework => github.com/lburgazzoli/opendatahub-operator/operator-actions-framework v0.0.0-20260605212627-052ab054008d
+replace github.com/opendatahub-io/operator-actions-framework => github.com/lburgazzoli/opendatahub-operator/operator-actions-framework v0.0.0-20260606070426-37227c168d1b

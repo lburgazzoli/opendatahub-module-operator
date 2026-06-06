@@ -25,6 +25,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/client-go/tools/record"
+	"sigs.k8s.io/controller-runtime/pkg/event"
 
 	configApi "github.com/lburgazzoli/opendatahub-module-operator/orchestrator/api/config/v1alpha1"
 	orchestratorconfig "github.com/lburgazzoli/opendatahub-module-operator/orchestrator/pkg/config"
@@ -38,21 +39,30 @@ type Orchestrator struct {
 	modules   []*module.Module
 	runlevels [][]*module.Module
 
-	// In-memory state read by PlatformOperator controllers, written by Platform controller.
-	mu    sync.RWMutex
-	state configApi.OperationalState
+	mu     sync.RWMutex
+	state  configApi.OperationalState
+	notify chan event.GenericEvent
 }
 
 // NewOrchestrator creates an Orchestrator.
 func NewOrchestrator(cfg *orchestratorconfig.Config) *Orchestrator {
 	return &Orchestrator{
-		cfg: cfg,
+		cfg:    cfg,
+		notify: make(chan event.GenericEvent, 1),
 	}
 }
 
 // SetRecorder sets the event recorder for state transition events.
 func (o *Orchestrator) SetRecorder(recorder record.EventRecorder) {
 	o.recorder = recorder
+}
+
+// StateChanges returns a channel that receives an event whenever the
+// orchestration state transitions (mode or runlevel change). The
+// PlatformOperator controller watches this channel to re-reconcile
+// gated modules.
+func (o *Orchestrator) StateChanges() <-chan event.GenericEvent {
+	return o.notify
 }
 
 // Register adds a module to the orchestrator.
@@ -76,7 +86,10 @@ func (o *Orchestrator) Modules() []*module.Module {
 	return o.modules
 }
 
-var _ module.Registry = (*Orchestrator)(nil)
+var (
+	_ module.Registry      = (*Orchestrator)(nil)
+	_ module.Orchestration = (*Orchestrator)(nil)
+)
 
 // Config returns the orchestrator config.
 func (o *Orchestrator) Config() *orchestratorconfig.Config {
@@ -121,6 +134,8 @@ func (o *Orchestrator) SetStateFor(obj *configApi.Platform, state configApi.Oper
 	o.state = state
 	o.mu.Unlock()
 
+	changed := prev.Mode != state.Mode || prev.Runlevel != state.Runlevel
+
 	if o.recorder != nil {
 		if prev.Mode != state.Mode {
 			o.recorder.Eventf(obj, "Normal", "ModeTransition",
@@ -130,6 +145,13 @@ func (o *Orchestrator) SetStateFor(obj *configApi.Platform, state configApi.Oper
 		if prev.Runlevel != state.Runlevel && state.Mode == configApi.ModeUpgrade {
 			o.recorder.Eventf(obj, "Normal", "RunlevelAdvance",
 				"Runlevel advanced from %d to %d", prev.Runlevel, state.Runlevel)
+		}
+	}
+
+	if changed {
+		select {
+		case o.notify <- event.GenericEvent{}:
+		default:
 		}
 	}
 }

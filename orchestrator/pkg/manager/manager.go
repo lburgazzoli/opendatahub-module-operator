@@ -31,6 +31,7 @@ import (
 
 	configv1alpha1 "github.com/lburgazzoli/opendatahub-module-operator/orchestrator/api/config/v1alpha1"
 	"github.com/lburgazzoli/opendatahub-module-operator/orchestrator/internal/controller/platform"
+	"github.com/lburgazzoli/opendatahub-module-operator/orchestrator/internal/controller/platformoperator"
 	orchestratorconfig "github.com/lburgazzoli/opendatahub-module-operator/orchestrator/pkg/config"
 	libcache "github.com/opendatahub-io/odh-platform-utilities/pkg/cache"
 )
@@ -71,7 +72,8 @@ func New(
 			DefaultTransform:  libcache.StripUnusedFields(),
 			DefaultNamespaces: cacheNamespaces,
 			ByObject: map[client.Object]cache.ByObject{
-				&configv1alpha1.Platform{}: {Label: k8slabels.Everything()},
+				&configv1alpha1.Platform{}:         {Label: k8slabels.Everything()},
+				&configv1alpha1.PlatformOperator{}: {Label: k8slabels.Everything()},
 			},
 			ReaderFailOnMissingInformer: true,
 		},
@@ -95,6 +97,10 @@ func New(
 
 	if err := platform.NewReconciler(ctx, ctrlMgr, o); err != nil {
 		return nil, fmt.Errorf("creating platform reconciler: %w", err)
+	}
+
+	if err := platformoperator.NewModuleReconciler(ctx, ctrlMgr, o, cfg); err != nil {
+		return nil, fmt.Errorf("creating module reconciler: %w", err)
 	}
 
 	if err := ctrlMgr.AddHealthzCheck(healthCheckName, healthz.Ping); err != nil {
