@@ -24,6 +24,7 @@ import (
 
 	"github.com/k8s-manifest-kit/engine/pkg/render"
 	"github.com/k8s-manifest-kit/engine/pkg/transformer/meta/namespace"
+	corev1 "k8s.io/api/core/v1"
 	engineTypes "github.com/k8s-manifest-kit/engine/pkg/types"
 	kitMaps "github.com/k8s-manifest-kit/pkg/util/maps"
 	helm "github.com/k8s-manifest-kit/renderer-helm/pkg"
@@ -151,6 +152,27 @@ func (r *ModuleReconciler) checkRunlevel(_ context.Context, rr *types.Reconcilia
 	return nil
 }
 
+// ensureNamespace prepends the module namespace to rr.Resources.
+// The namespace is marked as unmanaged so the deploy action only creates
+// it if missing and never sets an ownerRef on it.
+func (r *ModuleReconciler) ensureNamespace(_ context.Context, rr *types.ReconciliationRequest) error {
+	mc, err := r.getContext(rr)
+	if err != nil {
+		return err
+	}
+
+	ns := corev1.Namespace{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: mc.module.Namespace,
+			Annotations: map[string]string{
+				"opendatahub.io/managed": "false",
+			},
+		},
+	}
+
+	return rr.AddResources(&ns)
+}
+
 // moduleMetadata returns a transformer that stamps resources with the
 // module's part-of label (skipping CRDs) and config annotation.
 func moduleMetadata(name string) engineTypes.Transformer {
@@ -247,7 +269,8 @@ func (r *ModuleReconciler) pruneOrphans(ctx context.Context, rr *types.Reconcili
 		refGVK := schema.FromAPIVersionAndKind(ref.APIVersion, ref.Kind)
 
 		switch refGVK {
-		case gvk.CustomResourceDefinition:
+		case gvk.CustomResourceDefinition,
+			gvk.Namespace:
 			continue
 		}
 

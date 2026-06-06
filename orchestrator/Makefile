@@ -65,6 +65,10 @@ deps: ## Tidy and verify Go module dependencies.
 test: manifests generate fmt vet ## Run unit tests.
 	go test -ldflags "$(LDFLAGS)" $$(go list ./... | grep -v /e2e | grep -v /integration) -coverprofile cover.out
 
+.PHONY: test-integration
+test-integration: manifests generate ## Run integration tests (requires Docker).
+	DOCKER_HOST=unix:///var/run/docker.sock go test -v -tags=integration -count=1 -timeout=120s ./test/integration/
+
 .PHONY: lint
 lint: ## Run golangci-lint linter.
 	$(GOLANGCI_LINT) run --build-tags integration,e2e

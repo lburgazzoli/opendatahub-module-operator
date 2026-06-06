@@ -31,15 +31,15 @@ import (
 
 	k8sm "github.com/lburgazzoli/gomega-matchers/pkg/matchers/k8s"
 	k3senv "github.com/lburgazzoli/k3s-envtest/pkg/k3senv"
-	corev1 "k8s.io/api/core/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
+	"k8s.io/client-go/rest"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/client/apiutil"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
@@ -53,8 +53,8 @@ import (
 
 const (
 	testNS   = "test"
-	timeout  = 90 * time.Second
-	interval = 2 * time.Second
+	timeout  = 30 * time.Second
+	interval = 250 * time.Millisecond
 )
 
 var (
@@ -67,10 +67,10 @@ var (
 	betaGVK  = componentsGV.WithKind("Beta")
 	gammaGVK = componentsGV.WithKind("Gamma")
 
-	ctx       context.Context
-	cancel    context.CancelFunc
-	k8sClient client.Client
-	k         *k8sm.Matcher
+	ctx            context.Context
+	cancel         context.CancelFunc
+	kubeConfig     *rest.Config
+	testOrchestrator *platform.Orchestrator
 
 	testScheme = runtime.NewScheme()
 
@@ -84,19 +84,39 @@ func init() {
 }
 
 func TestMain(m *testing.M) {
-	os.Exit(runTestMain(m))
-}
-
-func runTestMain(m *testing.M) int {
 	ctx, cancel = context.WithCancel(context.Background())
 	defer cancel()
 
 	ctrl.SetLogger(zap.New(zap.UseDevMode(true)))
 
+	var (
+		cleanup func()
+		err     error
+	)
+	kubeConfig, cleanup, err = setupEnv()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to setup environment: %v\n", err)
+		os.Exit(1)
+	}
+	defer cleanup()
+
+	if err = setupManager(kubeConfig); err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to setup manager: %v\n", err)
+		os.Exit(1)
+	}
+
+	SetDefaultEventuallyTimeout(timeout)
+	SetDefaultEventuallyPollingInterval(interval)
+
+	os.Exit(
+		m.Run(),
+	)
+}
+
+func setupEnv() (*rest.Config, func(), error) {
 	root, err := support.ProjectRoot()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to find project root: %v\n", err)
-		return 1
+		return nil, nil, fmt.Errorf("finding project root: %w", err)
 	}
 
 	chartsPath := filepath.Join(root, "orchestrator", "test", "integration", "testdata", "charts")
@@ -107,26 +127,12 @@ func runTestMain(m *testing.M) int {
 		k3senv.WithManifests(crdPath),
 	)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to create k3s environment: %v\n", err)
-		return 1
+		return nil, nil, fmt.Errorf("creating k3s environment: %w", err)
 	}
 
 	if err := env.Start(ctx); err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to start k3s environment: %v\n", err)
-		return 1
+		return nil, nil, fmt.Errorf("starting k3s environment: %w", err)
 	}
-
-	defer func() {
-		_ = env.Stop(ctx)
-	}()
-
-	cfg, err := config.LoadFromFS(nil)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to load config: %v\n", err)
-		return 1
-	}
-
-	o := platform.NewOrchestrator(cfg)
 
 	chartPath := filepath.Join(chartsPath, "test-module")
 
@@ -138,6 +144,7 @@ func runTestMain(m *testing.M) int {
 			Runlevel:  1,
 			Config: func(_ context.Context, _ client.Client) (map[string]any, error) {
 				return map[string]any{
+					"module-name":   "alpha",
 					"platform-name": "TestPlatform",
 					"test-key":      "test-value",
 				}, nil
@@ -148,40 +155,57 @@ func runTestMain(m *testing.M) int {
 			Namespace: testNS + "-" + strings.ToLower(betaGVK.Kind),
 			ChartPath: chartPath,
 			Runlevel:  2,
+			Config: func(_ context.Context, _ client.Client) (map[string]any, error) {
+				return map[string]any{
+					"module-name": "beta",
+				}, nil
+			},
 		},
 		{
 			GVK:       gammaGVK,
 			Namespace: testNS + "-" + strings.ToLower(gammaGVK.Kind),
 			ChartPath: chartPath,
 			Runlevel:  2,
+			Config: func(_ context.Context, _ client.Client) (map[string]any, error) {
+				return map[string]any{
+					"module-name": "gamma",
+				}, nil
+			},
 		},
 	}
 
-	for _, mod := range testModules {
-		o.Register(mod)
+	return env.Config(), func() { _ = env.Stop(ctx) }, nil
+}
+
+func setupManager(kubeConfig *rest.Config) error {
+	cfg, err := config.LoadFromFS(nil)
+	if err != nil {
+		return fmt.Errorf("loading config: %w", err)
 	}
 
-	o.ComputeRunlevels()
-	o.SetState(configApi.OperationalState{Mode: configApi.ModeReconcile})
+	testOrchestrator = platform.NewOrchestrator(cfg)
 
-	ctrlMgr, err := ctrl.NewManager(env.Config(), ctrl.Options{
+	for _, mod := range testModules {
+		testOrchestrator.Register(mod)
+	}
+
+	testOrchestrator.ComputeRunlevels()
+
+	ctrlMgr, err := ctrl.NewManager(kubeConfig, ctrl.Options{
 		Scheme:         testScheme,
 		Metrics:        metricsserver.Options{BindAddress: "0"},
 		LeaderElection: false,
 	})
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to create manager: %v\n", err)
-		return 1
+		return fmt.Errorf("creating manager: %w", err)
 	}
 
-	if err := platform.NewReconciler(ctx, ctrlMgr, o); err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to create platform reconciler: %v\n", err)
-		return 1
+	if err := platform.NewReconciler(ctx, ctrlMgr, testOrchestrator); err != nil {
+		return fmt.Errorf("creating platform reconciler: %w", err)
 	}
 
-	if err := platformoperator.NewModuleReconciler(ctx, ctrlMgr, o, cfg); err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to create module reconciler: %v\n", err)
-		return 1
+	if err := platformoperator.NewModuleReconciler(ctx, ctrlMgr, testOrchestrator, cfg); err != nil {
+		return fmt.Errorf("creating module reconciler: %w", err)
 	}
 
 	go func() {
@@ -190,83 +214,43 @@ func runTestMain(m *testing.M) int {
 		}
 	}()
 
-	SetDefaultEventuallyTimeout(timeout)
-	SetDefaultEventuallyPollingInterval(interval)
-
-	k8sClient = ctrlMgr.GetClient()
-	k = k8sm.New(k8sClient, testScheme)
-
-	for _, mod := range testModules {
-		ns := &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: mod.Namespace}}
-		if err := k8sClient.Create(ctx, ns); err != nil {
-			fmt.Fprintf(os.Stderr, "Failed to create namespace %s: %v\n", mod.Namespace, err)
-			return 1
-		}
-	}
-
-	return m.Run()
+	return nil
 }
 
 // orchestratorTest holds shared test fixtures.
 type orchestratorTest struct {
-	modules []*module.Module
-	pos     []*configApi.PlatformOperator
+	modules      []*module.Module
+	orchestrator *platform.Orchestrator
+	client       client.Client
+	k            *k8sm.Resources
 }
 
 func TestPlatformOperator(t *testing.T) {
-	g := NewWithT(t)
+	httpClient, err := rest.HTTPClientFor(kubeConfig)
+	if err != nil {
+		t.Fatalf("creating HTTP client: %v", err)
+	}
+
+	mapper, err := apiutil.NewDynamicRESTMapper(kubeConfig, httpClient)
+	if err != nil {
+		t.Fatalf("creating REST mapper: %v", err)
+	}
+
+	cli, err := client.New(kubeConfig, client.Options{Scheme: testScheme, Mapper: mapper})
+	if err != nil {
+		t.Fatalf("creating test client: %v", err)
+	}
 
 	suite := &orchestratorTest{
-		modules: testModules,
-	}
-
-	moduleNames := make([]string, 0, len(testModules))
-	for _, mod := range testModules {
-		moduleNames = append(moduleNames, mod.EffectiveName())
-	}
-
-	p := &configApi.Platform{
-		ObjectMeta: metav1.ObjectMeta{Name: configApi.PlatformInstanceName},
-		Spec: configApi.PlatformSpec{
-			Modules: moduleNames,
-		},
-	}
-
-	_ = k8sClient.Delete(ctx, p)
-	waitForDeleted(t, p)
-	p.ResourceVersion = ""
-
-	g.Expect(k8sClient.Create(ctx, p)).To(Succeed())
-
-	t.Cleanup(func() {
-		_ = k8sClient.Delete(ctx, p)
-	})
-
-	for _, mod := range suite.modules {
-		po := &configApi.PlatformOperator{
-			ObjectMeta: metav1.ObjectMeta{Name: mod.EffectiveName()},
-		}
-
-		g.Eventually(func() error {
-			return k8sClient.Get(ctx, client.ObjectKeyFromObject(po), po)
-		}).WithContext(ctx).Should(Succeed())
-
-		suite.pos = append(suite.pos, po)
+		modules:      testModules,
+		orchestrator: testOrchestrator,
+		client:       cli,
+		k:            k8sm.NewResources(cli, testScheme),
 	}
 
 	foundation := &foundationTests{suite: suite}
 	t.Run("foundation", foundation.Execute)
-}
 
-func waitForDeleted(t *testing.T, obj client.Object) {
-	t.Helper()
-
-	g := NewWithT(t)
-	g.Eventually(func(g Gomega) {
-		fresh := obj.DeepCopyObject().(client.Object)
-		err := k8sClient.Get(ctx, client.ObjectKeyFromObject(obj), fresh)
-		if err != nil {
-			g.Expect(client.IgnoreNotFound(err)).To(Succeed())
-		}
-	}).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(Succeed())
+	runlevels := &runlevelTests{suite: suite}
+	t.Run("runlevel", runlevels.Execute)
 }

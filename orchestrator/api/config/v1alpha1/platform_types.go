@@ -69,23 +69,11 @@ type OperationalState struct {
 	Runlevel int             `json:"runlevel,omitempty"`
 }
 
-// ModulePhase represents a module's lifecycle phase.
-type ModulePhase string
-
-const (
-	ModulePhasePending  ModulePhase = "Pending"
-	ModulePhaseDeployed ModulePhase = "Deployed"
-	ModulePhaseReady    ModulePhase = "Ready"
-	ModulePhaseNotReady ModulePhase = "NotReady"
-)
-
 // ModuleStatusSummary holds a per-module status summary.
 type ModuleStatusSummary struct {
-	Name     string      `json:"name"`
-	Runlevel int         `json:"runlevel"`
-	Phase    ModulePhase `json:"phase"`
-	Version  string      `json:"version,omitempty"`
-	Message  string      `json:"message,omitempty"`
+	Name     string `json:"name"`
+	Runlevel int    `json:"runlevel"`
+	Version  string `json:"version,omitempty"`
 }
 
 // +kubebuilder:object:root=true

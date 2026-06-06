@@ -23,6 +23,7 @@ import (
 	"sync"
 
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	k8stypes "k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/client-go/tools/record"
 	"sigs.k8s.io/controller-runtime/pkg/event"
@@ -39,9 +40,10 @@ type Orchestrator struct {
 	modules   []*module.Module
 	runlevels [][]*module.Module
 
-	mu     sync.RWMutex
-	state  configApi.OperationalState
-	notify chan event.GenericEvent
+	mu          sync.RWMutex
+	state       configApi.OperationalState
+	platformUID k8stypes.UID
+	notify      chan event.GenericEvent
 }
 
 // NewOrchestrator creates an Orchestrator.
@@ -127,16 +129,32 @@ func (o *Orchestrator) ModuleByGVK(g schema.GroupVersionKind) *module.Module {
 }
 
 // SetStateFor updates the in-memory orchestration state and emits events on transitions.
-// Called by the Platform controller after reading Platform CR status.
+// If the Platform CR UID changed (delete + recreate), the state is recomputed
+// from the new CR's status rather than carried over from the old instance.
 func (o *Orchestrator) SetStateFor(obj *configApi.Platform, state configApi.OperationalState) {
 	o.mu.Lock()
 	prev := o.state
+	prevUID := o.platformUID
+
+	uid := obj.GetUID()
+	uidChanged := prevUID != "" && prevUID != uid
+	o.platformUID = uid
+
+	if uidChanged {
+		prev = configApi.OperationalState{}
+	}
+
 	o.state = state
 	o.mu.Unlock()
 
 	changed := prev.Mode != state.Mode || prev.Runlevel != state.Runlevel
 
 	if o.recorder != nil {
+		if uidChanged {
+			o.recorder.Eventf(obj, "Normal", "PlatformReset",
+				"Platform CR replaced (UID %s → %s), state reset", prevUID, uid)
+		}
+
 		if prev.Mode != state.Mode {
 			o.recorder.Eventf(obj, "Normal", "ModeTransition",
 				"Mode changed from %q to %q", prev.Mode, state.Mode)
@@ -148,7 +166,7 @@ func (o *Orchestrator) SetStateFor(obj *configApi.Platform, state configApi.Oper
 		}
 	}
 
-	if changed {
+	if changed || uidChanged {
 		select {
 		case o.notify <- event.GenericEvent{}:
 		default:
@@ -191,6 +209,41 @@ func (o *Orchestrator) ShouldReconcileModule(m *module.Module) bool {
 // Runlevels returns the computed runlevel groups.
 func (o *Orchestrator) Runlevels() [][]*module.Module {
 	return o.runlevels
+}
+
+// ModulesAtRunlevel returns the modules at the given runlevel, or nil.
+func (o *Orchestrator) ModulesAtRunlevel(level int) []*module.Module {
+	for _, group := range o.runlevels {
+		if len(group) > 0 && group[0].Runlevel == level {
+			return group
+		}
+	}
+	return nil
+}
+
+// FirstRunlevel returns the lowest runlevel, or 0 if no modules are registered.
+func (o *Orchestrator) FirstRunlevel() int {
+	if len(o.runlevels) == 0 || len(o.runlevels[0]) == 0 {
+		return 0
+	}
+	return o.runlevels[0][0].Runlevel
+}
+
+// NextRunlevel returns the runlevel after current, and whether one exists.
+func (o *Orchestrator) NextRunlevel(current int) (int, bool) {
+	found := false
+	for _, group := range o.runlevels {
+		if len(group) == 0 {
+			continue
+		}
+		if found {
+			return group[0].Runlevel, true
+		}
+		if group[0].Runlevel == current {
+			found = true
+		}
+	}
+	return 0, false
 }
 
 // ComputeRunlevels groups registered modules by runlevel.

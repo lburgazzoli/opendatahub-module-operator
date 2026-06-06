@@ -20,6 +20,9 @@ import (
 	"context"
 	"fmt"
 
+	k8serr "k8s.io/apimachinery/pkg/api/errors"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+
 	configApi "github.com/lburgazzoli/opendatahub-module-operator/orchestrator/api/config/v1alpha1"
 	"github.com/opendatahub-io/operator-actions-framework/controller/types"
 )
@@ -34,16 +37,20 @@ func (o *Orchestrator) initialize(_ context.Context, rr *types.ReconciliationReq
 	mode := obj.Status.Mode
 	runlevel := 0
 
-	if mode == "" {
-		if obj.Status.Version != "" && obj.Status.Version != o.cfg.PlatformVersion {
-			mode = configApi.ModeUpgrade
-		} else {
-			mode = configApi.ModeReconcile
-		}
-	}
+	versionMismatch := obj.Status.Version != "" && obj.Status.Version != o.cfg.PlatformVersion
 
-	if obj.Status.CurrentRunlevel != nil {
-		runlevel = *obj.Status.CurrentRunlevel
+	switch {
+	case mode == configApi.ModeUpgrade:
+		if obj.Status.CurrentRunlevel != nil {
+			runlevel = *obj.Status.CurrentRunlevel
+		} else {
+			runlevel = o.FirstRunlevel()
+		}
+	case versionMismatch:
+		mode = configApi.ModeUpgrade
+		runlevel = o.FirstRunlevel()
+	default:
+		mode = configApi.ModeReconcile
 	}
 
 	o.SetStateFor(obj, configApi.OperationalState{Mode: mode, Runlevel: runlevel})
@@ -87,32 +94,88 @@ func (o *Orchestrator) ensureModules(_ context.Context, rr *types.Reconciliation
 	return nil
 }
 
-// checkAdvancement reads PlatformOperator statuses at the current runlevel.
+// checkAdvancement is a no-op placeholder for future preflight checks
+// before runlevel advancement.
 func (o *Orchestrator) checkAdvancement(_ context.Context, _ *types.ReconciliationRequest) error {
-	// TODO: for each PlatformOperator at current runlevel:
-	// - Check status.deployedVersion == cfg.PlatformVersion
-	// - Module CR not present → Deployed phase, doesn't block
-	// - Module CR present but not Ready → NotReady, blocks
 	return nil
 }
 
-// advanceOrSwitch advances to the next runlevel or switches to reconcile mode.
-func (o *Orchestrator) advanceOrSwitch(_ context.Context, rr *types.ReconciliationRequest) error {
+// advanceOrSwitch checks whether all enabled modules at the current runlevel
+// have reported the expected platform version. If so, it advances to the next
+// runlevel that has enabled modules, or switches to reconcile mode when done.
+func (o *Orchestrator) advanceOrSwitch(ctx context.Context, rr *types.ReconciliationRequest) error {
 	obj, ok := rr.Instance.(*configApi.Platform)
 	if !ok {
 		return fmt.Errorf("instance is not a Platform")
 	}
 
-	_ = obj
+	state := o.State()
+	if state.Mode != configApi.ModeUpgrade {
+		return nil
+	}
 
-	// TODO: if all modules at current runlevel are done:
-	// - More runlevels → advance currentRunlevel, update in-memory state, notify channel
-	// - All done → mode = reconcile, clear currentRunlevel
-	return nil
+	complete, err := o.runlevelComplete(ctx, rr, state.Runlevel)
+	if err != nil {
+		return err
+	}
+
+	if !complete {
+		return nil
+	}
+
+	level := state.Runlevel
+	for {
+		next, hasNext := o.NextRunlevel(level)
+		if !hasNext {
+			o.SetStateFor(obj, configApi.OperationalState{Mode: configApi.ModeReconcile})
+			return nil
+		}
+
+		if o.hasEnabledModules(ctx, rr, next) {
+			o.SetStateFor(obj, configApi.OperationalState{Mode: configApi.ModeUpgrade, Runlevel: next})
+			return nil
+		}
+
+		level = next
+	}
+}
+
+// runlevelComplete returns true if all enabled modules at the given runlevel
+// have reported the expected platform version. Returns false if any module's
+// PlatformOperator CR is missing or hasn't reported the expected version.
+func (o *Orchestrator) runlevelComplete(ctx context.Context, rr *types.ReconciliationRequest, level int) (bool, error) {
+	for _, m := range o.ModulesAtRunlevel(level) {
+		po := &configApi.PlatformOperator{}
+		err := rr.Client.Get(ctx, client.ObjectKey{Name: m.EffectiveName()}, po)
+
+		switch {
+		case k8serr.IsNotFound(err):
+			return false, nil
+		case err != nil:
+			return false, fmt.Errorf("getting PlatformOperator %q: %w", m.EffectiveName(), err)
+		case po.Status.DeployedVersion != o.cfg.PlatformVersion:
+			return false, nil
+		}
+	}
+
+	return true, nil
+}
+
+// hasEnabledModules returns true if any module at the given runlevel has a
+// PlatformOperator CR (is enabled in spec.modules).
+func (o *Orchestrator) hasEnabledModules(ctx context.Context, rr *types.ReconciliationRequest, level int) bool {
+	for _, m := range o.ModulesAtRunlevel(level) {
+		po := &configApi.PlatformOperator{}
+		if err := rr.Client.Get(ctx, client.ObjectKey{Name: m.EffectiveName()}, po); err == nil {
+			return true
+		}
+	}
+
+	return false
 }
 
 // aggregateStatus rolls up PlatformOperator statuses into Platform status.
-func (o *Orchestrator) aggregateStatus(_ context.Context, rr *types.ReconciliationRequest) error {
+func (o *Orchestrator) aggregateStatus(ctx context.Context, rr *types.ReconciliationRequest) error {
 	obj, ok := rr.Instance.(*configApi.Platform)
 	if !ok {
 		return fmt.Errorf("instance is not a Platform")
@@ -120,14 +183,36 @@ func (o *Orchestrator) aggregateStatus(_ context.Context, rr *types.Reconciliati
 
 	state := o.State()
 
-	obj.Status.Version = o.cfg.PlatformVersion
-	obj.Status.CurrentRunlevel = nil
 	obj.Status.Mode = state.Mode
+	obj.Status.CurrentRunlevel = nil
 
-	if state.Mode == configApi.ModeUpgrade {
+	switch state.Mode {
+	case configApi.ModeUpgrade:
 		obj.Status.CurrentRunlevel = &state.Runlevel
+	case configApi.ModeReconcile:
+		obj.Status.Version = o.cfg.PlatformVersion
 	}
 
-	// TODO: build ModuleStatusSummary from PlatformOperator statuses
+	obj.Status.Modules = nil
+
+	for _, name := range obj.Spec.Modules {
+		m := o.ModuleByName(name)
+		if m == nil {
+			continue
+		}
+
+		summary := configApi.ModuleStatusSummary{
+			Name:     m.EffectiveName(),
+			Runlevel: m.Runlevel,
+		}
+
+		po := &configApi.PlatformOperator{}
+		if err := rr.Client.Get(ctx, client.ObjectKey{Name: m.EffectiveName()}, po); err == nil {
+			summary.Version = po.Status.DeployedVersion
+		}
+
+		obj.Status.Modules = append(obj.Status.Modules, summary)
+	}
+
 	return nil
 }

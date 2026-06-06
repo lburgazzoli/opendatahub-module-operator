@@ -140,12 +140,7 @@ spec:
                 items:
                   description: ModuleStatusSummary holds a per-module status summary.
                   properties:
-                    message:
-                      type: string
                     name:
-                      type: string
-                    phase:
-                      description: ModulePhase represents a module's lifecycle phase.
                       type: string
                     runlevel:
                       type: integer
@@ -153,7 +148,6 @@ spec:
                       type: string
                   required:
                   - name
-                  - phase
                   - runlevel
                   type: object
                 type: array

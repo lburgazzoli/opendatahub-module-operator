@@ -52,10 +52,11 @@ func NewModuleReconciler(
 		WithDynamicOwnership().
 		WatchesRawSource(source.Channel(
 			o.StateChanges(),
-			handler.EnqueueRequestsFromMapFunc(r.enqueueAllPlatformOperators),
+			handler.EnqueueRequestsFromMapFunc(r.enqueueEligibleModules),
 		)).
 		WithAction(r.resolveModule).
 		WithAction(r.checkRunlevel).
+		WithAction(r.ensureNamespace).
 		WithAction(r.renderChart).
 		WithAction(deploy.NewAction(
 			deploy.WithCache(),
@@ -71,9 +72,10 @@ func NewModuleReconciler(
 	return err
 }
 
-// enqueueAllPlatformOperators maps a state-change event to reconcile requests
-// for every existing PlatformOperator CR.
-func (r *ModuleReconciler) enqueueAllPlatformOperators(
+// enqueueEligibleModules maps a state-change event to reconcile requests
+// for PlatformOperator CRs whose modules should reconcile under the
+// current mode and runlevel.
+func (r *ModuleReconciler) enqueueEligibleModules(
 	ctx context.Context,
 	_ client.Object,
 ) []ctrl.Request {
@@ -82,8 +84,17 @@ func (r *ModuleReconciler) enqueueAllPlatformOperators(
 		return nil
 	}
 
-	requests := make([]ctrl.Request, 0, len(list.Items))
+	var requests []ctrl.Request
 	for i := range list.Items {
+		m := r.o.ModuleByName(list.Items[i].Name)
+		if m == nil {
+			continue
+		}
+
+		if !r.o.ShouldReconcileModule(m) {
+			continue
+		}
+
 		requests = append(requests, ctrl.Request{
 			NamespacedName: client.ObjectKeyFromObject(&list.Items[i]),
 		})
