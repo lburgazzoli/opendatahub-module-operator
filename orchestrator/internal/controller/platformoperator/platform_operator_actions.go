@@ -24,11 +24,11 @@ import (
 
 	"github.com/k8s-manifest-kit/engine/pkg/render"
 	"github.com/k8s-manifest-kit/engine/pkg/transformer/meta/namespace"
-	corev1 "k8s.io/api/core/v1"
 	engineTypes "github.com/k8s-manifest-kit/engine/pkg/types"
 	kitMaps "github.com/k8s-manifest-kit/pkg/util/maps"
 	helm "github.com/k8s-manifest-kit/renderer-helm/pkg"
 	"helm.sh/helm/v4/pkg/chart"
+	corev1 "k8s.io/api/core/v1"
 	k8serr "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -59,7 +59,7 @@ func (r *ModuleReconciler) resolveModule(_ context.Context, rr *types.Reconcilia
 		return nil
 	}
 
-	m := r.o.ModuleByName(name)
+	m := r.registry.ModuleByName(name)
 	if m == nil {
 		return fmt.Errorf("module %q not registered", name)
 	}
@@ -75,8 +75,8 @@ func (r *ModuleReconciler) resolveModule(_ context.Context, rr *types.Reconcilia
 					"kind":    m.GVK.Kind,
 				},
 				"distribution": map[string]any{
-					"name":    r.cfg.PlatformName,
-					"version": r.cfg.PlatformVersion,
+					"name":    r.cfg.Distribution.Name,
+					"version": r.cfg.Distribution.Version,
 				},
 			}),
 		},
@@ -134,18 +134,27 @@ func (r *ModuleReconciler) moduleNamespace(_ context.Context, rr *types.Reconcil
 	return mc.module.Namespace, nil
 }
 
-// checkRunlevel verifies the module is allowed to proceed.
-func (r *ModuleReconciler) checkRunlevel(_ context.Context, rr *types.ReconciliationRequest) error {
+// checkRunlevel reads the Platform CR status and verifies the module's
+// runlevel is at or below the current platform runlevel.
+func (r *ModuleReconciler) checkRunlevel(ctx context.Context, rr *types.ReconciliationRequest) error {
 	mc, err := r.getContext(rr)
 	if err != nil {
 		return err
 	}
 
-	if !r.o.ShouldReconcileModule(mc.module) {
+	p := &configApi.Platform{}
+	if err := r.client.Get(ctx, client.ObjectKey{Name: configApi.PlatformInstanceName}, p); err != nil {
+		return fmt.Errorf("getting Platform CR: %w", err)
+	}
+
+	upgradeInProgress := p.Status.Distribution.Version != "" &&
+		p.Status.Distribution.Version != r.cfg.Distribution.Version
+
+	if upgradeInProgress && mc.module.Runlevel > p.Status.Runlevel {
 		return actionerrors.NewPauseError(
 			defaultPauseDelay,
-			"module %q: waiting for runlevel %d",
-			mc.module.EffectiveName(), mc.module.Runlevel,
+			"module %q: waiting for runlevel %d (current: %d)",
+			mc.module.EffectiveName(), mc.module.Runlevel, p.Status.Runlevel,
 		)
 	}
 
@@ -310,7 +319,11 @@ func (r *ModuleReconciler) reportStatus(ctx context.Context, rr *types.Reconcili
 	if err != nil {
 		return err
 	}
-	obj.Status.DeployedVersion = version
+
+	obj.Status.Distribution = configApi.DistributionInfo{
+		Name:    r.cfg.Distribution.Name,
+		Version: version,
+	}
 
 	return nil
 }

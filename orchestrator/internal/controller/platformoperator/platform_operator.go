@@ -29,9 +29,9 @@ import (
 
 // ModuleReconciler handles deployment of all modules via a single controller.
 type ModuleReconciler struct {
-	o      module.Orchestration
-	cfg    *orchestratorconfig.Config
-	client client.Client
+	registry *module.ModuleRegistry
+	cfg      *orchestratorconfig.Config
+	client   client.Client
 
 	mu       sync.RWMutex
 	contexts map[string]*moduleContext

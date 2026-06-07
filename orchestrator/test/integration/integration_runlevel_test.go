@@ -3,6 +3,7 @@
 package integration
 
 import (
+	"strings"
 	"testing"
 
 	. "github.com/onsi/gomega"
@@ -11,6 +12,7 @@ import (
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	configApi "github.com/lburgazzoli/opendatahub-module-operator/orchestrator/api/config/v1alpha1"
@@ -21,29 +23,21 @@ type runlevelTests struct {
 }
 
 func (rt *runlevelTests) Execute(t *testing.T) {
-	t.Cleanup(func() {
-		_ = rt.suite.client.Delete(ctx, &configApi.Platform{
-			ObjectMeta: metav1.ObjectMeta{Name: configApi.PlatformInstanceName},
-		})
-
-		for _, mod := range rt.suite.modules {
-			obj := &unstructured.Unstructured{}
-			obj.SetGroupVersionKind(mod.GVK)
-			obj.SetName("default")
-			_ = rt.suite.client.Delete(ctx, obj)
-		}
-	})
-
 	t.Run("upgrade triggered by version mismatch", rt.testUpgradeTriggered)
 	t.Run("wrong version does not advance", rt.testWrongVersionDoesNotAdvance)
 	t.Run("correct version advances runlevel", rt.testCorrectVersionAdvances)
-	t.Run("upgrade complete switches to reconcile", rt.testUpgradeComplete)
+	t.Run("all modules ready sets distribution version", rt.testAllModulesReady)
 }
 
-func (rt *runlevelTests) testUpgradeTriggered(t *testing.T) {
-	g := NewWithT(t)
+// setupUpgradeScenario creates a Platform CR, waits for initial reconciliation,
+// changes the distribution version to trigger an upgrade, and enables all modules.
+// Returns a cleanup function.
+func (rt *runlevelTests) setupUpgradeScenario(t *testing.T, g Gomega) {
+	t.Helper()
 
-	// Create empty Platform CR, wait for it to reconcile in ModeReconcile.
+	// Reset distribution version so initial reconciliation writes the old value.
+	rt.suite.cfg.Distribution.Version = "1.0.0"
+
 	p := &configApi.Platform{
 		ObjectMeta: metav1.ObjectMeta{Name: configApi.PlatformInstanceName},
 	}
@@ -51,15 +45,22 @@ func (rt *runlevelTests) testUpgradeTriggered(t *testing.T) {
 	_ = rt.suite.client.Delete(ctx, p)
 	g.Eventually(rt.suite.k.Absent(p)).WithContext(ctx).Should(BeTrue())
 
+	// Clean up module CRs from previous tests.
+	for _, mod := range rt.suite.modules {
+		cr := &unstructured.Unstructured{}
+		cr.SetGroupVersionKind(mod.GVK)
+		cr.SetName("default")
+		_ = rt.suite.client.Delete(ctx, cr)
+	}
+
 	g.Expect(rt.suite.client.Create(ctx, p)).To(Succeed())
 
 	g.Eventually(rt.suite.k.Get(p)).WithContext(ctx).Should(
-		WithTransform(jq.Extract(`.status.version`), Not(BeEmpty())),
+		WithTransform(jq.Extract(`.status.distribution.version`), Equal("1.0.0")),
 	)
 
-	// Change PlatformVersion to create a version mismatch, then enable
-	// modules. The controller detects the mismatch and enters ModeUpgrade.
-	rt.suite.orchestrator.Config().PlatformVersion = "2.0.0"
+	// Change version to trigger upgrade.
+	rt.suite.cfg.Distribution.Version = "2.0.0"
 
 	moduleNames := make([]string, 0, len(rt.suite.modules))
 	for _, mod := range rt.suite.modules {
@@ -73,34 +74,86 @@ func (rt *runlevelTests) testUpgradeTriggered(t *testing.T) {
 		g.Expect(rt.suite.client.Update(ctx, fresh)).To(Succeed())
 	}).WithContext(ctx).Should(Succeed())
 
-	// Platform should enter upgrade mode at runlevel 1.
+	// Wait for runlevel 1 to be set and alpha to deploy.
 	g.Eventually(func(g Gomega) {
 		fresh := &configApi.Platform{}
 		g.Expect(rt.suite.client.Get(ctx, client.ObjectKey{Name: configApi.PlatformInstanceName}, fresh)).To(Succeed())
-		rl := -1
-		if fresh.Status.CurrentRunlevel != nil {
-			rl = *fresh.Status.CurrentRunlevel
-		}
-		t.Logf("Platform: mode=%q version=%q currentRunlevel=%d", fresh.Status.Mode, fresh.Status.Version, rl)
-		g.Expect(string(fresh.Status.Mode)).To(Equal("upgrade"))
-		g.Expect(fresh.Status.CurrentRunlevel).NotTo(BeNil())
-		g.Expect(*fresh.Status.CurrentRunlevel).To(Equal(1))
+		g.Expect(fresh.Status.Runlevel).To(Equal(1))
 	}).WithContext(ctx).Should(Succeed())
 
-	// Alpha (runlevel 1) should deploy resources.
 	g.Eventually(func(g Gomega) {
 		po := &configApi.PlatformOperator{}
 		g.Expect(rt.suite.client.Get(ctx, client.ObjectKey{Name: "alpha"}, po)).To(Succeed())
-		t.Logf("Alpha PO: resources=%d deployedVersion=%q", len(po.Status.Resources), po.Status.DeployedVersion)
 		g.Expect(po.Status.Resources).NotTo(BeEmpty())
 	}).WithContext(ctx).Should(Succeed())
 
-	// Beta and gamma (runlevel 2) should exist but have no resources.
+	t.Cleanup(func() {
+		_ = rt.suite.client.Delete(ctx, &configApi.Platform{
+			ObjectMeta: metav1.ObjectMeta{Name: configApi.PlatformInstanceName},
+		})
+		for _, mod := range rt.suite.modules {
+			obj := &unstructured.Unstructured{}
+			obj.SetGroupVersionKind(mod.GVK)
+			obj.SetName("default")
+			_ = rt.suite.client.Delete(ctx, obj)
+		}
+	})
+}
+
+// createModuleCR creates an unstructured module CR using the dynamic client.
+func (rt *runlevelTests) createModuleCR(g Gomega, gvk schema.GroupVersionKind, version string) {
+	gvr := schema.GroupVersionResource{
+		Group:    gvk.Group,
+		Version:  gvk.Version,
+		Resource: gvk.Kind + "s",
+	}
+
+	// Lowercase the resource name (CRD convention).
+	gvr.Resource = strings.ToLower(gvr.Resource)
+
+	cr := &unstructured.Unstructured{
+		Object: map[string]any{
+			"apiVersion": gvk.Group + "/" + gvk.Version,
+			"kind":       gvk.Kind,
+			"metadata": map[string]any{
+				"name": "default",
+			},
+		},
+	}
+
+	g.Eventually(func() error {
+		existing, err := rt.suite.dynamic.Resource(gvr).Get(ctx, "default", metav1.GetOptions{})
+		if err == nil {
+			cr.SetResourceVersion(existing.GetResourceVersion())
+			_, err = rt.suite.dynamic.Resource(gvr).Update(ctx, cr, metav1.UpdateOptions{})
+			return err
+		}
+		_, err = rt.suite.dynamic.Resource(gvr).Create(ctx, cr, metav1.CreateOptions{})
+		return err
+	}).WithContext(ctx).Should(Succeed())
+
+	if version != "" {
+		// Set the module CR's status.release.version.
+		g.Eventually(func(g Gomega) {
+			existing, err := rt.suite.dynamic.Resource(gvr).Get(ctx, "default", metav1.GetOptions{})
+			g.Expect(err).To(Succeed())
+			_ = unstructured.SetNestedField(existing.Object, version, "status", "release", "version")
+			_, err = rt.suite.dynamic.Resource(gvr).UpdateStatus(ctx, existing, metav1.UpdateOptions{})
+			g.Expect(err).To(Succeed())
+		}).WithContext(ctx).Should(Succeed())
+
+	}
+}
+
+func (rt *runlevelTests) testUpgradeTriggered(t *testing.T) {
+	g := NewWithT(t)
+	rt.setupUpgradeScenario(t, g)
+
+	// Beta/gamma (runlevel 2) should exist but have no resources.
 	for _, name := range []string{"beta", "gamma"} {
 		g.Eventually(func(g Gomega) {
 			po := &configApi.PlatformOperator{}
 			g.Expect(rt.suite.client.Get(ctx, client.ObjectKey{Name: name}, po)).To(Succeed())
-			t.Logf("%s PO: resources=%d", name, len(po.Status.Resources))
 			g.Expect(po.Status.Resources).To(BeEmpty())
 		}).WithContext(ctx).Should(Succeed())
 	}
@@ -108,102 +161,76 @@ func (rt *runlevelTests) testUpgradeTriggered(t *testing.T) {
 
 func (rt *runlevelTests) testWrongVersionDoesNotAdvance(t *testing.T) {
 	g := NewWithT(t)
+	rt.setupUpgradeScenario(t, g)
 
-	// Create alpha module CR with wrong version.
-	alphaCR := &unstructured.Unstructured{}
-	alphaCR.SetGroupVersionKind(alphaGVK)
-	alphaCR.SetName("default")
+	rt.createModuleCR(g, alphaGVK, "wrong-version")
 
-	g.Expect(rt.suite.client.Create(ctx, alphaCR)).To(Succeed())
-
-	// Set wrong version in status.
-	g.Eventually(func(g Gomega) {
-		g.Expect(rt.suite.client.Get(ctx, client.ObjectKeyFromObject(alphaCR), alphaCR)).To(Succeed())
-		_ = unstructured.SetNestedField(alphaCR.Object, "wrong-version", "status", "release", "version")
-		g.Expect(rt.suite.client.Status().Update(ctx, alphaCR)).To(Succeed())
-	}).WithContext(ctx).Should(Succeed())
-
-	// Wait for the module reconciler to pick up the version.
-	alphaPO := &configApi.PlatformOperator{ObjectMeta: metav1.ObjectMeta{Name: "alpha"}}
-	g.Eventually(rt.suite.k.Get(alphaPO)).WithContext(ctx).Should(
-		WithTransform(jq.Extract(`.status.deployedVersion`), Equal("wrong-version")),
+	// Wait for the version to propagate to PlatformOperator.
+	g.Eventually(rt.suite.k.Get(&configApi.PlatformOperator{
+		ObjectMeta: metav1.ObjectMeta{Name: "alpha"},
+	})).WithContext(ctx).Should(
+		WithTransform(jq.Extract(`.status.distribution.version`), Equal("wrong-version")),
 	)
 
-	// Platform should NOT advance — still at runlevel 1.
-	p := &configApi.Platform{ObjectMeta: metav1.ObjectMeta{Name: configApi.PlatformInstanceName}}
-	g.Consistently(rt.suite.k.Get(p)).WithContext(ctx).WithTimeout(timeout / 3).Should(
-		WithTransform(jq.Extract(`.status.currentRunlevel`), BeEquivalentTo(1)),
-	)
-
-	// Beta/gamma should still have no resources.
-	for _, name := range []string{"beta", "gamma"} {
-		po := &configApi.PlatformOperator{ObjectMeta: metav1.ObjectMeta{Name: name}}
-		g.Eventually(rt.suite.k.Get(po)).WithContext(ctx).Should(
-			WithTransform(jq.Extract(`.status.resources`), BeEmpty()),
-		)
-	}
+	// Platform should NOT advance past runlevel 1.
+	g.Consistently(func(g Gomega) {
+		fresh := &configApi.Platform{}
+		g.Expect(rt.suite.client.Get(ctx, client.ObjectKey{Name: configApi.PlatformInstanceName}, fresh)).To(Succeed())
+		g.Expect(fresh.Status.Runlevel).To(Equal(1))
+	}).WithContext(ctx).WithTimeout(timeout / 3).Should(Succeed())
 }
 
 func (rt *runlevelTests) testCorrectVersionAdvances(t *testing.T) {
 	g := NewWithT(t)
+	rt.setupUpgradeScenario(t, g)
 
-	// Update alpha module CR to the correct version.
-	alphaCR := &unstructured.Unstructured{}
-	alphaCR.SetGroupVersionKind(alphaGVK)
-	alphaCR.SetName("default")
-
-	g.Eventually(func(g Gomega) {
-		g.Expect(rt.suite.client.Get(ctx, client.ObjectKeyFromObject(alphaCR), alphaCR)).To(Succeed())
-		_ = unstructured.SetNestedField(alphaCR.Object, "2.0.0", "status", "release", "version")
-		g.Expect(rt.suite.client.Status().Update(ctx, alphaCR)).To(Succeed())
-	}).WithContext(ctx).Should(Succeed())
+	rt.createModuleCR(g, alphaGVK, "2.0.0")
 
 	// Platform should advance to runlevel 2.
-	p := &configApi.Platform{ObjectMeta: metav1.ObjectMeta{Name: configApi.PlatformInstanceName}}
-	g.Eventually(rt.suite.k.Get(p)).WithContext(ctx).Should(
-		WithTransform(jq.Extract(`.status.currentRunlevel`), BeEquivalentTo(2)),
-	)
+	g.Eventually(func(g Gomega) {
+		fresh := &configApi.Platform{}
+		g.Expect(rt.suite.client.Get(ctx, client.ObjectKey{Name: configApi.PlatformInstanceName}, fresh)).To(Succeed())
+		g.Expect(fresh.Status.Runlevel).To(Equal(2))
+	}).WithContext(ctx).Should(Succeed())
 
 	// Beta and gamma should now deploy resources.
 	for _, name := range []string{"beta", "gamma"} {
-		po := &configApi.PlatformOperator{ObjectMeta: metav1.ObjectMeta{Name: name}}
-		g.Eventually(rt.suite.k.Get(po)).WithContext(ctx).Should(
-			WithTransform(jq.Extract(`.status.resources`), Not(BeEmpty())),
-		)
+		g.Eventually(func(g Gomega) {
+			po := &configApi.PlatformOperator{}
+			g.Expect(rt.suite.client.Get(ctx, client.ObjectKey{Name: name}, po)).To(Succeed())
+			g.Expect(po.Status.Resources).NotTo(BeEmpty())
+		}).WithContext(ctx).Should(Succeed())
 	}
 }
 
-func (rt *runlevelTests) testUpgradeComplete(t *testing.T) {
+func (rt *runlevelTests) testAllModulesReady(t *testing.T) {
 	g := NewWithT(t)
+	rt.setupUpgradeScenario(t, g)
 
-	// Create beta and gamma module CRs with correct version.
-	for _, gvk := range []interface{ WithKind(string) interface{} }{} {
-		_ = gvk
+	// Set alpha's version to advance past runlevel 1.
+	rt.createModuleCR(g, alphaGVK, "2.0.0")
+
+	// Wait for beta/gamma to deploy (runlevel 2 unlocked).
+	for _, name := range []string{"beta", "gamma"} {
+		g.Eventually(func(g Gomega) {
+			po := &configApi.PlatformOperator{}
+			g.Expect(rt.suite.client.Get(ctx, client.ObjectKey{Name: name}, po)).To(Succeed())
+			g.Expect(po.Status.Resources).NotTo(BeEmpty())
+		}).WithContext(ctx).Should(Succeed())
 	}
 
+	// Now set beta and gamma versions.
 	for _, mod := range rt.suite.modules {
 		if mod.Runlevel != 2 {
 			continue
 		}
-
-		cr := &unstructured.Unstructured{}
-		cr.SetGroupVersionKind(mod.GVK)
-		cr.SetName("default")
-
-		g.Expect(rt.suite.client.Create(ctx, cr)).To(Succeed())
-
-		g.Eventually(func(g Gomega) {
-			g.Expect(rt.suite.client.Get(ctx, client.ObjectKeyFromObject(cr), cr)).To(Succeed())
-			_ = unstructured.SetNestedField(cr.Object, "2.0.0", "status", "release", "version")
-			g.Expect(rt.suite.client.Status().Update(ctx, cr)).To(Succeed())
-		}).WithContext(ctx).Should(Succeed())
+		rt.createModuleCR(g, mod.GVK, "2.0.0")
 	}
 
-	// Platform should switch to reconcile mode.
-	p := &configApi.Platform{ObjectMeta: metav1.ObjectMeta{Name: configApi.PlatformInstanceName}}
-	g.Eventually(rt.suite.k.Get(p)).WithContext(ctx).Should(And(
-		WithTransform(jq.Extract(`.status.mode`), Equal("reconcile")),
-		WithTransform(jq.Extract(`.status.currentRunlevel`), BeNil()),
-		WithTransform(jq.Extract(`.status.version`), Equal("2.0.0")),
-	))
+	// Platform should report distribution version 2.0.0.
+	g.Eventually(rt.suite.k.Get(&configApi.Platform{
+		ObjectMeta: metav1.ObjectMeta{Name: configApi.PlatformInstanceName},
+	})).WithContext(ctx).Should(
+		WithTransform(jq.Extract(`.status.distribution.version`), Equal("2.0.0")),
+	)
 }

@@ -19,12 +19,13 @@ package manager
 import (
 	k8slabels "k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/selection"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	"sigs.k8s.io/controller-runtime/pkg/cache"
 
 	configv1alpha1 "github.com/lburgazzoli/opendatahub-module-operator/orchestrator/api/config/v1alpha1"
-	"github.com/lburgazzoli/opendatahub-module-operator/orchestrator/internal/controller/platform"
+	"github.com/lburgazzoli/opendatahub-module-operator/orchestrator/pkg/module"
 	odhLabels "github.com/opendatahub-io/opendatahub-operator/v2/pkg/metadata/labels"
 )
 
@@ -37,14 +38,19 @@ func NewScheme() *runtime.Scheme {
 	return scheme
 }
 
-func buildCacheNamespaces(o *platform.Orchestrator) map[string]cache.Config {
+func buildCacheNamespaces(registry *module.ModuleRegistry) map[string]cache.Config {
 	namespaces := make(map[string]cache.Config)
 
-	partOfSelector := k8slabels.SelectorFromSet(k8slabels.Set{
-		odhLabels.PlatformPartOf: odhLabels.NormalizePartOfValue(configv1alpha1.PlatformKind),
-	})
+	partOfRequirement, err := k8slabels.NewRequirement(
+		odhLabels.PlatformPartOf,
+		selection.Exists,
+		nil,
+	)
+	utilruntime.Must(err)
 
-	for _, ns := range o.CacheNamespaces() {
+	partOfSelector := k8slabels.NewSelector().Add(*partOfRequirement)
+
+	for _, ns := range registry.CacheNamespaces() {
 		namespaces[ns] = cache.Config{
 			LabelSelector: partOfSelector,
 		}

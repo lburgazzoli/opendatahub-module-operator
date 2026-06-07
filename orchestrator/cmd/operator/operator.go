@@ -23,9 +23,9 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
-	"github.com/lburgazzoli/opendatahub-module-operator/orchestrator/internal/controller/platform"
 	orchestratorconfig "github.com/lburgazzoli/opendatahub-module-operator/orchestrator/pkg/config"
 	orchestratormgr "github.com/lburgazzoli/opendatahub-module-operator/orchestrator/pkg/manager"
+	"github.com/lburgazzoli/opendatahub-module-operator/orchestrator/pkg/module"
 )
 
 func NewCommand() *cobra.Command {
@@ -46,11 +46,11 @@ func run(cmd *cobra.Command, _ []string) error {
 
 	ctrl.SetLogger(zap.New(zap.UseDevMode(false)))
 
-	o := platform.NewOrchestrator(cfg)
-	platform.SetupModules(o)
-	o.ComputeRunlevels()
+	registry := module.NewModuleRegistry(cfg.Namespace(), cfg.ChartsPath)
+	module.SetupModules(registry)
+	registry.ComputeRunlevels()
 
-	mgr, err := orchestratormgr.New(cmd.Context(), ctrl.GetConfigOrDie(), cfg, o)
+	mgr, err := orchestratormgr.New(cmd.Context(), ctrl.GetConfigOrDie(), cfg, registry)
 	if err != nil {
 		return err
 	}

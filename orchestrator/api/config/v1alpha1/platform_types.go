@@ -24,6 +24,8 @@ import (
 const (
 	PlatformInstanceName = "default-platform"
 	PlatformKind         = "Platform"
+
+	ConditionUpToDate = "UpToDate"
 )
 
 var _ common.PlatformObject = (*Platform)(nil)
@@ -31,7 +33,6 @@ var _ common.PlatformObject = (*Platform)(nil)
 // PlatformSpec defines the desired state of Platform.
 type PlatformSpec struct {
 	// Modules lists the enabled module names (e.g. "ray", "spark").
-	// Each entry must match a registered module in the orchestrator.
 	Modules []string `json:"modules,omitempty"`
 }
 
@@ -39,34 +40,23 @@ type PlatformSpec struct {
 type PlatformStatus struct {
 	common.Status `json:",inline"`
 
-	// Version is the current platform version.
-	Version string `json:"version,omitempty"`
+	// Distribution identifies the platform distribution and its target version.
+	Distribution DistributionInfo `json:"distribution,omitempty"`
 
-	// Mode is the current operational mode.
-	// +kubebuilder:validation:Enum=upgrade;reconcile
-	Mode OperationalMode `json:"mode,omitempty"`
+	// Runlevel is the current runlevel being processed.
+	Runlevel int `json:"runlevel,omitempty"`
 
-	// CurrentRunlevel is the runlevel being processed during upgrade mode.
-	CurrentRunlevel *int `json:"currentRunlevel,omitempty"`
-
-	// Modules is a per-module status summary.
+	// Modules is a per-module status summary, sorted by runlevel then name.
 	Modules []ModuleStatusSummary `json:"modules,omitempty"`
 }
 
-// OperationalMode represents the orchestrator's current mode.
-// +kubebuilder:validation:Enum="";upgrade;reconcile
-type OperationalMode string
+// DistributionInfo identifies the platform distribution.
+type DistributionInfo struct {
+	// Name is the distribution name (e.g. "OpenDataHub", "RHODS").
+	Name string `json:"name,omitempty"`
 
-const (
-	ModeUnknown   OperationalMode = ""
-	ModeUpgrade   OperationalMode = "upgrade"
-	ModeReconcile OperationalMode = "reconcile"
-)
-
-// OperationalState holds the current orchestration mode and runlevel.
-type OperationalState struct {
-	Mode     OperationalMode `json:"mode,omitempty"`
-	Runlevel int             `json:"runlevel,omitempty"`
+	// Version is the target distribution version.
+	Version string `json:"version,omitempty"`
 }
 
 // ModuleStatusSummary holds a per-module status summary.
@@ -81,9 +71,8 @@ type ModuleStatusSummary struct {
 // +kubebuilder:resource:scope=Cluster
 // +kubebuilder:validation:XValidation:rule="self.metadata.name == 'default-platform'",message="Platform name must be default-platform"
 // +kubebuilder:printcolumn:name="Ready",type=string,JSONPath=`.status.conditions[?(@.type=="Ready")].status`,description="Ready"
-// +kubebuilder:printcolumn:name="Mode",type=string,JSONPath=`.status.mode`,description="Operational Mode"
-// +kubebuilder:printcolumn:name="Runlevel",type=integer,JSONPath=`.status.currentRunlevel`,description="Current Runlevel"
-// +kubebuilder:printcolumn:name="Version",type=string,JSONPath=`.status.version`,description="Platform Version"
+// +kubebuilder:printcolumn:name="Runlevel",type=integer,JSONPath=`.status.runlevel`,description="Current Runlevel"
+// +kubebuilder:printcolumn:name="Version",type=string,JSONPath=`.status.distribution.version`,description="Distribution Version"
 
 // Platform is the Schema for the platforms API.
 type Platform struct {

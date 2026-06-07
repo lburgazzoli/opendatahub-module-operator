@@ -127,10 +127,18 @@ spec:
                   type: string
                 description: Config holds the config values merged into Values.config.
                 type: object
-              deployedVersion:
-                description: DeployedVersion is the module version reported by the
-                  module CR status.
-                type: string
+              distribution:
+                description: Distribution reports the distribution info from the module
+                  CR.
+                properties:
+                  name:
+                    description: Name is the distribution name (e.g. "OpenDataHub",
+                      "RHODS").
+                    type: string
+                  version:
+                    description: Version is the target distribution version.
+                    type: string
+                type: object
               observedGeneration:
                 description: The generation observed by the resource controller.
                 format: int64

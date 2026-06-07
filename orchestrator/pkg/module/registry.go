@@ -35,3 +35,10 @@ var RegistrationFuncs []RegistrationFunc
 func Register(fn RegistrationFunc) {
 	RegistrationFuncs = append(RegistrationFuncs, fn)
 }
+
+// SetupModules runs all registered module registration functions.
+func SetupModules(r Registry) {
+	for _, fn := range RegistrationFuncs {
+		fn(r)
+	}
+}

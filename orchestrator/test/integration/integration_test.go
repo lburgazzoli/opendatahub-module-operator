@@ -32,9 +32,11 @@ import (
 	k8sm "github.com/lburgazzoli/gomega-matchers/pkg/matchers/k8s"
 	k3senv "github.com/lburgazzoli/k3s-envtest/pkg/k3senv"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
+	meta "k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
+	"k8s.io/client-go/dynamic"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -67,10 +69,10 @@ var (
 	betaGVK  = componentsGV.WithKind("Beta")
 	gammaGVK = componentsGV.WithKind("Gamma")
 
-	ctx            context.Context
-	cancel         context.CancelFunc
-	kubeConfig     *rest.Config
-	testOrchestrator *platform.Orchestrator
+	ctx        context.Context
+	cancel     context.CancelFunc
+	kubeConfig *rest.Config
+	testConfig *config.Config
 
 	testScheme = runtime.NewScheme()
 
@@ -177,21 +179,23 @@ func setupEnv() (*rest.Config, func(), error) {
 	return env.Config(), func() { _ = env.Stop(ctx) }, nil
 }
 
-func setupManager(kubeConfig *rest.Config) error {
-	cfg, err := config.LoadFromFS(nil)
+func setupManager(kc *rest.Config) error {
+	var err error
+
+	testConfig, err = config.LoadFromFS(nil)
 	if err != nil {
 		return fmt.Errorf("loading config: %w", err)
 	}
 
-	testOrchestrator = platform.NewOrchestrator(cfg)
+	registry := module.NewModuleRegistry(testConfig.Namespace(), testConfig.ChartsPath)
 
 	for _, mod := range testModules {
-		testOrchestrator.Register(mod)
+		registry.Register(mod)
 	}
 
-	testOrchestrator.ComputeRunlevels()
+	registry.ComputeRunlevels()
 
-	ctrlMgr, err := ctrl.NewManager(kubeConfig, ctrl.Options{
+	ctrlMgr, err := ctrl.NewManager(kc, ctrl.Options{
 		Scheme:         testScheme,
 		Metrics:        metricsserver.Options{BindAddress: "0"},
 		LeaderElection: false,
@@ -200,11 +204,11 @@ func setupManager(kubeConfig *rest.Config) error {
 		return fmt.Errorf("creating manager: %w", err)
 	}
 
-	if err := platform.NewReconciler(ctx, ctrlMgr, testOrchestrator); err != nil {
+	if err := platform.NewReconciler(ctx, ctrlMgr, registry, testConfig); err != nil {
 		return fmt.Errorf("creating platform reconciler: %w", err)
 	}
 
-	if err := platformoperator.NewModuleReconciler(ctx, ctrlMgr, testOrchestrator, cfg); err != nil {
+	if err := platformoperator.NewModuleReconciler(ctx, ctrlMgr, registry, testConfig); err != nil {
 		return fmt.Errorf("creating module reconciler: %w", err)
 	}
 
@@ -219,10 +223,12 @@ func setupManager(kubeConfig *rest.Config) error {
 
 // orchestratorTest holds shared test fixtures.
 type orchestratorTest struct {
-	modules      []*module.Module
-	orchestrator *platform.Orchestrator
-	client       client.Client
-	k            *k8sm.Resources
+	modules []*module.Module
+	cfg     *config.Config
+	client  client.Client
+	dynamic dynamic.Interface
+	mapper  meta.RESTMapper
+	k       *k8sm.Resources
 }
 
 func TestPlatformOperator(t *testing.T) {
@@ -241,11 +247,18 @@ func TestPlatformOperator(t *testing.T) {
 		t.Fatalf("creating test client: %v", err)
 	}
 
+	dynClient, err := dynamic.NewForConfig(kubeConfig)
+	if err != nil {
+		t.Fatalf("creating dynamic client: %v", err)
+	}
+
 	suite := &orchestratorTest{
-		modules:      testModules,
-		orchestrator: testOrchestrator,
-		client:       cli,
-		k:            k8sm.NewResources(cli, testScheme),
+		modules: testModules,
+		cfg:     testConfig,
+		client:  cli,
+		dynamic: dynClient,
+		mapper:  mapper,
+		k:       k8sm.NewResources(cli, testScheme),
 	}
 
 	foundation := &foundationTests{suite: suite}

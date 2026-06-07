@@ -41,8 +41,8 @@ type PlatformOperatorStatus struct {
 	// Runlevel is the module's runlevel in the orchestration DAG.
 	Runlevel int `json:"runlevel,omitempty"`
 
-	// DeployedVersion is the module version reported by the module CR status.
-	DeployedVersion string `json:"deployedVersion,omitempty"`
+	// Distribution reports the distribution info from the module CR.
+	Distribution DistributionInfo `json:"distribution,omitempty"`
 
 	// Chart describes the Helm chart used to render this module's resources.
 	Chart ChartInfo `json:"chart,omitempty"`

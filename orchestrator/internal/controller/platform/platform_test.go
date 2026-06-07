@@ -14,333 +14,206 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package platform_test
+package platform
 
 import (
 	"testing"
 
 	. "github.com/onsi/gomega"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
 	configApi "github.com/lburgazzoli/opendatahub-module-operator/orchestrator/api/config/v1alpha1"
-	"github.com/lburgazzoli/opendatahub-module-operator/orchestrator/internal/controller/platform"
-	"github.com/lburgazzoli/opendatahub-module-operator/orchestrator/pkg/config"
+	orchestratorconfig "github.com/lburgazzoli/opendatahub-module-operator/orchestrator/pkg/config"
 	"github.com/lburgazzoli/opendatahub-module-operator/orchestrator/pkg/module"
-	"github.com/lburgazzoli/opendatahub-module-operator/orchestrator/pkg/resources/gvk"
+	odhTypes "github.com/opendatahub-io/operator-actions-framework/controller/types"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-func newTestOrchestrator() *platform.Orchestrator {
-	cfg, _ := config.LoadFromFS(nil)
-	return platform.NewOrchestrator(cfg)
-}
-
-func TestOrchestratorRegisterAndLookup(t *testing.T) {
+func TestEnabledModulesAtRunlevelFiltersBySpec(t *testing.T) {
 	g := NewWithT(t)
 
-	o := newTestOrchestrator()
+	actions := testActions()
+	p := &configApi.Platform{
+		ObjectMeta: metav1.ObjectMeta{Name: configApi.PlatformInstanceName},
+		Spec: configApi.PlatformSpec{
+			Modules: []string{"alpha", "beta"},
+		},
+	}
 
-	o.Register(&module.Module{GVK: gvk.Ray, Namespace: "odh-ray", Runlevel: 2})
-	o.Register(&module.Module{GVK: gvk.Spark, Namespace: "odh-spark", Runlevel: 2})
+	modules := actions.enabledModulesAtRunlevel(p, 2)
 
-	g.Expect(o.Modules()).To(HaveLen(2))
-	g.Expect(o.ModuleByName("ray")).ToNot(BeNil())
-	g.Expect(o.ModuleByName("spark")).ToNot(BeNil())
-	g.Expect(o.ModuleByName("nonexistent")).To(BeNil())
-	g.Expect(o.ModuleByGVK(gvk.Ray)).ToNot(BeNil())
-	g.Expect(o.ModuleByGVK(gvk.Feast)).To(BeNil())
+	g.Expect(modules).To(HaveLen(1))
+	g.Expect(modules[0].EffectiveName()).To(Equal("beta"))
 }
 
-func TestOrchestratorCacheNamespaces(t *testing.T) {
+func TestRunlevelCompleteIgnoresDisabledModulesAtSameRunlevel(t *testing.T) {
 	g := NewWithT(t)
+	ctx := t.Context()
+	scheme := testScheme(t)
+	actions := testActions()
 
-	o := newTestOrchestrator()
+	p := newPlatform([]string{"alpha", "beta"}, 2, "1.0.0")
+	beta := newPlatformOperator("beta", "2.0.0")
+	rr := testRR(t, scheme, p, beta)
 
-	o.Register(&module.Module{GVK: gvk.Ray, Namespace: "odh-ray", Runlevel: 2})
-	o.Register(&module.Module{GVK: gvk.Spark, Namespace: "odh-spark", Runlevel: 2})
+	complete, err := actions.runlevelComplete(ctx, rr, p, 2)
 
-	ns := o.CacheNamespaces()
-	g.Expect(ns).To(ConsistOf("odh-ray", "odh-spark"))
-	g.Expect(ns).To(Equal([]string{"odh-ray", "odh-spark"}))
+	g.Expect(err).NotTo(HaveOccurred())
+	g.Expect(complete).To(BeTrue())
 }
 
-func TestOrchestratorCacheNamespacesDeduplication(t *testing.T) {
+func TestRunlevelCompleteBlocksOnMissingEnabledModule(t *testing.T) {
 	g := NewWithT(t)
+	ctx := t.Context()
+	scheme := testScheme(t)
+	actions := testActions()
 
-	o := newTestOrchestrator()
+	p := newPlatform([]string{"alpha", "beta"}, 2, "1.0.0")
+	rr := testRR(t, scheme, p)
 
-	o.Register(&module.Module{GVK: gvk.Ray, Namespace: "odh-shared", Runlevel: 2})
-	o.Register(&module.Module{GVK: gvk.Spark, Namespace: "odh-shared", Runlevel: 2})
+	complete, err := actions.runlevelComplete(ctx, rr, p, 2)
 
-	g.Expect(o.CacheNamespaces()).To(HaveLen(1))
+	g.Expect(err).NotTo(HaveOccurred())
+	g.Expect(complete).To(BeFalse())
 }
 
-func TestOrchestratorRunlevelGrouping(t *testing.T) {
+func TestAdvanceRunlevelSkipsRunlevelsWithoutDesiredModules(t *testing.T) {
 	g := NewWithT(t)
+	ctx := t.Context()
+	scheme := testScheme(t)
+	actions := testActions()
 
-	o := newTestOrchestrator()
+	p := newPlatform([]string{"alpha", "delta"}, 1, "1.0.0")
+	alpha := newPlatformOperator("alpha", "2.0.0")
+	rr := testRR(t, scheme, p, alpha)
 
-	o.Register(&module.Module{GVK: gvk.Feast, Namespace: "odh-feast", Runlevel: 0})
-	o.Register(&module.Module{GVK: gvk.Ray, Namespace: "odh-ray", Runlevel: 2})
-	o.Register(&module.Module{GVK: gvk.Spark, Namespace: "odh-spark", Runlevel: 2})
+	err := actions.advanceRunlevel(ctx, rr)
 
-	o.ComputeRunlevels()
-
-	levels := o.Runlevels()
-	g.Expect(levels).To(HaveLen(2))
-	g.Expect(levels[0]).To(HaveLen(1))
-	g.Expect(levels[0][0].GVK.Kind).To(Equal("Feast"))
-	g.Expect(levels[1]).To(HaveLen(2))
+	g.Expect(err).NotTo(HaveOccurred())
+	g.Expect(p.Status.Runlevel).To(Equal(3))
 }
 
-func TestOrchestratorStateInitialization(t *testing.T) {
-	t.Run("unknown mode by default", func(t *testing.T) {
-		g := NewWithT(t)
+func TestAdvanceRunlevelStaysWhenEnabledModuleVersionIsOutdated(t *testing.T) {
+	g := NewWithT(t)
+	ctx := t.Context()
+	scheme := testScheme(t)
+	actions := testActions()
 
-		o := newTestOrchestrator()
+	p := newPlatform([]string{"alpha", "beta"}, 1, "1.0.0")
+	alpha := newPlatformOperator("alpha", "wrong-version")
+	rr := testRR(t, scheme, p, alpha)
 
-		g.Expect(o.State().Mode).To(Equal(configApi.ModeUnknown))
-	})
+	err := actions.advanceRunlevel(ctx, rr)
 
-	t.Run("mode set after SetState", func(t *testing.T) {
-		g := NewWithT(t)
-
-		o := newTestOrchestrator()
-		o.SetState(configApi.OperationalState{Mode: configApi.ModeReconcile})
-
-		state := o.State()
-		g.Expect(state.Mode).To(Equal(configApi.ModeReconcile))
-		g.Expect(state.Runlevel).To(Equal(0))
-	})
+	g.Expect(err).NotTo(HaveOccurred())
+	g.Expect(p.Status.Runlevel).To(Equal(1))
 }
 
-func TestOrchestratorFirstRunlevel(t *testing.T) {
-	t.Run("returns 0 with no modules", func(t *testing.T) {
-		g := NewWithT(t)
-		o := newTestOrchestrator()
-		o.ComputeRunlevels()
-		g.Expect(o.FirstRunlevel()).To(Equal(0))
-	})
+func testScheme(t *testing.T) *runtime.Scheme {
+	t.Helper()
 
-	t.Run("returns lowest runlevel", func(t *testing.T) {
-		g := NewWithT(t)
-		o := newTestOrchestrator()
-		o.Register(&module.Module{GVK: gvk.Ray, Namespace: "ns", Runlevel: 3})
-		o.Register(&module.Module{GVK: gvk.Spark, Namespace: "ns", Runlevel: 1})
-		o.ComputeRunlevels()
-		g.Expect(o.FirstRunlevel()).To(Equal(1))
-	})
+	scheme := runtime.NewScheme()
+	err := configApi.AddToScheme(scheme)
+	if err != nil {
+		t.Fatalf("add config api to scheme: %v", err)
+	}
+
+	return scheme
 }
 
-func TestOrchestratorNextRunlevel(t *testing.T) {
-	o := newTestOrchestrator()
-	o.Register(&module.Module{GVK: gvk.Feast, Namespace: "ns", Runlevel: 1})
-	o.Register(&module.Module{GVK: gvk.Ray, Namespace: "ns", Runlevel: 3})
-	o.Register(&module.Module{GVK: gvk.Spark, Namespace: "ns", Runlevel: 5})
-	o.ComputeRunlevels()
-
-	t.Run("advances to next group", func(t *testing.T) {
-		g := NewWithT(t)
-		next, ok := o.NextRunlevel(1)
-		g.Expect(ok).To(BeTrue())
-		g.Expect(next).To(Equal(3))
-	})
-
-	t.Run("advances past gaps", func(t *testing.T) {
-		g := NewWithT(t)
-		next, ok := o.NextRunlevel(3)
-		g.Expect(ok).To(BeTrue())
-		g.Expect(next).To(Equal(5))
-	})
-
-	t.Run("returns false at last runlevel", func(t *testing.T) {
-		g := NewWithT(t)
-		_, ok := o.NextRunlevel(5)
-		g.Expect(ok).To(BeFalse())
-	})
-
-	t.Run("returns false for unknown runlevel", func(t *testing.T) {
-		g := NewWithT(t)
-		_, ok := o.NextRunlevel(99)
-		g.Expect(ok).To(BeFalse())
-	})
+func testActions() *platformActions {
+	return &platformActions{
+		registry: testRegistry(),
+		cfg: &orchestratorconfig.Config{
+			Distribution: orchestratorconfig.DistributionConfig{
+				Name:    "TestPlatform",
+				Version: "2.0.0",
+			},
+		},
+	}
 }
 
-func TestOrchestratorModulesAtRunlevel(t *testing.T) {
-	o := newTestOrchestrator()
-	o.Register(&module.Module{GVK: gvk.Feast, Namespace: "ns", Runlevel: 1})
-	o.Register(&module.Module{GVK: gvk.Ray, Namespace: "ns", Runlevel: 2})
-	o.Register(&module.Module{GVK: gvk.Spark, Namespace: "ns", Runlevel: 2})
-	o.ComputeRunlevels()
-
-	t.Run("returns modules at existing runlevel", func(t *testing.T) {
-		g := NewWithT(t)
-		g.Expect(o.ModulesAtRunlevel(2)).To(HaveLen(2))
+func testRegistry() *module.ModuleRegistry {
+	r := module.NewModuleRegistry("opendatahub", "/charts")
+	r.Register(&module.Module{
+		Name:      "alpha",
+		GVK:       schema.GroupVersionKind{Group: "test.io", Version: "v1", Kind: "Alpha"},
+		Namespace: "ns-alpha",
+		Runlevel:  1,
 	})
-
-	t.Run("returns single module", func(t *testing.T) {
-		g := NewWithT(t)
-		g.Expect(o.ModulesAtRunlevel(1)).To(HaveLen(1))
+	r.Register(&module.Module{
+		Name:      "beta",
+		GVK:       schema.GroupVersionKind{Group: "test.io", Version: "v1", Kind: "Beta"},
+		Namespace: "ns-beta",
+		Runlevel:  2,
 	})
-
-	t.Run("returns nil for unknown runlevel", func(t *testing.T) {
-		g := NewWithT(t)
-		g.Expect(o.ModulesAtRunlevel(99)).To(BeNil())
+	r.Register(&module.Module{
+		Name:      "gamma",
+		GVK:       schema.GroupVersionKind{Group: "test.io", Version: "v1", Kind: "Gamma"},
+		Namespace: "ns-gamma",
+		Runlevel:  2,
 	})
+	r.Register(&module.Module{
+		Name:      "delta",
+		GVK:       schema.GroupVersionKind{Group: "test.io", Version: "v1", Kind: "Delta"},
+		Namespace: "ns-delta",
+		Runlevel:  3,
+	})
+	r.ComputeRunlevels()
+
+	return r
 }
 
-func TestOrchestratorStateChangeNotification(t *testing.T) {
-	t.Run("notifies on mode change", func(t *testing.T) {
-		g := NewWithT(t)
+func testRR(
+	t *testing.T,
+	scheme *runtime.Scheme,
+	platform *configApi.Platform,
+	objs ...client.Object,
+) *odhTypes.ReconciliationRequest {
+	t.Helper()
 
-		o := newTestOrchestrator()
-		o.SetState(configApi.OperationalState{Mode: configApi.ModeReconcile})
+	allObjs := make([]client.Object, 0, len(objs)+1)
+	allObjs = append(allObjs, objs...)
+	allObjs = append(allObjs, platform)
 
-		p := &configApi.Platform{}
-		p.Name = "test"
-		p.UID = "uid-1"
+	c := fake.NewClientBuilder().
+		WithScheme(scheme).
+		WithObjects(allObjs...).
+		Build()
 
-		o.SetStateFor(p, configApi.OperationalState{Mode: configApi.ModeUpgrade, Runlevel: 1})
-
-		select {
-		case <-o.StateChanges():
-		default:
-			g.Expect(true).To(BeFalse(), "expected state change notification")
-		}
-	})
-
-	t.Run("notifies on runlevel change", func(t *testing.T) {
-		g := NewWithT(t)
-
-		o := newTestOrchestrator()
-		o.SetState(configApi.OperationalState{Mode: configApi.ModeUpgrade, Runlevel: 1})
-
-		// Drain any pending notification.
-		select {
-		case <-o.StateChanges():
-		default:
-		}
-
-		p := &configApi.Platform{}
-		p.Name = "test"
-		p.UID = "uid-1"
-
-		o.SetStateFor(p, configApi.OperationalState{Mode: configApi.ModeUpgrade, Runlevel: 2})
-
-		select {
-		case <-o.StateChanges():
-		default:
-			g.Expect(true).To(BeFalse(), "expected state change notification")
-		}
-	})
-
-	t.Run("does not notify when state unchanged", func(t *testing.T) {
-		g := NewWithT(t)
-		_ = g
-
-		o := newTestOrchestrator()
-		o.SetState(configApi.OperationalState{Mode: configApi.ModeReconcile})
-
-		// Drain any pending notification.
-		select {
-		case <-o.StateChanges():
-		default:
-		}
-
-		p := &configApi.Platform{}
-		p.Name = "test"
-		p.UID = "uid-1"
-
-		o.SetStateFor(p, configApi.OperationalState{Mode: configApi.ModeReconcile})
-
-		select {
-		case <-o.StateChanges():
-			t.Fatal("unexpected state change notification")
-		default:
-		}
-	})
+	return &odhTypes.ReconciliationRequest{
+		Client:   c,
+		Instance: platform,
+	}
 }
 
-func TestOrchestratorUIDTracking(t *testing.T) {
-	t.Run("resets state on UID change", func(t *testing.T) {
-		g := NewWithT(t)
-
-		o := newTestOrchestrator()
-
-		p1 := &configApi.Platform{}
-		p1.Name = "test"
-		p1.UID = "uid-1"
-
-		o.SetStateFor(p1, configApi.OperationalState{Mode: configApi.ModeUpgrade, Runlevel: 3})
-
-		// Drain notification.
-		select {
-		case <-o.StateChanges():
-		default:
-		}
-
-		p2 := &configApi.Platform{}
-		p2.Name = "test"
-		p2.UID = "uid-2"
-
-		o.SetStateFor(p2, configApi.OperationalState{Mode: configApi.ModeReconcile})
-
-		// Should notify on UID change.
-		select {
-		case <-o.StateChanges():
-		default:
-			g.Expect(true).To(BeFalse(), "expected notification on UID change")
-		}
-
-		g.Expect(o.State().Mode).To(Equal(configApi.ModeReconcile))
-	})
+func newPlatform(modules []string, runlevel int, version string) *configApi.Platform {
+	return &configApi.Platform{
+		ObjectMeta: metav1.ObjectMeta{Name: configApi.PlatformInstanceName},
+		Spec: configApi.PlatformSpec{
+			Modules: modules,
+		},
+		Status: configApi.PlatformStatus{
+			Runlevel: runlevel,
+			Distribution: configApi.DistributionInfo{
+				Name:    "TestPlatform",
+				Version: version,
+			},
+		},
+	}
 }
 
-func TestOrchestratorShouldReconcileModule(t *testing.T) {
-	t.Run("blocks when mode is unknown", func(t *testing.T) {
-		g := NewWithT(t)
-
-		o := newTestOrchestrator()
-		m := &module.Module{GVK: gvk.Ray, Runlevel: 2}
-
-		g.Expect(o.ShouldReconcileModule(m)).To(BeFalse())
-	})
-
-	t.Run("allows all in reconcile mode", func(t *testing.T) {
-		g := NewWithT(t)
-
-		o := newTestOrchestrator()
-		o.SetState(configApi.OperationalState{Mode: configApi.ModeReconcile})
-
-		m := &module.Module{GVK: gvk.Ray, Runlevel: 99}
-		g.Expect(o.ShouldReconcileModule(m)).To(BeTrue())
-	})
-
-	t.Run("allows module at current runlevel in upgrade mode", func(t *testing.T) {
-		g := NewWithT(t)
-
-		o := newTestOrchestrator()
-		o.SetState(configApi.OperationalState{Mode: configApi.ModeUpgrade, Runlevel: 2})
-
-		m := &module.Module{GVK: gvk.Ray, Runlevel: 2}
-		g.Expect(o.ShouldReconcileModule(m)).To(BeTrue())
-	})
-
-	t.Run("allows module below current runlevel in upgrade mode", func(t *testing.T) {
-		g := NewWithT(t)
-
-		o := newTestOrchestrator()
-		o.SetState(configApi.OperationalState{Mode: configApi.ModeUpgrade, Runlevel: 2})
-
-		m := &module.Module{GVK: gvk.Feast, Runlevel: 0}
-		g.Expect(o.ShouldReconcileModule(m)).To(BeTrue())
-	})
-
-	t.Run("blocks module above current runlevel in upgrade mode", func(t *testing.T) {
-		g := NewWithT(t)
-
-		o := newTestOrchestrator()
-		o.SetState(configApi.OperationalState{Mode: configApi.ModeUpgrade})
-
-		m := &module.Module{GVK: gvk.Ray, Runlevel: 2}
-		g.Expect(o.ShouldReconcileModule(m)).To(BeFalse())
-	})
+func newPlatformOperator(name string, version string) *configApi.PlatformOperator {
+	return &configApi.PlatformOperator{
+		ObjectMeta: metav1.ObjectMeta{Name: name},
+		Status: configApi.PlatformOperatorStatus{
+			Distribution: configApi.DistributionInfo{
+				Name:    "TestPlatform",
+				Version: version,
+			},
+		},
+	}
 }

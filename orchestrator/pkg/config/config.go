@@ -31,9 +31,9 @@ import (
 )
 
 const (
-	KeyChartsPath      = "charts-path"
-	KeyPlatformName    = "platform-name"
-	KeyPlatformVersion = "platform-version"
+	KeyChartsPath          = "charts-path"
+	KeyDistributionName    = "distribution.name"
+	KeyDistributionVersion = "distribution.version"
 
 	KeyMetricsBindAddr    = "controller.metrics.bind-address"
 	KeyHealthBindAddr     = "controller.health.bind-address"
@@ -43,10 +43,10 @@ const (
 	KeyPprofEnabled       = "controller.pprof.enabled"
 	KeyPprofBindAddr      = "controller.pprof.bind-address"
 
-	DefaultNamespace       = "opendatahub"
-	DefaultChartsPath      = "/charts"
-	DefaultPlatformName    = "unknown"
-	DefaultPlatformVersion = "unknown"
+	DefaultNamespace           = "opendatahub"
+	DefaultChartsPath          = "/charts"
+	DefaultDistributionName    = "unknown"
+	DefaultDistributionVersion = "unknown"
 
 	NamespaceEnvVar = "ODH_OPERATOR_NAMESPACE"
 
@@ -68,10 +68,14 @@ var structuredExtensions = map[string]bool{
 }
 
 type Config struct {
-	ChartsPath      string           `mapstructure:"charts-path"`
-	PlatformName    string           `mapstructure:"platform-name"`
-	PlatformVersion string           `mapstructure:"platform-version"`
-	Controller      ControllerConfig `mapstructure:"controller"`
+	ChartsPath   string             `mapstructure:"charts-path"`
+	Distribution DistributionConfig `mapstructure:"distribution"`
+	Controller   ControllerConfig   `mapstructure:"controller"`
+}
+
+type DistributionConfig struct {
+	Name    string `mapstructure:"name"`
+	Version string `mapstructure:"version"`
 }
 
 // Namespace returns the orchestrator's namespace, derived from
@@ -116,11 +120,11 @@ type PprofConfig struct {
 
 func (c *Config) Release() common.Release {
 	rel := common.Release{
-		Name: common.Platform(c.PlatformName),
+		Name: common.Platform(c.Distribution.Name),
 	}
 
-	if c.PlatformVersion != "" {
-		v, err := semver.ParseTolerant(c.PlatformVersion)
+	if c.Distribution.Version != "" {
+		v, err := semver.ParseTolerant(c.Distribution.Version)
 		if err == nil {
 			rel.Version = ofVersion.OperatorVersion{Version: v}
 		}
@@ -164,8 +168,8 @@ func LoadFromFS(fsys fs.FS) (*Config, error) {
 
 func setDefaults(v *viper.Viper) {
 	v.SetDefault(KeyChartsPath, DefaultChartsPath)
-	v.SetDefault(KeyPlatformName, DefaultPlatformName)
-	v.SetDefault(KeyPlatformVersion, DefaultPlatformVersion)
+	v.SetDefault(KeyDistributionName, DefaultDistributionName)
+	v.SetDefault(KeyDistributionVersion, DefaultDistributionVersion)
 
 	v.SetDefault(KeyMetricsBindAddr, DefaultMetricsBindAddr)
 	v.SetDefault(KeyHealthBindAddr, DefaultHealthBindAddr)

@@ -21,8 +21,11 @@ import (
 
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
 	configApi "github.com/lburgazzoli/opendatahub-module-operator/orchestrator/api/config/v1alpha1"
+	orchestratorconfig "github.com/lburgazzoli/opendatahub-module-operator/orchestrator/pkg/config"
+	"github.com/lburgazzoli/opendatahub-module-operator/orchestrator/pkg/module"
 	"github.com/opendatahub-io/operator-actions-framework/api"
 	"github.com/opendatahub-io/operator-actions-framework/controller/actions/deploy"
 	"github.com/opendatahub-io/operator-actions-framework/controller/actions/gc"
@@ -31,8 +34,7 @@ import (
 )
 
 const (
-	ConditionModulesReady       = "ModulesReady"
-	ConditionUpgradeProgressing = "UpgradeProgressing"
+	ConditionModulesReady = "ModulesReady"
 )
 
 // +kubebuilder:rbac:groups=config.opendatahub.io,resources=platforms,verbs=get;list;watch;create;update;patch;delete
@@ -45,28 +47,34 @@ const (
 func NewReconciler(
 	ctx context.Context,
 	mgr ctrl.Manager,
-	o *Orchestrator,
+	registry *module.ModuleRegistry,
+	cfg *orchestratorconfig.Config,
 ) error {
-	rel := o.cfg.Release()
-	ns := o.cfg.Namespace()
+	rel := cfg.Release()
+	ns := cfg.Namespace()
+
+	actions := &platformActions{
+		registry: registry,
+		cfg:      cfg,
+	}
 
 	_, err := reconciler.ReconcilerFor(mgr, &configApi.Platform{}).
-		Owns(&configApi.PlatformOperator{}).
+		Owns(&configApi.PlatformOperator{},
+			reconciler.WithPredicates(predicate.ResourceVersionChangedPredicate{}),
+		).
 		WithReconcilerOpts(
 			reconciler.WithRelease(api.Release{Name: rel.Name, Version: rel.Version.Version}),
 		).
-		WithAction(o.initialize).
-		WithAction(o.checkAdminAcks).
-		WithAction(o.ensureModules).
+		WithAction(actions.initialize).
+		WithAction(actions.checkAdminAcks).
+		WithAction(actions.ensureModules).
 		WithAction(deploy.NewAction(
 			deploy.WithCache()),
 		).
-		WithAction(o.checkAdvancement).
-		WithAction(o.advanceOrSwitch).
-		WithAction(o.aggregateStatus).
+		WithAction(actions.advanceRunlevel).
+		WithAction(actions.aggregateStatus).
 		WithConditions(
 			ConditionModulesReady,
-			ConditionUpgradeProgressing,
 		).
 		WithAction(gc.NewAction(
 			func(_ context.Context, _ *odhTypes.ReconciliationRequest) (string, error) {

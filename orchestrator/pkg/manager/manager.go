@@ -33,6 +33,7 @@ import (
 	"github.com/lburgazzoli/opendatahub-module-operator/orchestrator/internal/controller/platform"
 	"github.com/lburgazzoli/opendatahub-module-operator/orchestrator/internal/controller/platformoperator"
 	orchestratorconfig "github.com/lburgazzoli/opendatahub-module-operator/orchestrator/pkg/config"
+	"github.com/lburgazzoli/opendatahub-module-operator/orchestrator/pkg/module"
 	libcache "github.com/opendatahub-io/odh-platform-utilities/pkg/cache"
 )
 
@@ -45,7 +46,7 @@ func New(
 	ctx context.Context,
 	kubeConfig *rest.Config,
 	cfg *orchestratorconfig.Config,
-	o *platform.Orchestrator,
+	registry *module.ModuleRegistry,
 ) (ctrl.Manager, error) {
 	if kubeConfig == nil {
 		return nil, fmt.Errorf("kubeconfig is nil")
@@ -56,7 +57,7 @@ func New(
 
 	scheme := NewScheme()
 
-	cacheNamespaces := buildCacheNamespaces(o)
+	cacheNamespaces := buildCacheNamespaces(registry)
 
 	mgrOpts := ctrl.Options{
 		Scheme: scheme,
@@ -93,13 +94,11 @@ func New(
 		return nil, fmt.Errorf("creating manager: %w", err)
 	}
 
-	o.SetRecorder(ctrlMgr.GetEventRecorderFor("platform-orchestrator"))
-
-	if err := platform.NewReconciler(ctx, ctrlMgr, o); err != nil {
+	if err := platform.NewReconciler(ctx, ctrlMgr, registry, cfg); err != nil {
 		return nil, fmt.Errorf("creating platform reconciler: %w", err)
 	}
 
-	if err := platformoperator.NewModuleReconciler(ctx, ctrlMgr, o, cfg); err != nil {
+	if err := platformoperator.NewModuleReconciler(ctx, ctrlMgr, registry, cfg); err != nil {
 		return nil, fmt.Errorf("creating module reconciler: %w", err)
 	}
 
