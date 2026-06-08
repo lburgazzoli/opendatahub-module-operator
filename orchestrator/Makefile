@@ -67,7 +67,7 @@ test: manifests generate fmt vet ## Run unit tests.
 
 .PHONY: test-integration
 test-integration: manifests generate install ## Run integration tests against the current cluster.
-	go test -p 1 -v -tags=integration -count=1 -timeout=150s ./test/integration/...
+	go test -p 1 -v -tags=integration -count=1 -timeout=120s ./test/integration/...
 
 .PHONY: lint
 lint: ## Run golangci-lint linter.
