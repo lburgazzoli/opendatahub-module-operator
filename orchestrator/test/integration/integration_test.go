@@ -30,13 +30,10 @@ import (
 	. "github.com/onsi/gomega"
 
 	k8sm "github.com/lburgazzoli/gomega-matchers/pkg/matchers/k8s"
-	k3senv "github.com/lburgazzoli/k3s-envtest/pkg/k3senv"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
-	meta "k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
-	"k8s.io/client-go/dynamic"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -73,6 +70,7 @@ var (
 	cancel     context.CancelFunc
 	kubeConfig *rest.Config
 	testConfig *config.Config
+	baseConfig config.Config
 
 	testScheme = runtime.NewScheme()
 
@@ -122,18 +120,9 @@ func setupEnv() (*rest.Config, func(), error) {
 	}
 
 	chartsPath := filepath.Join(root, "orchestrator", "test", "integration", "testdata", "charts")
-	crdPath := filepath.Join(root, "orchestrator", "config", "crd", "bases")
-
-	env, err := k3senv.New(
-		k3senv.WithScheme(testScheme),
-		k3senv.WithManifests(crdPath),
-	)
+	cfg, err := ctrl.GetConfig()
 	if err != nil {
-		return nil, nil, fmt.Errorf("creating k3s environment: %w", err)
-	}
-
-	if err := env.Start(ctx); err != nil {
-		return nil, nil, fmt.Errorf("starting k3s environment: %w", err)
+		return nil, nil, fmt.Errorf("getting existing cluster config: %w", err)
 	}
 
 	chartPath := filepath.Join(chartsPath, "test-module")
@@ -176,7 +165,7 @@ func setupEnv() (*rest.Config, func(), error) {
 		},
 	}
 
-	return env.Config(), func() { _ = env.Stop(ctx) }, nil
+	return cfg, func() {}, nil
 }
 
 func setupManager(kc *rest.Config) error {
@@ -186,6 +175,7 @@ func setupManager(kc *rest.Config) error {
 	if err != nil {
 		return fmt.Errorf("loading config: %w", err)
 	}
+	baseConfig = *testConfig
 
 	registry := module.NewModuleRegistry(testConfig.Namespace(), testConfig.ChartsPath)
 
@@ -226,12 +216,14 @@ type orchestratorTest struct {
 	modules []*module.Module
 	cfg     *config.Config
 	client  client.Client
-	dynamic dynamic.Interface
-	mapper  meta.RESTMapper
 	k       *k8sm.Resources
 }
 
-func TestPlatformOperator(t *testing.T) {
+type suiteFactory func(t *testing.T) *orchestratorTest
+
+func newOrchestratorTest(t *testing.T) *orchestratorTest {
+	t.Helper()
+
 	httpClient, err := rest.HTTPClientFor(kubeConfig)
 	if err != nil {
 		t.Fatalf("creating HTTP client: %v", err)
@@ -247,23 +239,18 @@ func TestPlatformOperator(t *testing.T) {
 		t.Fatalf("creating test client: %v", err)
 	}
 
-	dynClient, err := dynamic.NewForConfig(kubeConfig)
-	if err != nil {
-		t.Fatalf("creating dynamic client: %v", err)
-	}
-
-	suite := &orchestratorTest{
+	return &orchestratorTest{
 		modules: testModules,
 		cfg:     testConfig,
 		client:  cli,
-		dynamic: dynClient,
-		mapper:  mapper,
 		k:       k8sm.NewResources(cli, testScheme),
 	}
+}
 
-	foundation := &foundationTests{suite: suite}
+func TestPlatformOperator(t *testing.T) {
+	foundation := &foundationTests{newSuite: newOrchestratorTest}
 	t.Run("foundation", foundation.Execute)
 
-	runlevels := &runlevelTests{suite: suite}
+	runlevels := &runlevelTests{newSuite: newOrchestratorTest}
 	t.Run("runlevel", runlevels.Execute)
 }

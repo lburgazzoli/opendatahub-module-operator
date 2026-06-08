@@ -315,7 +315,7 @@ func (r *ModuleReconciler) reportStatus(ctx context.Context, rr *types.Reconcili
 	obj.Status.Runlevel = mc.module.Runlevel
 	obj.Status.Chart = mc.chartInfo
 
-	version, err := r.readModuleVersion(ctx, rr.Client, mc)
+	version, err := r.readModuleVersion(ctx, r.apiReader, mc)
 	if err != nil {
 		return err
 	}
@@ -330,7 +330,7 @@ func (r *ModuleReconciler) reportStatus(ctx context.Context, rr *types.Reconcili
 
 func (r *ModuleReconciler) readModuleVersion(
 	ctx context.Context,
-	c client.Client,
+	c client.Reader,
 	mc *moduleContext,
 ) (string, error) {
 	list := &unstructured.UnstructuredList{}

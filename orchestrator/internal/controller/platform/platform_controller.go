@@ -19,7 +19,6 @@ package platform
 import (
 	"context"
 
-	"k8s.io/apimachinery/pkg/runtime/schema"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
@@ -28,9 +27,7 @@ import (
 	"github.com/lburgazzoli/opendatahub-module-operator/orchestrator/pkg/module"
 	"github.com/opendatahub-io/operator-actions-framework/api"
 	"github.com/opendatahub-io/operator-actions-framework/controller/actions/deploy"
-	"github.com/opendatahub-io/operator-actions-framework/controller/actions/gc"
 	"github.com/opendatahub-io/operator-actions-framework/controller/reconciler"
-	odhTypes "github.com/opendatahub-io/operator-actions-framework/controller/types"
 )
 
 const (
@@ -51,8 +48,6 @@ func NewReconciler(
 	cfg *orchestratorconfig.Config,
 ) error {
 	rel := cfg.Release()
-	ns := cfg.Namespace()
-
 	actions := &platformActions{
 		registry: registry,
 		cfg:      cfg,
@@ -71,21 +66,12 @@ func NewReconciler(
 		WithAction(deploy.NewAction(
 			deploy.WithCache()),
 		).
+		WithAction(actions.pruneModules).
 		WithAction(actions.advanceRunlevel).
 		WithAction(actions.aggregateStatus).
 		WithConditions(
 			ConditionModulesReady,
 		).
-		WithAction(gc.NewAction(
-			func(_ context.Context, _ *odhTypes.ReconciliationRequest) (string, error) {
-				return ns, nil
-			},
-			gc.WithTypePredicate(
-				func(rr *odhTypes.ReconciliationRequest, objGVK schema.GroupVersionKind) (bool, error) {
-					return rr.Controller.Owns(objGVK), nil
-				},
-			),
-		)).
 		Build(ctx)
 
 	return err

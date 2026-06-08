@@ -23,6 +23,7 @@ import (
 	"slices"
 
 	k8serr "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -79,6 +80,47 @@ func (a *platformActions) ensureModules(_ context.Context, rr *types.Reconciliat
 	}
 
 	rr.Generated = true
+
+	return nil
+}
+
+// pruneModules deletes PlatformOperators that are no longer present in spec.modules.
+func (a *platformActions) pruneModules(ctx context.Context, rr *types.ReconciliationRequest) error {
+	obj, ok := rr.Instance.(*configApi.Platform)
+	if !ok {
+		return fmt.Errorf("instance is not a Platform")
+	}
+
+	desired := sets.New[string]()
+	for _, name := range obj.Spec.Modules {
+		m := a.registry.ModuleByName(name)
+		if m != nil {
+			desired.Insert(m.EffectiveName())
+			continue
+		}
+
+		desired.Insert(name)
+	}
+
+	var poList configApi.PlatformOperatorList
+	if err := rr.Client.List(ctx, &poList); err != nil {
+		return fmt.Errorf("listing PlatformOperators: %w", err)
+	}
+
+	propagation := metav1.DeletePropagationForeground
+
+	for i := range poList.Items {
+		po := &poList.Items[i]
+		if desired.Has(po.Name) || !po.GetDeletionTimestamp().IsZero() {
+			continue
+		}
+
+		if err := rr.Client.Delete(ctx, po, &client.DeleteOptions{
+			PropagationPolicy: &propagation,
+		}); err != nil && !k8serr.IsNotFound(err) {
+			return fmt.Errorf("deleting PlatformOperator %q: %w", po.Name, err)
+		}
+	}
 
 	return nil
 }

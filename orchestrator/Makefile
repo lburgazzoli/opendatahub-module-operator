@@ -66,8 +66,8 @@ test: manifests generate fmt vet ## Run unit tests.
 	go test -ldflags "$(LDFLAGS)" $$(go list ./... | grep -v /e2e | grep -v /integration) -coverprofile cover.out
 
 .PHONY: test-integration
-test-integration: manifests generate ## Run integration tests (requires Docker).
-	DOCKER_HOST=unix:///var/run/docker.sock go test -v -tags=integration -count=1 -timeout=120s ./test/integration/
+test-integration: manifests generate install ## Run integration tests against the current cluster.
+	go test -v -tags=integration -count=1 -timeout=150s ./test/integration/
 
 .PHONY: lint
 lint: ## Run golangci-lint linter.

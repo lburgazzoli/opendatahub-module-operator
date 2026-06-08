@@ -20,6 +20,7 @@ import (
 	"testing"
 
 	. "github.com/onsi/gomega"
+	k8serr "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -55,7 +56,7 @@ func TestRunlevelCompleteIgnoresDisabledModulesAtSameRunlevel(t *testing.T) {
 	scheme := testScheme(t)
 	actions := testActions()
 
-	p := newPlatform([]string{"alpha", "beta"}, 2, "1.0.0")
+	p := newPlatform([]string{"alpha", "beta"}, 2)
 	beta := newPlatformOperator("beta", "2.0.0")
 	rr := testRR(t, scheme, p, beta)
 
@@ -71,7 +72,7 @@ func TestRunlevelCompleteBlocksOnMissingEnabledModule(t *testing.T) {
 	scheme := testScheme(t)
 	actions := testActions()
 
-	p := newPlatform([]string{"alpha", "beta"}, 2, "1.0.0")
+	p := newPlatform([]string{"alpha", "beta"}, 2)
 	rr := testRR(t, scheme, p)
 
 	complete, err := actions.runlevelComplete(ctx, rr, p, 2)
@@ -86,7 +87,7 @@ func TestAdvanceRunlevelSkipsRunlevelsWithoutDesiredModules(t *testing.T) {
 	scheme := testScheme(t)
 	actions := testActions()
 
-	p := newPlatform([]string{"alpha", "delta"}, 1, "1.0.0")
+	p := newPlatform([]string{"alpha", "delta"}, 1)
 	alpha := newPlatformOperator("alpha", "2.0.0")
 	rr := testRR(t, scheme, p, alpha)
 
@@ -102,7 +103,7 @@ func TestAdvanceRunlevelStaysWhenEnabledModuleVersionIsOutdated(t *testing.T) {
 	scheme := testScheme(t)
 	actions := testActions()
 
-	p := newPlatform([]string{"alpha", "beta"}, 1, "1.0.0")
+	p := newPlatform([]string{"alpha", "beta"}, 1)
 	alpha := newPlatformOperator("alpha", "wrong-version")
 	rr := testRR(t, scheme, p, alpha)
 
@@ -110,6 +111,42 @@ func TestAdvanceRunlevelStaysWhenEnabledModuleVersionIsOutdated(t *testing.T) {
 
 	g.Expect(err).NotTo(HaveOccurred())
 	g.Expect(p.Status.Runlevel).To(Equal(1))
+}
+
+func TestPruneModulesDeletesDisabledPlatformOperators(t *testing.T) {
+	g := NewWithT(t)
+	ctx := t.Context()
+	scheme := testScheme(t)
+	actions := testActions()
+
+	p := newPlatform([]string{"alpha"}, 1)
+	alpha := newPlatformOperator("alpha", "2.0.0")
+	beta := newPlatformOperator("beta", "2.0.0")
+	rr := testRR(t, scheme, p, alpha, beta)
+
+	err := actions.pruneModules(ctx, rr)
+
+	g.Expect(err).NotTo(HaveOccurred())
+	g.Expect(rr.Client.Get(ctx, client.ObjectKey{Name: "alpha"}, &configApi.PlatformOperator{})).To(Succeed())
+	g.Expect(k8serr.IsNotFound(rr.Client.Get(ctx, client.ObjectKey{Name: "beta"}, &configApi.PlatformOperator{}))).To(BeTrue())
+}
+
+func TestPruneModulesKeepsDesiredPlatformOperators(t *testing.T) {
+	g := NewWithT(t)
+	ctx := t.Context()
+	scheme := testScheme(t)
+	actions := testActions()
+
+	p := newPlatform([]string{"alpha", "beta"}, 1)
+	alpha := newPlatformOperator("alpha", "2.0.0")
+	beta := newPlatformOperator("beta", "2.0.0")
+	rr := testRR(t, scheme, p, alpha, beta)
+
+	err := actions.pruneModules(ctx, rr)
+
+	g.Expect(err).NotTo(HaveOccurred())
+	g.Expect(rr.Client.Get(ctx, client.ObjectKey{Name: "alpha"}, &configApi.PlatformOperator{})).To(Succeed())
+	g.Expect(rr.Client.Get(ctx, client.ObjectKey{Name: "beta"}, &configApi.PlatformOperator{})).To(Succeed())
 }
 
 func testScheme(t *testing.T) *runtime.Scheme {
@@ -190,7 +227,7 @@ func testRR(
 	}
 }
 
-func newPlatform(modules []string, runlevel int, version string) *configApi.Platform {
+func newPlatform(modules []string, runlevel int) *configApi.Platform {
 	return &configApi.Platform{
 		ObjectMeta: metav1.ObjectMeta{Name: configApi.PlatformInstanceName},
 		Spec: configApi.PlatformSpec{
@@ -200,7 +237,7 @@ func newPlatform(modules []string, runlevel int, version string) *configApi.Plat
 			Runlevel: runlevel,
 			Distribution: configApi.DistributionInfo{
 				Name:    "TestPlatform",
-				Version: version,
+				Version: "1.0.0",
 			},
 		},
 	}

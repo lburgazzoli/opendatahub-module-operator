@@ -28,6 +28,8 @@ import (
 
 	configApi "github.com/lburgazzoli/opendatahub-module-operator/orchestrator/api/config/v1alpha1"
 	orchestratorconfig "github.com/lburgazzoli/opendatahub-module-operator/orchestrator/pkg/config"
+	"github.com/lburgazzoli/opendatahub-module-operator/orchestrator/pkg/controller/handlers"
+	controllerpredicates "github.com/lburgazzoli/opendatahub-module-operator/orchestrator/pkg/controller/predicates"
 	"github.com/lburgazzoli/opendatahub-module-operator/orchestrator/pkg/module"
 	"github.com/opendatahub-io/operator-actions-framework/controller/actions/deploy"
 	"github.com/opendatahub-io/operator-actions-framework/controller/actions/status/deployments"
@@ -44,17 +46,18 @@ func NewModuleReconciler(
 	cfg *orchestratorconfig.Config,
 ) error {
 	r := &ModuleReconciler{
-		registry: registry,
-		cfg:      cfg,
-		client:   mgr.GetClient(),
-		contexts: make(map[string]*moduleContext),
+		registry:  registry,
+		cfg:       cfg,
+		client:    mgr.GetClient(),
+		apiReader: mgr.GetAPIReader(),
+		contexts:  make(map[string]*moduleContext),
 	}
 
 	b := reconciler.ReconcilerFor(mgr, &configApi.PlatformOperator{}).
 		WithDynamicOwnership().
 		Watches(
 			&configApi.Platform{},
-			reconciler.WithEventHandler(handler.EnqueueRequestsFromMapFunc(r.enqueueEligibleModules)),
+			reconciler.WithEventHandler(handler.EnqueueRequestsFromMapFunc(r.eligibleModuleRequests)),
 			reconciler.WithPredicates(r.platformChangePredicate()),
 		)
 
@@ -62,17 +65,14 @@ func NewModuleReconciler(
 		m := mod
 		b = b.WatchesGVK(
 			m.GVK,
-			reconciler.WithEventHandler(handler.EnqueueRequestsFromMapFunc(
-				func(_ context.Context, _ client.Object) []ctrl.Request {
-					return []ctrl.Request{{NamespacedName: client.ObjectKey{Name: m.EffectiveName()}}}
-				},
-			)),
+			reconciler.WithEventHandler(handlers.ToNamed(m.EffectiveName())),
+			reconciler.WithPredicates(controllerpredicates.CreateOrResourceVersionChanged()),
 			reconciler.Dynamic(reconciler.CrdExists(m.GVK)),
 		)
 	}
 
 	_, err := b.
-		WithEventFilter(r.logPredicate()).
+		WithEventFilter(controllerpredicates.LogAllEvents("PO event")).
 		WithAction(r.resolveModule).
 		WithAction(r.checkRunlevel).
 		WithAction(r.ensureNamespace).
@@ -126,13 +126,18 @@ func (r *ModuleReconciler) platformChangePredicate() predicate.Predicate {
 	}
 }
 
-// enqueueEligibleModules maps a Platform CR event to reconcile requests for
+// eligibleModuleRequests maps a Platform CR event to reconcile requests for
 // PlatformOperator CRs whose modules are at an eligible runlevel and haven't
 // yet reported the expected distribution version.
-func (r *ModuleReconciler) enqueueEligibleModules(
+func (r *ModuleReconciler) eligibleModuleRequests(
 	ctx context.Context,
 	obj client.Object,
 ) []ctrl.Request {
+	targetDistribution := configApi.DistributionInfo{
+		Name:    r.cfg.Distribution.Name,
+		Version: r.cfg.Distribution.Version,
+	}
+
 	p := &configApi.Platform{}
 	if err := r.client.Get(ctx, client.ObjectKey{Name: configApi.PlatformInstanceName}, p); err != nil {
 		return nil
@@ -145,44 +150,22 @@ func (r *ModuleReconciler) enqueueEligibleModules(
 
 	var requests []ctrl.Request
 	for i := range list.Items {
-		m := r.registry.ModuleByName(list.Items[i].Name)
-		if m == nil {
-			continue
-		}
+		po := &list.Items[i]
+		m := r.registry.ModuleByName(po.Name)
 
-		if m.Runlevel > p.Status.Runlevel {
+		switch {
+		case m == nil:
 			continue
-		}
-
-		if list.Items[i].Status.Distribution.Version == r.cfg.Distribution.Version {
+		case m.Runlevel > p.Status.Runlevel:
 			continue
+		case po.Status.Distribution == targetDistribution:
+			continue
+		default:
+			requests = append(requests, ctrl.Request{
+				NamespacedName: client.ObjectKeyFromObject(po),
+			})
 		}
-
-		requests = append(requests, ctrl.Request{
-			NamespacedName: client.ObjectKeyFromObject(&list.Items[i]),
-		})
 	}
 
 	return requests
-}
-
-func (r *ModuleReconciler) logPredicate() predicate.Predicate {
-	return predicate.Funcs{
-		CreateFunc: func(e event.CreateEvent) bool {
-			ctrl.Log.Info("PO event: CREATE", "name", e.Object.GetName(), "gvk", e.Object.GetObjectKind().GroupVersionKind())
-			return true
-		},
-		UpdateFunc: func(e event.UpdateEvent) bool {
-			ctrl.Log.Info("PO event: UPDATE", "name", e.ObjectNew.GetName(), "gvk", e.ObjectNew.GetObjectKind().GroupVersionKind())
-			return true
-		},
-		DeleteFunc: func(e event.DeleteEvent) bool {
-			ctrl.Log.Info("PO event: DELETE", "name", e.Object.GetName())
-			return true
-		},
-		GenericFunc: func(e event.GenericEvent) bool {
-			ctrl.Log.Info("PO event: GENERIC", "name", e.Object.GetName())
-			return true
-		},
-	}
 }
