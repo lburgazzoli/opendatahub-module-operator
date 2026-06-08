@@ -17,9 +17,6 @@ import (
 	testsupport "github.com/lburgazzoli/opendatahub-module-operator/orchestrator/test/support"
 )
 
-type adminAcksTests struct {
-}
-
 func TestMain(m *testing.M) {
 	os.Exit(isupport.Run(m, isupport.RunConfig{
 		Modules:        gatesModules(),
@@ -28,15 +25,10 @@ func TestMain(m *testing.M) {
 }
 
 func TestGates(t *testing.T) {
-	adminAcks := &adminAcksTests{}
-	adminAcks.Execute(t)
+	t.Run("admin ack transitions", testAdminAckTransitions)
 }
 
-func (at *adminAcksTests) Execute(t *testing.T) {
-	t.Run("admin ack transitions", at.testAdminAckTransitions)
-}
-
-func (at *adminAcksTests) testAdminAckTransitions(t *testing.T) {
+func testAdminAckTransitions(t *testing.T) {
 	t.Run("missing configmap blocks gated modules", func(t *testing.T) {
 		g := NewWithT(t)
 		ctx := t.Context()
@@ -106,7 +98,7 @@ func (at *adminAcksTests) testAdminAckTransitions(t *testing.T) {
 				},
 			),
 		).Should(
-			WithTransform(jq.Extract(`.data`), HaveKeyWithValue(testAdminAckKey, Equal("true"))),
+			WithTransform(k8sm.Data(), HaveKeyWithValue(testAdminAckKey, Equal("true"))),
 		)
 
 		for _, moduleName := range []string{alphaModuleName, gatedModuleName} {

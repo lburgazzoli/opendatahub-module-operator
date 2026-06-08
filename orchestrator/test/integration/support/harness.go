@@ -34,7 +34,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/sets"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	"github.com/lburgazzoli/gomega-matchers/pkg/matchers/jq"
+	k8sm "github.com/lburgazzoli/gomega-matchers/pkg/matchers/k8s"
 	configApi "github.com/lburgazzoli/opendatahub-module-operator/orchestrator/api/config/v1alpha1"
 	"github.com/lburgazzoli/opendatahub-module-operator/orchestrator/pkg/config"
 )
@@ -197,7 +197,7 @@ func (suite *Suite) cleanupPlatformResources(t *testing.T) {
 
 	g.Eventually(suite.K.List(&configApi.PlatformOperatorList{})).
 		WithContext(ctx).
-		Should(jq.Match(`length == 0`))
+		Should(k8sm.IsEmptyList())
 }
 
 func (suite *Suite) assertClusterReset(t *testing.T, snapshot cleanupSnapshot) {

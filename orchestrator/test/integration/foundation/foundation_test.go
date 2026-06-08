@@ -22,9 +22,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-type foundationTests struct {
-}
-
 func TestMain(m *testing.M) {
 	os.Exit(isupport.Run(m, isupport.RunConfig{
 		Modules:        foundationModules(),
@@ -33,18 +30,13 @@ func TestMain(m *testing.M) {
 }
 
 func TestFoundation(t *testing.T) {
-	foundation := &foundationTests{}
-	foundation.Execute(t)
+	t.Run("empty platform should reconcile", testEmptyPlatform)
+	t.Run("module deployment", testModuleDeployment)
+	t.Run("module version propagation", testVersionPropagation)
+	t.Run("disabling modules should clean up resources", testDisableModules)
 }
 
-func (ft *foundationTests) Execute(t *testing.T) {
-	t.Run("empty platform should reconcile", ft.testEmptyPlatform)
-	t.Run("module deployment", ft.testModuleDeployment)
-	t.Run("module version propagation", ft.testVersionPropagation)
-	t.Run("disabling modules should clean up resources", ft.testDisableModules)
-}
-
-func (ft *foundationTests) testEmptyPlatform(t *testing.T) {
+func testEmptyPlatform(t *testing.T) {
 	g := NewWithT(t)
 	ctx := t.Context()
 	suite := isupport.NewSuite(t)
@@ -60,11 +52,11 @@ func (ft *foundationTests) testEmptyPlatform(t *testing.T) {
 		jq.Match(`(.status.distribution.version // "") | length > 0`),
 	)
 	g.Eventually(ctx, suite.K.List(&configApi.PlatformOperatorList{})).Should(
-		jq.Match(`length == 0`),
+		k8sm.IsEmptyList(),
 	)
 }
 
-func (ft *foundationTests) testModuleDeployment(t *testing.T) {
+func testModuleDeployment(t *testing.T) {
 	g := NewWithT(t)
 	ctx := t.Context()
 	suite := isupport.NewSuite(t)
@@ -178,7 +170,7 @@ func (ft *foundationTests) testModuleDeployment(t *testing.T) {
 					Name: moduleName + "-config", Namespace: mod.Namespace,
 				}}
 				g.Eventually(ctx, suite.K.Get(cm)).Should(
-					WithTransform(jq.Extract(`.data`), SatisfyAll(
+					WithTransform(k8sm.Data(), SatisfyAll(
 						HaveKeyWithValue("module-name", Equal(moduleName)),
 						HaveKeyWithValue("distribution.name", Not(BeEmpty())),
 						HaveKeyWithValue("distribution.version", Not(BeEmpty())),
@@ -202,7 +194,7 @@ func (ft *foundationTests) testModuleDeployment(t *testing.T) {
 	})
 }
 
-func (ft *foundationTests) testVersionPropagation(t *testing.T) {
+func testVersionPropagation(t *testing.T) {
 	g := NewWithT(t)
 	ctx := t.Context()
 	suite := isupport.NewSuite(t)
@@ -227,7 +219,7 @@ func (ft *foundationTests) testVersionPropagation(t *testing.T) {
 	)
 }
 
-func (ft *foundationTests) testDisableModules(t *testing.T) {
+func testDisableModules(t *testing.T) {
 	g := NewWithT(t)
 	ctx := t.Context()
 	suite := isupport.NewSuite(t)
@@ -265,7 +257,7 @@ func (ft *foundationTests) testDisableModules(t *testing.T) {
 	)
 
 	g.Eventually(ctx, suite.K.List(&configApi.PlatformOperatorList{})).Should(
-		jq.Match(`length == 0`),
+		k8sm.IsEmptyList(),
 	)
 
 	for _, snap := range snapshots {

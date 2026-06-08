@@ -27,7 +27,7 @@ import (
 	k8serr "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
-	"k8s.io/client-go/tools/record"
+	"k8s.io/client-go/tools/events"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
@@ -240,7 +240,7 @@ func TestCheckAdminAcks(t *testing.T) {
 		g := NewWithT(t)
 		ctx := t.Context()
 		scheme := testScheme(t)
-		recorder := record.NewFakeRecorder(10)
+		recorder := events.NewFakeRecorder(10)
 		actions := testActions()
 		actions.recorder = recorder
 		actions.registry.ModuleByName("alpha").AdminAcks = []module.AdminAck{{

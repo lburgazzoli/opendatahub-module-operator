@@ -7,7 +7,7 @@ require (
 	github.com/k8s-manifest-kit/engine v0.2.1-0.20260302092700-39c16f95d249
 	github.com/k8s-manifest-kit/pkg v0.2.1-0.20260604145543-c4a39bd14f36
 	github.com/k8s-manifest-kit/renderer-helm v0.3.1-0.20260303100010-977618f3f59b
-	github.com/lburgazzoli/gomega-matchers v0.4.1-0.20260608151004-6366ce3af7cd
+	github.com/lburgazzoli/gomega-matchers v0.4.1-0.20260608204836-ea7758f46ce3
 	github.com/onsi/gomega v1.41.0
 	github.com/opendatahub-io/odh-platform-utilities v0.1.0
 	github.com/opendatahub-io/opendatahub-operator/v2 v2.0.0-00010101000000-000000000000

@@ -28,7 +28,7 @@ import (
 	k8serr "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/sets"
-	"k8s.io/client-go/tools/record"
+	"k8s.io/client-go/tools/events"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	configApi "github.com/lburgazzoli/opendatahub-module-operator/orchestrator/api/config/v1alpha1"
@@ -45,7 +45,7 @@ const (
 type PlatformReconciler struct {
 	registry *module.ModuleRegistry
 	cfg      *config.Config
-	recorder record.EventRecorder
+	recorder events.EventRecorder
 }
 
 // initialize sets the runlevel from Platform CR status. On a fresh Platform

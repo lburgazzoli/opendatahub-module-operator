@@ -144,8 +144,10 @@ func (a *PlatformReconciler) reportUnsatisfiedAdminAcks(obj runtime.Object, unsa
 	for _, ack := range unsatisfied {
 		a.recorder.Eventf(
 			obj,
+			nil,
 			corev1.EventTypeWarning,
 			"AdminAckRequired",
+			"",
 			"Admin ack %q required: %s",
 			ack.Name,
 			formatUnsatisfiedAdminAck(ack),

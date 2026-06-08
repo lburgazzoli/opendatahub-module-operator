@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/lburgazzoli/gomega-matchers/pkg/matchers/jq"
+	k8sm "github.com/lburgazzoli/gomega-matchers/pkg/matchers/k8s"
 	. "github.com/onsi/gomega"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -88,7 +89,7 @@ func assertAdminAckBlocked(t *testing.T, suite *isupport.Suite, messageSubstring
 	g := NewWithT(t)
 
 	g.Eventually(t.Context(), suite.K.List(&configApi.PlatformOperatorList{})).Should(
-		jq.Match(`length == 0`),
+		k8sm.IsEmptyList(),
 	)
 	g.Eventually(t.Context(), suite.K.Get(testsupport.Platform())).Should(
 		jq.Matchf(

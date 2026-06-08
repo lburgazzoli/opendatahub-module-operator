@@ -12,9 +12,6 @@ import (
 	testsupport "github.com/lburgazzoli/opendatahub-module-operator/orchestrator/test/support"
 )
 
-type runlevelTests struct {
-}
-
 func TestMain(m *testing.M) {
 	os.Exit(isupport.Run(m, isupport.RunConfig{
 		Modules:        runlevelModules(),
@@ -23,18 +20,13 @@ func TestMain(m *testing.M) {
 }
 
 func TestRunlevel(t *testing.T) {
-	runlevels := &runlevelTests{}
-	runlevels.Execute(t)
+	t.Run("upgrade triggered by version mismatch", testUpgradeTriggered)
+	t.Run("wrong version does not advance", testWrongVersionDoesNotAdvance)
+	t.Run("correct version advances runlevel", testCorrectVersionAdvances)
+	t.Run("all modules ready sets distribution version", testAllModulesReady)
 }
 
-func (rt *runlevelTests) Execute(t *testing.T) {
-	t.Run("upgrade triggered by version mismatch", rt.testUpgradeTriggered)
-	t.Run("wrong version does not advance", rt.testWrongVersionDoesNotAdvance)
-	t.Run("correct version advances runlevel", rt.testCorrectVersionAdvances)
-	t.Run("all modules ready sets distribution version", rt.testAllModulesReady)
-}
-
-func (rt *runlevelTests) testUpgradeTriggered(t *testing.T) {
+func testUpgradeTriggered(t *testing.T) {
 	g := NewWithT(t)
 	ctx := t.Context()
 	suite := isupport.NewSuite(t)
@@ -47,7 +39,7 @@ func (rt *runlevelTests) testUpgradeTriggered(t *testing.T) {
 	}
 }
 
-func (rt *runlevelTests) testWrongVersionDoesNotAdvance(t *testing.T) {
+func testWrongVersionDoesNotAdvance(t *testing.T) {
 	g := NewWithT(t)
 	ctx := t.Context()
 	suite := isupport.NewSuite(t)
@@ -64,7 +56,7 @@ func (rt *runlevelTests) testWrongVersionDoesNotAdvance(t *testing.T) {
 		Should(testsupport.HaveRunlevel(1))
 }
 
-func (rt *runlevelTests) testCorrectVersionAdvances(t *testing.T) {
+func testCorrectVersionAdvances(t *testing.T) {
 	g := NewWithT(t)
 	ctx := t.Context()
 	suite := isupport.NewSuite(t)
@@ -81,7 +73,7 @@ func (rt *runlevelTests) testCorrectVersionAdvances(t *testing.T) {
 	}
 }
 
-func (rt *runlevelTests) testAllModulesReady(t *testing.T) {
+func testAllModulesReady(t *testing.T) {
 	g := NewWithT(t)
 	ctx := t.Context()
 	suite := isupport.NewSuite(t)

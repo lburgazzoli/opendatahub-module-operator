@@ -55,7 +55,7 @@ func NewReconciler(
 	actions := &PlatformReconciler{
 		registry: registry,
 		cfg:      cfg,
-		recorder: mgr.GetEventRecorderFor("platform-controller"),
+		recorder: mgr.GetEventRecorder("platform-controller"),
 	}
 
 	_, err := reconciler.ReconcilerFor(mgr, &configApi.Platform{}).
