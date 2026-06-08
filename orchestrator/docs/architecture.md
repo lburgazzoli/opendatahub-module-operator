@@ -17,21 +17,25 @@ There is no in-memory state machine — all decisions are derived from CR status
 Reconciles the singleton Platform CR. Action pipeline:
 
 ```
-initialize → checkAdminAcks → ensureModules → deploy → advanceRunlevel → aggregateStatus → gc
+initialize → checkAdminAcks → ensureModules → deploy → pruneModules → advanceRunlevel → aggregateStatus
 ```
 
 | Action | Purpose |
 |--------|---------|
 | `initialize` | Sets `status.runlevel` to first runlevel if unset |
+| `checkAdminAcks` | Blocks reconciliation until required admin-ack keys in the dedicated ConfigMap parse to `true` |
 | `ensureModules` | Builds PlatformOperator resources from `spec.modules` into `rr.Resources` |
 | `deploy` | Creates/updates PlatformOperator CRs via SSA |
+| `pruneModules` | Deletes PlatformOperator CRs for modules removed from `spec.modules` |
 | `advanceRunlevel` | Advances `status.runlevel` when all enabled modules at current level match distribution version |
 | `aggregateStatus` | Populates `status.modules` (sorted by runlevel+name), writes `status.distribution` when all modules match |
-| `gc` | Deletes PlatformOperator CRs for modules removed from `spec.modules` |
 
 Watches:
 - `For(Platform)` — the primary reconciled type
 - `Owns(PlatformOperator)` with `ResourceVersionChangedPredicate` — triggers on any PO change including status updates
+- `Watches(ConfigMap)` — filtered to the dedicated admin-acks ConfigMap
+  (`<cfg.Namespace()>/opendatahub-admin`) and mapped back to the singleton
+  Platform reconcile
 
 ### PlatformOperator Controller (Module Reconciler)
 
@@ -68,6 +72,25 @@ Runlevel gating only applies during upgrades (when `status.distribution.version`
 5. When all modules match → `aggregateStatus` writes the new distribution version → no more mismatch → all modules reconcile freely
 
 When there's no version mismatch (steady state), all modules reconcile regardless of runlevel.
+
+## Admin Ack Gating
+
+Modules can declare required admin acknowledgements via `module.Module.AdminAcks`
+(`Name`, `Description`).
+
+Runtime behavior:
+
+1. `checkAdminAcks` merges ack requirements for the enabled modules
+2. It reads the dedicated ConfigMap `opendatahub-admin` in the operator namespace
+3. An ack is satisfied only when the key exists and parses as boolean `true`
+4. If any required ack is missing or false, reconciliation pauses with
+   `ModulesReady=False`, `Reason=AdminAcksRequired`, and a detailed condition
+   message naming the missing/false acks and affected modules
+5. When all required acks are satisfied, the temporary `ModulesReady` override is
+   cleared so normal `PlatformOperator` aggregation owns readiness again
+
+Admin-ack state is reported on the Platform condition and warning events, not in
+`platform.status.modules`.
 
 ## Module Registry
 
@@ -114,3 +137,6 @@ Config keys: `distribution.name`, `distribution.version` (viper mapstructure)
 4. **Predicate-based triggering** — Platform watches PO with `ResourceVersionChangedPredicate`; PO watches Platform with runlevel/version predicate
 5. **Distribution version gating** — `aggregateStatus` only writes the new version when ALL modules match, preventing premature "upgrade complete" signals
 6. **Dynamic module CR watches** — registered lazily via `CrdExists` predicate, since CRDs are deployed by Helm charts at runtime
+7. **Admin acks are a temporary gate, not readiness state** — they only override
+   `ModulesReady` while blocking reconciliation; once satisfied, aggregated module
+   readiness becomes authoritative again
