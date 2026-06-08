@@ -81,32 +81,23 @@ func (suite *orchestratorTest) cleanupPlatformResources(t *testing.T) {
 	g.Eventually(func() error {
 		fresh := &configApi.Platform{}
 		err := suite.client.Get(ctx, client.ObjectKeyFromObject(p), fresh)
-		if k8serr.IsNotFound(err) {
+		switch {
+		case k8serr.IsNotFound(err):
 			return nil
-		}
-		if err != nil {
+		case err != nil:
 			return err
-		}
-
-		if !fresh.GetDeletionTimestamp().IsZero() {
+		case !fresh.GetDeletionTimestamp().IsZero():
 			return nil
+		default:
+			return suite.client.Delete(ctx, fresh)
 		}
-
-		return suite.client.Delete(ctx, fresh)
 	}).WithContext(ctx).Should(Succeed())
 
-	g.Eventually(func() error {
-		platform := &configApi.Platform{ObjectMeta: metav1.ObjectMeta{Name: configApi.PlatformInstanceName}}
-		err := suite.client.Get(ctx, client.ObjectKeyFromObject(platform), platform)
-		if k8serr.IsNotFound(err) {
-			return nil
-		}
-		if err != nil {
-			return err
-		}
-
-		return fmt.Errorf("platform %q still exists", configApi.PlatformInstanceName)
-	}).WithContext(ctx).Should(Succeed())
+	g.Eventually(ctx, suite.k.NotFound(&configApi.Platform{
+		ObjectMeta: metav1.ObjectMeta{Name: configApi.PlatformInstanceName},
+	})).Should(
+		BeTrue(),
+	)
 
 	g.Eventually(suite.k.List(&configApi.PlatformOperatorList{})).
 		WithContext(ctx).
@@ -118,18 +109,9 @@ func (suite *orchestratorTest) assertClusterReset(t *testing.T, snapshot cleanup
 	g := NewWithT(t)
 
 	for _, ref := range snapshot.deletedRefs {
-		g.Eventually(func() error {
-			obj := objectFromResourceRef(ref)
-			err := suite.client.Get(ctx, client.ObjectKeyFromObject(obj), obj)
-			if k8serr.IsNotFound(err) {
-				return nil
-			}
-			if err != nil {
-				return err
-			}
-
-			return fmt.Errorf("%s %s/%s still exists", ref.Kind, ref.Namespace, ref.Name)
-		}).WithContext(ctx).Should(Succeed())
+		g.Eventually(ctx, suite.k.NotFound(objectFromResourceRef(ref))).Should(
+			BeTrue(),
+		)
 	}
 
 	g.Eventually(func() error {
@@ -145,35 +127,32 @@ func (suite *orchestratorTest) checkClusterReset(ctx context.Context, snapshot c
 	for _, ref := range snapshot.deletedRefs {
 		obj := objectFromResourceRef(ref)
 		err := suite.client.Get(ctx, client.ObjectKeyFromObject(obj), obj)
-		if k8serr.IsNotFound(err) {
+		switch {
+		case k8serr.IsNotFound(err):
 			continue
-		}
-		if err != nil {
+		case err != nil:
 			return err
+		default:
+			return fmt.Errorf("%s %s/%s still exists", ref.Kind, ref.Namespace, ref.Name)
 		}
-
-		return fmt.Errorf("%s %s/%s still exists", ref.Kind, ref.Namespace, ref.Name)
 	}
 
 	platform := &configApi.Platform{ObjectMeta: metav1.ObjectMeta{Name: configApi.PlatformInstanceName}}
 	err := suite.client.Get(ctx, client.ObjectKeyFromObject(platform), platform)
-	if err != nil && !k8serr.IsNotFound(err) {
+	switch {
+	case k8serr.IsNotFound(err):
+	case err != nil:
 		return err
-	}
-	if err == nil {
+	default:
 		return fmt.Errorf("platform %q still exists", configApi.PlatformInstanceName)
 	}
 
-	list, err := suite.k.List(&configApi.PlatformOperatorList{})(ctx)
-	if err != nil {
+	poList := &configApi.PlatformOperatorList{}
+	if err := suite.client.List(ctx, poList); err != nil {
 		return err
 	}
-	matched, err := jq.Match(`length == 0`).Match(list)
-	if err != nil {
-		return err
-	}
-	if !matched {
-		return fmt.Errorf("platformoperators still exist after reset")
+	if len(poList.Items) != 0 {
+		return fmt.Errorf("platformoperators still exist after reset: %d remaining", len(poList.Items))
 	}
 
 	return nil
@@ -186,23 +165,14 @@ func (suite *orchestratorTest) deleteModuleCRsAndWait(t *testing.T) {
 	for _, mod := range suite.modules {
 		cr := newModuleCR(mod.GVK)
 
-		err := suite.client.Delete(ctx, cr)
-		if err != nil && !k8serr.IsNotFound(err) {
-			g.Expect(err).NotTo(HaveOccurred())
-		}
+		g.Expect(suite.k.Delete(cr)(ctx)).To(Or(
+			Succeed(),
+			Satisfy(k8serr.IsNotFound)),
+		)
 
-		g.Eventually(func() error {
-			current := newModuleCR(mod.GVK)
-			err := suite.client.Get(ctx, client.ObjectKeyFromObject(current), current)
-			if k8serr.IsNotFound(err) {
-				return nil
-			}
-			if err != nil {
-				return err
-			}
-
-			return fmt.Errorf("%s %s/%s still exists", current.GetKind(), current.GetNamespace(), current.GetName())
-		}).WithContext(ctx).Should(Succeed())
+		g.Eventually(ctx, suite.k.NotFound(newModuleCR(mod.GVK))).Should(
+			BeTrue(),
+		)
 	}
 }
 
@@ -214,21 +184,24 @@ func (suite *orchestratorTest) checkResourceResetState(
 	objGVK := schema.FromAPIVersionAndKind(ref.APIVersion, ref.Kind)
 
 	if resourceShouldSurviveReset(objGVK) {
-		if err := suite.client.Get(ctx, client.ObjectKeyFromObject(obj), obj); err != nil {
+		err := suite.client.Get(ctx, client.ObjectKeyFromObject(obj), obj)
+		switch {
+		case err != nil:
 			return err
+		default:
+			return nil
 		}
-		return nil
 	}
 
 	err := suite.client.Get(ctx, client.ObjectKeyFromObject(obj), obj)
-	if k8serr.IsNotFound(err) {
+	switch {
+	case k8serr.IsNotFound(err):
 		return nil
-	}
-	if err != nil {
+	case err != nil:
 		return err
+	default:
+		return fmt.Errorf("%s %s/%s still exists", ref.Kind, ref.Namespace, ref.Name)
 	}
-
-	return fmt.Errorf("%s %s/%s still exists", ref.Kind, ref.Namespace, ref.Name)
 }
 
 func (suite *orchestratorTest) platformModuleNames() []string {
@@ -267,24 +240,24 @@ func (suite *orchestratorTest) snapshotClusterState(t *testing.T) cleanupSnapsho
 	for _, mod := range suite.modules {
 		cr := newModuleCR(mod.GVK)
 		err := suite.client.Get(ctx, client.ObjectKeyFromObject(cr), cr)
-		if k8serr.IsNotFound(err) {
+		switch {
+		case k8serr.IsNotFound(err):
 			continue
-		}
-		if err != nil {
+		case err != nil:
 			g.Expect(err).NotTo(HaveOccurred())
+		default:
+			ref := configApi.ResourceRef{
+				APIVersion: cr.GetAPIVersion(),
+				Kind:       cr.GetKind(),
+				Namespace:  cr.GetNamespace(),
+				Name:       cr.GetName(),
+			}
+			if seen.Has(ref) {
+				continue
+			}
+			seen.Insert(ref)
+			snapshot.deletedRefs = append(snapshot.deletedRefs, ref)
 		}
-
-		ref := configApi.ResourceRef{
-			APIVersion: cr.GetAPIVersion(),
-			Kind:       cr.GetKind(),
-			Namespace:  cr.GetNamespace(),
-			Name:       cr.GetName(),
-		}
-		if seen.Has(ref) {
-			continue
-		}
-		seen.Insert(ref)
-		snapshot.deletedRefs = append(snapshot.deletedRefs, ref)
 	}
 
 	return snapshot
@@ -352,16 +325,16 @@ func upsertModuleCRWithVersion(
 	g.Eventually(ctx, func() error {
 		existing := newModuleCR(gvk)
 		err := suite.client.Get(ctx, key, existing)
-		if err == nil {
+		switch {
+		case k8serr.IsNotFound(err):
+			return suite.client.Create(ctx, newModuleCR(gvk))
+		case err != nil:
+			return err
+		default:
 			desired := newModuleCR(gvk)
 			desired.SetResourceVersion(existing.GetResourceVersion())
 			return suite.client.Update(ctx, desired)
 		}
-		if !k8serr.IsNotFound(err) {
-			return err
-		}
-
-		return suite.client.Create(ctx, newModuleCR(gvk))
 	}).Should(Succeed())
 
 	if version == "" {
