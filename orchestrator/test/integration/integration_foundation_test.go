@@ -6,19 +6,17 @@ import (
 	"fmt"
 	"testing"
 
+	k8sm "github.com/lburgazzoli/gomega-matchers/pkg/matchers/k8s"
 	. "github.com/onsi/gomega"
 
 	"github.com/lburgazzoli/gomega-matchers/pkg/matchers/jq"
 
 	corev1 "k8s.io/api/core/v1"
-	k8serr "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
-	"k8s.io/apimachinery/pkg/runtime/schema"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	configApi "github.com/lburgazzoli/opendatahub-module-operator/orchestrator/api/config/v1alpha1"
-	"github.com/lburgazzoli/opendatahub-module-operator/orchestrator/pkg/resources/gvk"
+	"github.com/lburgazzoli/opendatahub-module-operator/orchestrator/test/support"
 )
 
 type foundationTests struct {
@@ -34,6 +32,7 @@ func (ft *foundationTests) Execute(t *testing.T) {
 
 func (ft *foundationTests) testEmptyPlatform(t *testing.T) {
 	g := NewWithT(t)
+	ctx := t.Context()
 	suite := ft.newSuite(t)
 	suite.setupTest(t)
 
@@ -41,50 +40,44 @@ func (ft *foundationTests) testEmptyPlatform(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{Name: configApi.PlatformInstanceName},
 	}
 
-	g.Expect(suite.client.Create(t.Context(), p)).To(Succeed())
+	g.Expect(suite.client.Create(ctx, p)).To(Succeed())
 
-	g.Eventually(suite.k.Get(p)).WithContext(t.Context()).Should(
-		WithTransform(jq.Extract(`.status.distribution.version`), Not(BeEmpty())),
+	g.Eventually(ctx, suite.k.Get(p)).Should(
+		jq.Match(`(.status.distribution.version // "") | length > 0`),
 	)
-
-	g.Eventually(func(g Gomega) {
-		var poList configApi.PlatformOperatorList
-		g.Expect(suite.client.List(t.Context(), &poList)).To(Succeed())
-		g.Expect(poList.Items).To(BeEmpty())
-	}).WithContext(t.Context()).Should(Succeed())
+	g.Eventually(ctx, suite.k.List(&configApi.PlatformOperatorList{})).Should(
+		jq.Match(`length == 0`),
+	)
 }
 
 func (ft *foundationTests) testModuleDeployment(t *testing.T) {
 	g := NewWithT(t)
+	ctx := t.Context()
 	suite := ft.newSuite(t)
 	suite.setupTest(t)
 
 	p := newPlatformWithModules(suite.platformModuleNames())
-	g.Expect(suite.client.Create(t.Context(), p)).To(Succeed())
+	g.Expect(suite.client.Create(ctx, p)).To(Succeed())
 
 	for _, mod := range suite.modules {
-		g.Eventually(func(g Gomega) {
-			po := &configApi.PlatformOperator{}
-			g.Expect(suite.client.Get(t.Context(), client.ObjectKey{Name: mod.EffectiveName()}, po)).To(Succeed())
-			g.Expect(po.Status.Resources).NotTo(BeEmpty())
-		}).WithContext(t.Context()).Should(Succeed())
+		moduleName := mod.EffectiveName()
+		g.Eventually(ctx, suite.k.Get(support.PlatformOperator(moduleName))).Should(
+			support.HaveTrackedResources(),
+		)
 	}
 
 	t.Run("all modules should track resources in status", func(t *testing.T) {
 		for _, mod := range suite.modules {
 			t.Run(mod.EffectiveName(), func(t *testing.T) {
 				g := NewWithT(t)
-				po := &configApi.PlatformOperator{ObjectMeta: metav1.ObjectMeta{Name: mod.EffectiveName()}}
-				g.Eventually(suite.k.Get(po)).WithContext(t.Context()).Should(And(
-					WithTransform(
-						jq.Extract(`[.status.resources[] | select(.kind == "ServiceAccount")]`),
-						Not(BeEmpty()),
+				ctx := t.Context()
+				moduleName := mod.EffectiveName()
+				g.Eventually(ctx, suite.k.Get(support.PlatformOperator(moduleName))).Should(
+					SatisfyAll(
+						support.HaveTrackedResourceKind("ServiceAccount"),
+						support.HaveTrackedResourceKind("CustomResourceDefinition"),
 					),
-					WithTransform(
-						jq.Extract(`[.status.resources[] | select(.kind == "CustomResourceDefinition")]`),
-						Not(BeEmpty()),
-					),
-				))
+				)
 			})
 		}
 	})
@@ -93,11 +86,11 @@ func (ft *foundationTests) testModuleDeployment(t *testing.T) {
 		for _, mod := range suite.modules {
 			t.Run(mod.EffectiveName(), func(t *testing.T) {
 				g := NewWithT(t)
-				po := &configApi.PlatformOperator{ObjectMeta: metav1.ObjectMeta{Name: mod.EffectiveName()}}
-				g.Eventually(suite.k.Get(po)).WithContext(t.Context()).Should(And(
-					WithTransform(jq.Extract(`.status.chart.name`), Equal("test-module")),
-					WithTransform(jq.Extract(`.status.chart.path`), Equal(mod.ChartPath)),
-				))
+				ctx := t.Context()
+				moduleName := mod.EffectiveName()
+				g.Eventually(ctx, suite.k.Get(support.PlatformOperator(moduleName))).Should(
+					support.HaveChartInfo("test-module", mod.ChartPath),
+				)
 			})
 		}
 	})
@@ -106,9 +99,10 @@ func (ft *foundationTests) testModuleDeployment(t *testing.T) {
 		for _, mod := range suite.modules {
 			t.Run(mod.EffectiveName(), func(t *testing.T) {
 				g := NewWithT(t)
-				po := &configApi.PlatformOperator{ObjectMeta: metav1.ObjectMeta{Name: mod.EffectiveName()}}
-				g.Eventually(suite.k.Get(po)).WithContext(t.Context()).Should(
-					WithTransform(jq.Extract(`.status.runlevel`), BeEquivalentTo(mod.Runlevel)),
+				ctx := t.Context()
+				moduleName := mod.EffectiveName()
+				g.Eventually(ctx, suite.k.Get(support.PlatformOperator(moduleName))).Should(
+					support.HaveRunlevel(mod.Runlevel),
 				)
 			})
 		}
@@ -119,15 +113,10 @@ func (ft *foundationTests) testModuleDeployment(t *testing.T) {
 			crdName := fmt.Sprintf("%ss.%s", mod.EffectiveName(), mod.GVK.Group)
 			t.Run(mod.EffectiveName(), func(t *testing.T) {
 				g := NewWithT(t)
-				po := &configApi.PlatformOperator{ObjectMeta: metav1.ObjectMeta{Name: mod.EffectiveName()}}
-				g.Eventually(suite.k.Get(po)).WithContext(t.Context()).Should(
-					WithTransform(
-						jq.Extract(`.status.resources`),
-						ContainElement(SatisfyAll(
-							HaveKeyWithValue("kind", "CustomResourceDefinition"),
-							HaveKeyWithValue("name", crdName),
-						)),
-					),
+				ctx := t.Context()
+				moduleName := mod.EffectiveName()
+				g.Eventually(ctx, suite.k.Get(support.PlatformOperator(moduleName))).Should(
+					support.HaveTrackedResource("CustomResourceDefinition", crdName),
 				)
 			})
 		}
@@ -137,14 +126,13 @@ func (ft *foundationTests) testModuleDeployment(t *testing.T) {
 		for _, mod := range suite.modules {
 			t.Run(mod.EffectiveName(), func(t *testing.T) {
 				g := NewWithT(t)
+				ctx := t.Context()
+				moduleName := mod.EffectiveName()
 				sa := &corev1.ServiceAccount{ObjectMeta: metav1.ObjectMeta{
-					Name: mod.EffectiveName(), Namespace: mod.Namespace,
+					Name: moduleName, Namespace: mod.Namespace,
 				}}
-				g.Eventually(suite.k.Get(sa)).WithContext(t.Context()).Should(
-					WithTransform(
-						jq.Extract(`.metadata.labels."platform.opendatahub.io/part-of"`),
-						Equal(mod.EffectiveName()),
-					),
+				g.Eventually(ctx, suite.k.Get(sa)).Should(
+					k8sm.HasLabel("platform.opendatahub.io/part-of", moduleName),
 				)
 			})
 		}
@@ -154,19 +142,13 @@ func (ft *foundationTests) testModuleDeployment(t *testing.T) {
 		for _, mod := range suite.modules {
 			t.Run(mod.EffectiveName(), func(t *testing.T) {
 				g := NewWithT(t)
+				ctx := t.Context()
+				moduleName := mod.EffectiveName()
 				sa := &corev1.ServiceAccount{ObjectMeta: metav1.ObjectMeta{
-					Name: mod.EffectiveName(), Namespace: mod.Namespace,
+					Name: moduleName, Namespace: mod.Namespace,
 				}}
-				g.Eventually(suite.k.Get(sa)).WithContext(t.Context()).Should(
-					WithTransform(
-						jq.Extract(`.metadata.ownerReferences`),
-						ContainElement(SatisfyAll(
-							HaveKeyWithValue("apiVersion", configApi.GroupVersion.String()),
-							HaveKeyWithValue("kind", configApi.PlatformOperatorKind),
-							HaveKeyWithValue("name", mod.EffectiveName()),
-							HaveKeyWithValue("controller", true),
-						)),
-					),
+				g.Eventually(ctx, suite.k.Get(sa)).Should(
+					k8sm.IsControlledBy(support.PlatformOperatorOwner(moduleName)),
 				)
 			})
 		}
@@ -176,14 +158,18 @@ func (ft *foundationTests) testModuleDeployment(t *testing.T) {
 		for _, mod := range suite.modules {
 			t.Run(mod.EffectiveName(), func(t *testing.T) {
 				g := NewWithT(t)
+				ctx := t.Context()
+				moduleName := mod.EffectiveName()
 				cm := &corev1.ConfigMap{ObjectMeta: metav1.ObjectMeta{
-					Name: mod.EffectiveName() + "-config", Namespace: mod.Namespace,
+					Name: moduleName + "-config", Namespace: mod.Namespace,
 				}}
-				g.Eventually(suite.k.Get(cm)).WithContext(t.Context()).Should(And(
-					WithTransform(jq.Extract(`.data."module-name"`), Equal(mod.EffectiveName())),
-					WithTransform(jq.Extract(`.data."distribution.name"`), Not(BeEmpty())),
-					WithTransform(jq.Extract(`.data."distribution.version"`), Not(BeEmpty())),
-				))
+				g.Eventually(ctx, suite.k.Get(cm)).Should(
+					WithTransform(jq.Extract(`.data`), SatisfyAll(
+						HaveKeyWithValue("module-name", Equal(moduleName)),
+						HaveKeyWithValue("distribution.name", Not(BeEmpty())),
+						HaveKeyWithValue("distribution.version", Not(BeEmpty())),
+					)),
+				)
 			})
 		}
 	})
@@ -192,17 +178,10 @@ func (ft *foundationTests) testModuleDeployment(t *testing.T) {
 		for _, mod := range suite.modules {
 			t.Run(mod.EffectiveName(), func(t *testing.T) {
 				g := NewWithT(t)
-				po := &configApi.PlatformOperator{ObjectMeta: metav1.ObjectMeta{Name: mod.EffectiveName()}}
-				g.Eventually(suite.k.Get(po)).WithContext(t.Context()).Should(
-					WithTransform(
-						jq.Extract(`.metadata.ownerReferences`),
-						ContainElement(SatisfyAll(
-							HaveKeyWithValue("apiVersion", configApi.GroupVersion.String()),
-							HaveKeyWithValue("kind", configApi.PlatformKind),
-							HaveKeyWithValue("name", configApi.PlatformInstanceName),
-							HaveKeyWithValue("controller", true),
-						)),
-					),
+				ctx := t.Context()
+				moduleName := mod.EffectiveName()
+				g.Eventually(ctx, suite.k.Get(support.PlatformOperator(moduleName))).Should(
+					k8sm.IsControlledBy(support.PlatformOwner()),
 				)
 			})
 		}
@@ -211,44 +190,43 @@ func (ft *foundationTests) testModuleDeployment(t *testing.T) {
 
 func (ft *foundationTests) testVersionPropagation(t *testing.T) {
 	g := NewWithT(t)
+	ctx := t.Context()
 	suite := ft.newSuite(t)
 	suite.setupTest(t)
 
 	p := newPlatformWithModules(suite.platformModuleNames())
-	g.Expect(suite.client.Create(t.Context(), p)).To(Succeed())
+	g.Expect(suite.client.Create(ctx, p)).To(Succeed())
 
 	for _, mod := range suite.modules {
-		g.Eventually(func(g Gomega) {
-			po := &configApi.PlatformOperator{}
-			g.Expect(suite.client.Get(t.Context(), client.ObjectKey{Name: mod.EffectiveName()}, po)).To(Succeed())
-			g.Expect(po.Status.Resources).NotTo(BeEmpty())
-		}).WithContext(t.Context()).Should(Succeed())
+		moduleName := mod.EffectiveName()
+		g.Eventually(ctx, suite.k.Get(support.PlatformOperator(moduleName))).Should(
+			support.HaveTrackedResources(),
+		)
 	}
 
 	mod := suite.modules[0]
 
-	upsertModuleCRWithVersion(t, g, suite, mod.GVK, "test-version")
+	upsertModuleCRWithVersion(t, suite, mod.GVK, "test-version")
 
-	po := &configApi.PlatformOperator{ObjectMeta: metav1.ObjectMeta{Name: mod.EffectiveName()}}
-	g.Eventually(suite.k.Get(po)).WithContext(t.Context()).Should(
-		WithTransform(jq.Extract(`.status.distribution.version`), Equal("test-version")),
+	g.Eventually(ctx, suite.k.Get(support.PlatformOperator(mod.EffectiveName()))).Should(
+		support.HaveDistributionVersion("test-version"),
 	)
 }
 
 func (ft *foundationTests) testDisableModules(t *testing.T) {
 	g := NewWithT(t)
+	ctx := t.Context()
 	suite := ft.newSuite(t)
 	suite.setupTest(t)
 
 	p := newPlatformWithModules(suite.platformModuleNames())
-	g.Expect(suite.client.Create(t.Context(), p)).To(Succeed())
+	g.Expect(suite.client.Create(ctx, p)).To(Succeed())
 
 	for _, mod := range suite.modules {
-		g.Eventually(func(g Gomega) {
-			po := &configApi.PlatformOperator{}
-			g.Expect(suite.client.Get(t.Context(), client.ObjectKey{Name: mod.EffectiveName()}, po)).To(Succeed())
-			g.Expect(po.Status.Resources).NotTo(BeEmpty())
-		}).WithContext(t.Context()).Should(Succeed())
+		moduleName := mod.EffectiveName()
+		g.Eventually(ctx, suite.k.Get(support.PlatformOperator(moduleName))).Should(
+			support.HaveTrackedResources(),
+		)
 	}
 
 	// Snapshot deployed resources.
@@ -260,7 +238,7 @@ func (ft *foundationTests) testDisableModules(t *testing.T) {
 	snapshots := make([]moduleResources, 0, len(suite.modules))
 	for _, mod := range suite.modules {
 		po := &configApi.PlatformOperator{}
-		g.Expect(suite.client.Get(t.Context(), client.ObjectKey{Name: mod.EffectiveName()}, po)).To(Succeed())
+		g.Expect(suite.client.Get(ctx, client.ObjectKey{Name: mod.EffectiveName()}, po)).To(Succeed())
 		snapshots = append(snapshots, moduleResources{
 			name:      mod.EffectiveName(),
 			resources: po.Status.Resources,
@@ -268,47 +246,30 @@ func (ft *foundationTests) testDisableModules(t *testing.T) {
 	}
 
 	// Remove all modules.
-	g.Eventually(func(g Gomega) {
-		p := &configApi.Platform{}
-		g.Expect(suite.client.Get(t.Context(), client.ObjectKey{Name: configApi.PlatformInstanceName}, p)).To(Succeed())
+	g.Eventually(ctx, k8sm.Update(suite.k, support.Platform(), func(p *configApi.Platform) {
 		p.Spec.Modules = nil
-		g.Expect(suite.client.Update(t.Context(), p)).To(Succeed())
-	}).WithContext(t.Context()).Should(Succeed())
+	})).Should(
+		jq.Match(`(.spec.modules // []) | length == 0`),
+	)
 
-	g.Eventually(func(g Gomega) {
-		var poList configApi.PlatformOperatorList
-		g.Expect(suite.client.List(t.Context(), &poList)).To(Succeed())
-		g.Expect(poList.Items).To(BeEmpty())
-	}).WithContext(t.Context()).Should(Succeed())
+	g.Eventually(ctx, suite.k.List(&configApi.PlatformOperatorList{})).Should(
+		jq.Match(`length == 0`),
+	)
 
 	for _, snap := range snapshots {
 		t.Run(snap.name, func(t *testing.T) {
 			g := NewWithT(t)
+			ctx := t.Context()
 			for _, ref := range snap.resources {
-				objGVK := schema.FromAPIVersionAndKind(ref.APIVersion, ref.Kind)
-				switch objGVK {
-				case gvk.CustomResourceDefinition:
-					key := client.ObjectKey{Name: ref.Name}
-					g.Eventually(func() error {
-						return suite.client.Get(t.Context(), key, &unstructured.Unstructured{
-							Object: map[string]any{"apiVersion": ref.APIVersion, "kind": ref.Kind},
-						})
-					}).WithContext(t.Context()).Should(Succeed(), "CRD %s should survive cleanup", ref.Name)
-				case gvk.Namespace:
-					key := client.ObjectKey{Name: ref.Name}
-					g.Eventually(func() error {
-						return suite.client.Get(t.Context(), key, &unstructured.Unstructured{
-							Object: map[string]any{"apiVersion": ref.APIVersion, "kind": ref.Kind},
-						})
-					}).WithContext(t.Context()).Should(Succeed(), "Namespace %s should survive cleanup", ref.Name)
-				default:
-					key := client.ObjectKey{Name: ref.Name, Namespace: ref.Namespace}
-					g.Eventually(func() bool {
-						return k8serr.IsNotFound(suite.client.Get(t.Context(), key, &unstructured.Unstructured{
-							Object: map[string]any{"apiVersion": ref.APIVersion, "kind": ref.Kind},
-						}))
-					}).WithContext(t.Context()).Should(BeTrue(), "%s %s/%s should be cleaned up", ref.Kind, ref.Namespace, ref.Name)
-				}
+				g.Eventually(ctx, func() error {
+					return suite.checkResourceResetState(ctx, ref)
+				}).Should(
+					Succeed(),
+					"%s %s/%s should match reset behavior",
+					ref.Kind,
+					ref.Namespace,
+					ref.Name,
+				)
 			}
 		})
 	}

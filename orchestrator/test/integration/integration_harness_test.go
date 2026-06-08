@@ -19,6 +19,8 @@ limitations under the License.
 package integration
 
 import (
+	"context"
+	"fmt"
 	"testing"
 	"time"
 
@@ -30,6 +32,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/sets"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
+	"github.com/lburgazzoli/gomega-matchers/pkg/matchers/jq"
 	configApi "github.com/lburgazzoli/opendatahub-module-operator/orchestrator/api/config/v1alpha1"
 )
 
@@ -62,16 +65,16 @@ func (suite *orchestratorTest) setDistributionVersion(version string) {
 func (suite *orchestratorTest) resetClusterState(t *testing.T) {
 	t.Helper()
 
-	g := NewWithT(t)
-	snapshot := suite.snapshotClusterState(t, g)
+	snapshot := suite.snapshotClusterState(t)
 
-	suite.cleanupPlatformResources(t, g)
-	suite.deleteModuleCRsAndWait(t, g)
-	suite.assertClusterReset(t, g, snapshot)
+	suite.cleanupPlatformResources(t)
+	suite.deleteModuleCRsAndWait(t)
+	suite.assertClusterReset(t, snapshot)
 }
 
-func (suite *orchestratorTest) cleanupPlatformResources(t *testing.T, g Gomega) {
+func (suite *orchestratorTest) cleanupPlatformResources(t *testing.T) {
 	t.Helper()
+	g := NewWithT(t)
 
 	p := &configApi.Platform{ObjectMeta: metav1.ObjectMeta{Name: configApi.PlatformInstanceName}}
 
@@ -92,48 +95,93 @@ func (suite *orchestratorTest) cleanupPlatformResources(t *testing.T, g Gomega) 
 		return suite.client.Delete(ctx, fresh)
 	}).WithContext(ctx).Should(Succeed())
 
-	g.Eventually(suite.k.Absent(p)).WithContext(ctx).Should(BeTrue())
+	g.Eventually(func() error {
+		platform := &configApi.Platform{ObjectMeta: metav1.ObjectMeta{Name: configApi.PlatformInstanceName}}
+		err := suite.client.Get(ctx, client.ObjectKeyFromObject(platform), platform)
+		if k8serr.IsNotFound(err) {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
 
-	g.Eventually(func(g Gomega) {
-		var poList configApi.PlatformOperatorList
-		g.Expect(suite.client.List(ctx, &poList)).To(Succeed())
-		g.Expect(poList.Items).To(BeEmpty())
+		return fmt.Errorf("platform %q still exists", configApi.PlatformInstanceName)
 	}).WithContext(ctx).Should(Succeed())
+
+	g.Eventually(suite.k.List(&configApi.PlatformOperatorList{})).
+		WithContext(ctx).
+		Should(jq.Match(`length == 0`))
 }
 
-func (suite *orchestratorTest) assertClusterReset(t *testing.T, g Gomega, snapshot cleanupSnapshot) {
+func (suite *orchestratorTest) assertClusterReset(t *testing.T, snapshot cleanupSnapshot) {
 	t.Helper()
+	g := NewWithT(t)
 
 	for _, ref := range snapshot.deletedRefs {
-		refObj := objectFromResourceRef(ref)
-		g.Eventually(suite.k.Absent(refObj)).WithContext(ctx).Should(BeTrue())
+		g.Eventually(func() error {
+			obj := objectFromResourceRef(ref)
+			err := suite.client.Get(ctx, client.ObjectKeyFromObject(obj), obj)
+			if k8serr.IsNotFound(err) {
+				return nil
+			}
+			if err != nil {
+				return err
+			}
+
+			return fmt.Errorf("%s %s/%s still exists", ref.Kind, ref.Namespace, ref.Name)
+		}).WithContext(ctx).Should(Succeed())
 	}
 
-	g.Eventually(func(g Gomega) {
-		suite.expectClusterReset(g, snapshot)
+	g.Eventually(func() error {
+		return suite.checkClusterReset(ctx, snapshot)
 	}).WithContext(ctx).Should(Succeed())
 
-	g.Consistently(func(g Gomega) {
-		suite.expectClusterReset(g, snapshot)
+	g.Consistently(func() error {
+		return suite.checkClusterReset(ctx, snapshot)
 	}).WithContext(ctx).WithTimeout(cleanupQuiescenceTimeout).Should(Succeed())
 }
 
-func (suite *orchestratorTest) expectClusterReset(g Gomega, snapshot cleanupSnapshot) {
+func (suite *orchestratorTest) checkClusterReset(ctx context.Context, snapshot cleanupSnapshot) error {
 	for _, ref := range snapshot.deletedRefs {
 		obj := objectFromResourceRef(ref)
-		g.Expect(suite.client.Get(ctx, client.ObjectKeyFromObject(obj), obj)).To(Satisfy(k8serr.IsNotFound))
+		err := suite.client.Get(ctx, client.ObjectKeyFromObject(obj), obj)
+		if k8serr.IsNotFound(err) {
+			continue
+		}
+		if err != nil {
+			return err
+		}
+
+		return fmt.Errorf("%s %s/%s still exists", ref.Kind, ref.Namespace, ref.Name)
 	}
 
-	g.Expect(suite.client.Get(ctx, client.ObjectKey{Name: configApi.PlatformInstanceName}, &configApi.Platform{})).
-		To(Satisfy(k8serr.IsNotFound))
+	platform := &configApi.Platform{ObjectMeta: metav1.ObjectMeta{Name: configApi.PlatformInstanceName}}
+	err := suite.client.Get(ctx, client.ObjectKeyFromObject(platform), platform)
+	if err != nil && !k8serr.IsNotFound(err) {
+		return err
+	}
+	if err == nil {
+		return fmt.Errorf("platform %q still exists", configApi.PlatformInstanceName)
+	}
 
-	var poList configApi.PlatformOperatorList
-	g.Expect(suite.client.List(ctx, &poList)).To(Succeed())
-	g.Expect(poList.Items).To(BeEmpty())
+	list, err := suite.k.List(&configApi.PlatformOperatorList{})(ctx)
+	if err != nil {
+		return err
+	}
+	matched, err := jq.Match(`length == 0`).Match(list)
+	if err != nil {
+		return err
+	}
+	if !matched {
+		return fmt.Errorf("platformoperators still exist after reset")
+	}
+
+	return nil
 }
 
-func (suite *orchestratorTest) deleteModuleCRsAndWait(t *testing.T, g Gomega) {
+func (suite *orchestratorTest) deleteModuleCRsAndWait(t *testing.T) {
 	t.Helper()
+	g := NewWithT(t)
 
 	for _, mod := range suite.modules {
 		cr := newModuleCR(mod.GVK)
@@ -143,12 +191,44 @@ func (suite *orchestratorTest) deleteModuleCRsAndWait(t *testing.T, g Gomega) {
 			g.Expect(err).NotTo(HaveOccurred())
 		}
 
-		g.Eventually(func() bool {
-			fresh := newModuleCR(mod.GVK)
-			err := suite.client.Get(ctx, client.ObjectKeyFromObject(fresh), fresh)
-			return k8serr.IsNotFound(err)
-		}).WithContext(ctx).Should(BeTrue())
+		g.Eventually(func() error {
+			current := newModuleCR(mod.GVK)
+			err := suite.client.Get(ctx, client.ObjectKeyFromObject(current), current)
+			if k8serr.IsNotFound(err) {
+				return nil
+			}
+			if err != nil {
+				return err
+			}
+
+			return fmt.Errorf("%s %s/%s still exists", current.GetKind(), current.GetNamespace(), current.GetName())
+		}).WithContext(ctx).Should(Succeed())
 	}
+}
+
+func (suite *orchestratorTest) checkResourceResetState(
+	ctx context.Context,
+	ref configApi.ResourceRef,
+) error {
+	obj := objectFromResourceRef(ref)
+	objGVK := schema.FromAPIVersionAndKind(ref.APIVersion, ref.Kind)
+
+	if resourceShouldSurviveReset(objGVK) {
+		if err := suite.client.Get(ctx, client.ObjectKeyFromObject(obj), obj); err != nil {
+			return err
+		}
+		return nil
+	}
+
+	err := suite.client.Get(ctx, client.ObjectKeyFromObject(obj), obj)
+	if k8serr.IsNotFound(err) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+
+	return fmt.Errorf("%s %s/%s still exists", ref.Kind, ref.Namespace, ref.Name)
 }
 
 func (suite *orchestratorTest) platformModuleNames() []string {
@@ -160,8 +240,9 @@ func (suite *orchestratorTest) platformModuleNames() []string {
 	return moduleNames
 }
 
-func (suite *orchestratorTest) snapshotClusterState(t *testing.T, g Gomega) cleanupSnapshot {
+func (suite *orchestratorTest) snapshotClusterState(t *testing.T) cleanupSnapshot {
 	t.Helper()
+	g := NewWithT(t)
 
 	snapshot := cleanupSnapshot{}
 	seen := sets.New[configApi.ResourceRef]()
@@ -258,39 +339,40 @@ func newModuleCR(gvk schema.GroupVersionKind) *unstructured.Unstructured {
 
 func upsertModuleCRWithVersion(
 	t *testing.T,
-	g Gomega,
 	suite *orchestratorTest,
 	gvk schema.GroupVersionKind,
 	version string,
 ) {
 	t.Helper()
+	ctx := t.Context()
+	g := NewWithT(t)
 
 	key := client.ObjectKeyFromObject(newModuleCR(gvk))
 
-	g.Eventually(func() error {
+	g.Eventually(ctx, func() error {
 		existing := newModuleCR(gvk)
-		err := suite.client.Get(t.Context(), key, existing)
+		err := suite.client.Get(ctx, key, existing)
 		if err == nil {
 			desired := newModuleCR(gvk)
 			desired.SetResourceVersion(existing.GetResourceVersion())
-			return suite.client.Update(t.Context(), desired)
+			return suite.client.Update(ctx, desired)
 		}
 		if !k8serr.IsNotFound(err) {
 			return err
 		}
 
-		return suite.client.Create(t.Context(), newModuleCR(gvk))
-	}).WithContext(t.Context()).Should(Succeed())
+		return suite.client.Create(ctx, newModuleCR(gvk))
+	}).Should(Succeed())
 
 	if version == "" {
 		return
 	}
 
-	g.Eventually(func(g Gomega) {
+	g.Eventually(ctx, func(g Gomega) {
 		existing := newModuleCR(gvk)
-		err := suite.client.Get(t.Context(), key, existing)
+		err := suite.client.Get(ctx, key, existing)
 		g.Expect(err).To(Succeed())
 		g.Expect(unstructured.SetNestedField(existing.Object, version, "status", "release", "version")).To(Succeed())
-		g.Expect(suite.client.Status().Update(t.Context(), existing)).To(Succeed())
-	}).WithContext(t.Context()).Should(Succeed())
+		g.Expect(suite.client.Status().Update(ctx, existing)).To(Succeed())
+	}).Should(Succeed())
 }

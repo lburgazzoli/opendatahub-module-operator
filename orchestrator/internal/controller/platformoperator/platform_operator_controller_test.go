@@ -17,7 +17,9 @@ limitations under the License.
 package platformoperator
 
 import (
+	"errors"
 	"testing"
+	"time"
 
 	. "github.com/onsi/gomega"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -30,6 +32,8 @@ import (
 	configApi "github.com/lburgazzoli/opendatahub-module-operator/orchestrator/api/config/v1alpha1"
 	orchestratorconfig "github.com/lburgazzoli/opendatahub-module-operator/orchestrator/pkg/config"
 	"github.com/lburgazzoli/opendatahub-module-operator/orchestrator/pkg/module"
+	actionerrors "github.com/opendatahub-io/operator-actions-framework/controller/actions/errors"
+	"github.com/opendatahub-io/operator-actions-framework/controller/types"
 )
 
 func TestEligibleModuleRequests(t *testing.T) {
@@ -83,6 +87,43 @@ func TestEligibleModuleRequests(t *testing.T) {
 		requests := reconciler.eligibleModuleRequests(t.Context(), newTestPlatform())
 
 		g.Expect(requests).To(BeEmpty())
+	})
+}
+
+func TestCheckRunlevel(t *testing.T) {
+	t.Run("missing Platform pauses with quick retry", func(t *testing.T) {
+		g := NewWithT(t)
+		reconciler := testModuleReconciler(t)
+		po := newTestPlatformOperator("alpha", "TestPlatform", "2.0.0")
+		rr := &types.ReconciliationRequest{
+			Client:   reconciler.client,
+			Instance: po,
+		}
+		reconciler.contexts[po.Name] = &moduleContext{
+			module: reconciler.registry.ModuleByName(po.Name),
+		}
+
+		err := reconciler.checkRunlevel(t.Context(), rr)
+
+		var pauseErr actionerrors.PauseError
+		g.Expect(errors.As(err, &pauseErr)).To(BeTrue())
+		g.Expect(pauseErr.Delay()).To(Equal(500 * time.Millisecond))
+	})
+
+	t.Run("deleting PlatformOperator does not pause on missing Platform", func(t *testing.T) {
+		g := NewWithT(t)
+		reconciler := testModuleReconciler(t)
+		now := metav1.Now()
+		po := newTestPlatformOperator("alpha", "TestPlatform", "2.0.0")
+		po.SetDeletionTimestamp(&now)
+		rr := &types.ReconciliationRequest{
+			Client:   reconciler.client,
+			Instance: po,
+		}
+
+		err := reconciler.checkRunlevel(t.Context(), rr)
+
+		g.Expect(err).NotTo(HaveOccurred())
 	})
 }
 

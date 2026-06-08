@@ -69,7 +69,7 @@ func TestModuleChartLazyLoad(t *testing.T) {
 		m := &module.Module{GVK: testGVK}
 		chrt, err := m.Chart()
 		g.Expect(err).To(HaveOccurred())
-		g.Expect(err.Error()).To(ContainSubstring("chart path not set"))
+		g.Expect(err).To(MatchError(ContainSubstring("chart path not set")))
 		g.Expect(chrt).To(BeNil())
 	})
 
@@ -113,7 +113,7 @@ func TestModuleConfig(t *testing.T) {
 		}
 
 		vals, err := m.Config(context.Background(), nil)
-		g.Expect(err).ToNot(HaveOccurred())
+		g.Expect(err).NotTo(HaveOccurred())
 		g.Expect(vals).To(HaveKeyWithValue("key", "val"))
 	})
 }

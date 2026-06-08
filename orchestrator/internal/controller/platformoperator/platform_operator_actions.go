@@ -44,7 +44,10 @@ import (
 	"github.com/opendatahub-io/operator-actions-framework/resources"
 )
 
-const defaultPauseDelay = 5 * time.Second
+const (
+	defaultPauseDelay        = 5 * time.Second
+	platformLookupPauseDelay = 500 * time.Millisecond
+)
 
 // resolveModule looks up the module by PlatformOperator name and lazily
 // creates the Helm engine. Must be the first action in the pipeline.
@@ -137,6 +140,10 @@ func (r *ModuleReconciler) moduleNamespace(_ context.Context, rr *types.Reconcil
 // checkRunlevel reads the Platform CR status and verifies the module's
 // runlevel is at or below the current platform runlevel.
 func (r *ModuleReconciler) checkRunlevel(ctx context.Context, rr *types.ReconciliationRequest) error {
+	if !rr.Instance.GetDeletionTimestamp().IsZero() {
+		return nil
+	}
+
 	mc, err := r.getContext(rr)
 	if err != nil {
 		return err
@@ -144,6 +151,13 @@ func (r *ModuleReconciler) checkRunlevel(ctx context.Context, rr *types.Reconcil
 
 	p := &configApi.Platform{}
 	if err := r.client.Get(ctx, client.ObjectKey{Name: configApi.PlatformInstanceName}, p); err != nil {
+		if k8serr.IsNotFound(err) {
+			return actionerrors.NewPauseError(
+				platformLookupPauseDelay,
+				"waiting for Platform %q",
+				configApi.PlatformInstanceName,
+			)
+		}
 		return fmt.Errorf("getting Platform CR: %w", err)
 	}
 

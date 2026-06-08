@@ -128,7 +128,8 @@ func TestPruneModulesDeletesDisabledPlatformOperators(t *testing.T) {
 
 	g.Expect(err).NotTo(HaveOccurred())
 	g.Expect(rr.Client.Get(ctx, client.ObjectKey{Name: "alpha"}, &configApi.PlatformOperator{})).To(Succeed())
-	g.Expect(k8serr.IsNotFound(rr.Client.Get(ctx, client.ObjectKey{Name: "beta"}, &configApi.PlatformOperator{}))).To(BeTrue())
+	g.Expect(rr.Client.Get(ctx, client.ObjectKey{Name: "beta"}, &configApi.PlatformOperator{})).
+		To(Satisfy(k8serr.IsNotFound))
 }
 
 func TestPruneModulesKeepsDesiredPlatformOperators(t *testing.T) {
