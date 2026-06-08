@@ -169,7 +169,7 @@ func TestCheckAdminAcks(t *testing.T) {
 		err := actions.checkAdminAcks(ctx, rr)
 
 		g.Expect(err).NotTo(HaveOccurred())
-		expectModulesReadyCondition(t, p, metav1.ConditionTrue, "AdminAcksSatisfied", "")
+		expectNoModulesReadyCondition(t, p)
 	})
 
 	t.Run("missing configmap pauses gated modules", func(t *testing.T) {
@@ -233,7 +233,7 @@ func TestCheckAdminAcks(t *testing.T) {
 		err := actions.checkAdminAcks(ctx, rr)
 
 		g.Expect(err).NotTo(HaveOccurred())
-		expectModulesReadyCondition(t, p, metav1.ConditionTrue, "AdminAcksSatisfied", "")
+		expectNoModulesReadyCondition(t, p)
 	})
 
 	t.Run("emits a warning event per unsatisfied ack", func(t *testing.T) {
@@ -340,6 +340,15 @@ func expectModulesReadyCondition(
 	g.Expect(condition.Reason).To(Equal(reason))
 	if messageSubstring != "" {
 		g.Expect(condition.Message).To(ContainSubstring(messageSubstring))
+	}
+}
+
+func expectNoModulesReadyCondition(t *testing.T, p *configApi.Platform) {
+	t.Helper()
+	g := NewWithT(t)
+
+	for i := range p.GetConditions() {
+		g.Expect(p.GetConditions()[i].Type).NotTo(Equal(ConditionModulesReady))
 	}
 }
 

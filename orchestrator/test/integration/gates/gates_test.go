@@ -115,13 +115,7 @@ func (at *adminAcksTests) testAdminAckTransitions(t *testing.T) {
 			)
 		}
 		g.Eventually(ctx, suite.K.Get(testsupport.Platform())).Should(
-			jq.Match(
-				`(.status.conditions // []) | any(
-					.type == "ModulesReady" and
-					.status == "True" and
-					.reason == "AdminAcksSatisfied"
-				)`,
-			),
+			jq.Match(`(.status.conditions // []) | all(.reason != "AdminAcksRequired")`),
 		)
 	})
 }

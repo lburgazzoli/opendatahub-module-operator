@@ -74,11 +74,7 @@ func (a *PlatformReconciler) checkAdminAcks(ctx context.Context, rr *types.Recon
 
 	required := a.requiredAdminAcks(obj)
 	if len(required) == 0 {
-		rr.Conditions.MarkTrue(
-			ConditionModulesReady,
-			conditions.WithReason("AdminAcksSatisfied"),
-		)
-		return nil
+		return rr.Conditions.ClearCondition(ConditionModulesReady)
 	}
 
 	adminAcksConfigMap := &corev1.ConfigMap{}
@@ -117,11 +113,7 @@ func (a *PlatformReconciler) checkAdminAcks(ctx context.Context, rr *types.Recon
 		return adminAcksPauseError(a.cfg.Namespace(), unsatisfied)
 	}
 
-	rr.Conditions.MarkTrue(
-		ConditionModulesReady,
-		conditions.WithReason("AdminAcksSatisfied"),
-	)
-	return nil
+	return rr.Conditions.ClearCondition(ConditionModulesReady)
 }
 
 // ensureModules builds PlatformOperator resources from spec.modules.
