@@ -19,13 +19,10 @@ package platformoperator
 import (
 	"context"
 	"fmt"
-	"maps"
 	"time"
 
 	"github.com/k8s-manifest-kit/engine/pkg/render"
 	"github.com/k8s-manifest-kit/engine/pkg/transformer/meta/namespace"
-	engineTypes "github.com/k8s-manifest-kit/engine/pkg/types"
-	kitMaps "github.com/k8s-manifest-kit/pkg/util/maps"
 	helm "github.com/k8s-manifest-kit/renderer-helm/pkg"
 	"helm.sh/helm/v4/pkg/chart"
 	corev1 "k8s.io/api/core/v1"
@@ -38,10 +35,8 @@ import (
 
 	configApi "github.com/lburgazzoli/opendatahub-module-operator/orchestrator/api/config/v1alpha1"
 	"github.com/lburgazzoli/opendatahub-module-operator/orchestrator/pkg/resources/gvk"
-	odhLabels "github.com/opendatahub-io/opendatahub-operator/v2/pkg/metadata/labels"
 	actionerrors "github.com/opendatahub-io/operator-actions-framework/controller/actions/errors"
 	"github.com/opendatahub-io/operator-actions-framework/controller/types"
-	"github.com/opendatahub-io/operator-actions-framework/resources"
 )
 
 const (
@@ -112,31 +107,6 @@ func (r *ModuleReconciler) resolveModule(_ context.Context, rr *types.Reconcilia
 	return nil
 }
 
-// getContext returns the cached module context for the current PlatformOperator.
-func (r *ModuleReconciler) getContext(rr *types.ReconciliationRequest) (*moduleContext, error) {
-	name := rr.Instance.GetName()
-
-	r.mu.RLock()
-	mc, ok := r.contexts[name]
-	r.mu.RUnlock()
-
-	if !ok {
-		return nil, fmt.Errorf("module context for %q not found", name)
-	}
-
-	return mc, nil
-}
-
-// moduleNamespace returns the namespace for the module being reconciled.
-func (r *ModuleReconciler) moduleNamespace(_ context.Context, rr *types.ReconciliationRequest) (string, error) {
-	mc, err := r.getContext(rr)
-	if err != nil {
-		return "", err
-	}
-
-	return mc.module.Namespace, nil
-}
-
 // checkRunlevel reads the Platform CR status and verifies the module's
 // runlevel is at or below the current platform runlevel.
 func (r *ModuleReconciler) checkRunlevel(ctx context.Context, rr *types.ReconciliationRequest) error {
@@ -196,22 +166,6 @@ func (r *ModuleReconciler) ensureNamespace(_ context.Context, rr *types.Reconcil
 	return rr.AddResources(&ns)
 }
 
-// moduleMetadata returns a transformer that stamps resources with the
-// module's part-of label (skipping CRDs) and config annotation.
-func moduleMetadata(name string) engineTypes.Transformer {
-	annotationKey := "config.opendatahub.io/" + name
-
-	return func(_ context.Context, obj unstructured.Unstructured) (unstructured.Unstructured, error) {
-		if obj.GroupVersionKind() != gvk.CustomResourceDefinition {
-			resources.SetLabel(&obj, odhLabels.PlatformPartOf, name)
-		}
-
-		resources.SetAnnotation(&obj, annotationKey, "true")
-
-		return obj, nil
-	}
-}
-
 // renderChart renders the module's Helm chart and populates rr.Resources.
 func (r *ModuleReconciler) renderChart(ctx context.Context, rr *types.ReconciliationRequest) error {
 	obj, ok := rr.Instance.(*configApi.PlatformOperator)
@@ -241,35 +195,6 @@ func (r *ModuleReconciler) renderChart(ctx context.Context, rr *types.Reconcilia
 	rr.Resources = append(rr.Resources, rendered...)
 
 	return nil
-}
-
-func (r *ModuleReconciler) computeValues(
-	ctx context.Context,
-	c client.Client,
-	mc *moduleContext,
-) (engineTypes.Values, error) {
-	values := make(engineTypes.Values, len(mc.module.Values))
-	maps.Copy(values, mc.module.Values)
-
-	if mc.module.Config != nil {
-		configValues, err := mc.module.Config(ctx, c)
-		if err != nil {
-			return nil, fmt.Errorf("computing config values for module %q: %w", mc.module.EffectiveName(), err)
-		}
-		if len(configValues) > 0 {
-			values["config"] = kitMaps.DeepMerge(
-				func() map[string]any {
-					if existing, ok := values["config"].(map[string]any); ok {
-						return existing
-					}
-					return nil
-				}(),
-				configValues,
-			)
-		}
-	}
-
-	return values, nil
 }
 
 // pruneOrphans diffs current resources against status.resources and deletes orphans.
@@ -340,34 +265,4 @@ func (r *ModuleReconciler) reportStatus(ctx context.Context, rr *types.Reconcili
 	}
 
 	return nil
-}
-
-func (r *ModuleReconciler) readModuleVersion(
-	ctx context.Context,
-	c client.Reader,
-	mc *moduleContext,
-) (string, error) {
-	list := &unstructured.UnstructuredList{}
-	list.SetGroupVersionKind(mc.module.GVK)
-
-	if err := c.List(ctx, list); err != nil {
-		if k8serr.IsNotFound(err) {
-			return "", nil
-		}
-		return "", fmt.Errorf("listing module CR %s: %w", mc.module.GVK.Kind, err)
-	}
-
-	if len(list.Items) == 0 {
-		return "", nil
-	}
-
-	version, found, err := unstructured.NestedString(list.Items[0].Object, "status", "release", "version")
-	if err != nil {
-		return "", fmt.Errorf("reading version from module CR %s: %w", mc.module.GVK.Kind, err)
-	}
-	if !found {
-		return "", nil
-	}
-
-	return version, nil
 }

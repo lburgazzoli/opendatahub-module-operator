@@ -27,9 +27,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
 	configApi "github.com/lburgazzoli/opendatahub-module-operator/orchestrator/api/config/v1alpha1"
-	orchestratorconfig "github.com/lburgazzoli/opendatahub-module-operator/orchestrator/pkg/config"
+	"github.com/lburgazzoli/opendatahub-module-operator/orchestrator/pkg/config"
 	"github.com/lburgazzoli/opendatahub-module-operator/orchestrator/pkg/controller/handlers"
-	controllerpredicates "github.com/lburgazzoli/opendatahub-module-operator/orchestrator/pkg/controller/predicates"
 	"github.com/lburgazzoli/opendatahub-module-operator/orchestrator/pkg/module"
 	"github.com/opendatahub-io/operator-actions-framework/controller/actions/deploy"
 	"github.com/opendatahub-io/operator-actions-framework/controller/actions/status/deployments"
@@ -43,7 +42,7 @@ func NewModuleReconciler(
 	ctx context.Context,
 	mgr ctrl.Manager,
 	registry *module.ModuleRegistry,
-	cfg *orchestratorconfig.Config,
+	cfg *config.Config,
 ) error {
 	r := &ModuleReconciler{
 		registry:  registry,
@@ -66,13 +65,12 @@ func NewModuleReconciler(
 		b = b.WatchesGVK(
 			m.GVK,
 			reconciler.WithEventHandler(handlers.ToNamed(m.EffectiveName())),
-			reconciler.WithPredicates(controllerpredicates.CreateOrResourceVersionChanged()),
+			reconciler.WithPredicates(predicate.ResourceVersionChangedPredicate{}),
 			reconciler.Dynamic(reconciler.CrdExists(m.GVK)),
 		)
 	}
 
 	_, err := b.
-		WithEventFilter(controllerpredicates.LogAllEvents("PO event")).
 		WithAction(r.resolveModule).
 		WithAction(r.checkRunlevel).
 		WithAction(r.ensureNamespace).

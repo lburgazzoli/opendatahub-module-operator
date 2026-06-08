@@ -19,11 +19,15 @@ package platform
 import (
 	"context"
 
+	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
 	configApi "github.com/lburgazzoli/opendatahub-module-operator/orchestrator/api/config/v1alpha1"
-	orchestratorconfig "github.com/lburgazzoli/opendatahub-module-operator/orchestrator/pkg/config"
+	"github.com/lburgazzoli/opendatahub-module-operator/orchestrator/pkg/config"
+	"github.com/lburgazzoli/opendatahub-module-operator/orchestrator/pkg/controller/handlers"
+	"github.com/lburgazzoli/opendatahub-module-operator/orchestrator/pkg/controller/predicates"
 	"github.com/lburgazzoli/opendatahub-module-operator/orchestrator/pkg/module"
 	"github.com/opendatahub-io/operator-actions-framework/api"
 	"github.com/opendatahub-io/operator-actions-framework/controller/actions/deploy"
@@ -45,17 +49,28 @@ func NewReconciler(
 	ctx context.Context,
 	mgr ctrl.Manager,
 	registry *module.ModuleRegistry,
-	cfg *orchestratorconfig.Config,
+	cfg *config.Config,
 ) error {
 	rel := cfg.Release()
-	actions := &platformActions{
+	actions := &PlatformReconciler{
 		registry: registry,
 		cfg:      cfg,
+		recorder: mgr.GetEventRecorderFor("platform-controller"),
 	}
 
 	_, err := reconciler.ReconcilerFor(mgr, &configApi.Platform{}).
 		Owns(&configApi.PlatformOperator{},
 			reconciler.WithPredicates(predicate.ResourceVersionChangedPredicate{}),
+		).
+		Watches(
+			&corev1.ConfigMap{},
+			reconciler.WithEventHandler(handlers.ToNamed(configApi.PlatformInstanceName)),
+			reconciler.WithPredicates(
+				predicates.Named(types.NamespacedName{
+					Namespace: cfg.Namespace(),
+					Name:      config.AdminAcksConfigMapName,
+				}),
+			),
 		).
 		WithReconcilerOpts(
 			reconciler.WithRelease(api.Release{Name: rel.Name, Version: rel.Version.Version}),

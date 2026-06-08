@@ -45,7 +45,7 @@ type Module struct {
 	Runlevel          int
 	ChartPath         string
 	Timeout           time.Duration
-	AdminAcks         []string
+	AdminAcks         []AdminAck
 	ConfigHashRollout bool
 	Values            map[string]any
 
@@ -59,6 +59,11 @@ type Module struct {
 	chartOnce sync.Once
 	chart     chart.Charter
 	chartErr  error
+}
+
+type AdminAck struct {
+	Name        string
+	Description string
 }
 
 // EffectiveName returns Name if set, otherwise lowercase GVK Kind.

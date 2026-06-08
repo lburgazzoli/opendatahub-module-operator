@@ -29,6 +29,8 @@ var ComponentsGV = schema.GroupVersion{
 var (
 	CustomResourceDefinition = odhGVK.CustomResourceDefinition
 	Namespace                = schema.GroupVersionKind{Version: "v1", Kind: "Namespace"}
+	ServiceAccount           = odhGVK.ServiceAccount
+	ConfigMap                = odhGVK.ConfigMap
 
 	Ray                  = ComponentsGV.WithKind("Ray")
 	Spark                = ComponentsGV.WithKind("Spark")

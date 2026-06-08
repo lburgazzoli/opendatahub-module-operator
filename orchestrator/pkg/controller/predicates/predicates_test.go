@@ -21,6 +21,7 @@ import (
 
 	. "github.com/onsi/gomega"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/event"
 
 	configApi "github.com/lburgazzoli/opendatahub-module-operator/orchestrator/api/config/v1alpha1"
@@ -60,4 +61,35 @@ func TestObjectRef(t *testing.T) {
 
 		g.Expect(objectRef(obj)).To(Equal("opendatahub/alpha"))
 	})
+}
+
+func TestNamed(t *testing.T) {
+	g := NewWithT(t)
+	p := Named(types.NamespacedName{
+		Namespace: "opendatahub",
+		Name:      "opendatahub-admin",
+	})
+
+	matching := &configApi.PlatformOperator{
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace: "opendatahub",
+			Name:      "opendatahub-admin",
+		},
+	}
+	wrongNamespace := &configApi.PlatformOperator{
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace: "other",
+			Name:      "opendatahub-admin",
+		},
+	}
+	wrongName := &configApi.PlatformOperator{
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace: "opendatahub",
+			Name:      "something-else",
+		},
+	}
+
+	g.Expect(p.Create(event.CreateEvent{Object: matching})).To(BeTrue())
+	g.Expect(p.Create(event.CreateEvent{Object: wrongNamespace})).To(BeFalse())
+	g.Expect(p.Create(event.CreateEvent{Object: wrongName})).To(BeFalse())
 }

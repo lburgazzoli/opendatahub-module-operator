@@ -2,33 +2,18 @@
 package predicates
 
 import (
+	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 )
 
-// CreateOrResourceVersionChanged lets create events through and filters updates
-// down to real object changes, including status updates.
-func CreateOrResourceVersionChanged() predicate.Predicate {
-	return predicate.Funcs{
-		CreateFunc: func(_ event.CreateEvent) bool {
-			return true
-		},
-		UpdateFunc: func(e event.UpdateEvent) bool {
-			if e.ObjectOld == nil || e.ObjectNew == nil {
-				return false
-			}
-
-			return e.ObjectNew.GetResourceVersion() != e.ObjectOld.GetResourceVersion()
-		},
-		DeleteFunc: func(_ event.DeleteEvent) bool {
-			return false
-		},
-		GenericFunc: func(_ event.GenericEvent) bool {
-			return false
-		},
-	}
+// Named matches only the object with the exact namespace/name pair.
+func Named(target types.NamespacedName) predicate.Predicate {
+	return predicate.NewPredicateFuncs(func(obj client.Object) bool {
+		return obj.GetNamespace() == target.Namespace && obj.GetName() == target.Name
+	})
 }
 
 // LogAllEvents logs each controller event with the given message and lets it pass through.

@@ -21,26 +21,36 @@ import (
 	"context"
 	"fmt"
 	"slices"
+	"strconv"
+	"time"
 
+	corev1 "k8s.io/api/core/v1"
 	k8serr "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/sets"
+	"k8s.io/client-go/tools/record"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	configApi "github.com/lburgazzoli/opendatahub-module-operator/orchestrator/api/config/v1alpha1"
-	orchestratorconfig "github.com/lburgazzoli/opendatahub-module-operator/orchestrator/pkg/config"
+	"github.com/lburgazzoli/opendatahub-module-operator/orchestrator/pkg/config"
 	"github.com/lburgazzoli/opendatahub-module-operator/orchestrator/pkg/module"
+	"github.com/opendatahub-io/operator-actions-framework/controller/conditions"
 	"github.com/opendatahub-io/operator-actions-framework/controller/types"
 )
 
-type platformActions struct {
+const (
+	adminAckPauseDelay = 30 * time.Second
+)
+
+type PlatformReconciler struct {
 	registry *module.ModuleRegistry
-	cfg      *orchestratorconfig.Config
+	cfg      *config.Config
+	recorder record.EventRecorder
 }
 
 // initialize sets the runlevel from Platform CR status. On a fresh Platform
 // (runlevel 0), initializes to the first runlevel that has modules.
-func (a *platformActions) initialize(_ context.Context, rr *types.ReconciliationRequest) error {
+func (a *PlatformReconciler) initialize(_ context.Context, rr *types.ReconciliationRequest) error {
 	obj, ok := rr.Instance.(*configApi.Platform)
 	if !ok {
 		return fmt.Errorf("instance is not a Platform")
@@ -53,13 +63,69 @@ func (a *platformActions) initialize(_ context.Context, rr *types.Reconciliation
 	return nil
 }
 
-// checkAdminAcks is a placeholder for future admin acknowledgment checks.
-func (a *platformActions) checkAdminAcks(_ context.Context, _ *types.ReconciliationRequest) error {
+// checkAdminAcks blocks reconciliation until all admin ack keys required by
+// the enabled modules are set to boolean true in the dedicated admin-acks
+// ConfigMap.
+func (a *PlatformReconciler) checkAdminAcks(ctx context.Context, rr *types.ReconciliationRequest) error {
+	obj, ok := rr.Instance.(*configApi.Platform)
+	if !ok {
+		return fmt.Errorf("instance is not a Platform")
+	}
+
+	required := a.requiredAdminAcks(obj)
+	if len(required) == 0 {
+		rr.Conditions.MarkTrue(
+			ConditionModulesReady,
+			conditions.WithReason("AdminAcksSatisfied"),
+		)
+		return nil
+	}
+
+	adminAcksConfigMap := &corev1.ConfigMap{}
+	adminAcksConfigMap.SetName(config.AdminAcksConfigMapName)
+	adminAcksConfigMap.SetNamespace(a.cfg.Namespace())
+
+	err := rr.Client.Get(ctx, client.ObjectKeyFromObject(adminAcksConfigMap), adminAcksConfigMap)
+	switch {
+	case k8serr.IsNotFound(err):
+		unsatisfied := missingAdminAcks(required)
+		a.reportUnsatisfiedAdminAcks(obj, unsatisfied)
+		rr.Conditions.MarkFalse(
+			ConditionModulesReady,
+			conditions.WithReason("AdminAcksRequired"),
+			conditions.WithMessage("%s", adminAcksConditionMessage(a.cfg.Namespace(), unsatisfied)),
+		)
+		return adminAcksPauseError(a.cfg.Namespace(), unsatisfied)
+	case err != nil:
+		return fmt.Errorf(
+			"getting admin-acks ConfigMap %s/%s: %w",
+			a.cfg.Namespace(),
+			config.AdminAcksConfigMapName,
+			err,
+		)
+	}
+
+	unsatisfied := unsatisfiedAdminAcks(required, adminAcksConfigMap.Data, strconv.ParseBool)
+
+	if len(unsatisfied) > 0 {
+		a.reportUnsatisfiedAdminAcks(obj, unsatisfied)
+		rr.Conditions.MarkFalse(
+			ConditionModulesReady,
+			conditions.WithReason("AdminAcksRequired"),
+			conditions.WithMessage("%s", adminAcksConditionMessage(a.cfg.Namespace(), unsatisfied)),
+		)
+		return adminAcksPauseError(a.cfg.Namespace(), unsatisfied)
+	}
+
+	rr.Conditions.MarkTrue(
+		ConditionModulesReady,
+		conditions.WithReason("AdminAcksSatisfied"),
+	)
 	return nil
 }
 
 // ensureModules builds PlatformOperator resources from spec.modules.
-func (a *platformActions) ensureModules(_ context.Context, rr *types.ReconciliationRequest) error {
+func (a *PlatformReconciler) ensureModules(_ context.Context, rr *types.ReconciliationRequest) error {
 	obj, ok := rr.Instance.(*configApi.Platform)
 	if !ok {
 		return fmt.Errorf("instance is not a Platform")
@@ -85,7 +151,7 @@ func (a *platformActions) ensureModules(_ context.Context, rr *types.Reconciliat
 }
 
 // pruneModules deletes PlatformOperators that are no longer present in spec.modules.
-func (a *platformActions) pruneModules(ctx context.Context, rr *types.ReconciliationRequest) error {
+func (a *PlatformReconciler) pruneModules(ctx context.Context, rr *types.ReconciliationRequest) error {
 	obj, ok := rr.Instance.(*configApi.Platform)
 	if !ok {
 		return fmt.Errorf("instance is not a Platform")
@@ -128,7 +194,7 @@ func (a *platformActions) pruneModules(ctx context.Context, rr *types.Reconcilia
 // advanceRunlevel checks whether all enabled modules at the current runlevel
 // have reported the expected distribution version. If so, advances to the
 // next runlevel that has enabled modules.
-func (a *platformActions) advanceRunlevel(ctx context.Context, rr *types.ReconciliationRequest) error {
+func (a *PlatformReconciler) advanceRunlevel(ctx context.Context, rr *types.ReconciliationRequest) error {
 	obj, ok := rr.Instance.(*configApi.Platform)
 	if !ok {
 		return fmt.Errorf("instance is not a Platform")
@@ -157,51 +223,9 @@ func (a *platformActions) advanceRunlevel(ctx context.Context, rr *types.Reconci
 	return nil
 }
 
-func (a *platformActions) runlevelComplete(
-	ctx context.Context,
-	rr *types.ReconciliationRequest,
-	obj *configApi.Platform,
-	level int,
-) (bool, error) {
-	upgradeInProgress := obj.Status.Distribution.Version != "" &&
-		obj.Status.Distribution.Version != a.cfg.Distribution.Version
-
-	for _, m := range a.enabledModulesAtRunlevel(obj, level) {
-		po := &configApi.PlatformOperator{}
-		err := rr.Client.Get(ctx, client.ObjectKey{Name: m.EffectiveName()}, po)
-
-		switch {
-		case k8serr.IsNotFound(err):
-			return false, nil
-		case err != nil:
-			return false, fmt.Errorf("getting PlatformOperator %q: %w", m.EffectiveName(), err)
-		case upgradeInProgress && po.Status.Distribution.Version != a.cfg.Distribution.Version:
-			return false, nil
-		}
-	}
-
-	return true, nil
-}
-
-func (a *platformActions) enabledModulesAtRunlevel(
-	obj *configApi.Platform,
-	level int,
-) []*module.Module {
-	enabled := sets.New(obj.Spec.Modules...)
-	modules := make([]*module.Module, 0)
-
-	for _, m := range a.registry.ModulesAtRunlevel(level) {
-		if enabled.Has(m.EffectiveName()) {
-			modules = append(modules, m)
-		}
-	}
-
-	return modules
-}
-
 // aggregateStatus populates Platform status from PlatformOperator statuses.
 // Modules are sorted by runlevel then name for stable ordering.
-func (a *platformActions) aggregateStatus(ctx context.Context, rr *types.ReconciliationRequest) error {
+func (a *PlatformReconciler) aggregateStatus(ctx context.Context, rr *types.ReconciliationRequest) error {
 	obj, ok := rr.Instance.(*configApi.Platform)
 	if !ok {
 		return fmt.Errorf("instance is not a Platform")

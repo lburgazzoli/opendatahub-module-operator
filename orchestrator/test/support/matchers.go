@@ -23,6 +23,7 @@ import (
 	"github.com/lburgazzoli/gomega-matchers/pkg/matchers/jq"
 	configApi "github.com/lburgazzoli/opendatahub-module-operator/orchestrator/api/config/v1alpha1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 )
 
 func Platform() *configApi.Platform {
@@ -75,20 +76,22 @@ func HaveNoTrackedResources() types.GomegaMatcher {
 	)
 }
 
-func HaveTrackedResourceKind(kind string) types.GomegaMatcher {
-	return gomega.WithTransform(
-		jq.Extract(`.status.resources // []`),
-		gomega.ContainElement(
-			gomega.HaveKeyWithValue("kind", kind),
-		),
-	)
-}
-
-func HaveTrackedResource(kind string, name string) types.GomegaMatcher {
+func HaveTrackedResource(gvk schema.GroupVersionKind) types.GomegaMatcher {
 	return gomega.WithTransform(
 		jq.Extract(`.status.resources // []`),
 		gomega.ContainElement(gomega.SatisfyAll(
-			gomega.HaveKeyWithValue("kind", kind),
+			gomega.HaveKeyWithValue("apiVersion", gvk.GroupVersion().String()),
+			gomega.HaveKeyWithValue("kind", gvk.Kind),
+		)),
+	)
+}
+
+func HaveTrackedNamedResource(gvk schema.GroupVersionKind, name string) types.GomegaMatcher {
+	return gomega.WithTransform(
+		jq.Extract(`.status.resources // []`),
+		gomega.ContainElement(gomega.SatisfyAll(
+			gomega.HaveKeyWithValue("apiVersion", gvk.GroupVersion().String()),
+			gomega.HaveKeyWithValue("kind", gvk.Kind),
 			gomega.HaveKeyWithValue("name", name),
 		)),
 	)

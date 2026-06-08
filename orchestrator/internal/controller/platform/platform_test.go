@@ -17,18 +17,25 @@ limitations under the License.
 package platform
 
 import (
+	"errors"
 	"testing"
+	"time"
 
 	. "github.com/onsi/gomega"
+	"github.com/opendatahub-io/opendatahub-operator/v2/api/common"
+	corev1 "k8s.io/api/core/v1"
 	k8serr "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/client-go/tools/record"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
 	configApi "github.com/lburgazzoli/opendatahub-module-operator/orchestrator/api/config/v1alpha1"
-	orchestratorconfig "github.com/lburgazzoli/opendatahub-module-operator/orchestrator/pkg/config"
+	"github.com/lburgazzoli/opendatahub-module-operator/orchestrator/pkg/config"
 	"github.com/lburgazzoli/opendatahub-module-operator/orchestrator/pkg/module"
+	actionerrors "github.com/opendatahub-io/operator-actions-framework/controller/actions/errors"
+	"github.com/opendatahub-io/operator-actions-framework/controller/conditions"
 	odhTypes "github.com/opendatahub-io/operator-actions-framework/controller/types"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -150,11 +157,147 @@ func TestPruneModulesKeepsDesiredPlatformOperators(t *testing.T) {
 	g.Expect(rr.Client.Get(ctx, client.ObjectKey{Name: "beta"}, &configApi.PlatformOperator{})).To(Succeed())
 }
 
+func TestCheckAdminAcks(t *testing.T) {
+	t.Run("allows modules without admin acks", func(t *testing.T) {
+		g := NewWithT(t)
+		ctx := t.Context()
+		scheme := testScheme(t)
+		actions := testActions()
+		p := newPlatform([]string{"alpha"}, 1)
+		rr := testRR(t, scheme, p)
+
+		err := actions.checkAdminAcks(ctx, rr)
+
+		g.Expect(err).NotTo(HaveOccurred())
+		expectModulesReadyCondition(t, p, metav1.ConditionTrue, "AdminAcksSatisfied", "")
+	})
+
+	t.Run("missing configmap pauses gated modules", func(t *testing.T) {
+		g := NewWithT(t)
+		ctx := t.Context()
+		scheme := testScheme(t)
+		actions := testActions()
+		actions.registry.ModuleByName("alpha").AdminAcks = []module.AdminAck{{
+			Name:        "adminAcks.alpha",
+			Description: "Acknowledge alpha rollout",
+		}}
+		p := newPlatform([]string{"alpha"}, 1)
+		rr := testRR(t, scheme, p)
+
+		err := actions.checkAdminAcks(ctx, rr)
+
+		var pauseErr actionerrors.PauseError
+		g.Expect(errors.As(err, &pauseErr)).To(BeTrue())
+		g.Expect(pauseErr.Delay()).To(Equal(30 * time.Second))
+		g.Expect(err.Error()).To(ContainSubstring("adminAcks.alpha"))
+		g.Expect(err.Error()).To(ContainSubstring("modules: alpha"))
+		g.Expect(err.Error()).To(ContainSubstring("description: Acknowledge alpha rollout"))
+		expectModulesReadyCondition(t, p, metav1.ConditionFalse, "AdminAcksRequired", "Acknowledge alpha rollout")
+	})
+
+	t.Run("false ack pauses gated modules", func(t *testing.T) {
+		g := NewWithT(t)
+		ctx := t.Context()
+		scheme := testScheme(t)
+		actions := testActions()
+		actions.registry.ModuleByName("alpha").AdminAcks = []module.AdminAck{{
+			Name:        "adminAcks.alpha",
+			Description: "Acknowledge alpha rollout",
+		}}
+		p := newPlatform([]string{"alpha"}, 1)
+		cm := newAdminAcksConfigMap(actions.cfg.Namespace(), map[string]string{"adminAcks.alpha": "false"})
+		rr := testRR(t, scheme, p, cm)
+
+		err := actions.checkAdminAcks(ctx, rr)
+
+		var pauseErr actionerrors.PauseError
+		g.Expect(errors.As(err, &pauseErr)).To(BeTrue())
+		g.Expect(err.Error()).To(ContainSubstring(`value: "false"`))
+		g.Expect(err.Error()).To(ContainSubstring("description: Acknowledge alpha rollout"))
+		expectModulesReadyCondition(t, p, metav1.ConditionFalse, "AdminAcksRequired", `value: "false"`)
+	})
+
+	t.Run("true ack allows gated modules", func(t *testing.T) {
+		g := NewWithT(t)
+		ctx := t.Context()
+		scheme := testScheme(t)
+		actions := testActions()
+		actions.registry.ModuleByName("alpha").AdminAcks = []module.AdminAck{{
+			Name:        "adminAcks.alpha",
+			Description: "Acknowledge alpha rollout",
+		}}
+		p := newPlatform([]string{"alpha"}, 1)
+		cm := newAdminAcksConfigMap(actions.cfg.Namespace(), map[string]string{"adminAcks.alpha": "true"})
+		rr := testRR(t, scheme, p, cm)
+
+		err := actions.checkAdminAcks(ctx, rr)
+
+		g.Expect(err).NotTo(HaveOccurred())
+		expectModulesReadyCondition(t, p, metav1.ConditionTrue, "AdminAcksSatisfied", "")
+	})
+
+	t.Run("emits a warning event per unsatisfied ack", func(t *testing.T) {
+		g := NewWithT(t)
+		ctx := t.Context()
+		scheme := testScheme(t)
+		recorder := record.NewFakeRecorder(10)
+		actions := testActions()
+		actions.recorder = recorder
+		actions.registry.ModuleByName("alpha").AdminAcks = []module.AdminAck{{
+			Name:        "adminAcks.alpha",
+			Description: "Acknowledge alpha rollout",
+		}}
+		p := newPlatform([]string{"alpha"}, 1)
+		rr := testRR(t, scheme, p)
+
+		err := actions.checkAdminAcks(ctx, rr)
+
+		var pauseErr actionerrors.PauseError
+		g.Expect(errors.As(err, &pauseErr)).To(BeTrue())
+		g.Eventually(recorder.Events).Should(Receive(SatisfyAll(
+			ContainSubstring("AdminAckRequired"),
+			ContainSubstring("Acknowledge alpha rollout"),
+		)))
+	})
+
+	t.Run("deduplicates merged requirements across enabled modules", func(t *testing.T) {
+		g := NewWithT(t)
+		actions := testActions()
+		actions.registry.ModuleByName("alpha").AdminAcks = []module.AdminAck{
+			{Name: "adminAcks.shared", Description: "Shared admin gate"},
+			{Name: "adminAcks.alpha", Description: "Alpha gate"},
+		}
+		actions.registry.ModuleByName("beta").AdminAcks = []module.AdminAck{
+			{Name: "adminAcks.shared", Description: "Shared admin gate"},
+		}
+		p := newPlatform([]string{"alpha", "beta"}, 1)
+
+		required := actions.requiredAdminAcks(p)
+
+		g.Expect(required).To(HaveLen(2))
+		g.Expect(required).To(HaveKeyWithValue("adminAcks.alpha", Equal(adminAckRequirement{
+			Name:        "adminAcks.alpha",
+			Description: "Alpha gate",
+			Modules:     []string{"alpha"},
+		})))
+		g.Expect(required).To(HaveKeyWithValue("adminAcks.shared", Equal(adminAckRequirement{
+			Name:        "adminAcks.shared",
+			Description: "Shared admin gate",
+			Modules:     []string{"alpha", "beta"},
+		})))
+	})
+}
+
 func testScheme(t *testing.T) *runtime.Scheme {
 	t.Helper()
 
 	scheme := runtime.NewScheme()
-	err := configApi.AddToScheme(scheme)
+	err := corev1.AddToScheme(scheme)
+	if err != nil {
+		t.Fatalf("add corev1 to scheme: %v", err)
+	}
+
+	err = configApi.AddToScheme(scheme)
 	if err != nil {
 		t.Fatalf("add config api to scheme: %v", err)
 	}
@@ -162,15 +305,41 @@ func testScheme(t *testing.T) *runtime.Scheme {
 	return scheme
 }
 
-func testActions() *platformActions {
-	return &platformActions{
+func testActions() *PlatformReconciler {
+	return &PlatformReconciler{
 		registry: testRegistry(),
-		cfg: &orchestratorconfig.Config{
-			Distribution: orchestratorconfig.DistributionConfig{
+		cfg: &config.Config{
+			Distribution: config.DistributionConfig{
 				Name:    "TestPlatform",
 				Version: "2.0.0",
 			},
 		},
+	}
+}
+
+func expectModulesReadyCondition(
+	t *testing.T,
+	p *configApi.Platform,
+	status metav1.ConditionStatus,
+	reason string,
+	messageSubstring string,
+) {
+	t.Helper()
+	g := NewWithT(t)
+
+	var condition *common.Condition
+	for i := range p.GetConditions() {
+		if p.GetConditions()[i].Type == ConditionModulesReady {
+			condition = &p.GetConditions()[i]
+			break
+		}
+	}
+
+	g.Expect(condition).NotTo(BeNil())
+	g.Expect(condition.Status).To(Equal(status))
+	g.Expect(condition.Reason).To(Equal(reason))
+	if messageSubstring != "" {
+		g.Expect(condition.Message).To(ContainSubstring(messageSubstring))
 	}
 }
 
@@ -223,8 +392,9 @@ func testRR(
 		Build()
 
 	return &odhTypes.ReconciliationRequest{
-		Client:   c,
-		Instance: platform,
+		Client:     c,
+		Conditions: conditions.NewManager(platform, ConditionModulesReady),
+		Instance:   platform,
 	}
 }
 
@@ -253,5 +423,15 @@ func newPlatformOperator(name string, version string) *configApi.PlatformOperato
 				Version: version,
 			},
 		},
+	}
+}
+
+func newAdminAcksConfigMap(namespace string, data map[string]string) *corev1.ConfigMap {
+	return &corev1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      config.AdminAcksConfigMapName,
+			Namespace: namespace,
+		},
+		Data: data,
 	}
 }
