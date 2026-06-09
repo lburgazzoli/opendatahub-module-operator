@@ -29,7 +29,8 @@ const (
 	alphaModuleName             = "alpha"
 	betaModuleName              = "beta"
 	gammaModuleName             = "gamma"
-	gatedModuleName             = "gated"
+	deltaModuleName             = "delta"
+	epsilonModuleName           = "epsilon"
 )
 
 var (
@@ -37,12 +38,14 @@ var (
 		Group:   "test.opendatahub.io",
 		Version: "v1alpha1",
 	}
-	alphaGVK = componentsGV.WithKind("Alpha")
-	betaGVK  = componentsGV.WithKind("Beta")
-	gammaGVK = componentsGV.WithKind("Gamma")
-	gatedGVK = componentsGV.WithKind("Gated")
+	alphaGVK   = componentsGV.WithKind("Alpha")
+	betaGVK    = componentsGV.WithKind("Beta")
+	gammaGVK   = componentsGV.WithKind("Gamma")
+	deltaGVK   = componentsGV.WithKind("Delta")
+	epsilonGVK = componentsGV.WithKind("Epsilon")
 
-	runlevelTwoModuleNames = []string{betaModuleName, gammaModuleName}
+	initialRunlevelModuleNames = []string{alphaModuleName, betaModuleName, gammaModuleName}
+	runlevelTwoModuleNames     = []string{betaModuleName, gammaModuleName}
 )
 
 func runlevelModules() []*module.Module {
@@ -50,6 +53,8 @@ func runlevelModules() []*module.Module {
 		newModule(alphaModuleName, alphaGVK, 1, map[string]any{"module-name": alphaModuleName}),
 		newModule(betaModuleName, betaGVK, 2, map[string]any{"module-name": betaModuleName}),
 		newModule(gammaModuleName, gammaGVK, 2, map[string]any{"module-name": gammaModuleName}),
+		newModule(deltaModuleName, deltaGVK, 1, map[string]any{"module-name": deltaModuleName}),
+		newModule(epsilonModuleName, epsilonGVK, 3, map[string]any{"module-name": epsilonModuleName}),
 	}
 }
 
@@ -58,7 +63,8 @@ func runlevelCleanupModules() []*module.Module {
 		newModule(alphaModuleName, alphaGVK, 1, nil),
 		newModule(betaModuleName, betaGVK, 2, nil),
 		newModule(gammaModuleName, gammaGVK, 2, nil),
-		newModule(gatedModuleName, gatedGVK, 1, nil),
+		newModule(deltaModuleName, deltaGVK, 1, nil),
+		newModule(epsilonModuleName, epsilonGVK, 3, nil),
 	}
 }
 
@@ -96,13 +102,17 @@ func prepareUpgradeScenario(t *testing.T, suite *isupport.Suite) {
 	}
 
 	g.Expect(suite.Client.Create(ctx, p)).To(Succeed())
-	g.Eventually(ctx, suite.K.Get(p)).Should(testsupport.HaveDistributionVersion(initialDistributionVersion))
+	g.Eventually(ctx, suite.K.Get(p)).Should(testsupport.HaveCurrentDistributionVersion(initialDistributionVersion))
 
 	suite.SetDistributionVersion(upgradedDistributionVersion)
 	g.Eventually(ctx, k8sm.Update(suite.K, testsupport.Platform(), func(p *configApi.Platform) {
-		p.Spec.Modules = suite.PlatformModuleNames()
+		p.Spec.Modules = initialRunlevelModuleNames
 	})).Should(
-		WithTransform(jq.Extract(`.spec.modules`), ConsistOf(suite.PlatformModuleNames())),
+		WithTransform(jq.Extract(`.spec.modules`), ConsistOf(initialRunlevelModuleNames)),
+	)
+
+	g.Eventually(ctx, suite.K.Get(testsupport.Platform())).Should(
+		testsupport.HaveTargetDistributionVersion(upgradedDistributionVersion),
 	)
 
 	g.Eventually(ctx, suite.K.Get(testsupport.Platform())).Should(testsupport.HaveRunlevel(1))

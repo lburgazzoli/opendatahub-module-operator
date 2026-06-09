@@ -120,6 +120,106 @@ func TestAdvanceRunlevelStaysWhenEnabledModuleVersionIsOutdated(t *testing.T) {
 	g.Expect(p.Status.Runlevel).To(Equal(1))
 }
 
+func TestAdvanceRunlevelDoesNotRewindForNewLowerRunlevelModule(t *testing.T) {
+	g := NewWithT(t)
+	ctx := t.Context()
+	scheme := testScheme(t)
+	actions := testActions()
+
+	p := newPlatform([]string{"alpha", "beta"}, 2)
+	beta := newPlatformOperator("beta", "2.0.0")
+	rr := testRR(t, scheme, p, beta)
+
+	err := actions.advanceRunlevel(ctx, rr)
+
+	g.Expect(err).NotTo(HaveOccurred())
+	g.Expect(p.Status.Runlevel).To(Equal(2))
+}
+
+func TestAdvanceRunlevelMovesToNewHigherRunlevelModule(t *testing.T) {
+	g := NewWithT(t)
+	ctx := t.Context()
+	scheme := testScheme(t)
+	actions := testActions()
+
+	p := newPlatform([]string{"alpha", "beta", "delta"}, 2)
+	beta := newPlatformOperator("beta", "2.0.0")
+	rr := testRR(t, scheme, p, beta)
+
+	err := actions.advanceRunlevel(ctx, rr)
+
+	g.Expect(err).NotTo(HaveOccurred())
+	g.Expect(p.Status.Runlevel).To(Equal(3))
+}
+
+func TestAggregateStatusKeepsCurrentUntilAllModulesConverge(t *testing.T) {
+	g := NewWithT(t)
+	ctx := t.Context()
+	scheme := testScheme(t)
+	actions := testActions()
+
+	p := newPlatform([]string{"alpha", "beta"}, 1)
+	alpha := newPlatformOperator("alpha", "1.0.0")
+	beta := newPlatformOperator("beta", "2.0.0")
+	rr := testRR(t, scheme, p, alpha, beta)
+
+	err := actions.aggregateStatus(ctx, rr)
+
+	g.Expect(err).NotTo(HaveOccurred())
+	g.Expect(p.Status.Distribution.Target).To(Equal(configApi.Distribution{
+		Name:    "TestPlatform",
+		Version: "2.0.0",
+	}))
+	g.Expect(p.Status.Distribution.Current).To(Equal(configApi.Distribution{
+		Name:    "TestPlatform",
+		Version: "1.0.0",
+	}))
+	g.Expect(p.Status.Modules).To(ConsistOf(
+		configApi.ModuleStatusSummary{
+			Name:     "alpha",
+			Runlevel: 1,
+			Distribution: configApi.Distribution{
+				Name:    "TestPlatform",
+				Version: "1.0.0",
+			},
+		},
+		configApi.ModuleStatusSummary{
+			Name:     "beta",
+			Runlevel: 2,
+			Distribution: configApi.Distribution{
+				Name:    "TestPlatform",
+				Version: "2.0.0",
+			},
+		},
+	))
+	expectUpToDateCondition(t, p, metav1.ConditionFalse, "Updating", "current distribution does not match target")
+}
+
+func TestAggregateStatusPromotesCurrentWhenAllModulesConverge(t *testing.T) {
+	g := NewWithT(t)
+	ctx := t.Context()
+	scheme := testScheme(t)
+	actions := testActions()
+
+	p := newPlatform([]string{"alpha", "beta"}, 1)
+	alpha := newPlatformOperator("alpha", "2.0.0")
+	beta := newPlatformOperator("beta", "2.0.0")
+	rr := testRR(t, scheme, p, alpha, beta)
+
+	err := actions.aggregateStatus(ctx, rr)
+
+	g.Expect(err).NotTo(HaveOccurred())
+	g.Expect(p.Status.Distribution.Current).To(Equal(configApi.Distribution{
+		Name:    "TestPlatform",
+		Version: "2.0.0",
+	}))
+	g.Expect(p.Status.Distribution.Target).To(Equal(configApi.Distribution{
+		Name:    "TestPlatform",
+		Version: "2.0.0",
+	}))
+	expectUpToDateCondition(t, p, metav1.ConditionTrue, "UpToDate", "current distribution matches target")
+}
+
 func TestPruneModulesDeletesDisabledPlatformOperators(t *testing.T) {
 	g := NewWithT(t)
 	ctx := t.Context()
@@ -157,6 +257,25 @@ func TestPruneModulesKeepsDesiredPlatformOperators(t *testing.T) {
 	g.Expect(rr.Client.Get(ctx, client.ObjectKey{Name: "beta"}, &configApi.PlatformOperator{})).To(Succeed())
 }
 
+func TestPruneModulesDeletesUnexpectedUnknownPlatformOperators(t *testing.T) {
+	g := NewWithT(t)
+	ctx := t.Context()
+	scheme := testScheme(t)
+	actions := testActions()
+
+	p := newPlatform([]string{"alpha"}, 1)
+	alpha := newPlatformOperator("alpha", "2.0.0")
+	rogue := newPlatformOperator("rogue", "2.0.0")
+	rr := testRR(t, scheme, p, alpha, rogue)
+
+	err := actions.pruneModules(ctx, rr)
+
+	g.Expect(err).NotTo(HaveOccurred())
+	g.Expect(rr.Client.Get(ctx, client.ObjectKey{Name: "alpha"}, &configApi.PlatformOperator{})).To(Succeed())
+	g.Expect(rr.Client.Get(ctx, client.ObjectKey{Name: "rogue"}, &configApi.PlatformOperator{})).
+		To(Satisfy(k8serr.IsNotFound))
+}
+
 func TestCheckAdminAcks(t *testing.T) {
 	t.Run("allows modules without admin acks", func(t *testing.T) {
 		g := NewWithT(t)
@@ -169,7 +288,6 @@ func TestCheckAdminAcks(t *testing.T) {
 		err := actions.checkAdminAcks(ctx, rr)
 
 		g.Expect(err).NotTo(HaveOccurred())
-		expectNoModulesReadyCondition(t, p)
 	})
 
 	t.Run("missing configmap pauses gated modules", func(t *testing.T) {
@@ -192,7 +310,6 @@ func TestCheckAdminAcks(t *testing.T) {
 		g.Expect(err.Error()).To(ContainSubstring("adminAcks.alpha"))
 		g.Expect(err.Error()).To(ContainSubstring("modules: alpha"))
 		g.Expect(err.Error()).To(ContainSubstring("description: Acknowledge alpha rollout"))
-		expectModulesReadyCondition(t, p, metav1.ConditionFalse, "AdminAcksRequired", "Acknowledge alpha rollout")
 	})
 
 	t.Run("false ack pauses gated modules", func(t *testing.T) {
@@ -214,7 +331,6 @@ func TestCheckAdminAcks(t *testing.T) {
 		g.Expect(errors.As(err, &pauseErr)).To(BeTrue())
 		g.Expect(err.Error()).To(ContainSubstring(`value: "false"`))
 		g.Expect(err.Error()).To(ContainSubstring("description: Acknowledge alpha rollout"))
-		expectModulesReadyCondition(t, p, metav1.ConditionFalse, "AdminAcksRequired", `value: "false"`)
 	})
 
 	t.Run("true ack allows gated modules", func(t *testing.T) {
@@ -233,7 +349,6 @@ func TestCheckAdminAcks(t *testing.T) {
 		err := actions.checkAdminAcks(ctx, rr)
 
 		g.Expect(err).NotTo(HaveOccurred())
-		expectNoModulesReadyCondition(t, p)
 	})
 
 	t.Run("emits a warning event per unsatisfied ack", func(t *testing.T) {
@@ -309,7 +424,7 @@ func testActions() *PlatformReconciler {
 	return &PlatformReconciler{
 		registry: testRegistry(),
 		cfg: &config.Config{
-			Distribution: config.DistributionConfig{
+			Distribution: configApi.Distribution{
 				Name:    "TestPlatform",
 				Version: "2.0.0",
 			},
@@ -317,7 +432,7 @@ func testActions() *PlatformReconciler {
 	}
 }
 
-func expectModulesReadyCondition(
+func expectUpToDateCondition(
 	t *testing.T,
 	p *configApi.Platform,
 	status metav1.ConditionStatus,
@@ -329,7 +444,7 @@ func expectModulesReadyCondition(
 
 	var condition *common.Condition
 	for i := range p.GetConditions() {
-		if p.GetConditions()[i].Type == ConditionModulesReady {
+		if p.GetConditions()[i].Type == configApi.ConditionUpToDate {
 			condition = &p.GetConditions()[i]
 			break
 		}
@@ -340,15 +455,6 @@ func expectModulesReadyCondition(
 	g.Expect(condition.Reason).To(Equal(reason))
 	if messageSubstring != "" {
 		g.Expect(condition.Message).To(ContainSubstring(messageSubstring))
-	}
-}
-
-func expectNoModulesReadyCondition(t *testing.T, p *configApi.Platform) {
-	t.Helper()
-	g := NewWithT(t)
-
-	for i := range p.GetConditions() {
-		g.Expect(p.GetConditions()[i].Type).NotTo(Equal(ConditionModulesReady))
 	}
 }
 
@@ -402,7 +508,7 @@ func testRR(
 
 	return &odhTypes.ReconciliationRequest{
 		Client:     c,
-		Conditions: conditions.NewManager(platform, ConditionModulesReady),
+		Conditions: conditions.NewManager(platform, "Ready", configApi.ConditionUpToDate),
 		Instance:   platform,
 	}
 }
@@ -415,9 +521,15 @@ func newPlatform(modules []string, runlevel int) *configApi.Platform {
 		},
 		Status: configApi.PlatformStatus{
 			Runlevel: runlevel,
-			Distribution: configApi.DistributionInfo{
-				Name:    "TestPlatform",
-				Version: "1.0.0",
+			Distribution: configApi.DistributionStatus{
+				Current: configApi.Distribution{
+					Name:    "TestPlatform",
+					Version: "1.0.0",
+				},
+				Target: configApi.Distribution{
+					Name:    "TestPlatform",
+					Version: "2.0.0",
+				},
 			},
 		},
 	}
@@ -427,9 +539,15 @@ func newPlatformOperator(name string, version string) *configApi.PlatformOperato
 	return &configApi.PlatformOperator{
 		ObjectMeta: metav1.ObjectMeta{Name: name},
 		Status: configApi.PlatformOperatorStatus{
-			Distribution: configApi.DistributionInfo{
-				Name:    "TestPlatform",
-				Version: version,
+			Distribution: configApi.DistributionStatus{
+				Current: configApi.Distribution{
+					Name:    "TestPlatform",
+					Version: version,
+				},
+				Target: configApi.Distribution{
+					Name:    "TestPlatform",
+					Version: "2.0.0",
+				},
 			},
 		},
 	}

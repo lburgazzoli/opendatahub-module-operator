@@ -3,6 +3,7 @@
 package gates
 
 import (
+	"fmt"
 	"os"
 	"testing"
 
@@ -18,96 +19,110 @@ import (
 )
 
 func TestMain(m *testing.M) {
-	os.Exit(isupport.Run(m, isupport.RunConfig{
+	suite, err := isupport.Setup(isupport.RunConfig{
 		Modules:        gatesModules(),
 		CleanupModules: gatesCleanupModules(),
-	}))
+	})
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to setup integration suite: %v\n", err)
+		os.Exit(1)
+	}
+
+	code := suite.Run(m)
+	if err := suite.TearDown(); err != nil {
+		fmt.Fprintf(os.Stderr, "failed to teardown integration suite: %v\n", err)
+		if code == 0 {
+			code = 1
+		}
+	}
+
+	os.Exit(code)
 }
 
-func TestGates(t *testing.T) {
-	t.Run("admin ack transitions", testAdminAckTransitions)
+func TestMissingConfigMapBlocksGatedModules(t *testing.T) {
+	g := NewWithT(t)
+	ctx := t.Context()
+	suite := isupport.NewSuite(t)
+	suite.SetupTest(t)
+
+	g.Expect(suite.Client.Create(ctx, isupport.NewPlatformWithModules([]string{
+		alphaModuleName,
+		gatedModuleName,
+	}))).To(Succeed())
+
+	assertAdminAckBlocked(t, suite, "Acknowledge gated module rollout")
 }
 
-func testAdminAckTransitions(t *testing.T) {
-	t.Run("missing configmap blocks gated modules", func(t *testing.T) {
-		g := NewWithT(t)
-		ctx := t.Context()
-		suite := isupport.NewSuite(t)
-		suite.SetupTest(t)
+func TestFalseAdminAckBlocksGatedModules(t *testing.T) {
+	g := NewWithT(t)
+	ctx := t.Context()
+	suite := isupport.NewSuite(t)
+	suite.SetupTest(t)
 
-		g.Expect(suite.Client.Create(ctx, isupport.NewPlatformWithModules([]string{
-			alphaModuleName,
-			gatedModuleName,
-		}))).To(Succeed())
+	g.Expect(suite.Client.Create(ctx, isupport.NewPlatformWithModules([]string{
+		alphaModuleName,
+		gatedModuleName,
+	}))).To(Succeed())
 
-		assertAdminAckBlocked(t, suite, "Acknowledge gated module rollout")
-	})
+	namespace := &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: suite.Config.Namespace()}}
+	g.Expect(suite.Client.Create(ctx, namespace)).To(Or(
+		Succeed(),
+		Satisfy(k8serr.IsAlreadyExists),
+	))
 
-	t.Run("false admin ack blocks gated modules", func(t *testing.T) {
-		g := NewWithT(t)
-		ctx := t.Context()
-		suite := isupport.NewSuite(t)
-		suite.SetupTest(t)
+	adminAcks := isupport.AdminAcksConfigMap(suite.Config.Namespace())
+	adminAcks.Data = map[string]string{
+		testAdminAckKey: "false",
+	}
+	g.Expect(suite.Client.Create(ctx, adminAcks)).To(Succeed())
 
-		g.Expect(suite.Client.Create(ctx, isupport.NewPlatformWithModules([]string{
-			alphaModuleName,
-			gatedModuleName,
-		}))).To(Succeed())
+	assertAdminAckBlocked(t, suite, `value: "false"`)
+}
 
-		adminAcks := isupport.AdminAcksConfigMap(suite.Config.Namespace())
-		adminAcks.Data = map[string]string{
-			testAdminAckKey: "false",
-		}
-		g.Expect(suite.Client.Create(ctx, adminAcks)).To(Succeed())
+func TestUpdatingAdminAckFromFalseToTrueUnblocksModules(t *testing.T) {
+	g := NewWithT(t)
+	ctx := t.Context()
+	suite := isupport.NewSuite(t)
+	suite.SetupTest(t)
 
-		assertAdminAckBlocked(t, suite, `value: "false"`)
-	})
+	g.Expect(suite.Client.Create(ctx, isupport.NewPlatformWithModules([]string{
+		alphaModuleName,
+		gatedModuleName,
+	}))).To(Succeed())
 
-	t.Run("updating admin ack from false to true unblocks modules", func(t *testing.T) {
-		g := NewWithT(t)
-		ctx := t.Context()
-		suite := isupport.NewSuite(t)
-		suite.SetupTest(t)
+	namespace := &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: suite.Config.Namespace()}}
+	g.Expect(suite.Client.Create(ctx, namespace)).To(Or(
+		Succeed(),
+		Satisfy(k8serr.IsAlreadyExists),
+	))
 
-		g.Expect(suite.Client.Create(ctx, isupport.NewPlatformWithModules([]string{
-			alphaModuleName,
-			gatedModuleName,
-		}))).To(Succeed())
+	adminAcks := isupport.AdminAcksConfigMap(suite.Config.Namespace())
+	adminAcks.Data = map[string]string{
+		testAdminAckKey: "false",
+	}
+	g.Expect(suite.Client.Create(ctx, adminAcks)).To(Succeed())
 
-		namespace := &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: suite.Config.Namespace()}}
-		g.Expect(suite.Client.Create(ctx, namespace)).To(Or(
-			Succeed(),
-			Satisfy(k8serr.IsAlreadyExists),
-		))
+	assertAdminAckBlocked(t, suite, `value: "false"`)
 
-		adminAcks := isupport.AdminAcksConfigMap(suite.Config.Namespace())
-		adminAcks.Data = map[string]string{
-			testAdminAckKey: "false",
-		}
-		g.Expect(suite.Client.Create(ctx, adminAcks)).To(Succeed())
+	g.Eventually(
+		ctx,
+		k8sm.Update(
+			suite.K,
+			isupport.AdminAcksConfigMap(suite.Config.Namespace()),
+			func(cm *corev1.ConfigMap) {
+				cm.Data[testAdminAckKey] = "true"
+			},
+		),
+	).Should(
+		WithTransform(k8sm.Data(), HaveKeyWithValue(testAdminAckKey, Equal("true"))),
+	)
 
-		assertAdminAckBlocked(t, suite, `value: "false"`)
-
-		g.Eventually(
-			ctx,
-			k8sm.Update(
-				suite.K,
-				isupport.AdminAcksConfigMap(suite.Config.Namespace()),
-				func(cm *corev1.ConfigMap) {
-					cm.Data[testAdminAckKey] = "true"
-				},
-			),
-		).Should(
-			WithTransform(k8sm.Data(), HaveKeyWithValue(testAdminAckKey, Equal("true"))),
+	for _, moduleName := range []string{alphaModuleName, gatedModuleName} {
+		g.Eventually(ctx, suite.K.Get(testsupport.PlatformOperator(moduleName))).Should(
+			testsupport.HaveTrackedResources(),
 		)
-
-		for _, moduleName := range []string{alphaModuleName, gatedModuleName} {
-			g.Eventually(ctx, suite.K.Get(testsupport.PlatformOperator(moduleName))).Should(
-				testsupport.HaveTrackedResources(),
-			)
-		}
-		g.Eventually(ctx, suite.K.Get(testsupport.Platform())).Should(
-			jq.Match(`(.status.conditions // []) | all(.reason != "AdminAcksRequired")`),
-		)
-	})
+	}
+	g.Eventually(ctx, suite.K.Get(testsupport.Platform())).Should(
+		jq.Match(`(.status.conditions // []) | all(.reason != "AdminAcksRequired")`),
+	)
 }

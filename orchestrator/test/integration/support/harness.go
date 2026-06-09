@@ -39,21 +39,38 @@ import (
 	"github.com/lburgazzoli/opendatahub-module-operator/orchestrator/pkg/config"
 )
 
-const cleanupQuiescenceTimeout = 2 * time.Second
+const (
+	cleanupQuiescenceTimeout = 2 * time.Second
+	cleanupWaitTimeout       = 60 * time.Second
+)
 
 type cleanupSnapshot struct {
 	deletedRefs []configApi.ResourceRef
+}
+
+type suiteGomegaT struct {
+	err error
+}
+
+func (t *suiteGomegaT) Helper() {}
+
+func (t *suiteGomegaT) Fatalf(format string, args ...any) {
+	t.err = fmt.Errorf(format, args...)
 }
 
 func (suite *Suite) SetupTest(t *testing.T) {
 	t.Helper()
 
 	suite.resetConfig()
-	suite.resetClusterState(t)
+	suite.resetClusterState(t, t.Context())
 
 	t.Cleanup(func() {
 		suite.resetConfig()
-		suite.resetClusterState(t)
+
+		cleanupCtx, cancel := context.WithTimeout(context.Background(), cleanupWaitTimeout)
+		defer cancel()
+
+		suite.resetClusterState(t, cleanupCtx)
 	})
 }
 
@@ -155,17 +172,37 @@ func (suite *Suite) resetConfig() {
 	*suite.Config = baseConfig
 }
 
-func (suite *Suite) resetClusterState(t *testing.T) {
+func (suite *Suite) resetClusterState(t *testing.T, ctx context.Context) {
 	t.Helper()
 
-	snapshot := suite.snapshotClusterState(t)
+	snapshot := suite.snapshotClusterState(t, ctx)
 
-	suite.cleanupPlatformResources(t)
-	suite.deleteModuleCRsAndWait(t)
-	suite.assertClusterReset(t, snapshot)
+	suite.cleanupPlatformResources(t, ctx)
+	suite.deleteModuleCRsAndWait(t, ctx)
+	suite.deleteModuleNamespacesAndWait(t, ctx)
+	suite.assertClusterReset(t, ctx, snapshot)
 }
 
-func (suite *Suite) cleanupPlatformResources(t *testing.T) {
+func (suite *Suite) cleanupBeforeRun(ctx context.Context) error {
+	snapshot, err := suite.snapshotClusterStateNow(ctx)
+	if err != nil {
+		return err
+	}
+
+	if err := suite.cleanupPlatformResourcesNow(ctx); err != nil {
+		return err
+	}
+	if err := suite.deleteModuleCRsAndWaitNow(ctx); err != nil {
+		return err
+	}
+	if err := suite.deleteModuleNamespacesAndWaitNow(ctx); err != nil {
+		return err
+	}
+
+	return suite.waitForClusterReset(ctx, snapshot)
+}
+
+func (suite *Suite) cleanupPlatformResources(t *testing.T, ctx context.Context) {
 	t.Helper()
 	g := gomega.NewWithT(t)
 
@@ -195,12 +232,78 @@ func (suite *Suite) cleanupPlatformResources(t *testing.T) {
 	))
 	g.Eventually(ctx, suite.K.NotFound(AdminAcksConfigMap(suite.Config.Namespace()))).Should(gomega.BeTrue())
 
+	g.Eventually(func() error {
+		var poList configApi.PlatformOperatorList
+		if err := suite.Client.List(ctx, &poList); err != nil {
+			return err
+		}
+
+		propagation := metav1.DeletePropagationForeground
+		for i := range poList.Items {
+			po := &poList.Items[i]
+			if !po.GetDeletionTimestamp().IsZero() {
+				continue
+			}
+			if err := suite.Client.Delete(ctx, po, &client.DeleteOptions{
+				PropagationPolicy: &propagation,
+			}); err != nil && !k8serr.IsNotFound(err) {
+				return err
+			}
+		}
+
+		return nil
+	}).WithContext(ctx).Should(gomega.Succeed())
+
 	g.Eventually(suite.K.List(&configApi.PlatformOperatorList{})).
 		WithContext(ctx).
 		Should(k8sm.IsEmptyList())
 }
 
-func (suite *Suite) assertClusterReset(t *testing.T, snapshot cleanupSnapshot) {
+func (suite *Suite) cleanupPlatformResourcesNow(ctx context.Context) error {
+	p := &configApi.Platform{ObjectMeta: metav1.ObjectMeta{Name: configApi.PlatformInstanceName}}
+
+	if err := suite.Client.Get(ctx, client.ObjectKeyFromObject(p), p); err == nil {
+		if p.GetDeletionTimestamp().IsZero() {
+			if err := suite.Client.Delete(ctx, p); err != nil && !k8serr.IsNotFound(err) {
+				return fmt.Errorf("deleting platform %q: %w", p.GetName(), err)
+			}
+		}
+	} else if !k8serr.IsNotFound(err) {
+		return fmt.Errorf("getting platform %q: %w", p.GetName(), err)
+	}
+
+	adminAcks := AdminAcksConfigMap(suite.Config.Namespace())
+	if err := suite.Client.Delete(ctx, adminAcks); err != nil && !k8serr.IsNotFound(err) {
+		return fmt.Errorf(
+			"deleting admin-acks ConfigMap %s/%s: %w",
+			adminAcks.GetNamespace(),
+			adminAcks.GetName(),
+			err,
+		)
+	}
+
+	var poList configApi.PlatformOperatorList
+	if err := suite.Client.List(ctx, &poList); err != nil {
+		return fmt.Errorf("listing platformoperators: %w", err)
+	}
+
+	propagation := metav1.DeletePropagationForeground
+	for i := range poList.Items {
+		po := &poList.Items[i]
+		if !po.GetDeletionTimestamp().IsZero() {
+			continue
+		}
+		if err := suite.Client.Delete(ctx, po, &client.DeleteOptions{
+			PropagationPolicy: &propagation,
+		}); err != nil && !k8serr.IsNotFound(err) {
+			return fmt.Errorf("deleting platformoperator %q: %w", po.GetName(), err)
+		}
+	}
+
+	return nil
+}
+
+func (suite *Suite) assertClusterReset(t *testing.T, ctx context.Context, snapshot cleanupSnapshot) {
 	t.Helper()
 	g := gomega.NewWithT(t)
 
@@ -262,7 +365,13 @@ func (suite *Suite) checkClusterReset(ctx context.Context, snapshot cleanupSnaps
 	return nil
 }
 
-func (suite *Suite) deleteModuleCRsAndWait(t *testing.T) {
+func (suite *Suite) waitForClusterReset(ctx context.Context, snapshot cleanupSnapshot) error {
+	return eventuallySucceeds(ctx, func() error {
+		return suite.checkClusterReset(ctx, snapshot)
+	})
+}
+
+func (suite *Suite) deleteModuleCRsAndWait(t *testing.T, ctx context.Context) {
 	t.Helper()
 	g := gomega.NewWithT(t)
 
@@ -290,7 +399,68 @@ func (suite *Suite) deleteModuleCRsAndWait(t *testing.T) {
 	}
 }
 
-func (suite *Suite) snapshotClusterState(t *testing.T) cleanupSnapshot {
+func (suite *Suite) deleteModuleCRsAndWaitNow(ctx context.Context) error {
+	for _, mod := range suite.CleanupModules {
+		cr := newModuleCR(mod.GVK)
+		err := suite.Client.Delete(ctx, cr)
+		switch {
+		case k8serr.IsNotFound(err), apimeta.IsNoMatchError(err):
+		case err != nil:
+			return fmt.Errorf("deleting %s %s/%s: %w", mod.GVK.Kind, cr.GetNamespace(), cr.GetName(), err)
+		}
+
+		err = eventuallySucceeds(ctx, func() error {
+			fresh := newModuleCR(mod.GVK)
+			err := suite.Client.Get(ctx, client.ObjectKeyFromObject(fresh), fresh)
+			switch {
+			case k8serr.IsNotFound(err), apimeta.IsNoMatchError(err):
+				return nil
+			case err != nil:
+				return err
+			default:
+				return fmt.Errorf("%s %s/%s still exists", mod.GVK.Kind, fresh.GetNamespace(), fresh.GetName())
+			}
+		})
+		if err != nil {
+			return fmt.Errorf("waiting for %s %s/%s deletion: %w", mod.GVK.Kind, cr.GetNamespace(), cr.GetName(), err)
+		}
+	}
+
+	return nil
+}
+
+func (suite *Suite) deleteModuleNamespacesAndWait(t *testing.T, ctx context.Context) {
+	t.Helper()
+	g := gomega.NewWithT(t)
+
+	namespaces, err := suite.moduleNamespaces(ctx)
+	g.Expect(err).NotTo(gomega.HaveOccurred())
+
+	for _, namespaceName := range namespaces {
+		ns := &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: namespaceName}}
+		err := suite.Client.Delete(ctx, ns)
+		switch {
+		case k8serr.IsNotFound(err):
+		case err != nil:
+			g.Expect(err).NotTo(gomega.HaveOccurred())
+		}
+
+		g.Eventually(func() error {
+			fresh := &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: namespaceName}}
+			err := suite.Client.Get(ctx, client.ObjectKeyFromObject(fresh), fresh)
+			switch {
+			case k8serr.IsNotFound(err):
+				return nil
+			case err != nil:
+				return err
+			default:
+				return fmt.Errorf("namespace %q still exists", namespaceName)
+			}
+		}).WithContext(ctx).Should(gomega.Succeed())
+	}
+}
+
+func (suite *Suite) snapshotClusterState(t *testing.T, ctx context.Context) cleanupSnapshot {
 	t.Helper()
 	g := gomega.NewWithT(t)
 
@@ -338,6 +508,121 @@ func (suite *Suite) snapshotClusterState(t *testing.T) cleanupSnapshot {
 	}
 
 	return snapshot
+}
+
+func (suite *Suite) snapshotClusterStateNow(ctx context.Context) (cleanupSnapshot, error) {
+	snapshot := cleanupSnapshot{}
+	seen := sets.New[configApi.ResourceRef]()
+
+	var poList configApi.PlatformOperatorList
+	if err := suite.Client.List(ctx, &poList); err != nil {
+		return cleanupSnapshot{}, err
+	}
+
+	for i := range poList.Items {
+		for _, ref := range poList.Items[i].Status.Resources {
+			refGVK := schema.FromAPIVersionAndKind(ref.APIVersion, ref.Kind)
+			if resourceShouldSurviveReset(refGVK) || seen.Has(ref) {
+				continue
+			}
+			seen.Insert(ref)
+			snapshot.deletedRefs = append(snapshot.deletedRefs, ref)
+		}
+	}
+
+	for _, mod := range suite.CleanupModules {
+		cr := newModuleCR(mod.GVK)
+		err := suite.Client.Get(ctx, client.ObjectKeyFromObject(cr), cr)
+		switch {
+		case k8serr.IsNotFound(err), apimeta.IsNoMatchError(err):
+			continue
+		case err != nil:
+			return cleanupSnapshot{}, err
+		default:
+			ref := configApi.ResourceRef{
+				APIVersion: cr.GetAPIVersion(),
+				Kind:       cr.GetKind(),
+				Namespace:  cr.GetNamespace(),
+				Name:       cr.GetName(),
+			}
+			if seen.Has(ref) {
+				continue
+			}
+			seen.Insert(ref)
+			snapshot.deletedRefs = append(snapshot.deletedRefs, ref)
+		}
+	}
+
+	return snapshot, nil
+}
+
+func (suite *Suite) deleteModuleNamespacesAndWaitNow(ctx context.Context) error {
+	namespaces, err := suite.moduleNamespaces(ctx)
+	if err != nil {
+		return err
+	}
+
+	for _, namespaceName := range namespaces {
+		ns := &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: namespaceName}}
+		if err := suite.Client.Delete(ctx, ns); err != nil && !k8serr.IsNotFound(err) {
+			return fmt.Errorf("deleting namespace %q: %w", namespaceName, err)
+		}
+
+		err := eventuallySucceeds(ctx, func() error {
+			fresh := &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: namespaceName}}
+			err := suite.Client.Get(ctx, client.ObjectKeyFromObject(fresh), fresh)
+			switch {
+			case k8serr.IsNotFound(err):
+				return nil
+			case err != nil:
+				return err
+			default:
+				return fmt.Errorf("namespace %q still exists", namespaceName)
+			}
+		})
+		if err != nil {
+			return fmt.Errorf("waiting for namespace %q deletion: %w", namespaceName, err)
+		}
+	}
+
+	return nil
+}
+
+func (suite *Suite) moduleNamespaces(ctx context.Context) ([]string, error) {
+	namespaces := sets.New[string]()
+	for _, mod := range suite.CleanupModules {
+		if mod.Namespace != "" {
+			namespaces.Insert(mod.Namespace)
+		}
+	}
+
+	var poList configApi.PlatformOperatorList
+	if err := suite.Client.List(ctx, &poList); err != nil {
+		return nil, fmt.Errorf("listing platformoperators for namespaces: %w", err)
+	}
+
+	for i := range poList.Items {
+		for _, ref := range poList.Items[i].Status.Resources {
+			if ref.Kind == "Namespace" && ref.Name != "" {
+				namespaces.Insert(ref.Name)
+			}
+		}
+	}
+
+	return sets.List(namespaces), nil
+}
+
+func eventuallySucceeds(ctx context.Context, actual func() error) error {
+	tt := &suiteGomegaT{}
+	g := gomega.NewWithT(tt)
+
+	g.Eventually(actual).
+		WithContext(ctx).
+		WithTimeout(cleanupWaitTimeout).
+		WithPolling(Interval).
+		Should(gomega.Succeed())
+
+	return tt.err
 }
 
 func resourceShouldSurviveReset(gvk schema.GroupVersionKind) bool {

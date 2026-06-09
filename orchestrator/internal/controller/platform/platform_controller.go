@@ -34,10 +34,6 @@ import (
 	"github.com/opendatahub-io/operator-actions-framework/controller/reconciler"
 )
 
-const (
-	ConditionModulesReady = "ModulesReady"
-)
-
 // +kubebuilder:rbac:groups=config.opendatahub.io,resources=platforms,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=config.opendatahub.io,resources=platforms/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=config.opendatahub.io,resources=platforms/finalizers,verbs=update
@@ -51,8 +47,7 @@ func NewReconciler(
 	registry *module.ModuleRegistry,
 	cfg *config.Config,
 ) error {
-	rel := cfg.Release()
-	actions := &PlatformReconciler{
+	r := &PlatformReconciler{
 		registry: registry,
 		cfg:      cfg,
 		recorder: mgr.GetEventRecorder("platform-controller"),
@@ -73,19 +68,22 @@ func NewReconciler(
 			),
 		).
 		WithReconcilerOpts(
-			reconciler.WithRelease(api.Release{Name: rel.Name, Version: rel.Version.Version}),
+			reconciler.WithRelease(api.Release{
+				Name:    cfg.Release().Name,
+				Version: cfg.Release().Version.Version,
+			}),
 		).
-		WithAction(actions.initialize).
-		WithAction(actions.checkAdminAcks).
-		WithAction(actions.ensureModules).
+		WithAction(r.initialize).
+		WithAction(r.checkAdminAcks).
+		WithAction(r.ensureModules).
 		WithAction(deploy.NewAction(
-			deploy.WithCache()),
-		).
-		WithAction(actions.pruneModules).
-		WithAction(actions.advanceRunlevel).
-		WithAction(actions.aggregateStatus).
+			deploy.WithApplyOrder(),
+		)).
+		WithAction(r.pruneModules).
+		WithAction(r.advanceRunlevel).
+		WithAction(r.aggregateStatus).
 		WithConditions(
-			ConditionModulesReady,
+			configApi.ConditionUpToDate,
 		).
 		Build(ctx)
 

@@ -23,20 +23,27 @@ import (
 )
 
 func TestMain(m *testing.M) {
-	os.Exit(isupport.Run(m, isupport.RunConfig{
+	suite, err := isupport.Setup(isupport.RunConfig{
 		Modules:        foundationModules(),
 		CleanupModules: foundationCleanupModules(),
-	}))
+	})
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to setup integration suite: %v\n", err)
+		os.Exit(1)
+	}
+
+	code := suite.Run(m)
+	if err := suite.TearDown(); err != nil {
+		fmt.Fprintf(os.Stderr, "failed to teardown integration suite: %v\n", err)
+		if code == 0 {
+			code = 1
+		}
+	}
+
+	os.Exit(code)
 }
 
-func TestFoundation(t *testing.T) {
-	t.Run("empty platform should reconcile", testEmptyPlatform)
-	t.Run("module deployment", testModuleDeployment)
-	t.Run("module version propagation", testVersionPropagation)
-	t.Run("disabling modules should clean up resources", testDisableModules)
-}
-
-func testEmptyPlatform(t *testing.T) {
+func TestEmptyPlatformReconciles(t *testing.T) {
 	g := NewWithT(t)
 	ctx := t.Context()
 	suite := isupport.NewSuite(t)
@@ -49,14 +56,14 @@ func testEmptyPlatform(t *testing.T) {
 	g.Expect(suite.Client.Create(ctx, p)).To(Succeed())
 
 	g.Eventually(ctx, suite.K.Get(p)).Should(
-		jq.Match(`(.status.distribution.version // "") | length > 0`),
+		jq.Match(`(.status.distribution.current.version // "") | length > 0`),
 	)
 	g.Eventually(ctx, suite.K.List(&configApi.PlatformOperatorList{})).Should(
 		k8sm.IsEmptyList(),
 	)
 }
 
-func testModuleDeployment(t *testing.T) {
+func TestModuleDeployment(t *testing.T) {
 	g := NewWithT(t)
 	ctx := t.Context()
 	suite := isupport.NewSuite(t)
@@ -194,7 +201,7 @@ func testModuleDeployment(t *testing.T) {
 	})
 }
 
-func testVersionPropagation(t *testing.T) {
+func TestModuleVersionPropagation(t *testing.T) {
 	g := NewWithT(t)
 	ctx := t.Context()
 	suite := isupport.NewSuite(t)
@@ -215,11 +222,11 @@ func testVersionPropagation(t *testing.T) {
 	isupport.UpsertModuleCRWithVersion(t, suite, mod.GVK, "test-version")
 
 	g.Eventually(ctx, suite.K.Get(testsupport.PlatformOperator(mod.EffectiveName()))).Should(
-		testsupport.HaveDistributionVersion("test-version"),
+		testsupport.HaveCurrentDistributionVersion("test-version"),
 	)
 }
 
-func testDisableModules(t *testing.T) {
+func TestDisablingModulesCleansUpResources(t *testing.T) {
 	g := NewWithT(t)
 	ctx := t.Context()
 	suite := isupport.NewSuite(t)

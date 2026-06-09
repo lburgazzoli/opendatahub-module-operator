@@ -16,6 +16,7 @@ import (
 	configApi "github.com/lburgazzoli/opendatahub-module-operator/orchestrator/api/config/v1alpha1"
 	"github.com/lburgazzoli/opendatahub-module-operator/orchestrator/pkg/config"
 	"github.com/lburgazzoli/opendatahub-module-operator/orchestrator/pkg/module"
+	odhresources "github.com/lburgazzoli/opendatahub-module-operator/orchestrator/pkg/resources"
 	actionerrors "github.com/opendatahub-io/operator-actions-framework/controller/actions/errors"
 	"github.com/opendatahub-io/operator-actions-framework/controller/types"
 )
@@ -137,6 +138,48 @@ func adminAcksPauseError(namespace string, unsatisfied []unsatisfiedAdminAck) er
 	)
 }
 
+func (a *PlatformReconciler) reportModulePruned(obj runtime.Object, name string) {
+	if a.recorder == nil {
+		return
+	}
+	a.recorder.Eventf(
+		obj,
+		nil,
+		corev1.EventTypeNormal,
+		"ModulePruned",
+		"PruneModule",
+		"PlatformOperator %q pruned (not in spec.modules)",
+		name,
+	)
+}
+
+func (a *PlatformReconciler) moduleStatus(
+	ctx context.Context,
+	cli client.Client,
+	m *module.Module,
+) (configApi.ModuleStatusSummary, error) {
+	summary := configApi.ModuleStatusSummary{
+		Name:     m.EffectiveName(),
+		Runlevel: m.Runlevel,
+	}
+
+	po := &configApi.PlatformOperator{}
+	po.SetName(m.EffectiveName())
+
+	err := odhresources.Get(ctx, cli, po)
+
+	switch {
+	case k8serr.IsNotFound(err):
+		return summary, nil
+	case err != nil:
+		return summary, fmt.Errorf("getting PlatformOperator %q: %w", m.EffectiveName(), err)
+	default:
+		summary.Distribution = po.Status.Distribution.Current
+	}
+
+	return summary, nil
+}
+
 func (a *PlatformReconciler) reportUnsatisfiedAdminAcks(obj runtime.Object, unsatisfied []unsatisfiedAdminAck) {
 	if a.recorder == nil {
 		return
@@ -147,7 +190,7 @@ func (a *PlatformReconciler) reportUnsatisfiedAdminAcks(obj runtime.Object, unsa
 			nil,
 			corev1.EventTypeWarning,
 			"AdminAckRequired",
-			"",
+			"WaitForAdminAck",
 			"Admin ack %q required: %s",
 			ack.Name,
 			formatUnsatisfiedAdminAck(ack),
@@ -175,19 +218,21 @@ func (a *PlatformReconciler) runlevelComplete(
 	obj *configApi.Platform,
 	level int,
 ) (bool, error) {
-	upgradeInProgress := obj.Status.Distribution.Version != "" &&
-		obj.Status.Distribution.Version != a.cfg.Distribution.Version
+	upgradeInProgress := obj.Status.Distribution.Current.Version != "" &&
+		obj.Status.Distribution.Current.Version != obj.Status.Distribution.Target.Version
 
 	for _, m := range a.enabledModulesAtRunlevel(obj, level) {
 		po := &configApi.PlatformOperator{}
-		err := rr.Client.Get(ctx, client.ObjectKey{Name: m.EffectiveName()}, po)
+		po.SetName(m.EffectiveName())
+
+		err := odhresources.Get(ctx, rr.Client, po)
 
 		switch {
 		case k8serr.IsNotFound(err):
 			return false, nil
 		case err != nil:
 			return false, fmt.Errorf("getting PlatformOperator %q: %w", m.EffectiveName(), err)
-		case upgradeInProgress && po.Status.Distribution.Version != a.cfg.Distribution.Version:
+		case upgradeInProgress && po.Status.Distribution.Current.Version != obj.Status.Distribution.Target.Version:
 			return false, nil
 		}
 	}

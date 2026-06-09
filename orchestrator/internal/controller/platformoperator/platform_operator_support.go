@@ -26,6 +26,7 @@ import (
 	odhLabels "github.com/opendatahub-io/opendatahub-operator/v2/pkg/metadata/labels"
 	"github.com/opendatahub-io/operator-actions-framework/controller/types"
 	"github.com/opendatahub-io/operator-actions-framework/resources"
+	corev1 "k8s.io/api/core/v1"
 	k8serr "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -139,16 +140,18 @@ func (r *ModuleReconciler) computeValues(
 
 func (r *ModuleReconciler) readModuleVersion(
 	ctx context.Context,
-	c client.Reader,
+	c client.Client,
 	mc *moduleContext,
 ) (string, error) {
 	list := &unstructured.UnstructuredList{}
 	list.SetGroupVersionKind(mc.module.GVK)
 
-	if err := c.List(ctx, list); err != nil {
-		if k8serr.IsNotFound(err) {
-			return "", nil
-		}
+	err := c.List(ctx, list)
+
+	switch {
+	case k8serr.IsNotFound(err):
+		return "", nil
+	case err != nil:
 		return "", fmt.Errorf("listing module CR %s: %w", mc.module.GVK.Kind, err)
 	}
 
@@ -165,4 +168,27 @@ func (r *ModuleReconciler) readModuleVersion(
 	}
 
 	return version, nil
+}
+
+func (r *ModuleReconciler) reportRunlevelBlocked(
+	obj client.Object,
+	moduleName string,
+	requiredRunlevel int,
+	currentRunlevel int,
+) {
+	if r.recorder == nil {
+		return
+	}
+
+	r.recorder.Eventf(
+		obj,
+		nil,
+		corev1.EventTypeNormal,
+		"RunlevelBlocked",
+		"WaitForRunlevel",
+		"module %q: waiting for runlevel %d (current: %d)",
+		moduleName,
+		requiredRunlevel,
+		currentRunlevel,
+	)
 }

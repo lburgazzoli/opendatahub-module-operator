@@ -7,16 +7,15 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/lburgazzoli/gomega-matchers/pkg/matchers/jq"
 	k8sm "github.com/lburgazzoli/gomega-matchers/pkg/matchers/k8s"
 	. "github.com/onsi/gomega"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	configApi "github.com/lburgazzoli/opendatahub-module-operator/orchestrator/api/config/v1alpha1"
 	"github.com/lburgazzoli/opendatahub-module-operator/orchestrator/pkg/module"
 	isupport "github.com/lburgazzoli/opendatahub-module-operator/orchestrator/test/integration/support"
-	testsupport "github.com/lburgazzoli/opendatahub-module-operator/orchestrator/test/support"
 )
 
 const (
@@ -87,19 +86,20 @@ func newModule(
 func assertAdminAckBlocked(t *testing.T, suite *isupport.Suite, messageSubstring string) {
 	t.Helper()
 	g := NewWithT(t)
+	ctx := t.Context()
 
-	g.Eventually(t.Context(), suite.K.List(&configApi.PlatformOperatorList{})).Should(
+	g.Eventually(ctx, suite.K.List(&configApi.PlatformOperatorList{})).Should(
 		k8sm.IsEmptyList(),
 	)
-	g.Eventually(t.Context(), suite.K.Get(testsupport.Platform())).Should(
-		jq.Matchf(
-			`(.status.conditions // []) | any(
-				.type == "ModulesReady" and
-				.status == "False" and
-				.reason == "AdminAcksRequired" and
-				(.message | contains(%q))
-			)`,
-			messageSubstring,
+	g.Eventually(ctx, suite.K.HasEvent(
+		SatisfyAll(
+			HaveField("Reason", Equal("AdminAckRequired")),
+			HaveField("Action", Equal("WaitForAdminAck")),
+			HaveField("Message", ContainSubstring(messageSubstring)),
 		),
-	)
+		k8sm.ForObject(corev1.ObjectReference{
+			Kind: configApi.PlatformKind,
+			Name: configApi.PlatformInstanceName,
+		}),
+	)).Should(BeTrue())
 }

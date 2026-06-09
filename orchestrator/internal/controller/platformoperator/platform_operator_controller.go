@@ -45,11 +45,10 @@ func NewModuleReconciler(
 	cfg *config.Config,
 ) error {
 	r := &ModuleReconciler{
-		registry:  registry,
-		cfg:       cfg,
-		client:    mgr.GetClient(),
-		apiReader: mgr.GetAPIReader(),
-		contexts:  make(map[string]*moduleContext),
+		registry: registry,
+		cfg:      cfg,
+		recorder: mgr.GetEventRecorder("platformoperator-controller"),
+		contexts: make(map[string]*moduleContext),
 	}
 
 	b := reconciler.ReconcilerFor(mgr, &configApi.PlatformOperator{}).
@@ -89,8 +88,8 @@ func NewModuleReconciler(
 	return err
 }
 
-// platformChangePredicate triggers only when the Platform CR's runlevel
-// or distribution version changes.
+// platformChangePredicate triggers only when the Platform CR's runlevel or
+// current/target distribution version changes.
 func (r *ModuleReconciler) platformChangePredicate() predicate.Predicate {
 	extractRunlevel := func(obj client.Object) int64 {
 		if u, ok := obj.(*unstructured.Unstructured); ok {
@@ -100,9 +99,17 @@ func (r *ModuleReconciler) platformChangePredicate() predicate.Predicate {
 		return 0
 	}
 
-	extractVersion := func(obj client.Object) string {
+	extractCurrentVersion := func(obj client.Object) string {
 		if u, ok := obj.(*unstructured.Unstructured); ok {
-			v, _, _ := unstructured.NestedString(u.Object, "status", "distribution", "version")
+			v, _, _ := unstructured.NestedString(u.Object, "status", "distribution", "current", "version")
+			return v
+		}
+		return ""
+	}
+
+	extractTargetVersion := func(obj client.Object) string {
+		if u, ok := obj.(*unstructured.Unstructured); ok {
+			v, _, _ := unstructured.NestedString(u.Object, "status", "distribution", "target", "version")
 			return v
 		}
 		return ""
@@ -116,7 +123,10 @@ func (r *ModuleReconciler) platformChangePredicate() predicate.Predicate {
 			if extractRunlevel(e.ObjectOld) != extractRunlevel(e.ObjectNew) {
 				return true
 			}
-			if extractVersion(e.ObjectOld) != extractVersion(e.ObjectNew) {
+			if extractCurrentVersion(e.ObjectOld) != extractCurrentVersion(e.ObjectNew) {
+				return true
+			}
+			if extractTargetVersion(e.ObjectOld) != extractTargetVersion(e.ObjectNew) {
 				return true
 			}
 			return false
@@ -125,44 +135,18 @@ func (r *ModuleReconciler) platformChangePredicate() predicate.Predicate {
 }
 
 // eligibleModuleRequests maps a Platform CR event to reconcile requests for
-// PlatformOperator CRs whose modules are at an eligible runlevel and haven't
-// yet reported the expected distribution version.
+// all registered modules. The reconcile logic (checkRunlevel) decides whether
+// each module should proceed, pause, or no-op.
 func (r *ModuleReconciler) eligibleModuleRequests(
-	ctx context.Context,
-	obj client.Object,
+	_ context.Context,
+	_ client.Object,
 ) []ctrl.Request {
-	targetDistribution := configApi.DistributionInfo{
-		Name:    r.cfg.Distribution.Name,
-		Version: r.cfg.Distribution.Version,
-	}
-
-	p := &configApi.Platform{}
-	if err := r.client.Get(ctx, client.ObjectKey{Name: configApi.PlatformInstanceName}, p); err != nil {
-		return nil
-	}
-
-	var list configApi.PlatformOperatorList
-	if err := r.client.List(ctx, &list); err != nil {
-		return nil
-	}
-
-	var requests []ctrl.Request
-	for i := range list.Items {
-		po := &list.Items[i]
-		m := r.registry.ModuleByName(po.Name)
-
-		switch {
-		case m == nil:
-			continue
-		case m.Runlevel > p.Status.Runlevel:
-			continue
-		case po.Status.Distribution == targetDistribution:
-			continue
-		default:
-			requests = append(requests, ctrl.Request{
-				NamespacedName: client.ObjectKeyFromObject(po),
-			})
-		}
+	modules := r.registry.Modules()
+	requests := make([]ctrl.Request, 0, len(modules))
+	for _, m := range modules {
+		requests = append(requests, ctrl.Request{
+			NamespacedName: client.ObjectKey{Name: m.EffectiveName()},
+		})
 	}
 
 	return requests

@@ -56,8 +56,6 @@ const (
 )
 
 var (
-	ctx        context.Context
-	cancel     context.CancelFunc
 	kubeConfig *rest.Config
 	testConfig *config.Config
 	baseConfig config.Config
@@ -81,15 +79,18 @@ type RunConfig struct {
 	CleanupModules []*module.Module
 }
 
+type MainSuite struct {
+	cancel context.CancelFunc
+}
+
 func init() {
 	utilruntime.Must(clientgoscheme.AddToScheme(testScheme))
 	utilruntime.Must(apiextensionsv1.AddToScheme(testScheme))
 	utilruntime.Must(configApi.AddToScheme(testScheme))
 }
 
-func Run(m *testing.M, cfg RunConfig) int {
-	ctx, cancel = context.WithCancel(context.Background())
-	defer cancel()
+func Setup(cfg RunConfig) (*MainSuite, error) {
+	ctx, cancel := context.WithCancel(context.Background())
 
 	ctrl.SetLogger(zap.New(zap.UseDevMode(true)))
 
@@ -97,14 +98,14 @@ func Run(m *testing.M, cfg RunConfig) int {
 	var chartPath string
 	kubeConfig, chartPath, err = setupEnv()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to setup environment: %v\n", err)
-		return 1
+		cancel()
+		return nil, fmt.Errorf("setting up environment: %w", err)
 	}
 
 	selectedModules, err = normalizeModules(cfg.Modules, chartPath)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to normalize test modules: %v\n", err)
-		return 1
+		cancel()
+		return nil, fmt.Errorf("normalizing test modules: %w", err)
 	}
 
 	if len(cfg.CleanupModules) == 0 {
@@ -113,37 +114,93 @@ func Run(m *testing.M, cfg RunConfig) int {
 		cleanupModules, err = normalizeModules(cfg.CleanupModules, chartPath)
 	}
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to normalize cleanup modules: %v\n", err)
-		return 1
+		cancel()
+		return nil, fmt.Errorf("normalizing cleanup modules: %w", err)
 	}
 
-	if err := setupManager(kubeConfig, selectedModules); err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to setup manager: %v\n", err)
-		return 1
+	if err := loadTestConfig(); err != nil {
+		cancel()
+		return nil, fmt.Errorf("loading test config: %w", err)
+	}
+
+	suite, err := newSuite()
+	if err != nil {
+		cancel()
+		return nil, fmt.Errorf("creating cleanup client: %w", err)
+	}
+
+	if err := suite.cleanupBeforeRun(ctx); err != nil {
+		cancel()
+		return nil, fmt.Errorf("cleaning cluster state before run: %w", err)
+	}
+
+	if err := setupManager(ctx, kubeConfig, selectedModules); err != nil {
+		cancel()
+		return nil, fmt.Errorf("setting up manager: %w", err)
 	}
 
 	gomega.SetDefaultEventuallyTimeout(Timeout)
 	gomega.SetDefaultEventuallyPollingInterval(Interval)
 
+	return &MainSuite{cancel: cancel}, nil
+}
+
+func (suite *MainSuite) Run(m *testing.M) int {
 	return m.Run()
+}
+
+func (suite *MainSuite) TearDown() error {
+	defer suite.cancel()
+
+	cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), cleanupWaitTimeout)
+	defer cleanupCancel()
+
+	cleanupSuite, err := newSuite()
+	if err != nil {
+		return fmt.Errorf("creating teardown cleanup client: %w", err)
+	}
+
+	if err := cleanupSuite.cleanupBeforeRun(cleanupCtx); err != nil {
+		return fmt.Errorf("cleaning cluster state during teardown: %w", err)
+	}
+
+	return nil
+}
+
+func Run(m *testing.M, cfg RunConfig) int {
+	suite, err := Setup(cfg)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to setup integration suite: %v\n", err)
+		return 1
+	}
+
+	code := suite.Run(m)
+
+	if err := suite.TearDown(); err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to teardown integration suite: %v\n", err)
+		if code == 0 {
+			code = 1
+		}
+	}
+
+	return code
 }
 
 func NewSuite(t *testing.T) *Suite {
 	t.Helper()
 
-	httpClient, err := rest.HTTPClientFor(kubeConfig)
+	suite, err := newSuite()
 	if err != nil {
-		t.Fatalf("creating HTTP client: %v", err)
+		t.Fatalf("creating test suite: %v", err)
 	}
 
-	mapper, err := apiutil.NewDynamicRESTMapper(kubeConfig, httpClient)
-	if err != nil {
-		t.Fatalf("creating REST mapper: %v", err)
-	}
+	return suite
+}
 
-	cli, err := client.New(kubeConfig, client.Options{Scheme: testScheme, Mapper: mapper})
+func newSuite() (*Suite, error) {
+	cli, err := newClient(kubeConfig)
 	if err != nil {
-		t.Fatalf("creating test client: %v", err)
+		return nil, err
 	}
 
 	return &Suite{
@@ -152,7 +209,26 @@ func NewSuite(t *testing.T) *Suite {
 		Config:         testConfig,
 		Client:         cli,
 		K:              k8sm.NewResources(cli, testScheme),
+	}, nil
+}
+
+func newClient(kc *rest.Config) (client.Client, error) {
+	httpClient, err := rest.HTTPClientFor(kc)
+	if err != nil {
+		return nil, fmt.Errorf("creating HTTP client: %w", err)
 	}
+
+	mapper, err := apiutil.NewDynamicRESTMapper(kc, httpClient)
+	if err != nil {
+		return nil, fmt.Errorf("creating REST mapper: %w", err)
+	}
+
+	cli, err := client.New(kc, client.Options{Scheme: testScheme, Mapper: mapper})
+	if err != nil {
+		return nil, fmt.Errorf("creating client: %w", err)
+	}
+
+	return cli, nil
 }
 
 func setupEnv() (*rest.Config, string, error) {
@@ -172,15 +248,7 @@ func setupEnv() (*rest.Config, string, error) {
 	return cfg, chartPath, nil
 }
 
-func setupManager(kc *rest.Config, modules []*module.Module) error {
-	var err error
-
-	testConfig, err = config.LoadFromFS(nil)
-	if err != nil {
-		return fmt.Errorf("loading config: %w", err)
-	}
-	baseConfig = *testConfig
-
+func setupManager(ctx context.Context, kc *rest.Config, modules []*module.Module) error {
 	registry := module.NewModuleRegistry(testConfig.Namespace(), testConfig.ChartsPath)
 
 	for _, mod := range modules {
@@ -215,6 +283,20 @@ func setupManager(kc *rest.Config, modules []*module.Module) error {
 	if !ctrlMgr.GetCache().WaitForCacheSync(ctx) {
 		return fmt.Errorf("waiting for manager cache sync")
 	}
+
+	return nil
+}
+
+func loadTestConfig() error {
+	cfg, err := config.LoadFromFS(nil)
+	if err != nil {
+		return fmt.Errorf("loading config: %w", err)
+	}
+
+	cfg.Distribution.Name = "Standalone"
+
+	testConfig = cfg
+	baseConfig = *cfg
 
 	return nil
 }

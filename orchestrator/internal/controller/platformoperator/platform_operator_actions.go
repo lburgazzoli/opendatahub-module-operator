@@ -34,6 +34,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	configApi "github.com/lburgazzoli/opendatahub-module-operator/orchestrator/api/config/v1alpha1"
+	odhresources "github.com/lburgazzoli/opendatahub-module-operator/orchestrator/pkg/resources"
 	"github.com/lburgazzoli/opendatahub-module-operator/orchestrator/pkg/resources/gvk"
 	actionerrors "github.com/opendatahub-io/operator-actions-framework/controller/actions/errors"
 	"github.com/opendatahub-io/operator-actions-framework/controller/types"
@@ -120,21 +121,25 @@ func (r *ModuleReconciler) checkRunlevel(ctx context.Context, rr *types.Reconcil
 	}
 
 	p := &configApi.Platform{}
-	if err := r.client.Get(ctx, client.ObjectKey{Name: configApi.PlatformInstanceName}, p); err != nil {
-		if k8serr.IsNotFound(err) {
-			return actionerrors.NewPauseError(
-				platformLookupPauseDelay,
-				"waiting for Platform %q",
-				configApi.PlatformInstanceName,
-			)
-		}
+	p.SetName(configApi.PlatformInstanceName)
+	err = odhresources.Get(ctx, rr.Client, p)
+
+	switch {
+	case k8serr.IsNotFound(err):
+		return actionerrors.NewPauseError(
+			platformLookupPauseDelay,
+			"waiting for Platform %q",
+			configApi.PlatformInstanceName,
+		)
+	case err != nil:
 		return fmt.Errorf("getting Platform CR: %w", err)
 	}
 
-	upgradeInProgress := p.Status.Distribution.Version != "" &&
-		p.Status.Distribution.Version != r.cfg.Distribution.Version
+	upgradeInProgress := p.Status.Distribution.Current.Version != "" &&
+		p.Status.Distribution.Current.Version != p.Status.Distribution.Target.Version
 
 	if upgradeInProgress && mc.module.Runlevel > p.Status.Runlevel {
+		r.reportRunlevelBlocked(rr.Instance, mc.module.EffectiveName(), mc.module.Runlevel, p.Status.Runlevel)
 		return actionerrors.NewPauseError(
 			defaultPauseDelay,
 			"module %q: waiting for runlevel %d (current: %d)",
@@ -211,8 +216,6 @@ func (r *ModuleReconciler) pruneOrphans(ctx context.Context, rr *types.Reconcili
 	current := sets.New(ToResourceRefs(rr.Resources)...)
 	previous := sets.New(obj.Status.Resources...)
 
-	propagation := metav1.DeletePropagationForeground
-
 	for ref := range previous.Difference(current) {
 		refGVK := schema.FromAPIVersionAndKind(ref.APIVersion, ref.Kind)
 
@@ -227,10 +230,11 @@ func (r *ModuleReconciler) pruneOrphans(ctx context.Context, rr *types.Reconcili
 		target.SetNamespace(ref.Namespace)
 		target.SetName(ref.Name)
 
-		err := rr.Client.Delete(ctx, target, &client.DeleteOptions{
-			PropagationPolicy: &propagation,
-		})
-		if err != nil && !k8serr.IsNotFound(err) {
+		err := rr.Client.Delete(ctx, target, client.PropagationPolicy(metav1.DeletePropagationForeground))
+
+		switch {
+		case k8serr.IsNotFound(err):
+		case err != nil:
 			return fmt.Errorf("pruning orphan %s/%s %s/%s: %w", ref.APIVersion, ref.Kind, ref.Namespace, ref.Name, err)
 		}
 	}
@@ -254,12 +258,16 @@ func (r *ModuleReconciler) reportStatus(ctx context.Context, rr *types.Reconcili
 	obj.Status.Runlevel = mc.module.Runlevel
 	obj.Status.Chart = mc.chartInfo
 
-	version, err := r.readModuleVersion(ctx, r.apiReader, mc)
+	version, err := r.readModuleVersion(ctx, rr.Client, mc)
 	if err != nil {
 		return err
 	}
 
-	obj.Status.Distribution = configApi.DistributionInfo{
+	obj.Status.Distribution.Target = configApi.Distribution{
+		Name:    r.cfg.Distribution.Name,
+		Version: r.cfg.Distribution.Version,
+	}
+	obj.Status.Distribution.Current = configApi.Distribution{
 		Name:    r.cfg.Distribution.Name,
 		Version: version,
 	}

@@ -26,11 +26,14 @@ import (
 	"github.com/blang/semver/v4"
 	"github.com/spf13/viper"
 
+	configApi "github.com/lburgazzoli/opendatahub-module-operator/orchestrator/api/config/v1alpha1"
 	"github.com/opendatahub-io/opendatahub-operator/v2/api/common"
 	ofVersion "github.com/operator-framework/api/pkg/lib/version"
 )
 
 const (
+	AdminAcksConfigMapName = "opendatahub-admin"
+
 	KeyChartsPath          = "charts-path"
 	KeyDistributionName    = "distribution.name"
 	KeyDistributionVersion = "distribution.version"
@@ -68,14 +71,9 @@ var structuredExtensions = map[string]bool{
 }
 
 type Config struct {
-	ChartsPath   string             `mapstructure:"charts-path"`
-	Distribution DistributionConfig `mapstructure:"distribution"`
-	Controller   ControllerConfig   `mapstructure:"controller"`
-}
-
-type DistributionConfig struct {
-	Name    string `mapstructure:"name"`
-	Version string `mapstructure:"version"`
+	ChartsPath   string                 `mapstructure:"charts-path"`
+	Distribution configApi.Distribution `mapstructure:"distribution"`
+	Controller   ControllerConfig       `mapstructure:"controller"`
 }
 
 // Namespace returns the orchestrator's namespace, derived from

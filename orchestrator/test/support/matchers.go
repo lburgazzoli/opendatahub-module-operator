@@ -58,8 +58,12 @@ func PlatformOperatorOwner(name string) *configApi.PlatformOperator {
 	}
 }
 
-func HaveDistributionVersion(version string) types.GomegaMatcher {
-	return jq.Matchf(`.status.distribution.version == "%s"`, version)
+func HaveCurrentDistributionVersion(version string) types.GomegaMatcher {
+	return jq.Matchf(`.status.distribution.current.version == "%s"`, version)
+}
+
+func HaveTargetDistributionVersion(version string) types.GomegaMatcher {
+	return jq.Matchf(`.status.distribution.target.version == "%s"`, version)
 }
 
 func HaveTrackedResources() types.GomegaMatcher {

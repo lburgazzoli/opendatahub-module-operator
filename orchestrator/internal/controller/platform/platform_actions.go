@@ -34,6 +34,7 @@ import (
 	configApi "github.com/lburgazzoli/opendatahub-module-operator/orchestrator/api/config/v1alpha1"
 	"github.com/lburgazzoli/opendatahub-module-operator/orchestrator/pkg/config"
 	"github.com/lburgazzoli/opendatahub-module-operator/orchestrator/pkg/module"
+	odhresources "github.com/lburgazzoli/opendatahub-module-operator/orchestrator/pkg/resources"
 	"github.com/opendatahub-io/operator-actions-framework/controller/conditions"
 	"github.com/opendatahub-io/operator-actions-framework/controller/types"
 )
@@ -56,6 +57,11 @@ func (a *PlatformReconciler) initialize(_ context.Context, rr *types.Reconciliat
 		return fmt.Errorf("instance is not a Platform")
 	}
 
+	obj.Status.Distribution.Target = configApi.Distribution{
+		Name:    a.cfg.Distribution.Name,
+		Version: a.cfg.Distribution.Version,
+	}
+
 	if obj.Status.Runlevel == 0 {
 		obj.Status.Runlevel = a.registry.FirstRunlevel()
 	}
@@ -74,7 +80,7 @@ func (a *PlatformReconciler) checkAdminAcks(ctx context.Context, rr *types.Recon
 
 	required := a.requiredAdminAcks(obj)
 	if len(required) == 0 {
-		return rr.Conditions.ClearCondition(ConditionModulesReady)
+		return nil
 	}
 
 	adminAcksConfigMap := &corev1.ConfigMap{}
@@ -86,11 +92,6 @@ func (a *PlatformReconciler) checkAdminAcks(ctx context.Context, rr *types.Recon
 	case k8serr.IsNotFound(err):
 		unsatisfied := missingAdminAcks(required)
 		a.reportUnsatisfiedAdminAcks(obj, unsatisfied)
-		rr.Conditions.MarkFalse(
-			ConditionModulesReady,
-			conditions.WithReason("AdminAcksRequired"),
-			conditions.WithMessage("%s", adminAcksConditionMessage(a.cfg.Namespace(), unsatisfied)),
-		)
 		return adminAcksPauseError(a.cfg.Namespace(), unsatisfied)
 	case err != nil:
 		return fmt.Errorf(
@@ -105,19 +106,14 @@ func (a *PlatformReconciler) checkAdminAcks(ctx context.Context, rr *types.Recon
 
 	if len(unsatisfied) > 0 {
 		a.reportUnsatisfiedAdminAcks(obj, unsatisfied)
-		rr.Conditions.MarkFalse(
-			ConditionModulesReady,
-			conditions.WithReason("AdminAcksRequired"),
-			conditions.WithMessage("%s", adminAcksConditionMessage(a.cfg.Namespace(), unsatisfied)),
-		)
 		return adminAcksPauseError(a.cfg.Namespace(), unsatisfied)
 	}
 
-	return rr.Conditions.ClearCondition(ConditionModulesReady)
+	return nil
 }
 
 // ensureModules builds PlatformOperator resources from spec.modules.
-func (a *PlatformReconciler) ensureModules(_ context.Context, rr *types.ReconciliationRequest) error {
+func (a *PlatformReconciler) ensureModules(ctx context.Context, rr *types.ReconciliationRequest) error {
 	obj, ok := rr.Instance.(*configApi.Platform)
 	if !ok {
 		return fmt.Errorf("instance is not a Platform")
@@ -161,11 +157,9 @@ func (a *PlatformReconciler) pruneModules(ctx context.Context, rr *types.Reconci
 	}
 
 	var poList configApi.PlatformOperatorList
-	if err := rr.Client.List(ctx, &poList); err != nil {
+	if err := odhresources.List(ctx, rr.Client, &poList); err != nil {
 		return fmt.Errorf("listing PlatformOperators: %w", err)
 	}
-
-	propagation := metav1.DeletePropagationForeground
 
 	for i := range poList.Items {
 		po := &poList.Items[i]
@@ -173,10 +167,14 @@ func (a *PlatformReconciler) pruneModules(ctx context.Context, rr *types.Reconci
 			continue
 		}
 
-		if err := rr.Client.Delete(ctx, po, &client.DeleteOptions{
-			PropagationPolicy: &propagation,
-		}); err != nil && !k8serr.IsNotFound(err) {
+		err := rr.Client.Delete(ctx, po, client.PropagationPolicy(metav1.DeletePropagationForeground))
+
+		switch {
+		case k8serr.IsNotFound(err):
+		case err != nil:
 			return fmt.Errorf("deleting PlatformOperator %q: %w", po.Name, err)
+		default:
+			a.reportModulePruned(obj, po.Name)
 		}
 	}
 
@@ -223,7 +221,10 @@ func (a *PlatformReconciler) aggregateStatus(ctx context.Context, rr *types.Reco
 		return fmt.Errorf("instance is not a Platform")
 	}
 
-	obj.Status.Distribution.Name = a.cfg.Distribution.Name
+	obj.Status.Distribution.Target = configApi.Distribution{
+		Name:    a.cfg.Distribution.Name,
+		Version: a.cfg.Distribution.Version,
+	}
 
 	obj.Status.Modules = nil
 	allUpToDate := true
@@ -234,17 +235,12 @@ func (a *PlatformReconciler) aggregateStatus(ctx context.Context, rr *types.Reco
 			continue
 		}
 
-		summary := configApi.ModuleStatusSummary{
-			Name:     m.EffectiveName(),
-			Runlevel: m.Runlevel,
+		summary, err := a.moduleStatus(ctx, rr.Client, m)
+		if err != nil {
+			return err
 		}
 
-		po := &configApi.PlatformOperator{}
-		if err := rr.Client.Get(ctx, client.ObjectKey{Name: m.EffectiveName()}, po); err == nil {
-			summary.Version = po.Status.Distribution.Version
-		}
-
-		if summary.Version != a.cfg.Distribution.Version {
+		if summary.Distribution != obj.Status.Distribution.Target {
 			allUpToDate = false
 		}
 
@@ -252,7 +248,18 @@ func (a *PlatformReconciler) aggregateStatus(ctx context.Context, rr *types.Reco
 	}
 
 	if allUpToDate {
-		obj.Status.Distribution.Version = a.cfg.Distribution.Version
+		obj.Status.Distribution.Current = obj.Status.Distribution.Target
+		rr.Conditions.MarkTrue(
+			configApi.ConditionUpToDate,
+			conditions.WithReason("UpToDate"),
+			conditions.WithMessage("current distribution matches target"),
+		)
+	} else {
+		rr.Conditions.MarkFalse(
+			configApi.ConditionUpToDate,
+			conditions.WithReason("Updating"),
+			conditions.WithMessage("current distribution does not match target"),
+		)
 	}
 
 	slices.SortFunc(obj.Status.Modules, func(a, b configApi.ModuleStatusSummary) int {

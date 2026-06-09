@@ -20,7 +20,7 @@ import (
 	"sync"
 
 	engine "github.com/k8s-manifest-kit/engine/pkg"
-	"sigs.k8s.io/controller-runtime/pkg/client"
+	"k8s.io/client-go/tools/events"
 
 	configApi "github.com/lburgazzoli/opendatahub-module-operator/orchestrator/api/config/v1alpha1"
 	orchestratorconfig "github.com/lburgazzoli/opendatahub-module-operator/orchestrator/pkg/config"
@@ -29,10 +29,9 @@ import (
 
 // ModuleReconciler handles deployment of all modules via a single controller.
 type ModuleReconciler struct {
-	registry  *module.ModuleRegistry
-	cfg       *orchestratorconfig.Config
-	client    client.Client
-	apiReader client.Reader
+	registry *module.ModuleRegistry
+	cfg      *orchestratorconfig.Config
+	recorder events.EventRecorder
 
 	mu       sync.RWMutex
 	contexts map[string]*moduleContext

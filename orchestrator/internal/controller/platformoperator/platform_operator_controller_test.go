@@ -37,66 +37,23 @@ import (
 )
 
 func TestEligibleModuleRequests(t *testing.T) {
-	t.Run("matching distribution does not enqueue", func(t *testing.T) {
+	t.Run("enqueues all registered modules", func(t *testing.T) {
 		g := NewWithT(t)
-		reconciler := testModuleReconciler(
-			t,
-			newTestPlatform(),
-			newTestPlatformOperator("alpha", "TestPlatform", "2.0.0"),
-		)
+		reconciler, _ := testModuleReconciler(t) //nolint:dogsled
 
 		requests := reconciler.eligibleModuleRequests(t.Context(), newTestPlatform())
 
-		g.Expect(requests).To(BeEmpty())
-	})
-
-	t.Run("different distribution name enqueues even when version matches", func(t *testing.T) {
-		g := NewWithT(t)
-		reconciler := testModuleReconciler(
-			t,
-			newTestPlatform(),
-			newTestPlatformOperator("alpha", "OtherPlatform", "2.0.0"),
-		)
-
-		requests := reconciler.eligibleModuleRequests(t.Context(), newTestPlatform())
-
-		g.Expect(requestNames(requests)).To(ConsistOf("alpha"))
-	})
-
-	t.Run("higher runlevel modules stay skipped", func(t *testing.T) {
-		g := NewWithT(t)
-		reconciler := testModuleReconciler(
-			t,
-			newTestPlatform(),
-			newTestPlatformOperator("beta", "OtherPlatform", "1.0.0"),
-		)
-
-		requests := reconciler.eligibleModuleRequests(t.Context(), newTestPlatform())
-
-		g.Expect(requests).To(BeEmpty())
-	})
-
-	t.Run("unknown modules are ignored", func(t *testing.T) {
-		g := NewWithT(t)
-		reconciler := testModuleReconciler(
-			t,
-			newTestPlatform(),
-			newTestPlatformOperator("unknown", "OtherPlatform", "1.0.0"),
-		)
-
-		requests := reconciler.eligibleModuleRequests(t.Context(), newTestPlatform())
-
-		g.Expect(requests).To(BeEmpty())
+		g.Expect(requestNames(requests)).To(ConsistOf("alpha", "beta"))
 	})
 }
 
 func TestCheckRunlevel(t *testing.T) {
 	t.Run("missing Platform pauses with quick retry", func(t *testing.T) {
 		g := NewWithT(t)
-		reconciler := testModuleReconciler(t)
-		po := newTestPlatformOperator("alpha", "TestPlatform", "2.0.0")
+		reconciler, c := testModuleReconciler(t)
+		po := newTestPlatformOperator("alpha", "2.0.0")
 		rr := &types.ReconciliationRequest{
-			Client:   reconciler.client,
+			Client:   c,
 			Instance: po,
 		}
 		reconciler.contexts[po.Name] = &moduleContext{
@@ -112,13 +69,70 @@ func TestCheckRunlevel(t *testing.T) {
 
 	t.Run("deleting PlatformOperator does not pause on missing Platform", func(t *testing.T) {
 		g := NewWithT(t)
-		reconciler := testModuleReconciler(t)
+		reconciler, c := testModuleReconciler(t)
 		now := metav1.Now()
-		po := newTestPlatformOperator("alpha", "TestPlatform", "2.0.0")
+		po := newTestPlatformOperator("alpha", "2.0.0")
 		po.SetDeletionTimestamp(&now)
 		rr := &types.ReconciliationRequest{
-			Client:   reconciler.client,
+			Client:   c,
 			Instance: po,
+		}
+
+		err := reconciler.checkRunlevel(t.Context(), rr)
+
+		g.Expect(err).NotTo(HaveOccurred())
+	})
+
+	t.Run("lower runlevel modules are allowed during upgrade", func(t *testing.T) {
+		g := NewWithT(t)
+		platform := newTestPlatform()
+		platform.Status.Runlevel = 2
+		reconciler, c := testModuleReconciler(t, platform)
+		po := newTestPlatformOperator("alpha", "1.0.0")
+		rr := &types.ReconciliationRequest{
+			Client:   c,
+			Instance: po,
+		}
+		reconciler.contexts[po.Name] = &moduleContext{
+			module: reconciler.registry.ModuleByName(po.Name),
+		}
+
+		err := reconciler.checkRunlevel(t.Context(), rr)
+
+		g.Expect(err).NotTo(HaveOccurred())
+	})
+
+	t.Run("higher runlevel modules pause during upgrade", func(t *testing.T) {
+		g := NewWithT(t)
+		reconciler, c := testModuleReconciler(t, newTestPlatform())
+		po := newTestPlatformOperator("beta", "1.0.0")
+		rr := &types.ReconciliationRequest{
+			Client:   c,
+			Instance: po,
+		}
+		reconciler.contexts[po.Name] = &moduleContext{
+			module: reconciler.registry.ModuleByName(po.Name),
+		}
+
+		err := reconciler.checkRunlevel(t.Context(), rr)
+
+		var pauseErr actionerrors.PauseError
+		g.Expect(errors.As(err, &pauseErr)).To(BeTrue())
+		g.Expect(err.Error()).To(ContainSubstring(`waiting for runlevel 2`))
+	})
+
+	t.Run("steady state ignores runlevel", func(t *testing.T) {
+		g := NewWithT(t)
+		platform := newTestPlatform()
+		platform.Status.Distribution.Current = platform.Status.Distribution.Target
+		reconciler, c := testModuleReconciler(t, platform)
+		po := newTestPlatformOperator("beta", "2.0.0")
+		rr := &types.ReconciliationRequest{
+			Client:   c,
+			Instance: po,
+		}
+		reconciler.contexts[po.Name] = &moduleContext{
+			module: reconciler.registry.ModuleByName(po.Name),
 		}
 
 		err := reconciler.checkRunlevel(t.Context(), rr)
@@ -127,7 +141,7 @@ func TestCheckRunlevel(t *testing.T) {
 	})
 }
 
-func testModuleReconciler(t *testing.T, objs ...client.Object) *ModuleReconciler {
+func testModuleReconciler(t *testing.T, objs ...client.Object) (*ModuleReconciler, client.Client) {
 	t.Helper()
 
 	scheme := runtime.NewScheme()
@@ -144,15 +158,13 @@ func testModuleReconciler(t *testing.T, objs ...client.Object) *ModuleReconciler
 	return &ModuleReconciler{
 		registry: testModuleRegistry(),
 		cfg: &orchestratorconfig.Config{
-			Distribution: orchestratorconfig.DistributionConfig{
+			Distribution: configApi.Distribution{
 				Name:    "TestPlatform",
 				Version: "2.0.0",
 			},
 		},
-		client:    c,
-		apiReader: c,
-		contexts:  make(map[string]*moduleContext),
-	}
+		contexts: make(map[string]*moduleContext),
+	}, c
 }
 
 func testModuleRegistry() *module.ModuleRegistry {
@@ -179,17 +191,33 @@ func newTestPlatform() *configApi.Platform {
 		ObjectMeta: metav1.ObjectMeta{Name: configApi.PlatformInstanceName},
 		Status: configApi.PlatformStatus{
 			Runlevel: 1,
+			Distribution: configApi.DistributionStatus{
+				Current: configApi.Distribution{
+					Name:    "TestPlatform",
+					Version: "1.0.0",
+				},
+				Target: configApi.Distribution{
+					Name:    "TestPlatform",
+					Version: "2.0.0",
+				},
+			},
 		},
 	}
 }
 
-func newTestPlatformOperator(name string, distributionName string, version string) *configApi.PlatformOperator {
+func newTestPlatformOperator(name string, version string) *configApi.PlatformOperator {
 	return &configApi.PlatformOperator{
 		ObjectMeta: metav1.ObjectMeta{Name: name},
 		Status: configApi.PlatformOperatorStatus{
-			Distribution: configApi.DistributionInfo{
-				Name:    distributionName,
-				Version: version,
+			Distribution: configApi.DistributionStatus{
+				Current: configApi.Distribution{
+					Name:    "TestPlatform",
+					Version: version,
+				},
+				Target: configApi.Distribution{
+					Name:    "TestPlatform",
+					Version: "2.0.0",
+				},
 			},
 		},
 	}
