@@ -40,8 +40,9 @@ type PlatformSpec struct {
 type PlatformStatus struct {
 	common.Status `json:",inline"`
 
-	// Distribution identifies the platform distribution and its target version.
-	Distribution DistributionInfo `json:"distribution,omitempty"`
+	// Distribution reports the current converged distribution and the desired
+	// target distribution.
+	Distribution DistributionStatus `json:"distribution,omitempty"`
 
 	// Runlevel is the current runlevel being processed.
 	Runlevel int `json:"runlevel,omitempty"`
@@ -50,20 +51,26 @@ type PlatformStatus struct {
 	Modules []ModuleStatusSummary `json:"modules,omitempty"`
 }
 
-// DistributionInfo identifies the platform distribution.
-type DistributionInfo struct {
+// Distribution identifies a platform distribution name/version pair.
+type Distribution struct {
 	// Name is the distribution name (e.g. "OpenDataHub", "RHODS").
 	Name string `json:"name,omitempty"`
 
-	// Version is the target distribution version.
+	// Version is the distribution version.
 	Version string `json:"version,omitempty"`
+}
+
+// DistributionStatus tracks the current and target distribution state.
+type DistributionStatus struct {
+	Current Distribution `json:"current,omitempty"`
+	Target  Distribution `json:"target,omitempty"`
 }
 
 // ModuleStatusSummary holds a per-module status summary.
 type ModuleStatusSummary struct {
-	Name     string `json:"name"`
-	Runlevel int    `json:"runlevel"`
-	Version  string `json:"version,omitempty"`
+	Name         string       `json:"name"`
+	Runlevel     int          `json:"runlevel"`
+	Distribution Distribution `json:"distribution,omitempty"`
 }
 
 // +kubebuilder:object:root=true
@@ -72,7 +79,8 @@ type ModuleStatusSummary struct {
 // +kubebuilder:validation:XValidation:rule="self.metadata.name == 'default-platform'",message="Platform name must be default-platform"
 // +kubebuilder:printcolumn:name="Ready",type=string,JSONPath=`.status.conditions[?(@.type=="Ready")].status`,description="Ready"
 // +kubebuilder:printcolumn:name="Runlevel",type=integer,JSONPath=`.status.runlevel`,description="Current Runlevel"
-// +kubebuilder:printcolumn:name="Version",type=string,JSONPath=`.status.distribution.version`,description="Distribution Version"
+// +kubebuilder:printcolumn:name="Current",type=string,JSONPath=`.status.distribution.current.version`,description="Current Distribution Version"
+// +kubebuilder:printcolumn:name="Target",type=string,JSONPath=`.status.distribution.target.version`,description="Target Distribution Version"
 
 // Platform is the Schema for the platforms API.
 type Platform struct {

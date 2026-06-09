@@ -1,0 +1,3 @@
+resources:
+- bases/config.opendatahub.io_platforms.yaml
+- bases/config.opendatahub.io_platformoperators.yaml

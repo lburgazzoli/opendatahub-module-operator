@@ -22,6 +22,7 @@ import (
 	"github.com/spf13/cobra"
 	ctrl "sigs.k8s.io/controller-runtime"
 
+	"github.com/lburgazzoli/opendatahub-module-operator/orchestrator/cmd/chartgen"
 	"github.com/lburgazzoli/opendatahub-module-operator/orchestrator/cmd/operator"
 )
 
@@ -34,6 +35,7 @@ func main() {
 	}
 
 	root.AddCommand(operator.NewCommand())
+	root.AddCommand(chartgen.NewCommand())
 
 	if err := root.ExecuteContext(ctrl.SetupSignalHandler()); err != nil {
 		os.Exit(1)

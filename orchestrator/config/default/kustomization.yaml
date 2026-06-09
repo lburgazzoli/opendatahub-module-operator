@@ -1,0 +1,9 @@
+# Adds namespace to all resources.
+namespace: opendatahub-orchestrator-system
+
+namePrefix: opendatahub-orchestrator-
+
+resources:
+- ../crd
+- ../rbac
+- ../manager

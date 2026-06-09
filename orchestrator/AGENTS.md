@@ -59,10 +59,10 @@ readiness, cache-visibility, or cleanup behavior so the system becomes stable.
 The current `go test -p 1` setting is only a shared-cluster isolation workaround,
 not permission to rely on timing inside a package.
 
-For admin gates: `ModulesReady` should only be overridden while admin acks are
-blocking reconciliation (`Reason=AdminAcksRequired`). Once the required ack is
-present and `true`, clear the temporary condition and let normal
-`PlatformOperator` aggregation own readiness again.
+For admin gates: `checkAdminAcks` returns a `PauseError` when admin acks are
+unsatisfied and records warning events for observability. No condition is set —
+the PauseError message carries the details, and the ConfigMap watch re-triggers
+reconciliation when acks change.
 
 Controller design rules worth preserving:
 
@@ -72,9 +72,9 @@ Controller design rules worth preserving:
   action pipeline stays easy to scan.
 - Prefer narrow watches and predicates (for example named singleton resources)
   over broad watches when the controller only cares about one object.
-- Treat transient gates such as admin acks as reconcile-time blockers, not as a
-  second long-lived status model. Clear the temporary condition when the block is
-  gone and let normal aggregation become authoritative again.
+- Treat transient gates such as admin acks as reconcile-time blockers via
+  PauseError, not as conditions. Let normal aggregation (ConditionUpToDate)
+  own readiness.
 
 Matcher conventions that improved clarity in this repo:
 

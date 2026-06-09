@@ -23,9 +23,13 @@ spec:
       jsonPath: .status.runlevel
       name: Runlevel
       type: integer
-    - description: Distribution Version
-      jsonPath: .status.distribution.version
-      name: Version
+    - description: Current Distribution Version
+      jsonPath: .status.distribution.current.version
+      name: Current
+      type: string
+    - description: Target Distribution Version
+      jsonPath: .status.distribution.target.version
+      name: Target
       type: string
     name: v1alpha1
     schema:
@@ -115,16 +119,34 @@ spec:
                 type: array
                 x-kubernetes-list-type: atomic
               distribution:
-                description: Distribution identifies the platform distribution and
-                  its target version.
+                description: |-
+                  Distribution reports the current converged distribution and the desired
+                  target distribution.
                 properties:
-                  name:
-                    description: Name is the distribution name (e.g. "OpenDataHub",
-                      "RHODS").
-                    type: string
-                  version:
-                    description: Version is the target distribution version.
-                    type: string
+                  current:
+                    description: Distribution identifies a platform distribution name/version
+                      pair.
+                    properties:
+                      name:
+                        description: Name is the distribution name (e.g. "OpenDataHub",
+                          "RHODS").
+                        type: string
+                      version:
+                        description: Version is the distribution version.
+                        type: string
+                    type: object
+                  target:
+                    description: Distribution identifies a platform distribution name/version
+                      pair.
+                    properties:
+                      name:
+                        description: Name is the distribution name (e.g. "OpenDataHub",
+                          "RHODS").
+                        type: string
+                      version:
+                        description: Version is the distribution version.
+                        type: string
+                    type: object
                 type: object
               modules:
                 description: Modules is a per-module status summary, sorted by runlevel
@@ -132,12 +154,22 @@ spec:
                 items:
                   description: ModuleStatusSummary holds a per-module status summary.
                   properties:
+                    distribution:
+                      description: Distribution identifies a platform distribution
+                        name/version pair.
+                      properties:
+                        name:
+                          description: Name is the distribution name (e.g. "OpenDataHub",
+                            "RHODS").
+                          type: string
+                        version:
+                          description: Version is the distribution version.
+                          type: string
+                      type: object
                     name:
                       type: string
                     runlevel:
                       type: integer
-                    version:
-                      type: string
                   required:
                   - name
                   - runlevel
