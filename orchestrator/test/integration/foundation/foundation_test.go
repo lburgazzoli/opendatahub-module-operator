@@ -6,13 +6,13 @@ import (
 	"os"
 	"testing"
 
+	"github.com/lburgazzoli/gomega-matchers/pkg/matchers/jq"
 	k8sm "github.com/lburgazzoli/gomega-matchers/pkg/matchers/k8s"
 	. "github.com/onsi/gomega"
+	"github.com/onsi/gomega/types"
 
-	"github.com/lburgazzoli/gomega-matchers/pkg/matchers/jq"
-
-	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 
 	configApi "github.com/lburgazzoli/opendatahub-module-operator/orchestrator/api/config/v1alpha1"
 	"github.com/lburgazzoli/opendatahub-module-operator/orchestrator/pkg/resources/gvk"
@@ -78,126 +78,54 @@ func TestModuleDeployment(t *testing.T) {
 		)
 	}
 
-	t.Run("all modules should track resources in status", func(t *testing.T) {
-		for _, mod := range suite.Modules {
-			t.Run(mod.Name, func(t *testing.T) {
-				g := NewWithT(t)
-				ctx := t.Context()
-				moduleName := mod.Name
-				g.Eventually(ctx, k8sm.Get(suite.Client, testsupport.PlatformOperator(moduleName))).Should(
-					SatisfyAll(
-						testsupport.HaveTrackedResource(gvk.ServiceAccount),
-						testsupport.HaveTrackedResource(gvk.CustomResourceDefinition),
-					),
-				)
-			})
-		}
-	})
+	for _, mod := range suite.Modules {
+		t.Run(mod.Name, func(t *testing.T) {
+			g := NewWithT(t)
+			ctx := t.Context()
 
-	t.Run("all modules should report chart info", func(t *testing.T) {
-		for _, mod := range suite.Modules {
-			t.Run(mod.Name, func(t *testing.T) {
-				g := NewWithT(t)
-				ctx := t.Context()
-				moduleName := mod.Name
-				g.Eventually(ctx, k8sm.Get(suite.Client, testsupport.PlatformOperator(moduleName))).Should(
-					testsupport.HaveChartInfo("test-module", mod.Manifests.Chart.Path),
-				)
-			})
-		}
-	})
-
-	t.Run("all modules should report runlevel", func(t *testing.T) {
-		for _, mod := range suite.Modules {
-			t.Run(mod.Name, func(t *testing.T) {
-				g := NewWithT(t)
-				ctx := t.Context()
-				moduleName := mod.Name
-				g.Eventually(ctx, k8sm.Get(suite.Client, testsupport.PlatformOperator(moduleName))).Should(
-					testsupport.HaveRunlevel(mod.Runlevel),
-				)
-			})
-		}
-	})
-
-	t.Run("each module should have its own CRD", func(t *testing.T) {
-		for _, mod := range suite.Modules {
 			crdName := fmt.Sprintf("%ss.%s", mod.Name, mod.GVK.Group)
-			t.Run(mod.Name, func(t *testing.T) {
-				g := NewWithT(t)
-				ctx := t.Context()
-				moduleName := mod.Name
-				g.Eventually(ctx, k8sm.Get(suite.Client, testsupport.PlatformOperator(moduleName))).Should(
+
+			g.Eventually(ctx, k8sm.Get(suite.Client, testsupport.PlatformOperator(mod.Name))).Should(
+				SatisfyAll(
+					testsupport.HaveTrackedResource(gvk.Namespace),
+					testsupport.HaveTrackedResource(gvk.ServiceAccount),
+					testsupport.HaveTrackedResource(gvk.CustomResourceDefinition),
 					testsupport.HaveTrackedNamedResource(gvk.CustomResourceDefinition, crdName),
-				)
-			})
-		}
-	})
-
-	t.Run("deployed resources should have part-of label", func(t *testing.T) {
-		for _, mod := range suite.Modules {
-			t.Run(mod.Name, func(t *testing.T) {
-				g := NewWithT(t)
-				ctx := t.Context()
-				moduleName := mod.Name
-				sa := &corev1.ServiceAccount{ObjectMeta: metav1.ObjectMeta{
-					Name: moduleName, Namespace: mod.Namespace,
-				}}
-				g.Eventually(ctx, k8sm.Get(suite.Client, sa)).Should(
-					k8sm.HasLabel("platform.opendatahub.io/part-of", moduleName),
-				)
-			})
-		}
-	})
-
-	t.Run("deployed resources should have owner reference", func(t *testing.T) {
-		for _, mod := range suite.Modules {
-			t.Run(mod.Name, func(t *testing.T) {
-				g := NewWithT(t)
-				ctx := t.Context()
-				moduleName := mod.Name
-				sa := &corev1.ServiceAccount{ObjectMeta: metav1.ObjectMeta{
-					Name: moduleName, Namespace: mod.Namespace,
-				}}
-				g.Eventually(ctx, k8sm.Get(suite.Client, sa)).Should(
-					k8sm.IsControlledBy(testsupport.PlatformOperatorOwner(moduleName)),
-				)
-			})
-		}
-	})
-
-	t.Run("config values should be projected to configmap", func(t *testing.T) {
-		for _, mod := range suite.Modules {
-			t.Run(mod.Name, func(t *testing.T) {
-				g := NewWithT(t)
-				ctx := t.Context()
-				moduleName := mod.Name
-				cm := &corev1.ConfigMap{ObjectMeta: metav1.ObjectMeta{
-					Name: moduleName + "-config", Namespace: mod.Namespace,
-				}}
-				g.Eventually(ctx, k8sm.Get(suite.Client, cm)).Should(
-					WithTransform(k8sm.Data(), SatisfyAll(
-						HaveKeyWithValue("module-name", Equal(moduleName)),
-						HaveKeyWithValue("distribution.name", Not(BeEmpty())),
-						HaveKeyWithValue("distribution.version", Not(BeEmpty())),
-					)),
-				)
-			})
-		}
-	})
-
-	t.Run("PlatformOperator should be owned by Platform", func(t *testing.T) {
-		for _, mod := range suite.Modules {
-			t.Run(mod.Name, func(t *testing.T) {
-				g := NewWithT(t)
-				ctx := t.Context()
-				moduleName := mod.Name
-				g.Eventually(ctx, k8sm.Get(suite.Client, testsupport.PlatformOperator(moduleName))).Should(
+					testsupport.HaveChartInfo("test-module", mod.Manifests.Chart.Path),
+					testsupport.HaveRunlevel(mod.Runlevel),
 					k8sm.IsControlledBy(testsupport.PlatformOwner()),
-				)
-			})
-		}
-	})
+				),
+			)
+
+			po := &configApi.PlatformOperator{}
+			g.Expect(suite.Client.Get(ctx, client.ObjectKey{Name: mod.Name}, po)).To(Succeed())
+
+			for _, ref := range po.Status.Resources {
+				refGVK := schema.FromAPIVersionAndKind(ref.APIVersion, ref.Kind)
+				if refGVK == gvk.Namespace || refGVK == gvk.CustomResourceDefinition {
+					continue
+				}
+
+				obj := isupport.ObjectFromResourceRef(ref)
+				matchers := []types.GomegaMatcher{
+					k8sm.HasLabel("platform.opendatahub.io/part-of", mod.Name),
+					k8sm.IsControlledBy(testsupport.PlatformOperatorOwner(mod.Name)),
+				}
+
+				if refGVK == gvk.ConfigMap {
+					matchers = append(matchers,
+						WithTransform(k8sm.Data(), SatisfyAll(
+							HaveKeyWithValue("module-name", Equal(mod.Name)),
+							HaveKeyWithValue("distribution.name", Not(BeEmpty())),
+							HaveKeyWithValue("distribution.version", Not(BeEmpty())),
+						)),
+					)
+				}
+
+				g.Eventually(ctx, k8sm.Get(suite.Client, obj)).Should(SatisfyAll(matchers...))
+			}
+		})
+	}
 }
 
 func TestModuleVersionPropagation(t *testing.T) {

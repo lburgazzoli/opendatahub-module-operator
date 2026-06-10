@@ -77,7 +77,7 @@ func (suite *Suite) PlatformModuleNames() []string {
 }
 
 func (suite *Suite) CheckResourceResetState(ctx context.Context, ref configApi.ResourceRef) error {
-	obj := objectFromResourceRef(ref)
+	obj := ObjectFromResourceRef(ref)
 	objGVK := schema.FromAPIVersionAndKind(ref.APIVersion, ref.Kind)
 
 	if resourceShouldSurviveReset(objGVK) {
@@ -250,7 +250,7 @@ func (suite *Suite) assertClusterReset(t *testing.T, ctx context.Context, snapsh
 	g := gomega.NewWithT(t)
 
 	for _, ref := range snapshot.deletedRefs {
-		g.Eventually(ctx, k8sm.Absent(suite.Client, objectFromResourceRef(ref))).
+		g.Eventually(ctx, k8sm.Absent(suite.Client, ObjectFromResourceRef(ref))).
 			Should(gomega.BeTrue())
 	}
 
@@ -265,7 +265,7 @@ func (suite *Suite) assertClusterReset(t *testing.T, ctx context.Context, snapsh
 
 func (suite *Suite) checkClusterReset(ctx context.Context, snapshot cleanupSnapshot) error {
 	for _, ref := range snapshot.deletedRefs {
-		obj := objectFromResourceRef(ref)
+		obj := ObjectFromResourceRef(ref)
 		err := suite.Client.Get(ctx, client.ObjectKeyFromObject(obj), obj)
 		switch {
 		case k8serr.IsNotFound(err):
@@ -498,7 +498,7 @@ func resourceShouldSurviveReset(gvk schema.GroupVersionKind) bool {
 	}
 }
 
-func objectFromResourceRef(ref configApi.ResourceRef) *unstructured.Unstructured {
+func ObjectFromResourceRef(ref configApi.ResourceRef) *unstructured.Unstructured {
 	obj := &unstructured.Unstructured{}
 	obj.SetAPIVersion(ref.APIVersion)
 	obj.SetKind(ref.Kind)
