@@ -13,11 +13,13 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 
+	odhLabels "github.com/opendatahub-io/opendatahub-operator/v2/pkg/metadata/labels"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+
 	configApi "github.com/lburgazzoli/opendatahub-module-operator/orchestrator/api/config/v1alpha1"
 	"github.com/lburgazzoli/opendatahub-module-operator/orchestrator/pkg/resources/gvk"
 	isupport "github.com/lburgazzoli/opendatahub-module-operator/orchestrator/test/integration/support"
 	testsupport "github.com/lburgazzoli/opendatahub-module-operator/orchestrator/test/support"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 func TestMain(m *testing.M) {
@@ -106,11 +108,11 @@ func TestModuleDeployment(t *testing.T) {
 				switch refGVK {
 				case gvk.Namespace, gvk.CustomResourceDefinition:
 					g.Eventually(ctx, k8sm.Get(suite.Client, obj)).Should(
-						k8sm.HasLabel("platform.opendatahub.io/part-of", mod.Name),
+						k8sm.HasLabel(odhLabels.PlatformPartOf, mod.Name),
 					)
 				case gvk.ConfigMap:
 					g.Eventually(ctx, k8sm.Get(suite.Client, obj)).Should(SatisfyAll(
-						k8sm.HasLabel("platform.opendatahub.io/part-of", mod.Name),
+						k8sm.HasLabel(odhLabels.PlatformPartOf, mod.Name),
 						k8sm.IsControlledBy(testsupport.PlatformOperatorOwner(mod.Name)),
 						WithTransform(k8sm.Data(), SatisfyAll(
 							HaveKeyWithValue("module-name", Equal(mod.Name)),
@@ -120,7 +122,7 @@ func TestModuleDeployment(t *testing.T) {
 					))
 				default:
 					g.Eventually(ctx, k8sm.Get(suite.Client, obj)).Should(SatisfyAll(
-						k8sm.HasLabel("platform.opendatahub.io/part-of", mod.Name),
+						k8sm.HasLabel(odhLabels.PlatformPartOf, mod.Name),
 						k8sm.IsControlledBy(testsupport.PlatformOperatorOwner(mod.Name)),
 					))
 				}
