@@ -9,7 +9,6 @@ import (
 	"github.com/lburgazzoli/gomega-matchers/pkg/matchers/jq"
 	k8sm "github.com/lburgazzoli/gomega-matchers/pkg/matchers/k8s"
 	. "github.com/onsi/gomega"
-	"github.com/onsi/gomega/types"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -104,29 +103,27 @@ func TestModuleDeployment(t *testing.T) {
 				refGVK := schema.FromAPIVersionAndKind(ref.APIVersion, ref.Kind)
 				obj := isupport.ObjectFromResourceRef(ref)
 
-				matchers := []types.GomegaMatcher{
-					k8sm.HasLabel("platform.opendatahub.io/part-of", mod.Name),
-				}
-
 				switch refGVK {
 				case gvk.Namespace, gvk.CustomResourceDefinition:
-					// cluster-scoped: labels only, no ownership
+					g.Eventually(ctx, k8sm.Get(suite.Client, obj)).Should(
+						k8sm.HasLabel("platform.opendatahub.io/part-of", mod.Name),
+					)
 				case gvk.ConfigMap:
-					matchers = append(matchers,
+					g.Eventually(ctx, k8sm.Get(suite.Client, obj)).Should(SatisfyAll(
+						k8sm.HasLabel("platform.opendatahub.io/part-of", mod.Name),
 						k8sm.IsControlledBy(testsupport.PlatformOperatorOwner(mod.Name)),
 						WithTransform(k8sm.Data(), SatisfyAll(
 							HaveKeyWithValue("module-name", Equal(mod.Name)),
 							HaveKeyWithValue("distribution.name", Not(BeEmpty())),
 							HaveKeyWithValue("distribution.version", Not(BeEmpty())),
 						)),
-					)
+					))
 				default:
-					matchers = append(matchers,
+					g.Eventually(ctx, k8sm.Get(suite.Client, obj)).Should(SatisfyAll(
+						k8sm.HasLabel("platform.opendatahub.io/part-of", mod.Name),
 						k8sm.IsControlledBy(testsupport.PlatformOperatorOwner(mod.Name)),
-					)
+					))
 				}
-
-				g.Eventually(ctx, k8sm.Get(suite.Client, obj)).Should(SatisfyAll(matchers...))
 			}
 		})
 	}
