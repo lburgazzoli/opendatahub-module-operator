@@ -11,7 +11,7 @@ import (
 	k8serr "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	"github.com/lburgazzoli/gomega-matchers/pkg/matchers/jq"
+	configApi "github.com/lburgazzoli/opendatahub-module-operator/orchestrator/api/config/v1alpha1"
 	isupport "github.com/lburgazzoli/opendatahub-module-operator/orchestrator/test/integration/support"
 	testsupport "github.com/lburgazzoli/opendatahub-module-operator/orchestrator/test/support"
 )
@@ -105,7 +105,7 @@ func TestUpdatingAdminAckFromFalseToTrueUnblocksModules(t *testing.T) {
 	g.Eventually(
 		ctx,
 		k8sm.Update(
-			suite.K,
+			suite.Client,
 			isupport.AdminAcksConfigMap(suite.Config.Namespace()),
 			func(cm *corev1.ConfigMap) {
 				cm.Data[testAdminAckKey] = "true"
@@ -116,11 +116,13 @@ func TestUpdatingAdminAckFromFalseToTrueUnblocksModules(t *testing.T) {
 	)
 
 	for _, moduleName := range []string{alphaModuleName, gatedModuleName} {
-		g.Eventually(ctx, suite.K.Get(testsupport.PlatformOperator(moduleName))).Should(
+		g.Eventually(ctx, k8sm.Get(suite.Client, testsupport.PlatformOperator(moduleName))).Should(
 			testsupport.HaveTrackedResources(),
 		)
 	}
-	g.Eventually(ctx, suite.K.Get(testsupport.Platform())).Should(
-		jq.Match(`(.status.conditions // []) | all(.reason != "AdminAcksRequired")`),
+	g.Eventually(ctx, k8sm.Get(suite.Client, testsupport.Platform())).Should(
+		WithTransform(k8sm.Conditions(), Not(ContainElement(
+			HaveKeyWithValue("reason", configApi.ReasonAdminAckRequired),
+		))),
 	)
 }

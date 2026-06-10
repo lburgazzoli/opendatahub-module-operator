@@ -188,7 +188,7 @@ func (a *PlatformReconciler) reportUnsatisfiedAdminAcks(obj runtime.Object, unsa
 			obj,
 			nil,
 			corev1.EventTypeWarning,
-			"AdminAckRequired",
+			configApi.ReasonAdminAckRequired,
 			"WaitForAdminAck",
 			"Admin ack %q required: %s",
 			ack.Name,

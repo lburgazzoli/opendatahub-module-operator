@@ -86,18 +86,17 @@ func assertAdminAckBlocked(t *testing.T, suite *isupport.Suite, messageSubstring
 	g := NewWithT(t)
 	ctx := t.Context()
 
-	g.Eventually(ctx, suite.K.List(&configApi.PlatformOperatorList{})).Should(
+	g.Eventually(ctx, k8sm.List(suite.Client, &configApi.PlatformOperatorList{})).Should(
 		k8sm.IsEmptyList(),
 	)
-	g.Eventually(ctx, suite.K.HasEvent(
-		SatisfyAll(
-			HaveField("Reason", Equal("AdminAckRequired")),
-			HaveField("Action", Equal("WaitForAdminAck")),
-			HaveField("Message", ContainSubstring(messageSubstring)),
-		),
+	g.Eventually(ctx, k8sm.Events(suite.Client,
 		k8sm.ForObject(corev1.ObjectReference{
 			Kind: configApi.PlatformKind,
 			Name: configApi.PlatformInstanceName,
 		}),
-	)).Should(BeTrue())
+	)).Should(ContainElement(SatisfyAll(
+		HaveField("Reason", Equal(configApi.ReasonAdminAckRequired)),
+		HaveField("Action", Equal("WaitForAdminAck")),
+		HaveField("Message", ContainSubstring(messageSubstring)),
+	)))
 }

@@ -100,25 +100,27 @@ func prepareUpgradeScenario(t *testing.T, suite *isupport.Suite) {
 	}
 
 	g.Expect(suite.Client.Create(ctx, p)).To(Succeed())
-	g.Eventually(ctx, suite.K.Get(p)).Should(testsupport.HaveCurrentDistributionVersion(initialDistributionVersion))
+	g.Eventually(ctx, k8sm.Get(suite.Client, p)).Should(
+		testsupport.HaveCurrentDistributionVersion(initialDistributionVersion),
+	)
 
 	for _, gvk := range []schema.GroupVersionKind{alphaGVK, betaGVK, gammaGVK} {
 		isupport.UpsertModuleCRWithVersion(t, suite, gvk, initialDistributionVersion)
 	}
 
 	suite.SetDistributionVersion(upgradedDistributionVersion)
-	g.Eventually(ctx, k8sm.Update(suite.K, testsupport.Platform(), func(p *configApi.Platform) {
+	g.Eventually(ctx, k8sm.Update(suite.Client, testsupport.Platform(), func(p *configApi.Platform) {
 		p.Spec.Modules = initialRunlevelModuleNames
 	})).Should(
 		WithTransform(jq.Extract(`.spec.modules`), ConsistOf(initialRunlevelModuleNames)),
 	)
 
-	g.Eventually(ctx, suite.K.Get(testsupport.Platform())).Should(
+	g.Eventually(ctx, k8sm.Get(suite.Client, testsupport.Platform())).Should(
 		testsupport.HaveTargetDistributionVersion(upgradedDistributionVersion),
 	)
 
-	g.Eventually(ctx, suite.K.Get(testsupport.Platform())).Should(testsupport.HaveRunlevel(1))
-	g.Eventually(ctx, suite.K.Get(testsupport.PlatformOperator(alphaModuleName))).Should(
+	g.Eventually(ctx, k8sm.Get(suite.Client, testsupport.Platform())).Should(testsupport.HaveRunlevel(1))
+	g.Eventually(ctx, k8sm.Get(suite.Client, testsupport.PlatformOperator(alphaModuleName))).Should(
 		testsupport.HaveTrackedResources(),
 	)
 }

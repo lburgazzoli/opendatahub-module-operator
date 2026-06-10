@@ -27,7 +27,6 @@ import (
 
 	"github.com/onsi/gomega"
 
-	k8sm "github.com/lburgazzoli/gomega-matchers/pkg/matchers/k8s"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
@@ -67,7 +66,6 @@ type Suite struct {
 	CleanupModules []*module.Module
 	Config         *config.Config
 	Client         client.Client
-	K              *k8sm.Resources
 }
 
 type RunConfig struct {
@@ -202,7 +200,6 @@ func newSuite() (*Suite, error) {
 		CleanupModules: cleanupModules,
 		Config:         testConfig,
 		Client:         cli,
-		K:              k8sm.NewResources(cli, testScheme),
 	}, nil
 }
 

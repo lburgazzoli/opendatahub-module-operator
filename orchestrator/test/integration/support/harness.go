@@ -127,35 +127,30 @@ func UpsertModuleCRWithVersion(
 ) {
 	t.Helper()
 	g := gomega.NewWithT(t)
-	key := client.ObjectKeyFromObject(newModuleCR(gvk))
 
-	g.Eventually(t.Context(), func() error {
-		existing := newModuleCR(gvk)
-		err := suite.Client.Get(t.Context(), key, existing)
-		switch {
-		case k8serr.IsNotFound(err):
-			return suite.Client.Create(t.Context(), newModuleCR(gvk))
-		case err != nil:
-			return err
-		default:
-			desired := newModuleCR(gvk)
-			desired.SetResourceVersion(existing.GetResourceVersion())
-			return suite.Client.Update(t.Context(), desired)
-		}
-	}).Should(gomega.Succeed())
+	g.Eventually(t.Context(), k8sm.Upsert(
+		suite.Client, newModuleCR(gvk),
+		func(_ *unstructured.Unstructured) {},
+	)).Should(gomega.Not(gomega.BeNil()))
 
 	if version == "" {
 		return
 	}
 
-	g.Eventually(t.Context(), func(g gomega.Gomega) {
-		existing := newModuleCR(gvk)
-		err := suite.Client.Get(t.Context(), key, existing)
-		g.Expect(err).To(gomega.Succeed())
-		g.Expect(unstructured.SetNestedField(existing.Object, suite.Config.Distribution.Name, "status", "release", "name")).To(gomega.Succeed())
-		g.Expect(unstructured.SetNestedField(existing.Object, version, "status", "release", "version")).To(gomega.Succeed())
-		g.Expect(suite.Client.Status().Update(t.Context(), existing)).To(gomega.Succeed())
-	}).Should(gomega.Succeed())
+	distName := suite.Config.Distribution.Name
+	g.Eventually(t.Context(), k8sm.StatusUpdate(
+		suite.Client, newModuleCR(gvk),
+		func(obj *unstructured.Unstructured) {
+			_ = unstructured.SetNestedField(
+				obj.Object, distName,
+				"status", "release", "name",
+			)
+			_ = unstructured.SetNestedField(
+				obj.Object, version,
+				"status", "release", "version",
+			)
+		},
+	)).Should(gomega.Not(gomega.BeNil()))
 }
 
 func (suite *Suite) resetConfig() {
@@ -209,17 +204,18 @@ func (suite *Suite) cleanupPlatformResources(t *testing.T, ctx context.Context) 
 		}
 	}).WithContext(ctx).Should(gomega.Succeed())
 
-	g.Eventually(ctx, suite.K.NotFound(&configApi.Platform{
+	g.Eventually(ctx, k8sm.NotFound(suite.Client, &configApi.Platform{
 		ObjectMeta: metav1.ObjectMeta{Name: configApi.PlatformInstanceName},
 	})).Should(gomega.BeTrue())
-	g.Expect(suite.K.Delete(AdminAcksConfigMap(suite.Config.Namespace()))(ctx)).To(gomega.Or(
-		gomega.Succeed(),
-		gomega.Satisfy(k8serr.IsNotFound),
-	))
-	g.Eventually(ctx, suite.K.NotFound(AdminAcksConfigMap(suite.Config.Namespace()))).Should(gomega.BeTrue())
 
-	g.Eventually(suite.K.List(&configApi.PlatformOperatorList{})).
-		WithContext(ctx).
+	adminAcks := AdminAcksConfigMap(suite.Config.Namespace())
+	if err := suite.Client.Delete(ctx, adminAcks); err != nil && !k8serr.IsNotFound(err) {
+		g.Expect(err).NotTo(gomega.HaveOccurred())
+	}
+	g.Eventually(ctx, k8sm.NotFound(suite.Client, AdminAcksConfigMap(suite.Config.Namespace()))).
+		Should(gomega.BeTrue())
+
+	g.Eventually(ctx, k8sm.List(suite.Client, &configApi.PlatformOperatorList{})).
 		Should(k8sm.IsEmptyList())
 }
 
@@ -254,7 +250,8 @@ func (suite *Suite) assertClusterReset(t *testing.T, ctx context.Context, snapsh
 	g := gomega.NewWithT(t)
 
 	for _, ref := range snapshot.deletedRefs {
-		g.Eventually(ctx, suite.K.NotFound(objectFromResourceRef(ref))).Should(gomega.BeTrue())
+		g.Eventually(ctx, k8sm.Absent(suite.Client, objectFromResourceRef(ref))).
+			Should(gomega.BeTrue())
 	}
 
 	g.Eventually(func() error {

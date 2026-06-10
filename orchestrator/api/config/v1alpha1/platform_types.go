@@ -25,7 +25,10 @@ const (
 	PlatformInstanceName = "default-platform"
 	PlatformKind         = "Platform"
 
+	ConditionReady    = "Ready"
 	ConditionUpToDate = "UpToDate"
+
+	ReasonAdminAckRequired = "AdminAckRequired"
 )
 
 var _ common.PlatformObject = (*Platform)(nil)

@@ -388,7 +388,7 @@ func TestCheckAdminAcks(t *testing.T) {
 		var pauseErr actionerrors.PauseError
 		g.Expect(errors.As(err, &pauseErr)).To(BeTrue())
 		g.Eventually(recorder.Events).Should(Receive(SatisfyAll(
-			ContainSubstring("AdminAckRequired"),
+			ContainSubstring(configApi.ReasonAdminAckRequired),
 			ContainSubstring("Acknowledge alpha rollout"),
 		)))
 	})
@@ -548,7 +548,7 @@ func testRR(
 
 	return &odhTypes.ReconciliationRequest{
 		Client:     c,
-		Conditions: conditions.NewManager(platform, "Ready", configApi.ConditionUpToDate),
+		Conditions: conditions.NewManager(platform, configApi.ConditionReady, configApi.ConditionUpToDate),
 		Instance:   platform,
 	}
 }

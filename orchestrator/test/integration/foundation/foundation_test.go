@@ -1,6 +1,7 @@
 package foundation
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"testing"
@@ -53,10 +54,10 @@ func TestEmptyPlatformReconciles(t *testing.T) {
 
 	g.Expect(suite.Client.Create(ctx, p)).To(Succeed())
 
-	g.Eventually(ctx, suite.K.Get(p)).Should(
+	g.Eventually(ctx, k8sm.Get(suite.Client, p)).Should(
 		jq.Match(`(.status.distribution.current.version // "") | length > 0`),
 	)
-	g.Eventually(ctx, suite.K.List(&configApi.PlatformOperatorList{})).Should(
+	g.Eventually(ctx, k8sm.List(suite.Client, &configApi.PlatformOperatorList{})).Should(
 		k8sm.IsEmptyList(),
 	)
 }
@@ -72,7 +73,7 @@ func TestModuleDeployment(t *testing.T) {
 
 	for _, mod := range suite.Modules {
 		moduleName := mod.Name
-		g.Eventually(ctx, suite.K.Get(testsupport.PlatformOperator(moduleName))).Should(
+		g.Eventually(ctx, k8sm.Get(suite.Client, testsupport.PlatformOperator(moduleName))).Should(
 			testsupport.HaveTrackedResources(),
 		)
 	}
@@ -83,7 +84,7 @@ func TestModuleDeployment(t *testing.T) {
 				g := NewWithT(t)
 				ctx := t.Context()
 				moduleName := mod.Name
-				g.Eventually(ctx, suite.K.Get(testsupport.PlatformOperator(moduleName))).Should(
+				g.Eventually(ctx, k8sm.Get(suite.Client, testsupport.PlatformOperator(moduleName))).Should(
 					SatisfyAll(
 						testsupport.HaveTrackedResource(gvk.ServiceAccount),
 						testsupport.HaveTrackedResource(gvk.CustomResourceDefinition),
@@ -99,7 +100,7 @@ func TestModuleDeployment(t *testing.T) {
 				g := NewWithT(t)
 				ctx := t.Context()
 				moduleName := mod.Name
-				g.Eventually(ctx, suite.K.Get(testsupport.PlatformOperator(moduleName))).Should(
+				g.Eventually(ctx, k8sm.Get(suite.Client, testsupport.PlatformOperator(moduleName))).Should(
 					testsupport.HaveChartInfo("test-module", mod.Manifests.Chart.Path),
 				)
 			})
@@ -112,7 +113,7 @@ func TestModuleDeployment(t *testing.T) {
 				g := NewWithT(t)
 				ctx := t.Context()
 				moduleName := mod.Name
-				g.Eventually(ctx, suite.K.Get(testsupport.PlatformOperator(moduleName))).Should(
+				g.Eventually(ctx, k8sm.Get(suite.Client, testsupport.PlatformOperator(moduleName))).Should(
 					testsupport.HaveRunlevel(mod.Runlevel),
 				)
 			})
@@ -126,7 +127,7 @@ func TestModuleDeployment(t *testing.T) {
 				g := NewWithT(t)
 				ctx := t.Context()
 				moduleName := mod.Name
-				g.Eventually(ctx, suite.K.Get(testsupport.PlatformOperator(moduleName))).Should(
+				g.Eventually(ctx, k8sm.Get(suite.Client, testsupport.PlatformOperator(moduleName))).Should(
 					testsupport.HaveTrackedNamedResource(gvk.CustomResourceDefinition, crdName),
 				)
 			})
@@ -142,7 +143,7 @@ func TestModuleDeployment(t *testing.T) {
 				sa := &corev1.ServiceAccount{ObjectMeta: metav1.ObjectMeta{
 					Name: moduleName, Namespace: mod.Namespace,
 				}}
-				g.Eventually(ctx, suite.K.Get(sa)).Should(
+				g.Eventually(ctx, k8sm.Get(suite.Client, sa)).Should(
 					k8sm.HasLabel("platform.opendatahub.io/part-of", moduleName),
 				)
 			})
@@ -158,7 +159,7 @@ func TestModuleDeployment(t *testing.T) {
 				sa := &corev1.ServiceAccount{ObjectMeta: metav1.ObjectMeta{
 					Name: moduleName, Namespace: mod.Namespace,
 				}}
-				g.Eventually(ctx, suite.K.Get(sa)).Should(
+				g.Eventually(ctx, k8sm.Get(suite.Client, sa)).Should(
 					k8sm.IsControlledBy(testsupport.PlatformOperatorOwner(moduleName)),
 				)
 			})
@@ -174,7 +175,7 @@ func TestModuleDeployment(t *testing.T) {
 				cm := &corev1.ConfigMap{ObjectMeta: metav1.ObjectMeta{
 					Name: moduleName + "-config", Namespace: mod.Namespace,
 				}}
-				g.Eventually(ctx, suite.K.Get(cm)).Should(
+				g.Eventually(ctx, k8sm.Get(suite.Client, cm)).Should(
 					WithTransform(k8sm.Data(), SatisfyAll(
 						HaveKeyWithValue("module-name", Equal(moduleName)),
 						HaveKeyWithValue("distribution.name", Not(BeEmpty())),
@@ -191,7 +192,7 @@ func TestModuleDeployment(t *testing.T) {
 				g := NewWithT(t)
 				ctx := t.Context()
 				moduleName := mod.Name
-				g.Eventually(ctx, suite.K.Get(testsupport.PlatformOperator(moduleName))).Should(
+				g.Eventually(ctx, k8sm.Get(suite.Client, testsupport.PlatformOperator(moduleName))).Should(
 					k8sm.IsControlledBy(testsupport.PlatformOwner()),
 				)
 			})
@@ -210,7 +211,7 @@ func TestModuleVersionPropagation(t *testing.T) {
 
 	for _, mod := range suite.Modules {
 		moduleName := mod.Name
-		g.Eventually(ctx, suite.K.Get(testsupport.PlatformOperator(moduleName))).Should(
+		g.Eventually(ctx, k8sm.Get(suite.Client, testsupport.PlatformOperator(moduleName))).Should(
 			testsupport.HaveTrackedResources(),
 		)
 	}
@@ -219,7 +220,7 @@ func TestModuleVersionPropagation(t *testing.T) {
 
 	isupport.UpsertModuleCRWithVersion(t, suite, mod.GVK, "test-version")
 
-	g.Eventually(ctx, suite.K.Get(testsupport.PlatformOperator(mod.Name))).Should(
+	g.Eventually(ctx, k8sm.Get(suite.Client, testsupport.PlatformOperator(mod.Name))).Should(
 		testsupport.HaveCurrentDistributionVersion("test-version"),
 	)
 }
@@ -235,7 +236,7 @@ func TestDisablingModulesCleansUpResources(t *testing.T) {
 
 	for _, mod := range suite.Modules {
 		moduleName := mod.Name
-		g.Eventually(ctx, suite.K.Get(testsupport.PlatformOperator(moduleName))).Should(
+		g.Eventually(ctx, k8sm.Get(suite.Client, testsupport.PlatformOperator(moduleName))).Should(
 			testsupport.HaveTrackedResources(),
 		)
 	}
@@ -255,22 +256,22 @@ func TestDisablingModulesCleansUpResources(t *testing.T) {
 		})
 	}
 
-	g.Eventually(ctx, k8sm.Update(suite.K, testsupport.Platform(), func(p *configApi.Platform) {
+	g.Eventually(ctx, k8sm.Update(suite.Client, testsupport.Platform(), func(p *configApi.Platform) {
 		p.Spec.Modules = nil
 	})).Should(
 		jq.Match(`(.spec.modules // []) | length == 0`),
 	)
 
-	g.Eventually(ctx, suite.K.List(&configApi.PlatformOperatorList{})).Should(
+	g.Eventually(ctx, k8sm.List(suite.Client, &configApi.PlatformOperatorList{})).Should(
 		k8sm.IsEmptyList(),
 	)
 
 	for _, snap := range snapshots {
 		t.Run(snap.name, func(t *testing.T) {
 			g := NewWithT(t)
-			ctx := t.Context()
+
 			for _, ref := range snap.resources {
-				g.Eventually(ctx, func() error {
+				g.Eventually(t.Context(), func(ctx context.Context) error {
 					return suite.CheckResourceResetState(ctx, ref)
 				}).Should(
 					Succeed(),

@@ -10,6 +10,7 @@ import (
 	. "github.com/onsi/gomega"
 	corev1 "k8s.io/api/core/v1"
 	k8serr "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -46,27 +47,32 @@ func TestUpgradeTriggeredByVersionMismatch(t *testing.T) {
 	prepareUpgradeScenario(t, suite)
 
 	for _, name := range runlevelTwoModuleNames {
-		g.Eventually(ctx, suite.K.Get(testsupport.PlatformOperator(name))).Should(
+		g.Eventually(ctx, k8sm.Get(suite.Client, testsupport.PlatformOperator(name))).Should(
 			testsupport.HaveNoTrackedResources(),
 		)
 	}
-	g.Eventually(ctx, suite.K.Get(testsupport.Platform())).Should(
-		jq.Match(`(.status.conditions // []) | any(.type == "UpToDate" and .status == "False")`),
+	g.Eventually(ctx, k8sm.Get(suite.Client, testsupport.Platform())).Should(
+		WithTransform(k8sm.Conditions(), ContainElement(SatisfyAll(
+			HaveKeyWithValue("type", configApi.ConditionUpToDate),
+			HaveKeyWithValue("status", string(metav1.ConditionFalse)),
+		))),
 	)
-	g.Eventually(ctx, suite.K.Get(testsupport.Platform())).Should(
-		jq.Match(`(.status.conditions // []) | any(.type == "Ready" and .status == "False")`),
+	g.Eventually(ctx, k8sm.Get(suite.Client, testsupport.Platform())).Should(
+		WithTransform(k8sm.Conditions(), ContainElement(SatisfyAll(
+			HaveKeyWithValue("type", configApi.ConditionReady),
+			HaveKeyWithValue("status", string(metav1.ConditionFalse)),
+		))),
 	)
-	g.Eventually(ctx, suite.K.HasEvent(
-		SatisfyAll(
-			HaveField("Reason", Equal("RunlevelBlocked")),
-			HaveField("Action", Equal("WaitForRunlevel")),
-			HaveField("Message", ContainSubstring("waiting for runlevel 2 (current: 1)")),
-		),
+	g.Eventually(ctx, k8sm.Events(suite.Client,
 		k8sm.ForObject(corev1.ObjectReference{
 			Kind: configApi.PlatformOperatorKind,
 			Name: betaModuleName,
 		}),
-	)).Should(BeTrue())
+	)).Should(ContainElement(SatisfyAll(
+		HaveField("Reason", Equal("RunlevelBlocked")),
+		HaveField("Action", Equal("WaitForRunlevel")),
+		HaveField("Message", ContainSubstring("waiting for runlevel 2 (current: 1)")),
+	)))
 }
 
 func TestWrongVersionDoesNotAdvance(t *testing.T) {
@@ -77,11 +83,11 @@ func TestWrongVersionDoesNotAdvance(t *testing.T) {
 
 	isupport.UpsertModuleCRWithVersion(t, suite, alphaGVK, wrongDistributionVersion)
 
-	g.Eventually(ctx, suite.K.Get(testsupport.PlatformOperator(alphaModuleName))).Should(
+	g.Eventually(ctx, k8sm.Get(suite.Client, testsupport.PlatformOperator(alphaModuleName))).Should(
 		testsupport.HaveCurrentDistributionVersion(wrongDistributionVersion),
 	)
 
-	g.Consistently(ctx, suite.K.Get(testsupport.Platform())).
+	g.Consistently(ctx, k8sm.Get(suite.Client, testsupport.Platform())).
 		WithTimeout(runlevelStabilityTimeout).
 		Should(testsupport.HaveRunlevel(1))
 }
@@ -94,10 +100,10 @@ func TestCorrectVersionAdvancesRunlevel(t *testing.T) {
 
 	isupport.UpsertModuleCRWithVersion(t, suite, alphaGVK, upgradedDistributionVersion)
 
-	g.Eventually(ctx, suite.K.Get(testsupport.Platform())).Should(testsupport.HaveRunlevel(2))
+	g.Eventually(ctx, k8sm.Get(suite.Client, testsupport.Platform())).Should(testsupport.HaveRunlevel(2))
 
 	for _, name := range runlevelTwoModuleNames {
-		g.Eventually(ctx, suite.K.Get(testsupport.PlatformOperator(name))).Should(
+		g.Eventually(ctx, k8sm.Get(suite.Client, testsupport.PlatformOperator(name))).Should(
 			testsupport.HaveTrackedResources(),
 		)
 	}
@@ -112,7 +118,7 @@ func TestAllModulesReadySetsDistributionVersion(t *testing.T) {
 	isupport.UpsertModuleCRWithVersion(t, suite, alphaGVK, upgradedDistributionVersion)
 
 	for _, name := range runlevelTwoModuleNames {
-		g.Eventually(ctx, suite.K.Get(testsupport.PlatformOperator(name))).Should(
+		g.Eventually(ctx, k8sm.Get(suite.Client, testsupport.PlatformOperator(name))).Should(
 			testsupport.HaveTrackedResources(),
 		)
 	}
@@ -120,14 +126,20 @@ func TestAllModulesReadySetsDistributionVersion(t *testing.T) {
 	isupport.UpsertModuleCRWithVersion(t, suite, betaGVK, upgradedDistributionVersion)
 	isupport.UpsertModuleCRWithVersion(t, suite, gammaGVK, upgradedDistributionVersion)
 
-	g.Eventually(ctx, suite.K.Get(testsupport.Platform())).Should(
+	g.Eventually(ctx, k8sm.Get(suite.Client, testsupport.Platform())).Should(
 		testsupport.HaveCurrentDistributionVersion(upgradedDistributionVersion),
 	)
-	g.Eventually(ctx, suite.K.Get(testsupport.Platform())).Should(
-		jq.Match(`(.status.conditions // []) | any(.type == "UpToDate" and .status == "True")`),
+	g.Eventually(ctx, k8sm.Get(suite.Client, testsupport.Platform())).Should(
+		WithTransform(k8sm.Conditions(), ContainElement(SatisfyAll(
+			HaveKeyWithValue("type", configApi.ConditionUpToDate),
+			HaveKeyWithValue("status", string(metav1.ConditionTrue)),
+		))),
 	)
-	g.Eventually(ctx, suite.K.Get(testsupport.Platform())).Should(
-		jq.Match(`(.status.conditions // []) | any(.type == "Ready" and .status == "True")`),
+	g.Eventually(ctx, k8sm.Get(suite.Client, testsupport.Platform())).Should(
+		WithTransform(k8sm.Conditions(), ContainElement(SatisfyAll(
+			HaveKeyWithValue("type", configApi.ConditionReady),
+			HaveKeyWithValue("status", string(metav1.ConditionTrue)),
+		))),
 	)
 }
 
@@ -139,19 +151,19 @@ func TestAddingLowerRunlevelModuleDoesNotRewind(t *testing.T) {
 
 	isupport.UpsertModuleCRWithVersion(t, suite, alphaGVK, upgradedDistributionVersion)
 
-	g.Eventually(ctx, suite.K.Get(testsupport.Platform())).Should(testsupport.HaveRunlevel(2))
+	g.Eventually(ctx, k8sm.Get(suite.Client, testsupport.Platform())).Should(testsupport.HaveRunlevel(2))
 
 	modules := append(append([]string{}, initialRunlevelModuleNames...), deltaModuleName)
-	g.Eventually(ctx, k8sm.Update(suite.K, testsupport.Platform(), func(p *configApi.Platform) {
+	g.Eventually(ctx, k8sm.Update(suite.Client, testsupport.Platform(), func(p *configApi.Platform) {
 		p.Spec.Modules = modules
 	})).Should(
 		WithTransform(jq.Extract(`.spec.modules`), ConsistOf(modules)),
 	)
 
-	g.Eventually(ctx, suite.K.Get(testsupport.PlatformOperator(deltaModuleName))).
+	g.Eventually(ctx, k8sm.Get(suite.Client, testsupport.PlatformOperator(deltaModuleName))).
 		WithTimeout(isupport.Timeout).
 		Should(testsupport.HaveTrackedResources())
-	g.Consistently(ctx, suite.K.Get(testsupport.Platform())).
+	g.Consistently(ctx, k8sm.Get(suite.Client, testsupport.Platform())).
 		WithTimeout(runlevelStabilityTimeout).
 		Should(testsupport.HaveRunlevel(2))
 }
@@ -164,10 +176,10 @@ func TestAddingHigherRunlevelModuleWaitsForCurrentRunlevel(t *testing.T) {
 
 	isupport.UpsertModuleCRWithVersion(t, suite, alphaGVK, upgradedDistributionVersion)
 
-	g.Eventually(ctx, suite.K.Get(testsupport.Platform())).Should(testsupport.HaveRunlevel(2))
+	g.Eventually(ctx, k8sm.Get(suite.Client, testsupport.Platform())).Should(testsupport.HaveRunlevel(2))
 
 	modules := append(append([]string{}, initialRunlevelModuleNames...), epsilonModuleName)
-	g.Eventually(ctx, k8sm.Update(suite.K, testsupport.Platform(), func(p *configApi.Platform) {
+	g.Eventually(ctx, k8sm.Update(suite.Client, testsupport.Platform(), func(p *configApi.Platform) {
 		p.Spec.Modules = modules
 	})).Should(
 		WithTransform(jq.Extract(`.spec.modules`), ConsistOf(modules)),
@@ -191,8 +203,8 @@ func TestAddingHigherRunlevelModuleWaitsForCurrentRunlevel(t *testing.T) {
 	isupport.UpsertModuleCRWithVersion(t, suite, betaGVK, upgradedDistributionVersion)
 	isupport.UpsertModuleCRWithVersion(t, suite, gammaGVK, upgradedDistributionVersion)
 
-	g.Eventually(ctx, suite.K.Get(testsupport.Platform())).Should(testsupport.HaveRunlevel(3))
-	g.Eventually(ctx, suite.K.Get(testsupport.PlatformOperator(epsilonModuleName))).Should(
+	g.Eventually(ctx, k8sm.Get(suite.Client, testsupport.Platform())).Should(testsupport.HaveRunlevel(3))
+	g.Eventually(ctx, k8sm.Get(suite.Client, testsupport.PlatformOperator(epsilonModuleName))).Should(
 		testsupport.HaveTrackedResources(),
 	)
 }
@@ -209,31 +221,31 @@ func TestAddingMiddleRunlevelModuleInSteadyStateReconcilesImmediately(t *testing
 	p := isupport.NewPlatformWithModules(initialModules)
 	g.Expect(suite.Client.Create(ctx, p)).To(Succeed())
 
-	g.Eventually(ctx, suite.K.Get(testsupport.PlatformOperator(alphaModuleName))).Should(
+	g.Eventually(ctx, k8sm.Get(suite.Client, testsupport.PlatformOperator(alphaModuleName))).Should(
 		testsupport.HaveTrackedResources(),
 	)
-	g.Eventually(ctx, suite.K.Get(testsupport.PlatformOperator(epsilonModuleName))).Should(
+	g.Eventually(ctx, k8sm.Get(suite.Client, testsupport.PlatformOperator(epsilonModuleName))).Should(
 		testsupport.HaveTrackedResources(),
 	)
 	isupport.UpsertModuleCRWithVersion(t, suite, alphaGVK, initialDistributionVersion)
 	isupport.UpsertModuleCRWithVersion(t, suite, epsilonGVK, initialDistributionVersion)
 
-	g.Eventually(ctx, suite.K.Get(testsupport.Platform())).Should(
+	g.Eventually(ctx, k8sm.Get(suite.Client, testsupport.Platform())).Should(
 		testsupport.HaveCurrentDistributionVersion(initialDistributionVersion),
 	)
-	g.Eventually(ctx, suite.K.Get(testsupport.Platform())).Should(testsupport.HaveRunlevel(3))
+	g.Eventually(ctx, k8sm.Get(suite.Client, testsupport.Platform())).Should(testsupport.HaveRunlevel(3))
 
 	modules := []string{alphaModuleName, betaModuleName, epsilonModuleName}
-	g.Eventually(ctx, k8sm.Update(suite.K, testsupport.Platform(), func(p *configApi.Platform) {
+	g.Eventually(ctx, k8sm.Update(suite.Client, testsupport.Platform(), func(p *configApi.Platform) {
 		p.Spec.Modules = modules
 	})).Should(
 		WithTransform(jq.Extract(`.spec.modules`), ConsistOf(modules)),
 	)
 
-	g.Eventually(ctx, suite.K.Get(testsupport.PlatformOperator(betaModuleName))).Should(
+	g.Eventually(ctx, k8sm.Get(suite.Client, testsupport.PlatformOperator(betaModuleName))).Should(
 		testsupport.HaveTrackedResources(),
 	)
-	g.Consistently(ctx, suite.K.Get(testsupport.Platform())).
+	g.Consistently(ctx, k8sm.Get(suite.Client, testsupport.Platform())).
 		WithTimeout(runlevelStabilityTimeout).
 		Should(SatisfyAll(
 			testsupport.HaveRunlevel(3),
@@ -253,18 +265,18 @@ func TestSteadyStateIgnoresRunlevel(t *testing.T) {
 		isupport.UpsertModuleCRWithVersion(t, suite, gvk, upgradedDistributionVersion)
 	}
 
-	g.Eventually(ctx, suite.K.Get(testsupport.Platform())).Should(
+	g.Eventually(ctx, k8sm.Get(suite.Client, testsupport.Platform())).Should(
 		testsupport.HaveCurrentDistributionVersion(upgradedDistributionVersion),
 	)
 
 	modules := append(append([]string{}, initialRunlevelModuleNames...), epsilonModuleName)
-	g.Eventually(ctx, k8sm.Update(suite.K, testsupport.Platform(), func(p *configApi.Platform) {
+	g.Eventually(ctx, k8sm.Update(suite.Client, testsupport.Platform(), func(p *configApi.Platform) {
 		p.Spec.Modules = modules
 	})).Should(
 		WithTransform(jq.Extract(`.spec.modules`), ConsistOf(modules)),
 	)
 
-	g.Eventually(ctx, suite.K.Get(testsupport.PlatformOperator(epsilonModuleName))).Should(
+	g.Eventually(ctx, k8sm.Get(suite.Client, testsupport.PlatformOperator(epsilonModuleName))).Should(
 		testsupport.HaveTrackedResources(),
 	)
 }
