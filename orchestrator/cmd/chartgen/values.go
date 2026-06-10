@@ -108,6 +108,8 @@ func DefaultValues() Values {
 			"controller.leader-election.enabled": "true",
 			"controller.leader-election.id":      "opendatahub-orchestrator-lock",
 			"controller.zap.level":               "info",
+			"controller.zap.dev-mode":            "false",
+			"controller.zap.encoder":             "",
 			"controller.pprof.enabled":           "false",
 		},
 	}

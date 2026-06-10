@@ -44,7 +44,7 @@ import (
 func NewReconciler(
 	ctx context.Context,
 	mgr ctrl.Manager,
-	registry *module.ModuleRegistry,
+	registry *module.Registry,
 	cfg *config.Config,
 ) error {
 	r := &PlatformReconciler{
@@ -55,6 +55,11 @@ func NewReconciler(
 
 	_, err := reconciler.ReconcilerFor(mgr, &configApi.Platform{}).
 		Owns(&configApi.PlatformOperator{},
+			reconciler.WithPredicates(predicate.ResourceVersionChangedPredicate{}),
+		).
+		Watches(
+			&configApi.PlatformOperator{},
+			reconciler.WithEventHandler(handlers.ToNamed(configApi.PlatformInstanceName)),
 			reconciler.WithPredicates(predicate.ResourceVersionChangedPredicate{}),
 		).
 		Watches(
@@ -77,6 +82,7 @@ func NewReconciler(
 		WithAction(r.checkAdminAcks).
 		WithAction(r.ensureModules).
 		WithAction(deploy.NewAction(
+			deploy.WithCache(),
 			deploy.WithApplyOrder(),
 		)).
 		WithAction(r.pruneModules).

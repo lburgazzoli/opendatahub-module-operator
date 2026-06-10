@@ -4,7 +4,6 @@ go 1.26.4
 
 require (
 	github.com/blang/semver/v4 v4.0.0
-	github.com/google/go-cmp v0.7.0
 	github.com/invopop/jsonschema v0.14.0
 	github.com/k8s-manifest-kit/engine v0.2.1-0.20260302092700-39c16f95d249
 	github.com/k8s-manifest-kit/pkg v0.2.1-0.20260604145543-c4a39bd14f36
@@ -17,6 +16,7 @@ require (
 	github.com/operator-framework/api v0.42.0
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/viper v1.21.0
+	go.uber.org/zap v1.27.1
 	helm.sh/helm/v4 v4.1.1
 	k8s.io/api v0.36.1
 	k8s.io/apiextensions-apiserver v0.36.1
@@ -65,6 +65,7 @@ require (
 	github.com/gobwas/glob v0.2.3 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/google/gnostic-models v0.7.1 // indirect
+	github.com/google/go-cmp v0.7.0 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/hashicorp/errwrap v1.1.0 // indirect
 	github.com/hashicorp/go-multierror v1.1.1 // indirect
@@ -99,7 +100,6 @@ require (
 	github.com/subosito/gotenv v1.6.0 // indirect
 	github.com/x448/float16 v0.8.4 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
-	go.uber.org/zap v1.27.1 // indirect
 	go.yaml.in/yaml/v2 v2.4.4 // indirect
 	go.yaml.in/yaml/v3 v3.0.4 // indirect
 	go.yaml.in/yaml/v4 v4.0.0-rc.2 // indirect
@@ -129,3 +129,7 @@ require (
 replace github.com/opendatahub-io/opendatahub-operator/v2 => github.com/lburgazzoli/opendatahub-operator/v2 v2.0.0-20260605212627-052ab054008d
 
 replace github.com/opendatahub-io/operator-actions-framework => github.com/lburgazzoli/opendatahub-operator/operator-actions-framework v0.0.0-20260606070426-37227c168d1b
+
+replace github.com/opendatahub-io/opendatahub-operator/pkg/clusterhealth => github.com/lburgazzoli/opendatahub-operator/pkg/clusterhealth v0.0.0-20260606070426-37227c168d1b
+
+replace github.com/opendatahub-io/opendatahub-operator/v2/pkg/failureclassifier => github.com/lburgazzoli/opendatahub-operator/v2 v2.0.0-20260606070426-37227c168d1b

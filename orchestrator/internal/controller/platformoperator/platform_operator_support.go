@@ -18,20 +18,28 @@ package platformoperator
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"maps"
 
+	"github.com/k8s-manifest-kit/engine/pkg/transformer/meta/namespace"
 	engineTypes "github.com/k8s-manifest-kit/engine/pkg/types"
 	kitMaps "github.com/k8s-manifest-kit/pkg/util/maps"
+	helm "github.com/k8s-manifest-kit/renderer-helm/pkg"
 	odhLabels "github.com/opendatahub-io/opendatahub-operator/v2/pkg/metadata/labels"
 	"github.com/opendatahub-io/operator-actions-framework/controller/types"
-	"github.com/opendatahub-io/operator-actions-framework/resources"
 	corev1 "k8s.io/api/core/v1"
 	k8serr "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/event"
+	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
 	configApi "github.com/lburgazzoli/opendatahub-module-operator/orchestrator/api/config/v1alpha1"
+	orchestratorconfig "github.com/lburgazzoli/opendatahub-module-operator/orchestrator/pkg/config"
+	"github.com/lburgazzoli/opendatahub-module-operator/orchestrator/pkg/module"
+	"github.com/lburgazzoli/opendatahub-module-operator/orchestrator/pkg/resources"
 	"github.com/lburgazzoli/opendatahub-module-operator/orchestrator/pkg/resources/gvk"
 )
 
@@ -75,15 +83,46 @@ func ToResourceRefs(objects []unstructured.Unstructured) []configApi.ResourceRef
 func (r *ModuleReconciler) getContext(rr *types.ReconciliationRequest) (*moduleContext, error) {
 	name := rr.Instance.GetName()
 
-	r.mu.RLock()
 	mc, ok := r.contexts[name]
-	r.mu.RUnlock()
 
 	if !ok {
 		return nil, fmt.Errorf("module context for %q not found", name)
 	}
 
 	return mc, nil
+}
+
+func newModuleContext(
+	m *module.Module,
+	cfg *orchestratorconfig.Config,
+) (*moduleContext, error) {
+	e, err := helm.NewEngine(
+		helm.Source{
+			Chart:       m.Manifests.Chart.Path,
+			ReleaseName: m.Name,
+			Values: helm.Values(map[string]any{
+				"module": map[string]any{
+					"group":   m.GVK.Group,
+					"version": m.GVK.Version,
+					"kind":    m.GVK.Kind,
+				},
+				"distribution": map[string]any{
+					"name":    cfg.Distribution.Name,
+					"version": cfg.Distribution.Version,
+				},
+			}),
+		},
+		helm.WithTransformer(namespace.EnsureDefault(m.Namespace)),
+		helm.WithTransformer(moduleMetadata(m.Name)),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("creating engine for module %q: %w", m.Name, err)
+	}
+
+	return &moduleContext{
+		module: m,
+		engine: e,
+	}, nil
 }
 
 func (r *ModuleReconciler) moduleNamespace(_ context.Context, rr *types.ReconciliationRequest) (string, error) {
@@ -117,57 +156,55 @@ func (r *ModuleReconciler) computeValues(
 	values := make(engineTypes.Values, len(mc.module.Values))
 	maps.Copy(values, mc.module.Values)
 
-	if mc.module.Config != nil {
-		configValues, err := mc.module.Config(ctx, c)
-		if err != nil {
-			return nil, fmt.Errorf("computing config values for module %q: %w", mc.module.EffectiveName(), err)
-		}
-		if len(configValues) > 0 {
-			values["config"] = kitMaps.DeepMerge(
-				func() map[string]any {
-					if existing, ok := values["config"].(map[string]any); ok {
-						return existing
-					}
-					return nil
-				}(),
-				configValues,
-			)
-		}
+	if mc.module.Config == nil {
+		return values, nil
+	}
+
+	vals, err := mc.module.Config(ctx, c)
+	if err != nil {
+		return nil, fmt.Errorf("computing config values for module %q: %w", mc.module.Name, err)
+	}
+
+	if len(vals) > 0 {
+		values["config"] = kitMaps.DeepMerge(
+			func() map[string]any {
+				if existing, ok := values["config"].(map[string]any); ok {
+					return existing
+				}
+				return nil
+			}(),
+			vals,
+		)
 	}
 
 	return values, nil
 }
 
-func (r *ModuleReconciler) readModuleVersion(
+func (r *ModuleReconciler) readModuleRelease(
 	ctx context.Context,
 	c client.Client,
-	mc *moduleContext,
-) (string, error) {
-	list := &unstructured.UnstructuredList{}
-	list.SetGroupVersionKind(mc.module.GVK)
+	mod *module.Module,
+) (configApi.Distribution, bool, error) {
+	obj := &unstructured.Unstructured{}
+	obj.SetGroupVersionKind(mod.GVK)
 
-	err := c.List(ctx, list)
-
+	err := resources.GetSingleton(ctx, c, obj)
 	switch {
-	case k8serr.IsNotFound(err):
-		return "", nil
+	case errors.Is(err, resources.ErrNoInstance):
+		return configApi.Distribution{}, false, nil
 	case err != nil:
-		return "", fmt.Errorf("listing module CR %s: %w", mc.module.GVK.Kind, err)
+		return configApi.Distribution{}, false, fmt.Errorf("getting singleton module CR %s: %w", mod.GVK.Kind, err)
 	}
 
-	if len(list.Items) == 0 {
-		return "", nil
-	}
-
-	version, found, err := unstructured.NestedString(list.Items[0].Object, "status", "release", "version")
+	release, _, err := unstructured.NestedStringMap(obj.Object, "status", "release")
 	if err != nil {
-		return "", fmt.Errorf("reading version from module CR %s: %w", mc.module.GVK.Kind, err)
-	}
-	if !found {
-		return "", nil
+		return configApi.Distribution{}, true, fmt.Errorf("reading release from module CR %s: %w", mod.GVK.Kind, err)
 	}
 
-	return version, nil
+	return configApi.Distribution{
+		Name:    release["name"],
+		Version: release["version"],
+	}, true, nil
 }
 
 func (r *ModuleReconciler) reportRunlevelBlocked(
@@ -191,4 +228,97 @@ func (r *ModuleReconciler) reportRunlevelBlocked(
 		requiredRunlevel,
 		currentRunlevel,
 	)
+}
+
+// platformChangePredicate triggers only when the Platform CR's runlevel or
+// target distribution changes.
+func (r *ModuleReconciler) platformChangePredicate() predicate.Predicate {
+	return predicate.Funcs{
+		CreateFunc:  func(_ event.CreateEvent) bool { return true },
+		DeleteFunc:  func(_ event.DeleteEvent) bool { return false },
+		GenericFunc: func(_ event.GenericEvent) bool { return false },
+		UpdateFunc: func(e event.UpdateEvent) bool {
+			oldPlatform, oldErr := resources.Decode[*configApi.Platform](e.ObjectOld)
+			if oldErr != nil {
+				ctrl.Log.Error(oldErr, "reading old Platform")
+				return false
+			}
+
+			newPlatform, newErr := resources.Decode[*configApi.Platform](e.ObjectNew)
+			if newErr != nil {
+				ctrl.Log.Error(newErr, "reading new Platform")
+				return false
+			}
+
+			switch {
+			case oldPlatform.Status.Distribution.Target != newPlatform.Status.Distribution.Target:
+				return true
+			case oldPlatform.Status.Runlevel != newPlatform.Status.Runlevel:
+				return true
+			default:
+				return false
+			}
+		},
+	}
+}
+
+// eligibleModuleRequests maps a Platform CR event to reconcile requests for
+// modules that actually need a wakeup. If a module is already at the Platform
+// target distribution, no wakeup is needed. Otherwise, modules whose own target
+// differs from the Platform target are woken immediately; if the target already
+// matches, only modules at or above the current Platform runlevel are woken.
+func (r *ModuleReconciler) eligibleModuleRequests(
+	ctx context.Context,
+	obj client.Object,
+) []ctrl.Request {
+	platform, err := resources.Decode[*configApi.Platform](obj)
+	if err != nil {
+		ctrl.Log.Error(err, "reading Platform")
+		return nil
+	}
+
+	requests := make([]ctrl.Request, 0, len(platform.Spec.Modules))
+
+	for _, name := range platform.Spec.Modules {
+		m := r.registry.ModuleByName(name)
+		if m == nil {
+
+			// Skip disabled or unknown PlatformOperators; the Platform controller
+			// will prune leftovers separately.
+			continue
+		}
+
+		o := configApi.PlatformOperator{}
+		o.SetName(m.Name)
+
+		err := r.client.Get(ctx, client.ObjectKeyFromObject(&o), &o)
+		switch {
+		case k8serr.IsNotFound(err):
+			continue
+		case err != nil:
+			ctrl.Log.Error(err, "getting PlatformOperator", "name", name)
+			continue
+		}
+
+		switch {
+		case !o.GetDeletionTimestamp().IsZero():
+			// PlatformOperator is being deleted, so there is nothing to wake up.
+			continue
+		case o.Status.Distribution.Current == platform.Status.Distribution.Target:
+			// Already on the Platform target version; no forced wakeup needed.
+			continue
+		case o.Status.Distribution.Target != platform.Status.Distribution.Target:
+			// A target-version change should wake the module immediately.
+			requests = append(requests, ctrl.Request{
+				NamespacedName: client.ObjectKey{Name: m.Name},
+			})
+		case m.Runlevel >= platform.Status.Runlevel:
+			// Runlevel-only changes wake modules at or above the current runlevel.
+			requests = append(requests, ctrl.Request{
+				NamespacedName: client.ObjectKey{Name: m.Name},
+			})
+		}
+	}
+
+	return requests
 }

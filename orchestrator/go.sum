@@ -159,6 +159,8 @@ github.com/opencontainers/go-digest v1.0.0 h1:apOUWs51W5PlhuyGyz9FCeeBIOUDA/6nW8
 github.com/opencontainers/go-digest v1.0.0/go.mod h1:0JzlMkj0TRzQZfJkVvzbP0HBR3IKzErnv2BNG4W4MAM=
 github.com/opencontainers/image-spec v1.1.1 h1:y0fUlFfIZhPF1W537XOLg0/fcx6zcHCJwooC2xJA040=
 github.com/opencontainers/image-spec v1.1.1/go.mod h1:qpqAh3Dmcf36wStyyWU+kCeDgrGnAve2nCC8+7h8Q0M=
+github.com/opendatahub-io/models-as-a-service/maas-controller v0.0.0-20260420142354-89fba298f42a h1:MQWRo9YDTNsJh+82XWkDhqxQEJcd0I4vScIArwVIDCU=
+github.com/opendatahub-io/models-as-a-service/maas-controller v0.0.0-20260420142354-89fba298f42a/go.mod h1:uMYnqqPwy+1ub8me0YMZRZ1vrUQY9jS9nMcUXLBp88k=
 github.com/opendatahub-io/odh-platform-utilities v0.1.0 h1:Y2HKslVy/C58VhFFCgyiK305LHVMQT3jXlmme6o0VzQ=
 github.com/opendatahub-io/odh-platform-utilities v0.1.0/go.mod h1:qArV52ZzbXEOivpKDr+Y84B+boaTEF5edkGW0d3cerA=
 github.com/openshift/api v0.0.0-20230823114715-5fdd7511b790 h1:e3zIxk67/kiABxGFfFVECqJ4FcQRG5DPF8lgDV9f+MM=
@@ -172,6 +174,8 @@ github.com/pelletier/go-toml/v2 v2.2.4/go.mod h1:2gIqNv+qfxSVS7cM2xJQKtLSTLUE9V8
 github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
 github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 h1:Jamvg5psRIccs7FGNTlIRMkT8wgtp5eCXdBlqhYGL6U=
 github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
+github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring v0.68.0 h1:yl9ceUSUBo9woQIO+8eoWpcxZkdZgm89g+rVvu37TUw=
+github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring v0.68.0/go.mod h1:9Uuu3pEU2jB8PwuqkHvegQ0HV/BlZRJUyfTYAqfdVF8=
 github.com/prometheus/client_golang v1.23.2 h1:Je96obch5RDVy3FDMndoUsjAhG5Edi49h0RJWRi/o0o=
 github.com/prometheus/client_golang v1.23.2/go.mod h1:Tb1a6LWHB3/SPIzCoaDXI4I8UHKeFTEQ1YCr+0Gyqmg=
 github.com/prometheus/client_model v0.6.2 h1:oBsgwpGs7iVziMvrGhE53c/GrLUsZdHnqNwqPLxwZyk=

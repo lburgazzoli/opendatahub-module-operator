@@ -22,9 +22,6 @@ import (
 	"time"
 
 	"github.com/k8s-manifest-kit/engine/pkg/render"
-	"github.com/k8s-manifest-kit/engine/pkg/transformer/meta/namespace"
-	helm "github.com/k8s-manifest-kit/renderer-helm/pkg"
-	"helm.sh/helm/v4/pkg/chart"
 	corev1 "k8s.io/api/core/v1"
 	k8serr "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -34,7 +31,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	configApi "github.com/lburgazzoli/opendatahub-module-operator/orchestrator/api/config/v1alpha1"
-	odhresources "github.com/lburgazzoli/opendatahub-module-operator/orchestrator/pkg/resources"
 	"github.com/lburgazzoli/opendatahub-module-operator/orchestrator/pkg/resources/gvk"
 	actionerrors "github.com/opendatahub-io/operator-actions-framework/controller/actions/errors"
 	"github.com/opendatahub-io/operator-actions-framework/controller/types"
@@ -44,69 +40,6 @@ const (
 	defaultPauseDelay        = 5 * time.Second
 	platformLookupPauseDelay = 500 * time.Millisecond
 )
-
-// resolveModule looks up the module by PlatformOperator name and lazily
-// creates the Helm engine. Must be the first action in the pipeline.
-func (r *ModuleReconciler) resolveModule(_ context.Context, rr *types.ReconciliationRequest) error {
-	name := rr.Instance.GetName()
-
-	r.mu.RLock()
-	_, ok := r.contexts[name]
-	r.mu.RUnlock()
-
-	if ok {
-		return nil
-	}
-
-	m := r.registry.ModuleByName(name)
-	if m == nil {
-		return fmt.Errorf("module %q not registered", name)
-	}
-
-	e, err := helm.NewEngine(
-		helm.Source{
-			Chart:       m.ChartPath,
-			ReleaseName: m.EffectiveName(),
-			Values: helm.Values(map[string]any{
-				"module": map[string]any{
-					"group":   m.GVK.Group,
-					"version": m.GVK.Version,
-					"kind":    m.GVK.Kind,
-				},
-				"distribution": map[string]any{
-					"name":    r.cfg.Distribution.Name,
-					"version": r.cfg.Distribution.Version,
-				},
-			}),
-		},
-		helm.WithTransformer(namespace.EnsureDefault(m.Namespace)),
-		helm.WithTransformer(moduleMetadata(m.EffectiveName())),
-	)
-	if err != nil {
-		return fmt.Errorf("creating engine for module %q: %w", name, err)
-	}
-
-	ci := configApi.ChartInfo{Path: m.ChartPath}
-	if chrt, chartErr := m.Chart(); chartErr == nil && chrt != nil {
-		if acc, accErr := chart.NewAccessor(chrt); accErr == nil {
-			ci.Name = acc.Name()
-			if md := acc.MetadataAsMap(); md != nil {
-				if v, ok := md["version"].(string); ok {
-					ci.Version = v
-				}
-				if v, ok := md["appVersion"].(string); ok {
-					ci.AppVersion = v
-				}
-			}
-		}
-	}
-
-	r.mu.Lock()
-	r.contexts[name] = &moduleContext{module: m, engine: e, chartInfo: ci}
-	r.mu.Unlock()
-
-	return nil
-}
 
 // checkRunlevel reads the Platform CR status and verifies the module's
 // runlevel is at or below the current platform runlevel.
@@ -122,7 +55,7 @@ func (r *ModuleReconciler) checkRunlevel(ctx context.Context, rr *types.Reconcil
 
 	p := &configApi.Platform{}
 	p.SetName(configApi.PlatformInstanceName)
-	err = odhresources.Get(ctx, rr.Client, p)
+	err = rr.Client.Get(ctx, client.ObjectKeyFromObject(p), p)
 
 	switch {
 	case k8serr.IsNotFound(err):
@@ -135,15 +68,14 @@ func (r *ModuleReconciler) checkRunlevel(ctx context.Context, rr *types.Reconcil
 		return fmt.Errorf("getting Platform CR: %w", err)
 	}
 
-	upgradeInProgress := p.Status.Distribution.Current.Version != "" &&
-		p.Status.Distribution.Current.Version != p.Status.Distribution.Target.Version
+	upgradeInProgress := p.Status.Distribution.Current != p.Status.Distribution.Target
 
 	if upgradeInProgress && mc.module.Runlevel > p.Status.Runlevel {
-		r.reportRunlevelBlocked(rr.Instance, mc.module.EffectiveName(), mc.module.Runlevel, p.Status.Runlevel)
+		r.reportRunlevelBlocked(rr.Instance, mc.module.Name, mc.module.Runlevel, p.Status.Runlevel)
 		return actionerrors.NewPauseError(
 			defaultPauseDelay,
 			"module %q: waiting for runlevel %d (current: %d)",
-			mc.module.EffectiveName(), mc.module.Runlevel, p.Status.Runlevel,
+			mc.module.Name, mc.module.Runlevel, p.Status.Runlevel,
 		)
 	}
 
@@ -194,7 +126,7 @@ func (r *ModuleReconciler) renderChart(ctx context.Context, rr *types.Reconcilia
 
 	rendered, err := mc.engine.Render(ctx, render.WithValues(values))
 	if err != nil {
-		return fmt.Errorf("rendering chart for module %q: %w", mc.module.EffectiveName(), err)
+		return fmt.Errorf("rendering chart for module %q: %w", mc.module.Name, err)
 	}
 
 	rr.Resources = append(rr.Resources, rendered...)
@@ -256,9 +188,14 @@ func (r *ModuleReconciler) reportStatus(ctx context.Context, rr *types.Reconcili
 
 	obj.Status.Resources = ToResourceRefs(rr.Resources)
 	obj.Status.Runlevel = mc.module.Runlevel
-	obj.Status.Chart = mc.chartInfo
+	obj.Status.Chart = configApi.ChartInfo{
+		Path:       mc.module.Manifests.Chart.Path,
+		Name:       mc.module.Manifests.Chart.Name,
+		Version:    mc.module.Manifests.Chart.Version,
+		AppVersion: mc.module.Manifests.Chart.AppVersion,
+	}
 
-	version, err := r.readModuleVersion(ctx, rr.Client, mc)
+	release, found, err := r.readModuleRelease(ctx, rr.Client, mc.module)
 	if err != nil {
 		return err
 	}
@@ -267,10 +204,10 @@ func (r *ModuleReconciler) reportStatus(ctx context.Context, rr *types.Reconcili
 		Name:    r.cfg.Distribution.Name,
 		Version: r.cfg.Distribution.Version,
 	}
-	obj.Status.Distribution.Current = configApi.Distribution{
-		Name:    r.cfg.Distribution.Name,
-		Version: version,
+	if !found {
+		release = obj.Status.Distribution.Target
 	}
+	obj.Status.Distribution.Current = release
 
 	return nil
 }

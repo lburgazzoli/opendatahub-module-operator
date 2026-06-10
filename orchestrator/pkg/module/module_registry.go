@@ -26,55 +26,34 @@ import (
 	"k8s.io/apimachinery/pkg/util/sets"
 )
 
-// ModuleRegistry holds registered modules and their computed runlevel groups.
-type ModuleRegistry struct {
-	namespace  string
-	chartsPath string
-	modules    []*Module
-	runlevels  [][]*Module
+// Registry holds the immutable module set and computed runlevel groups.
+type Registry struct {
+	modules   []*Module
+	runlevels [][]*Module
 }
 
-// NewModuleRegistry creates a ModuleRegistry.
-func NewModuleRegistry(namespace string, chartsPath string) *ModuleRegistry {
-	return &ModuleRegistry{
-		namespace:  namespace,
-		chartsPath: chartsPath,
-	}
-}
-
-// Register adds a module.
-func (r *ModuleRegistry) Register(m *Module) {
-	if existing := r.ModuleByGVK(m.GVK); existing != nil {
-		panic(fmt.Sprintf(
-			"module %q duplicates registered GVK %s already used by module %q",
-			m.EffectiveName(),
-			m.GVK.String(),
-			existing.EffectiveName(),
-		))
+// NewRegistry validates the full module list and precomputes runlevels.
+func NewRegistry(modules []*Module) (*Registry, error) {
+	runlevels, err := computeRunlevels(modules)
+	if err != nil {
+		return nil, err
 	}
 
-	r.modules = append(r.modules, m)
-}
-
-// Namespace implements Registry.
-func (r *ModuleRegistry) Namespace() string {
-	return r.namespace
-}
-
-// ChartsPath implements Registry.
-func (r *ModuleRegistry) ChartsPath() string {
-	return r.chartsPath
+	return &Registry{
+		modules:   slices.Clone(modules),
+		runlevels: runlevels,
+	}, nil
 }
 
 // Modules returns all registered modules.
-func (r *ModuleRegistry) Modules() []*Module {
-	return r.modules
+func (r *Registry) Modules() []*Module {
+	return slices.Clone(r.modules)
 }
 
-// ModuleByName returns the module with the given effective name, or nil.
-func (r *ModuleRegistry) ModuleByName(name string) *Module {
+// ModuleByName returns the module with the given name, or nil.
+func (r *Registry) ModuleByName(name string) *Module {
 	for _, m := range r.modules {
-		if m.EffectiveName() == name {
+		if m.Name == name {
 			return m
 		}
 	}
@@ -82,7 +61,7 @@ func (r *ModuleRegistry) ModuleByName(name string) *Module {
 }
 
 // ModuleByGVK returns the module with the given GVK, or nil.
-func (r *ModuleRegistry) ModuleByGVK(g schema.GroupVersionKind) *Module {
+func (r *Registry) ModuleByGVK(g schema.GroupVersionKind) *Module {
 	for _, m := range r.modules {
 		if m.GVK == g {
 			return m
@@ -92,7 +71,7 @@ func (r *ModuleRegistry) ModuleByGVK(g schema.GroupVersionKind) *Module {
 }
 
 // CacheNamespaces returns deduplicated, sorted namespaces from all registered modules.
-func (r *ModuleRegistry) CacheNamespaces() []string {
+func (r *Registry) CacheNamespaces() []string {
 	result := sets.New[string]()
 	for _, m := range r.modules {
 		result.Insert(m.Namespace)
@@ -102,33 +81,17 @@ func (r *ModuleRegistry) CacheNamespaces() []string {
 	return sorted
 }
 
-// ComputeRunlevels groups registered modules by runlevel.
-// Must be called after all modules are registered and before controllers start.
-func (r *ModuleRegistry) ComputeRunlevels() {
-	if len(r.modules) == 0 {
-		return
-	}
-
-	byLevel := make(map[int][]*Module)
-	for _, m := range r.modules {
-		byLevel[m.Runlevel] = append(byLevel[m.Runlevel], m)
-	}
-
-	levels := slices.Sorted(maps.Keys(byLevel))
-
-	r.runlevels = make([][]*Module, len(levels))
-	for i, lvl := range levels {
-		r.runlevels[i] = byLevel[lvl]
-	}
-}
-
 // Runlevels returns the computed runlevel groups.
-func (r *ModuleRegistry) Runlevels() [][]*Module {
-	return r.runlevels
+func (r *Registry) Runlevels() [][]*Module {
+	result := make([][]*Module, len(r.runlevels))
+	for i, group := range r.runlevels {
+		result[i] = slices.Clone(group)
+	}
+	return result
 }
 
 // ModulesAtRunlevel returns the modules at the given runlevel, or nil.
-func (r *ModuleRegistry) ModulesAtRunlevel(level int) []*Module {
+func (r *Registry) ModulesAtRunlevel(level int) []*Module {
 	for _, group := range r.runlevels {
 		if len(group) > 0 && group[0].Runlevel == level {
 			return group
@@ -138,7 +101,7 @@ func (r *ModuleRegistry) ModulesAtRunlevel(level int) []*Module {
 }
 
 // FirstRunlevel returns the lowest runlevel, or 0 if no modules are registered.
-func (r *ModuleRegistry) FirstRunlevel() int {
+func (r *Registry) FirstRunlevel() int {
 	if len(r.runlevels) == 0 || len(r.runlevels[0]) == 0 {
 		return 0
 	}
@@ -146,7 +109,7 @@ func (r *ModuleRegistry) FirstRunlevel() int {
 }
 
 // NextRunlevel returns the runlevel after current, and whether one exists.
-func (r *ModuleRegistry) NextRunlevel(current int) (int, bool) {
+func (r *Registry) NextRunlevel(current int) (int, bool) {
 	found := false
 	for _, group := range r.runlevels {
 		if len(group) == 0 {
@@ -162,4 +125,61 @@ func (r *ModuleRegistry) NextRunlevel(current int) (int, bool) {
 	return 0, false
 }
 
-var _ Registry = (*ModuleRegistry)(nil)
+func computeRunlevels(modules []*Module) ([][]*Module, error) {
+	if err := validateModules(modules); err != nil {
+		return nil, err
+	}
+	if len(modules) == 0 {
+		return nil, nil
+	}
+
+	byLevel := make(map[int][]*Module)
+	for _, m := range modules {
+		byLevel[m.Runlevel] = append(byLevel[m.Runlevel], m)
+	}
+
+	levels := slices.Sorted(maps.Keys(byLevel))
+	runlevels := make([][]*Module, len(levels))
+	for i, lvl := range levels {
+		runlevels[i] = slices.Clone(byLevel[lvl])
+	}
+
+	return runlevels, nil
+}
+
+func validateModules(modules []*Module) error {
+	byName := make(map[string]*Module, len(modules))
+	byGVK := make(map[schema.GroupVersionKind]*Module, len(modules))
+
+	for i, m := range modules {
+		if m == nil {
+			return fmt.Errorf("module at index %d is nil", i)
+		}
+		if m.Name == "" {
+			return fmt.Errorf("module name must be set for GVK %s", m.GVK.String())
+		}
+		if m.Manifests.Chart.Object == nil {
+			return fmt.Errorf("module %q must be created with NewModule", m.Name)
+		}
+		if existing := byName[m.Name]; existing != nil {
+			return fmt.Errorf(
+				"module %q duplicates registered name already used by GVK %s",
+				m.Name,
+				existing.GVK.String(),
+			)
+		}
+		if existing := byGVK[m.GVK]; existing != nil {
+			return fmt.Errorf(
+				"module %q duplicates registered GVK %s already used by module %q",
+				m.Name,
+				m.GVK.String(),
+				existing.Name,
+			)
+		}
+
+		byName[m.Name] = m
+		byGVK[m.GVK] = m
+	}
+
+	return nil
+}

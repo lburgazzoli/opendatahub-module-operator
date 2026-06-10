@@ -19,15 +19,12 @@ package module
 import (
 	"context"
 	"fmt"
-	"strings"
-	"sync"
 	"time"
-
-	"k8s.io/apimachinery/pkg/runtime/schema"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"helm.sh/helm/v4/pkg/chart"
 	chartloader "helm.sh/helm/v4/pkg/chart/loader"
+	"k8s.io/apimachinery/pkg/runtime/schema"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 const (
@@ -35,13 +32,11 @@ const (
 	DefaultConfigHashRollout = true
 )
 
-// Module holds the definition of a managed module.
-// Optional behavioral interfaces (Configurable, etc.) are
-// type-checked on the Ext field.
-type Module struct {
+// ModuleSpec is the input used to construct a Module.
+type ModuleSpec struct {
 	Name              string
 	GVK               schema.GroupVersionKind
-	Namespace         string // final namespace, computed at registration time
+	Namespace         string
 	Runlevel          int
 	ChartPath         string
 	Timeout           time.Duration
@@ -55,10 +50,6 @@ type Module struct {
 
 	// Ext is type-checked for optional interfaces.
 	Ext any
-
-	chartOnce sync.Once
-	chart     chart.Charter
-	chartErr  error
 }
 
 type AdminAck struct {
@@ -66,23 +57,101 @@ type AdminAck struct {
 	Description string
 }
 
-// EffectiveName returns Name if set, otherwise lowercase GVK Kind.
-func (m *Module) EffectiveName() string {
-	if m.Name != "" {
-		return m.Name
-	}
-	return strings.ToLower(m.GVK.Kind)
+type Manifests struct {
+	Chart ModuleChart
 }
 
-// Chart returns the Helm chart, lazy-loaded on first call.
-func (m *Module) Chart() (chart.Charter, error) {
-	m.chartOnce.Do(func() {
-		if m.ChartPath == "" {
-			m.chartErr = fmt.Errorf("chart path not set for module %q", m.Name)
-			return
-		}
-		m.chart, m.chartErr = chartloader.Load(m.ChartPath)
-	})
+type ModuleChart struct {
+	Path       string
+	Name       string
+	Version    string
+	AppVersion string
+	Object     chart.Charter
+}
 
-	return m.chart, m.chartErr
+// Module holds the definition of a managed module.
+// Optional behavioral interfaces (Configurable, etc.) are
+// type-checked on the Ext field.
+type Module struct {
+	Name              string
+	GVK               schema.GroupVersionKind
+	Namespace         string // final namespace, computed at registration time
+	Runlevel          int
+	Timeout           time.Duration
+	AdminAcks         []AdminAck
+	ConfigHashRollout bool
+	Values            map[string]any
+
+	// Config returns config values merged into Values.config before chart rendering.
+	// Nil means no config injection.
+	Config func(ctx context.Context, c client.Client) (map[string]any, error)
+
+	// Ext is type-checked for optional interfaces.
+	Ext any
+
+	Manifests Manifests
+}
+
+func NewModule(spec ModuleSpec) (*Module, error) {
+	if spec.Name == "" {
+		return nil, fmt.Errorf("module name must be set for GVK %s", spec.GVK.String())
+	}
+	if spec.ChartPath == "" {
+		return nil, fmt.Errorf("chart path not set for module %q", spec.Name)
+	}
+
+	moduleChart, err := loadModuleChart(spec.Name, spec.ChartPath)
+	if err != nil {
+		return nil, err
+	}
+
+	return &Module{
+		Name:              spec.Name,
+		GVK:               spec.GVK,
+		Namespace:         spec.Namespace,
+		Runlevel:          spec.Runlevel,
+		Timeout:           spec.Timeout,
+		AdminAcks:         spec.AdminAcks,
+		ConfigHashRollout: spec.ConfigHashRollout,
+		Values:            spec.Values,
+		Config:            spec.Config,
+		Ext:               spec.Ext,
+		Manifests: Manifests{
+			Chart: moduleChart,
+		},
+	}, nil
+}
+
+func loadModuleChart(moduleName string, chartPath string) (ModuleChart, error) {
+	chrt, err := chartloader.Load(chartPath)
+	if err != nil {
+		return ModuleChart{}, fmt.Errorf("loading chart for module %q: %w", moduleName, err)
+	}
+
+	info := ModuleChart{
+		Path:   chartPath,
+		Object: chrt,
+	}
+
+	acc, err := chart.NewAccessor(chrt)
+	if err != nil {
+		return ModuleChart{}, fmt.Errorf("reading chart metadata for module %q: %w", moduleName, err)
+	}
+
+	info.Name = acc.Name()
+
+	if md := acc.MetadataAsMap(); md != nil {
+		if v, ok := md["version"].(string); ok {
+			info.Version = v
+		} else if v, ok := md["Version"].(string); ok {
+			info.Version = v
+		}
+		if v, ok := md["appVersion"].(string); ok {
+			info.AppVersion = v
+		} else if v, ok := md["AppVersion"].(string); ok {
+			info.AppVersion = v
+		}
+	}
+
+	return info, nil
 }

@@ -18,6 +18,7 @@ package platform
 
 import (
 	"errors"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -54,7 +55,7 @@ func TestEnabledModulesAtRunlevelFiltersBySpec(t *testing.T) {
 	modules := actions.enabledModulesAtRunlevel(p, 2)
 
 	g.Expect(modules).To(HaveLen(1))
-	g.Expect(modules[0].EffectiveName()).To(Equal("beta"))
+	g.Expect(modules[0].Name).To(Equal("beta"))
 }
 
 func TestRunlevelCompleteIgnoresDisabledModulesAtSameRunlevel(t *testing.T) {
@@ -112,6 +113,23 @@ func TestAdvanceRunlevelStaysWhenEnabledModuleVersionIsOutdated(t *testing.T) {
 
 	p := newPlatform([]string{"alpha", "beta"}, 1)
 	alpha := newPlatformOperator("alpha", "wrong-version")
+	rr := testRR(t, scheme, p, alpha)
+
+	err := actions.advanceRunlevel(ctx, rr)
+
+	g.Expect(err).NotTo(HaveOccurred())
+	g.Expect(p.Status.Runlevel).To(Equal(1))
+}
+
+func TestAdvanceRunlevelStaysDuringFreshInstallUntilCurrentRunlevelConverges(t *testing.T) {
+	g := NewWithT(t)
+	ctx := t.Context()
+	scheme := testScheme(t)
+	actions := testActions()
+
+	p := newPlatform([]string{"alpha", "beta"}, 1)
+	p.Status.Distribution.Current = configApi.Distribution{}
+	alpha := newPlatformOperator("alpha", "")
 	rr := testRR(t, scheme, p, alpha)
 
 	err := actions.advanceRunlevel(ctx, rr)
@@ -458,35 +476,57 @@ func expectUpToDateCondition(
 	}
 }
 
-func testRegistry() *module.ModuleRegistry {
-	r := module.NewModuleRegistry("opendatahub", "/charts")
-	r.Register(&module.Module{
+func testRegistry() *module.Registry {
+	alpha, err := module.NewModule(module.ModuleSpec{
 		Name:      "alpha",
 		GVK:       schema.GroupVersionKind{Group: "test.io", Version: "v1", Kind: "Alpha"},
 		Namespace: "ns-alpha",
 		Runlevel:  1,
+		ChartPath: testChartPath(),
 	})
-	r.Register(&module.Module{
+	if err != nil {
+		panic(err)
+	}
+	beta, err := module.NewModule(module.ModuleSpec{
 		Name:      "beta",
 		GVK:       schema.GroupVersionKind{Group: "test.io", Version: "v1", Kind: "Beta"},
 		Namespace: "ns-beta",
 		Runlevel:  2,
+		ChartPath: testChartPath(),
 	})
-	r.Register(&module.Module{
+	if err != nil {
+		panic(err)
+	}
+	gamma, err := module.NewModule(module.ModuleSpec{
 		Name:      "gamma",
 		GVK:       schema.GroupVersionKind{Group: "test.io", Version: "v1", Kind: "Gamma"},
 		Namespace: "ns-gamma",
 		Runlevel:  2,
+		ChartPath: testChartPath(),
 	})
-	r.Register(&module.Module{
+	if err != nil {
+		panic(err)
+	}
+	delta, err := module.NewModule(module.ModuleSpec{
 		Name:      "delta",
 		GVK:       schema.GroupVersionKind{Group: "test.io", Version: "v1", Kind: "Delta"},
 		Namespace: "ns-delta",
 		Runlevel:  3,
+		ChartPath: testChartPath(),
 	})
-	r.ComputeRunlevels()
+	if err != nil {
+		panic(err)
+	}
+	r, err := module.NewRegistry([]*module.Module{alpha, beta, gamma, delta})
+	if err != nil {
+		panic(err)
+	}
 
 	return r
+}
+
+func testChartPath() string {
+	return filepath.Join("..", "..", "..", "test", "support", "testdata", "charts", "test-module")
 }
 
 func testRR(

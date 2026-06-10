@@ -1,5 +1,3 @@
-//go:build integration
-
 /*
 Copyright 2026.
 
@@ -63,15 +61,6 @@ func (suite *Suite) SetupTest(t *testing.T) {
 
 	suite.resetConfig()
 	suite.resetClusterState(t, t.Context())
-
-	t.Cleanup(func() {
-		suite.resetConfig()
-
-		cleanupCtx, cancel := context.WithTimeout(context.Background(), cleanupWaitTimeout)
-		defer cancel()
-
-		suite.resetClusterState(t, cleanupCtx)
-	})
 }
 
 func (suite *Suite) SetDistributionVersion(version string) {
@@ -81,7 +70,7 @@ func (suite *Suite) SetDistributionVersion(version string) {
 func (suite *Suite) PlatformModuleNames() []string {
 	moduleNames := make([]string, 0, len(suite.Modules))
 	for _, mod := range suite.Modules {
-		moduleNames = append(moduleNames, mod.EffectiveName())
+		moduleNames = append(moduleNames, mod.Name)
 	}
 
 	return moduleNames
@@ -163,6 +152,7 @@ func UpsertModuleCRWithVersion(
 		existing := newModuleCR(gvk)
 		err := suite.Client.Get(t.Context(), key, existing)
 		g.Expect(err).To(gomega.Succeed())
+		g.Expect(unstructured.SetNestedField(existing.Object, suite.Config.Distribution.Name, "status", "release", "name")).To(gomega.Succeed())
 		g.Expect(unstructured.SetNestedField(existing.Object, version, "status", "release", "version")).To(gomega.Succeed())
 		g.Expect(suite.Client.Status().Update(t.Context(), existing)).To(gomega.Succeed())
 	}).Should(gomega.Succeed())
@@ -179,7 +169,6 @@ func (suite *Suite) resetClusterState(t *testing.T, ctx context.Context) {
 
 	suite.cleanupPlatformResources(t, ctx)
 	suite.deleteModuleCRsAndWait(t, ctx)
-	suite.deleteModuleNamespacesAndWait(t, ctx)
 	suite.assertClusterReset(t, ctx, snapshot)
 }
 
@@ -193,9 +182,6 @@ func (suite *Suite) cleanupBeforeRun(ctx context.Context) error {
 		return err
 	}
 	if err := suite.deleteModuleCRsAndWaitNow(ctx); err != nil {
-		return err
-	}
-	if err := suite.deleteModuleNamespacesAndWaitNow(ctx); err != nil {
 		return err
 	}
 
@@ -232,28 +218,6 @@ func (suite *Suite) cleanupPlatformResources(t *testing.T, ctx context.Context) 
 	))
 	g.Eventually(ctx, suite.K.NotFound(AdminAcksConfigMap(suite.Config.Namespace()))).Should(gomega.BeTrue())
 
-	g.Eventually(func() error {
-		var poList configApi.PlatformOperatorList
-		if err := suite.Client.List(ctx, &poList); err != nil {
-			return err
-		}
-
-		propagation := metav1.DeletePropagationForeground
-		for i := range poList.Items {
-			po := &poList.Items[i]
-			if !po.GetDeletionTimestamp().IsZero() {
-				continue
-			}
-			if err := suite.Client.Delete(ctx, po, &client.DeleteOptions{
-				PropagationPolicy: &propagation,
-			}); err != nil && !k8serr.IsNotFound(err) {
-				return err
-			}
-		}
-
-		return nil
-	}).WithContext(ctx).Should(gomega.Succeed())
-
 	g.Eventually(suite.K.List(&configApi.PlatformOperatorList{})).
 		WithContext(ctx).
 		Should(k8sm.IsEmptyList())
@@ -280,24 +244,6 @@ func (suite *Suite) cleanupPlatformResourcesNow(ctx context.Context) error {
 			adminAcks.GetName(),
 			err,
 		)
-	}
-
-	var poList configApi.PlatformOperatorList
-	if err := suite.Client.List(ctx, &poList); err != nil {
-		return fmt.Errorf("listing platformoperators: %w", err)
-	}
-
-	propagation := metav1.DeletePropagationForeground
-	for i := range poList.Items {
-		po := &poList.Items[i]
-		if !po.GetDeletionTimestamp().IsZero() {
-			continue
-		}
-		if err := suite.Client.Delete(ctx, po, &client.DeleteOptions{
-			PropagationPolicy: &propagation,
-		}); err != nil && !k8serr.IsNotFound(err) {
-			return fmt.Errorf("deleting platformoperator %q: %w", po.GetName(), err)
-		}
 	}
 
 	return nil
@@ -429,37 +375,6 @@ func (suite *Suite) deleteModuleCRsAndWaitNow(ctx context.Context) error {
 	return nil
 }
 
-func (suite *Suite) deleteModuleNamespacesAndWait(t *testing.T, ctx context.Context) {
-	t.Helper()
-	g := gomega.NewWithT(t)
-
-	namespaces, err := suite.moduleNamespaces(ctx)
-	g.Expect(err).NotTo(gomega.HaveOccurred())
-
-	for _, namespaceName := range namespaces {
-		ns := &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: namespaceName}}
-		err := suite.Client.Delete(ctx, ns)
-		switch {
-		case k8serr.IsNotFound(err):
-		case err != nil:
-			g.Expect(err).NotTo(gomega.HaveOccurred())
-		}
-
-		g.Eventually(func() error {
-			fresh := &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: namespaceName}}
-			err := suite.Client.Get(ctx, client.ObjectKeyFromObject(fresh), fresh)
-			switch {
-			case k8serr.IsNotFound(err):
-				return nil
-			case err != nil:
-				return err
-			default:
-				return fmt.Errorf("namespace %q still exists", namespaceName)
-			}
-		}).WithContext(ctx).Should(gomega.Succeed())
-	}
-}
-
 func (suite *Suite) snapshotClusterState(t *testing.T, ctx context.Context) cleanupSnapshot {
 	t.Helper()
 	g := gomega.NewWithT(t)
@@ -554,62 +469,6 @@ func (suite *Suite) snapshotClusterStateNow(ctx context.Context) (cleanupSnapsho
 	}
 
 	return snapshot, nil
-}
-
-func (suite *Suite) deleteModuleNamespacesAndWaitNow(ctx context.Context) error {
-	namespaces, err := suite.moduleNamespaces(ctx)
-	if err != nil {
-		return err
-	}
-
-	for _, namespaceName := range namespaces {
-		ns := &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: namespaceName}}
-		if err := suite.Client.Delete(ctx, ns); err != nil && !k8serr.IsNotFound(err) {
-			return fmt.Errorf("deleting namespace %q: %w", namespaceName, err)
-		}
-
-		err := eventuallySucceeds(ctx, func() error {
-			fresh := &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: namespaceName}}
-			err := suite.Client.Get(ctx, client.ObjectKeyFromObject(fresh), fresh)
-			switch {
-			case k8serr.IsNotFound(err):
-				return nil
-			case err != nil:
-				return err
-			default:
-				return fmt.Errorf("namespace %q still exists", namespaceName)
-			}
-		})
-		if err != nil {
-			return fmt.Errorf("waiting for namespace %q deletion: %w", namespaceName, err)
-		}
-	}
-
-	return nil
-}
-
-func (suite *Suite) moduleNamespaces(ctx context.Context) ([]string, error) {
-	namespaces := sets.New[string]()
-	for _, mod := range suite.CleanupModules {
-		if mod.Namespace != "" {
-			namespaces.Insert(mod.Namespace)
-		}
-	}
-
-	var poList configApi.PlatformOperatorList
-	if err := suite.Client.List(ctx, &poList); err != nil {
-		return nil, fmt.Errorf("listing platformoperators for namespaces: %w", err)
-	}
-
-	for i := range poList.Items {
-		for _, ref := range poList.Items[i].Status.Resources {
-			if ref.Kind == "Namespace" && ref.Name != "" {
-				namespaces.Insert(ref.Name)
-			}
-		}
-	}
-
-	return sets.List(namespaces), nil
 }
 
 func eventuallySucceeds(ctx context.Context, actual func() error) error {

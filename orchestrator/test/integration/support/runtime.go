@@ -1,5 +1,3 @@
-//go:build integration
-
 /*
 Copyright 2026.
 
@@ -38,13 +36,11 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/apiutil"
-	"sigs.k8s.io/controller-runtime/pkg/log/zap"
-	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
+	ctrlzap "sigs.k8s.io/controller-runtime/pkg/log/zap"
 
 	configApi "github.com/lburgazzoli/opendatahub-module-operator/orchestrator/api/config/v1alpha1"
-	"github.com/lburgazzoli/opendatahub-module-operator/orchestrator/internal/controller/platform"
-	"github.com/lburgazzoli/opendatahub-module-operator/orchestrator/internal/controller/platformoperator"
 	"github.com/lburgazzoli/opendatahub-module-operator/orchestrator/pkg/config"
+	odhmgr "github.com/lburgazzoli/opendatahub-module-operator/orchestrator/pkg/manager"
 	"github.com/lburgazzoli/opendatahub-module-operator/orchestrator/pkg/module"
 	testsupport "github.com/lburgazzoli/opendatahub-module-operator/orchestrator/test/support"
 )
@@ -91,8 +87,6 @@ func init() {
 
 func Setup(cfg RunConfig) (*MainSuite, error) {
 	ctx, cancel := context.WithCancel(context.Background())
-
-	ctrl.SetLogger(zap.New(zap.UseDevMode(true)))
 
 	var err error
 	var chartPath string
@@ -249,38 +243,23 @@ func setupEnv() (*rest.Config, string, error) {
 }
 
 func setupManager(ctx context.Context, kc *rest.Config, modules []*module.Module) error {
-	registry := module.NewModuleRegistry(testConfig.Namespace(), testConfig.ChartsPath)
-
-	for _, mod := range modules {
-		registry.Register(mod)
+	registry, err := module.NewRegistry(modules)
+	if err != nil {
+		return fmt.Errorf("creating module registry: %w", err)
 	}
 
-	registry.ComputeRunlevels()
-
-	ctrlMgr, err := ctrl.NewManager(kc, ctrl.Options{
-		Scheme:         testScheme,
-		Metrics:        metricsserver.Options{BindAddress: "0"},
-		LeaderElection: false,
-	})
+	mgr, err := odhmgr.New(ctx, kc, testConfig, registry)
 	if err != nil {
 		return fmt.Errorf("creating manager: %w", err)
 	}
 
-	if err := platform.NewReconciler(ctx, ctrlMgr, registry, testConfig); err != nil {
-		return fmt.Errorf("creating platform reconciler: %w", err)
-	}
-
-	if err := platformoperator.NewModuleReconciler(ctx, ctrlMgr, registry, testConfig); err != nil {
-		return fmt.Errorf("creating module reconciler: %w", err)
-	}
-
 	go func() {
-		if err := ctrlMgr.Start(ctx); err != nil {
+		if err := mgr.Start(ctx); err != nil {
 			fmt.Fprintf(os.Stderr, "Manager exited with error: %v\n", err)
 		}
 	}()
 
-	if !ctrlMgr.GetCache().WaitForCacheSync(ctx) {
+	if !mgr.GetCache().WaitForCacheSync(ctx) {
 		return fmt.Errorf("waiting for manager cache sync")
 	}
 
@@ -293,7 +272,13 @@ func loadTestConfig() error {
 		return fmt.Errorf("loading config: %w", err)
 	}
 
+	ctrl.SetLogger(ctrlzap.New(cfg.Controller.Zap.ZapOpts()...))
+
 	cfg.Distribution.Name = "Standalone"
+	cfg.Controller.Metrics.BindAddress = "0"
+	cfg.Controller.Health.BindAddress = "0"
+	cfg.Controller.Pprof.BindAddress = ""
+	cfg.Controller.LeaderElection.Enabled = false
 
 	testConfig = cfg
 	baseConfig = *cfg
@@ -307,34 +292,42 @@ func normalizeModules(modules []*module.Module, chartPath string) ([]*module.Mod
 		if mod == nil {
 			return nil, fmt.Errorf("test module at index %d is nil", i)
 		}
-		normalized = append(normalized, normalizeModule(mod, chartPath))
+		normalizedMod, err := normalizeModule(mod, chartPath)
+		if err != nil {
+			return nil, fmt.Errorf("normalizing test module %q: %w", mod.Name, err)
+		}
+		normalized = append(normalized, normalizedMod)
 	}
 
 	return normalized, nil
 }
 
-func normalizeModule(mod *module.Module, chartPath string) *module.Module {
-	cloned := &module.Module{
+func normalizeModule(mod *module.Module, chartPath string) (*module.Module, error) {
+	resolvedChartPath := mod.Manifests.Chart.Path
+	if resolvedChartPath == "" {
+		resolvedChartPath = chartPath
+	}
+
+	cloned, err := module.NewModule(module.ModuleSpec{
 		Name:              mod.Name,
 		GVK:               mod.GVK,
 		Namespace:         mod.Namespace,
 		Runlevel:          mod.Runlevel,
-		ChartPath:         mod.ChartPath,
+		ChartPath:         resolvedChartPath,
 		Timeout:           mod.Timeout,
 		ConfigHashRollout: mod.ConfigHashRollout,
+		AdminAcks:         mod.AdminAcks,
+		Values:            mod.Values,
 		Config:            mod.Config,
 		Ext:               mod.Ext,
-	}
-	if len(mod.AdminAcks) > 0 {
-		cloned.AdminAcks = append([]module.AdminAck(nil), mod.AdminAcks...)
+	})
+	if err != nil {
+		return nil, err
 	}
 	if len(mod.Values) > 0 {
 		cloned.Values = make(map[string]any, len(mod.Values))
 		maps.Copy(cloned.Values, mod.Values)
 	}
-	if cloned.ChartPath == "" {
-		cloned.ChartPath = chartPath
-	}
 
-	return cloned
+	return cloned, nil
 }

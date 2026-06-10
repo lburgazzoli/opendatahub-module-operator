@@ -6,7 +6,7 @@
 
 Location: alongside source files (`*_test.go`)
 
-- `pkg/module/module_registry_test.go` — ModuleRegistry lookups, runlevel grouping, namespace dedup
+- `pkg/module/module_registry_test.go` — Registry lookups, runlevel grouping, namespace dedup
 - `internal/controller/platform/platform_test.go` — Platform action logic (advanceRunlevel, runlevelComplete) using fake client
 
 Unit tests use `fake.NewClientBuilder()` for the k8s client — no cluster needed.
@@ -24,7 +24,7 @@ make test-integration
 The `Makefile` target runs the integration tree serially:
 
 ```bash
-go test -p 1 -v -tags=integration -count=1 -timeout=60s ./test/integration/...
+go test -p 1 -v -count=1 -timeout=120s ./test/integration/...
 ```
 
 Serial execution matters because the packages share one cluster and can
@@ -184,7 +184,7 @@ In practice, prefer:
 - Default Eventually timeout: 30s
 - Default polling interval: 250ms
 - `Consistently` for negative assertions: `timeout / 3` (~10s)
-- `make test-integration` uses a 60s Go test binary timeout per package
+- `make test-integration` uses a 120s Go test binary timeout per package
 
 ### Known Issues
 

@@ -1,70 +1,49 @@
 package resources
 
 import (
-	"context"
 	"fmt"
+	"reflect"
 
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-// Get fetches a single object from the cache. The object key is derived from
-// dest's name/namespace. When dest is a typed (structured) object the lookup
-// goes through an unstructured Get — matching the informer registration used
-// by the action framework — and the result is converted back into the typed
-// object. If dest is already unstructured the call is passed through directly.
-func Get(
-	ctx context.Context,
-	cli client.Client,
-	dest client.Object,
-) error {
-	key := client.ObjectKeyFromObject(dest)
+// Decode returns obj as the requested typed object. Typed inputs of the same
+// Go type are returned directly; unstructured inputs are converted through the
+// default unstructured converter.
+func Decode[T client.Object](
+	obj client.Object,
+) (T, error) {
+	var zero T
 
-	if _, ok := dest.(*unstructured.Unstructured); ok {
-		return cli.Get(ctx, key, dest)
+	if obj == nil {
+		return zero, fmt.Errorf("unexpected object type %T", obj)
 	}
 
-	gvk, err := cli.GroupVersionKindFor(dest)
-	if err != nil {
-		return fmt.Errorf("unable to determine GVK: %w", err)
+	if typed, ok := obj.(T); ok {
+		return typed, nil
 	}
 
-	u := &unstructured.Unstructured{}
-	u.SetGroupVersionKind(gvk)
-
-	if err := cli.Get(ctx, key, u); err != nil {
-		return err
+	u, ok := obj.(*unstructured.Unstructured)
+	if !ok {
+		return zero, fmt.Errorf("unexpected object type %T", obj)
 	}
 
-	return runtime.DefaultUnstructuredConverter.FromUnstructured(u.Object, dest)
-}
-
-// List fetches a list of objects from the cache. When dest is a typed list the
-// lookup goes through an unstructured list — matching the informer registration
-// — and the result is converted back. If dest is already an UnstructuredList
-// the call is passed through directly.
-func List(
-	ctx context.Context,
-	cli client.Client,
-	dest client.ObjectList,
-	opts ...client.ListOption,
-) error {
-	if _, ok := dest.(*unstructured.UnstructuredList); ok {
-		return cli.List(ctx, dest, opts...)
+	targetType := reflect.TypeOf(zero)
+	if targetType == nil || targetType.Kind() != reflect.Pointer {
+		return zero, fmt.Errorf("decode target must be a pointer type")
 	}
 
-	gvk, err := cli.GroupVersionKindFor(dest)
-	if err != nil {
-		return fmt.Errorf("unable to determine GVK: %w", err)
+	destValue := reflect.New(targetType.Elem())
+	dest, ok := destValue.Interface().(T)
+	if !ok {
+		return zero, fmt.Errorf("decode target must implement client.Object")
 	}
 
-	ul := &unstructured.UnstructuredList{}
-	ul.SetGroupVersionKind(gvk)
-
-	if err := cli.List(ctx, ul, opts...); err != nil {
-		return err
+	if err := runtime.DefaultUnstructuredConverter.FromUnstructured(u.Object, dest); err != nil {
+		return zero, err
 	}
 
-	return runtime.DefaultUnstructuredConverter.FromUnstructured(ul.UnstructuredContent(), dest)
+	return dest, nil
 }

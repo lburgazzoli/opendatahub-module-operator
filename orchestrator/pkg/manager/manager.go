@@ -35,6 +35,7 @@ import (
 	orchestratorconfig "github.com/lburgazzoli/opendatahub-module-operator/orchestrator/pkg/config"
 	"github.com/lburgazzoli/opendatahub-module-operator/orchestrator/pkg/module"
 	libcache "github.com/opendatahub-io/odh-platform-utilities/pkg/cache"
+	odhmgr "github.com/opendatahub-io/opendatahub-operator/v2/pkg/manager"
 )
 
 const (
@@ -42,11 +43,34 @@ const (
 	readyCheckName  = "readyz"
 )
 
+// SetupReconcilers wraps the given manager so that GetClient() returns a
+// client that routes typed reads through the unstructured cache (matching
+// the framework's unstructured watches), then registers the Platform and
+// PlatformOperator reconcilers.
+func SetupReconcilers(
+	ctx context.Context,
+	mgr ctrl.Manager,
+	registry *module.Registry,
+	cfg *orchestratorconfig.Config,
+) error {
+	wrapped := odhmgr.New(mgr)
+
+	if err := platform.NewReconciler(ctx, wrapped, registry, cfg); err != nil {
+		return fmt.Errorf("creating platform reconciler: %w", err)
+	}
+
+	if err := platformoperator.NewModuleReconciler(ctx, wrapped, registry, cfg); err != nil {
+		return fmt.Errorf("creating module reconciler: %w", err)
+	}
+
+	return nil
+}
+
 func New(
 	ctx context.Context,
 	kubeConfig *rest.Config,
 	cfg *orchestratorconfig.Config,
-	registry *module.ModuleRegistry,
+	registry *module.Registry,
 ) (ctrl.Manager, error) {
 	if kubeConfig == nil {
 		return nil, fmt.Errorf("kubeconfig is nil")
@@ -56,10 +80,9 @@ func New(
 	}
 
 	scheme := NewScheme()
-
 	cacheNamespaces := buildCacheNamespaces(registry)
 
-	mgrOpts := ctrl.Options{
+	ctrlMgr, err := ctrl.NewManager(kubeConfig, ctrl.Options{
 		Scheme: scheme,
 		Metrics: metricsserver.Options{
 			BindAddress: cfg.Controller.Metrics.BindAddress,
@@ -76,38 +99,40 @@ func New(
 				&configv1alpha1.Platform{}:         {Label: k8slabels.Everything()},
 				&configv1alpha1.PlatformOperator{}: {Label: k8slabels.Everything()},
 			},
-			ReaderFailOnMissingInformer: true,
+			ReaderFailOnMissingInformer: false,
 		},
 		Client: client.Options{
 			Cache: &client.CacheOptions{
 				Unstructured: true,
 				DisableFor: []client.Object{
+					&corev1.Namespace{},
 					&corev1.ConfigMap{},
 					&corev1.Secret{},
 				},
 			},
 		},
-	}
+	})
 
-	ctrlMgr, err := ctrl.NewManager(kubeConfig, mgrOpts)
 	if err != nil {
 		return nil, fmt.Errorf("creating manager: %w", err)
 	}
 
-	if err := platform.NewReconciler(ctx, ctrlMgr, registry, cfg); err != nil {
+	mgr := odhmgr.New(ctrlMgr)
+
+	if err := platform.NewReconciler(ctx, mgr, registry, cfg); err != nil {
 		return nil, fmt.Errorf("creating platform reconciler: %w", err)
 	}
 
-	if err := platformoperator.NewModuleReconciler(ctx, ctrlMgr, registry, cfg); err != nil {
+	if err := platformoperator.NewModuleReconciler(ctx, mgr, registry, cfg); err != nil {
 		return nil, fmt.Errorf("creating module reconciler: %w", err)
 	}
 
-	if err := ctrlMgr.AddHealthzCheck(healthCheckName, healthz.Ping); err != nil {
+	if err := mgr.AddHealthzCheck(healthCheckName, healthz.Ping); err != nil {
 		return nil, fmt.Errorf("setting up health check: %w", err)
 	}
-	if err := ctrlMgr.AddReadyzCheck(readyCheckName, healthz.Ping); err != nil {
+	if err := mgr.AddReadyzCheck(readyCheckName, healthz.Ping); err != nil {
 		return nil, fmt.Errorf("setting up ready check: %w", err)
 	}
 
-	return ctrlMgr, nil
+	return mgr, nil
 }

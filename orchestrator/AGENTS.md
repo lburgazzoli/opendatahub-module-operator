@@ -27,15 +27,16 @@ module reconciliation.
 | Target | Purpose |
 |--------|---------|
 | `make test` | Unit tests (no cluster) |
+| `make test-unit` | Explicit unit-test target |
 | `make test-integration` | Integration tests against the current cluster |
-| `make lint` | Lint all code including integration/e2e tags |
+| `make lint` | Lint all code |
 | `make manifests generate` | Regenerate CRDs and deepcopy |
 
 ## Integration Tests
 
 Run with `make test-integration`. The target installs CRDs and runs the
 integration tree serially (`go test -p 1`) against the current cluster with a
-60s test binary timeout.
+120s test binary timeout.
 
 Integration tests are split into package-local suites:
 
@@ -72,6 +73,10 @@ Controller design rules worth preserving:
   action pipeline stays easy to scan.
 - Prefer narrow watches and predicates (for example named singleton resources)
   over broad watches when the controller only cares about one object.
+- When the action framework watches a GVK dynamically, treat the cache as
+  unstructured-backed. Typed cache reads can race or miss objects if they do
+  not match the informer shape, so prefer `pkg/resources.Get` / `List` for
+  watched objects instead of adding sleeps or larger test timeouts.
 - Treat transient gates such as admin acks as reconcile-time blockers via
   PauseError, not as conditions. Let normal aggregation (ConditionUpToDate)
   own readiness.

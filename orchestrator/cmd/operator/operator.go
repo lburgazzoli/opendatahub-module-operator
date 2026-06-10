@@ -44,11 +44,17 @@ func run(cmd *cobra.Command, _ []string) error {
 		return fmt.Errorf("loading operator config: %w", err)
 	}
 
-	ctrl.SetLogger(zap.New(zap.UseDevMode(false)))
+	ctrl.SetLogger(zap.New(cfg.Controller.Zap.ZapOpts()...))
 
-	registry := module.NewModuleRegistry(cfg.Namespace(), cfg.ChartsPath)
-	module.SetupModules(registry)
-	registry.ComputeRunlevels()
+	modules, err := newModules(cfg)
+	if err != nil {
+		return fmt.Errorf("creating modules: %w", err)
+	}
+
+	registry, err := module.NewRegistry(modules)
+	if err != nil {
+		return fmt.Errorf("creating module registry: %w", err)
+	}
 
 	mgr, err := orchestratormgr.New(cmd.Context(), ctrl.GetConfigOrDie(), cfg, registry)
 	if err != nil {

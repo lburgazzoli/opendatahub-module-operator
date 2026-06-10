@@ -1,5 +1,3 @@
-//go:build integration
-
 package runlevel
 
 import (
@@ -103,6 +101,10 @@ func prepareUpgradeScenario(t *testing.T, suite *isupport.Suite) {
 
 	g.Expect(suite.Client.Create(ctx, p)).To(Succeed())
 	g.Eventually(ctx, suite.K.Get(p)).Should(testsupport.HaveCurrentDistributionVersion(initialDistributionVersion))
+
+	for _, gvk := range []schema.GroupVersionKind{alphaGVK, betaGVK, gammaGVK} {
+		isupport.UpsertModuleCRWithVersion(t, suite, gvk, initialDistributionVersion)
+	}
 
 	suite.SetDistributionVersion(upgradedDistributionVersion)
 	g.Eventually(ctx, k8sm.Update(suite.K, testsupport.Platform(), func(p *configApi.Platform) {

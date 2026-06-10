@@ -34,27 +34,16 @@ var testGVK = schema.GroupVersionKind{
 	Kind:    "Ray",
 }
 
-func TestModuleEffectiveName(t *testing.T) {
-	t.Run("defaults to lowercase kind", func(t *testing.T) {
-		g := NewWithT(t)
-
-		m := &module.Module{GVK: testGVK}
-		g.Expect(m.EffectiveName()).To(Equal("ray"))
-	})
-
-	t.Run("uses explicit name when set", func(t *testing.T) {
-		g := NewWithT(t)
-
-		m := &module.Module{Name: "custom", GVK: testGVK}
-		g.Expect(m.EffectiveName()).To(Equal("custom"))
-	})
-}
-
 func TestModuleDefaults(t *testing.T) {
 	g := NewWithT(t)
 
-	m := &module.Module{GVK: testGVK}
+	m, err := module.NewModule(module.ModuleSpec{
+		Name:      "ray",
+		GVK:       testGVK,
+		ChartPath: testChartPath(),
+	})
 
+	g.Expect(err).NotTo(HaveOccurred())
 	g.Expect(m.Timeout).To(Equal(time.Duration(0)))
 	g.Expect(m.ConfigHashRollout).To(BeFalse())
 	g.Expect(m.AdminAcks).To(BeNil())
@@ -62,35 +51,38 @@ func TestModuleDefaults(t *testing.T) {
 	g.Expect(m.Ext).To(BeNil())
 }
 
-func TestModuleChartLazyLoad(t *testing.T) {
-	t.Run("errors when chart path is empty", func(t *testing.T) {
+func TestNewModule(t *testing.T) {
+	t.Run("errors when chart path is not set", func(t *testing.T) {
 		g := NewWithT(t)
 
-		m := &module.Module{GVK: testGVK}
-		chrt, err := m.Chart()
+		m, err := module.NewModule(module.ModuleSpec{
+			Name: "ray",
+			GVK:  testGVK,
+		})
+
 		g.Expect(err).To(HaveOccurred())
-		g.Expect(err).To(MatchError(ContainSubstring("chart path not set")))
-		g.Expect(chrt).To(BeNil())
+		g.Expect(err).To(MatchError(ContainSubstring("chart path")))
+		g.Expect(m).To(BeNil())
 	})
 
-	t.Run("errors when chart path does not exist", func(t *testing.T) {
+	t.Run("loads chart metadata eagerly", func(t *testing.T) {
 		g := NewWithT(t)
 
-		m := &module.Module{GVK: testGVK, ChartPath: "/nonexistent/chart"}
-		chrt, err := m.Chart()
-		g.Expect(err).To(HaveOccurred())
-		g.Expect(chrt).To(BeNil())
-	})
+		m, err := module.NewModule(module.ModuleSpec{
+			Name:      "ray",
+			GVK:       testGVK,
+			ChartPath: testChartPath(),
+		})
 
-	t.Run("caches error on repeated calls", func(t *testing.T) {
-		g := NewWithT(t)
-
-		m := &module.Module{GVK: testGVK}
-		_, err1 := m.Chart()
-		_, err2 := m.Chart()
-		g.Expect(err1).To(HaveOccurred())
-		g.Expect(err2).To(HaveOccurred())
-		g.Expect(err1).To(Equal(err2))
+		g.Expect(err).NotTo(HaveOccurred())
+		g.Expect(m.Manifests.Chart.Object).NotTo(BeNil())
+		g.Expect(m.Manifests.Chart).To(Equal(module.ModuleChart{
+			Path:       testChartPath(),
+			Name:       "test-module",
+			Version:    "0.1.0",
+			AppVersion: "1.0.0",
+			Object:     m.Manifests.Chart.Object,
+		}))
 	})
 }
 
@@ -98,20 +90,28 @@ func TestModuleConfig(t *testing.T) {
 	t.Run("nil config by default", func(t *testing.T) {
 		g := NewWithT(t)
 
-		m := &module.Module{GVK: testGVK}
+		m, err := module.NewModule(module.ModuleSpec{
+			Name:      "ray",
+			GVK:       testGVK,
+			ChartPath: testChartPath(),
+		})
+		g.Expect(err).NotTo(HaveOccurred())
 		g.Expect(m.Config).To(BeNil())
 	})
 
 	t.Run("config function returns values", func(t *testing.T) {
 		g := NewWithT(t)
 
-		m := &module.Module{
-			GVK: testGVK,
+		m, err := module.NewModule(module.ModuleSpec{
+			Name:      "ray",
+			GVK:       testGVK,
+			ChartPath: testChartPath(),
 			Config: func(_ context.Context, _ client.Client) (map[string]any, error) {
 				return map[string]any{"key": "val"}, nil
 			},
-		}
+		})
 
+		g.Expect(err).NotTo(HaveOccurred())
 		vals, err := m.Config(context.Background(), nil)
 		g.Expect(err).NotTo(HaveOccurred())
 		g.Expect(vals).To(HaveKeyWithValue("key", "val"))

@@ -17,6 +17,7 @@ limitations under the License.
 package manager
 
 import (
+	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	k8slabels "k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/selection"
@@ -33,12 +34,13 @@ func NewScheme() *runtime.Scheme {
 	scheme := runtime.NewScheme()
 
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
+	utilruntime.Must(apiextensionsv1.AddToScheme(scheme))
 	utilruntime.Must(configv1alpha1.AddToScheme(scheme))
 
 	return scheme
 }
 
-func buildCacheNamespaces(registry *module.ModuleRegistry) map[string]cache.Config {
+func buildCacheNamespaces(registry *module.Registry) map[string]cache.Config {
 	namespaces := make(map[string]cache.Config)
 
 	partOfRequirement, err := k8slabels.NewRequirement(

@@ -94,11 +94,10 @@ Admin-ack state is reported on the Platform condition and warning events, not in
 
 ## Module Registry
 
-`pkg/module/ModuleRegistry` — pure data structure, no state:
+`pkg/module/Registry` — immutable module registry:
 - Holds registered modules with GVK, namespace, chart path, runlevel
-- Computes runlevel groups (`ComputeRunlevels`)
+- Computes runlevel groups during construction
 - Provides lookups: `ModuleByName`, `ModuleByGVK`, `ModulesAtRunlevel`
-- Implements `module.Registry` interface for module registration
 
 ## Resource Metadata
 

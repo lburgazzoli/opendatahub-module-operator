@@ -34,7 +34,6 @@ import (
 	configApi "github.com/lburgazzoli/opendatahub-module-operator/orchestrator/api/config/v1alpha1"
 	"github.com/lburgazzoli/opendatahub-module-operator/orchestrator/pkg/config"
 	"github.com/lburgazzoli/opendatahub-module-operator/orchestrator/pkg/module"
-	odhresources "github.com/lburgazzoli/opendatahub-module-operator/orchestrator/pkg/resources"
 	"github.com/opendatahub-io/operator-actions-framework/controller/conditions"
 	"github.com/opendatahub-io/operator-actions-framework/controller/types"
 )
@@ -44,7 +43,7 @@ const (
 )
 
 type PlatformReconciler struct {
-	registry *module.ModuleRegistry
+	registry *module.Registry
 	cfg      *config.Config
 	recorder events.EventRecorder
 }
@@ -64,6 +63,9 @@ func (a *PlatformReconciler) initialize(_ context.Context, rr *types.Reconciliat
 
 	if obj.Status.Runlevel == 0 {
 		obj.Status.Runlevel = a.registry.FirstRunlevel()
+	}
+	if len(obj.Spec.Modules) == 0 {
+		obj.Status.Distribution.Current = obj.Status.Distribution.Target
 	}
 
 	return nil
@@ -126,7 +128,7 @@ func (a *PlatformReconciler) ensureModules(ctx context.Context, rr *types.Reconc
 		}
 
 		po := configApi.PlatformOperator{}
-		po.SetName(m.EffectiveName())
+		po.SetName(m.Name)
 
 		if err := rr.AddResources(&po); err != nil {
 			return fmt.Errorf("%w", err)
@@ -149,7 +151,7 @@ func (a *PlatformReconciler) pruneModules(ctx context.Context, rr *types.Reconci
 	for _, name := range obj.Spec.Modules {
 		m := a.registry.ModuleByName(name)
 		if m != nil {
-			desired.Insert(m.EffectiveName())
+			desired.Insert(m.Name)
 			continue
 		}
 
@@ -157,7 +159,7 @@ func (a *PlatformReconciler) pruneModules(ctx context.Context, rr *types.Reconci
 	}
 
 	var poList configApi.PlatformOperatorList
-	if err := odhresources.List(ctx, rr.Client, &poList); err != nil {
+	if err := rr.Client.List(ctx, &poList); err != nil {
 		return fmt.Errorf("listing PlatformOperators: %w", err)
 	}
 

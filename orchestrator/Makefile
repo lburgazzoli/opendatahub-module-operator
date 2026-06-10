@@ -62,7 +62,10 @@ deps: ## Tidy and verify Go module dependencies.
 	go mod verify
 
 .PHONY: test
-test: manifests generate fmt vet ## Run unit tests.
+test: test-unit ## Run unit tests.
+
+.PHONY: test-unit
+test-unit: manifests generate fmt vet ## Run unit tests.
 	go test -ldflags "$(LDFLAGS)" $$(go list ./... | grep -v /e2e | grep -v /integration) -coverprofile cover.out
 
 .PHONY: cleanup-integration
@@ -95,13 +98,25 @@ cleanup-integration: ## Delete shared integration leftovers and wait for removal
 		$(KUBECTL) wait --for=delete configmap/opendatahub-admin -n opendatahub --timeout=60s >/dev/null || exit $$?; \
 	fi
 
+
+.PHONY: test-integration-foundation
+test-integration-foundation: cleanup-integration manifests generate install ## Run foundation integration tests against the current cluster.
+	ODH_MODULE_OPERATOR_CONTROLLER_ZAP_DEV_MODE=true go test -p 1 -v -count=1 -timeout=120s ./test/integration/foundation/...
+
+.PHONY: test-integration-gates
+test-integration-gates: cleanup-integration manifests generate install ## Run gates integration tests against the current cluster.
+	ODH_MODULE_OPERATOR_CONTROLLER_ZAP_DEV_MODE=true go test -p 1 -v -count=1 -timeout=120s ./test/integration/gates/...
+
+.PHONY: test-integration-runlevel
+test-integration-runlevel: cleanup-integration manifests generate install ## Run runlevel integration tests against the current cluster.
+	ODH_MODULE_OPERATOR_CONTROLLER_ZAP_DEV_MODE=true go test -p 1 -v -count=1 -timeout=120s ./test/integration/runlevel/...
+
 .PHONY: test-integration
-test-integration: manifests generate install ## Run integration tests against the current cluster.
-	go test -p 1 -v -tags=integration -count=1 -timeout=120s ./test/integration/...
+test-integration: test-integration-foundation test-integration-gates test-integration-runlevel ## Run integration tests against the current cluster.
 
 .PHONY: lint
 lint: ## Run golangci-lint linter.
-	$(GOLANGCI_LINT) run --build-tags integration,e2e
+	$(GOLANGCI_LINT) run
 
 .PHONY: lint-fix
 lint-fix: ## Run golangci-lint linter and perform fixes.

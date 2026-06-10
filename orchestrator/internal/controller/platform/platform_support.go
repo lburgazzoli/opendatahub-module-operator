@@ -16,7 +16,6 @@ import (
 	configApi "github.com/lburgazzoli/opendatahub-module-operator/orchestrator/api/config/v1alpha1"
 	"github.com/lburgazzoli/opendatahub-module-operator/orchestrator/pkg/config"
 	"github.com/lburgazzoli/opendatahub-module-operator/orchestrator/pkg/module"
-	odhresources "github.com/lburgazzoli/opendatahub-module-operator/orchestrator/pkg/resources"
 	actionerrors "github.com/opendatahub-io/operator-actions-framework/controller/actions/errors"
 	"github.com/opendatahub-io/operator-actions-framework/controller/types"
 )
@@ -40,14 +39,14 @@ func (a *PlatformReconciler) requiredAdminAcks(obj *configApi.Platform) map[stri
 	requiredAcks := map[string]module.AdminAck{}
 
 	for _, m := range a.registry.Modules() {
-		if !enabled.Has(m.EffectiveName()) {
+		if !enabled.Has(m.Name) {
 			continue
 		}
 		for _, ack := range m.AdminAcks {
 			if requiredModules[ack.Name] == nil {
 				requiredModules[ack.Name] = sets.New[string]()
 			}
-			requiredModules[ack.Name].Insert(m.EffectiveName())
+			requiredModules[ack.Name].Insert(m.Name)
 			if existing, found := requiredAcks[ack.Name]; !found || existing.Description == "" {
 				requiredAcks[ack.Name] = ack
 			}
@@ -159,20 +158,20 @@ func (a *PlatformReconciler) moduleStatus(
 	m *module.Module,
 ) (configApi.ModuleStatusSummary, error) {
 	summary := configApi.ModuleStatusSummary{
-		Name:     m.EffectiveName(),
+		Name:     m.Name,
 		Runlevel: m.Runlevel,
 	}
 
 	po := &configApi.PlatformOperator{}
-	po.SetName(m.EffectiveName())
+	po.SetName(m.Name)
 
-	err := odhresources.Get(ctx, cli, po)
+	err := cli.Get(ctx, client.ObjectKeyFromObject(po), po)
 
 	switch {
 	case k8serr.IsNotFound(err):
 		return summary, nil
 	case err != nil:
-		return summary, fmt.Errorf("getting PlatformOperator %q: %w", m.EffectiveName(), err)
+		return summary, fmt.Errorf("getting PlatformOperator %q: %w", m.Name, err)
 	default:
 		summary.Distribution = po.Status.Distribution.Current
 	}
@@ -218,20 +217,19 @@ func (a *PlatformReconciler) runlevelComplete(
 	obj *configApi.Platform,
 	level int,
 ) (bool, error) {
-	upgradeInProgress := obj.Status.Distribution.Current.Version != "" &&
-		obj.Status.Distribution.Current.Version != obj.Status.Distribution.Target.Version
+	upgradeInProgress := obj.Status.Distribution.Current != obj.Status.Distribution.Target
 
 	for _, m := range a.enabledModulesAtRunlevel(obj, level) {
 		po := &configApi.PlatformOperator{}
-		po.SetName(m.EffectiveName())
+		po.SetName(m.Name)
 
-		err := odhresources.Get(ctx, rr.Client, po)
+		err := rr.Client.Get(ctx, client.ObjectKeyFromObject(po), po)
 
 		switch {
 		case k8serr.IsNotFound(err):
 			return false, nil
 		case err != nil:
-			return false, fmt.Errorf("getting PlatformOperator %q: %w", m.EffectiveName(), err)
+			return false, fmt.Errorf("getting PlatformOperator %q: %w", m.Name, err)
 		case upgradeInProgress && po.Status.Distribution.Current.Version != obj.Status.Distribution.Target.Version:
 			return false, nil
 		}
@@ -248,7 +246,7 @@ func (a *PlatformReconciler) enabledModulesAtRunlevel(
 	modules := make([]*module.Module, 0)
 
 	for _, m := range a.registry.ModulesAtRunlevel(level) {
-		if enabled.Has(m.EffectiveName()) {
+		if enabled.Has(m.Name) {
 			modules = append(modules, m)
 		}
 	}
