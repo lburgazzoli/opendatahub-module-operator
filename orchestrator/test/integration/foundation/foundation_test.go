@@ -102,23 +102,27 @@ func TestModuleDeployment(t *testing.T) {
 
 			for _, ref := range po.Status.Resources {
 				refGVK := schema.FromAPIVersionAndKind(ref.APIVersion, ref.Kind)
-				if refGVK == gvk.Namespace || refGVK == gvk.CustomResourceDefinition {
-					continue
-				}
-
 				obj := isupport.ObjectFromResourceRef(ref)
+
 				matchers := []types.GomegaMatcher{
 					k8sm.HasLabel("platform.opendatahub.io/part-of", mod.Name),
-					k8sm.IsControlledBy(testsupport.PlatformOperatorOwner(mod.Name)),
 				}
 
-				if refGVK == gvk.ConfigMap {
+				switch refGVK {
+				case gvk.Namespace, gvk.CustomResourceDefinition:
+					// cluster-scoped: labels only, no ownership
+				case gvk.ConfigMap:
 					matchers = append(matchers,
+						k8sm.IsControlledBy(testsupport.PlatformOperatorOwner(mod.Name)),
 						WithTransform(k8sm.Data(), SatisfyAll(
 							HaveKeyWithValue("module-name", Equal(mod.Name)),
 							HaveKeyWithValue("distribution.name", Not(BeEmpty())),
 							HaveKeyWithValue("distribution.version", Not(BeEmpty())),
 						)),
+					)
+				default:
+					matchers = append(matchers,
+						k8sm.IsControlledBy(testsupport.PlatformOperatorOwner(mod.Name)),
 					)
 				}
 
