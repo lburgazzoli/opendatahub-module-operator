@@ -85,13 +85,6 @@ func HaveTrackedResources() types.GomegaMatcher {
 	)
 }
 
-func HaveNoTrackedResources() types.GomegaMatcher {
-	return gomega.WithTransform(
-		jq.Extract(`.status.resources // []`),
-		gomega.BeEmpty(),
-	)
-}
-
 func HaveTrackedResource(gvk schema.GroupVersionKind) types.GomegaMatcher {
 	return gomega.WithTransform(
 		jq.Extract(`.status.resources // []`),

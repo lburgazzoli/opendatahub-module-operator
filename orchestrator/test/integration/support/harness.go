@@ -154,7 +154,7 @@ func UpsertModuleCRWithVersion(
 }
 
 func (suite *Suite) resetConfig() {
-	*suite.Config = baseConfig
+	*suite.Config = suite.baseConfig
 }
 
 func (suite *Suite) resetClusterState(t *testing.T, ctx context.Context) {

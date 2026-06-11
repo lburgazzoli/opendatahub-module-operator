@@ -51,14 +51,8 @@ const (
 )
 
 var (
-	kubeConfig *rest.Config
-	testConfig *config.Config
-	baseConfig config.Config
-
 	testScheme = runtime.NewScheme()
-
-	cleanupModules  []*module.Module
-	selectedModules []*module.Module
+	active     *Suite
 )
 
 type Suite struct {
@@ -66,25 +60,13 @@ type Suite struct {
 	CleanupModules []*module.Module
 	Config         *config.Config
 	Client         client.Client
-}
-
-func (suite *Suite) ModuleByName(name string) *module.Module {
-	for _, mod := range suite.Modules {
-		if mod.Name == name {
-			return mod
-		}
-	}
-
-	return nil
+	cancel         context.CancelFunc
+	baseConfig     config.Config
 }
 
 type RunConfig struct {
 	Modules        []*module.Module
 	CleanupModules []*module.Module
-}
-
-type MainSuite struct {
-	cancel context.CancelFunc
 }
 
 func init() {
@@ -93,50 +75,61 @@ func init() {
 	utilruntime.Must(configApi.AddToScheme(testScheme))
 }
 
-func Setup(cfg RunConfig) (*MainSuite, error) {
+func Setup(cfg RunConfig) (*Suite, error) {
 	ctx, cancel := context.WithCancel(context.Background())
 
-	var err error
-	var chartPath string
-	kubeConfig, chartPath, err = setupEnv()
+	kubeConfig, chartPath, err := setupEnv()
 	if err != nil {
 		cancel()
 		return nil, fmt.Errorf("setting up environment: %w", err)
 	}
 
-	selectedModules, err = normalizeModules(cfg.Modules, chartPath)
+	modules, err := normalizeModules(cfg.Modules, chartPath)
 	if err != nil {
 		cancel()
 		return nil, fmt.Errorf("normalizing test modules: %w", err)
 	}
 
+	var cleanupMods []*module.Module
 	if len(cfg.CleanupModules) == 0 {
-		cleanupModules, err = normalizeModules(cfg.Modules, chartPath)
+		cleanupMods, err = normalizeModules(cfg.Modules, chartPath)
 	} else {
-		cleanupModules, err = normalizeModules(cfg.CleanupModules, chartPath)
+		cleanupMods, err = normalizeModules(cfg.CleanupModules, chartPath)
 	}
 	if err != nil {
 		cancel()
 		return nil, fmt.Errorf("normalizing cleanup modules: %w", err)
 	}
 
-	if err := loadTestConfig(); err != nil {
+	testConfig, err := loadTestConfig()
+	if err != nil {
 		cancel()
 		return nil, fmt.Errorf("loading test config: %w", err)
 	}
 
-	suite, err := newSuite()
+	cli, err := newClient(kubeConfig)
 	if err != nil {
 		cancel()
-		return nil, fmt.Errorf("creating cleanup client: %w", err)
+		return nil, fmt.Errorf("creating client: %w", err)
 	}
+
+	suite := &Suite{
+		Modules:        modules,
+		CleanupModules: cleanupMods,
+		Config:         testConfig,
+		Client:         cli,
+		cancel:         cancel,
+		baseConfig:     *testConfig,
+	}
+
+	active = suite
 
 	if err := suite.cleanupBeforeRun(ctx); err != nil {
 		cancel()
 		return nil, fmt.Errorf("cleaning cluster state before run: %w", err)
 	}
 
-	if err := setupManager(ctx, kubeConfig, selectedModules); err != nil {
+	if err := setupManager(ctx, kubeConfig, testConfig, modules); err != nil {
 		cancel()
 		return nil, fmt.Errorf("setting up manager: %w", err)
 	}
@@ -144,29 +137,20 @@ func Setup(cfg RunConfig) (*MainSuite, error) {
 	gomega.SetDefaultEventuallyTimeout(Timeout)
 	gomega.SetDefaultEventuallyPollingInterval(Interval)
 
-	return &MainSuite{cancel: cancel}, nil
+	return suite, nil
 }
 
-func (suite *MainSuite) Run(m *testing.M) int {
+func (suite *Suite) Run(m *testing.M) int {
 	return m.Run()
 }
 
-func (suite *MainSuite) TearDown() error {
+func (suite *Suite) TearDown() error {
 	defer suite.cancel()
 
 	cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), cleanupWaitTimeout)
 	defer cleanupCancel()
 
-	cleanupSuite, err := newSuite()
-	if err != nil {
-		return fmt.Errorf("creating teardown cleanup client: %w", err)
-	}
-
-	if err := cleanupSuite.cleanupBeforeRun(cleanupCtx); err != nil {
-		return fmt.Errorf("cleaning cluster state during teardown: %w", err)
-	}
-
-	return nil
+	return suite.cleanupBeforeRun(cleanupCtx)
 }
 
 func Run(m *testing.M, cfg RunConfig) int {
@@ -191,26 +175,21 @@ func Run(m *testing.M, cfg RunConfig) int {
 func NewSuite(t *testing.T) *Suite {
 	t.Helper()
 
-	suite, err := newSuite()
-	if err != nil {
-		t.Fatalf("creating test suite: %v", err)
+	if active == nil {
+		t.Fatal("no active suite — call Setup() first")
 	}
 
-	return suite
+	return active
 }
 
-func newSuite() (*Suite, error) {
-	cli, err := newClient(kubeConfig)
-	if err != nil {
-		return nil, err
+func (suite *Suite) ModuleByName(name string) *module.Module {
+	for _, mod := range suite.Modules {
+		if mod.Name == name {
+			return mod
+		}
 	}
 
-	return &Suite{
-		Modules:        selectedModules,
-		CleanupModules: cleanupModules,
-		Config:         testConfig,
-		Client:         cli,
-	}, nil
+	return nil
 }
 
 func newClient(kc *rest.Config) (client.Client, error) {
@@ -249,13 +228,13 @@ func setupEnv() (*rest.Config, string, error) {
 	return cfg, chartPath, nil
 }
 
-func setupManager(ctx context.Context, kc *rest.Config, modules []*module.Module) error {
+func setupManager(ctx context.Context, kc *rest.Config, cfg *config.Config, modules []*module.Module) error {
 	registry, err := module.NewRegistry(modules)
 	if err != nil {
 		return fmt.Errorf("creating module registry: %w", err)
 	}
 
-	mgr, err := odhmgr.New(ctx, kc, testConfig, registry)
+	mgr, err := odhmgr.New(ctx, kc, cfg, registry)
 	if err != nil {
 		return fmt.Errorf("creating manager: %w", err)
 	}
@@ -273,10 +252,10 @@ func setupManager(ctx context.Context, kc *rest.Config, modules []*module.Module
 	return nil
 }
 
-func loadTestConfig() error {
+func loadTestConfig() (*config.Config, error) {
 	cfg, err := config.LoadFromFS(nil)
 	if err != nil {
-		return fmt.Errorf("loading config: %w", err)
+		return nil, fmt.Errorf("loading config: %w", err)
 	}
 
 	ctrl.SetLogger(ctrlzap.New(cfg.Controller.Zap.ZapOpts()...))
@@ -287,10 +266,7 @@ func loadTestConfig() error {
 	cfg.Controller.Pprof.BindAddress = ""
 	cfg.Controller.LeaderElection.Enabled = false
 
-	testConfig = cfg
-	baseConfig = *cfg
-
-	return nil
+	return cfg, nil
 }
 
 func normalizeModules(modules []*module.Module, chartPath string) ([]*module.Module, error) {

@@ -46,7 +46,7 @@ func TestUpgradeTriggeredByVersionMismatch(t *testing.T) {
 
 	for _, name := range runlevelTwoModuleNames {
 		g.Eventually(ctx, k8sm.Get(suite.Client, testsupport.PlatformOperator(name))).Should(
-			testsupport.HaveNoTrackedResources(),
+			Not(testsupport.HaveTrackedResources()),
 		)
 	}
 	g.Eventually(ctx, k8sm.Get(suite.Client, testsupport.Platform())).Should(
@@ -190,10 +190,10 @@ func TestAddingHigherRunlevelModuleWaitsForCurrentRunlevel(t *testing.T) {
 	)
 
 	g.Eventually(ctx, k8sm.Get(suite.Client, testsupport.PlatformOperator(epsilonModuleName))).
-		Should(testsupport.HaveNoTrackedResources())
+		Should(Not(testsupport.HaveTrackedResources()))
 	g.Consistently(ctx, k8sm.Get(suite.Client, testsupport.PlatformOperator(epsilonModuleName))).
 		WithTimeout(runlevelStabilityTimeout).
-		Should(testsupport.HaveNoTrackedResources())
+		Should(Not(testsupport.HaveTrackedResources()))
 
 	isupport.UpsertModuleCRWithVersion(t, suite, betaGVK, upgradedDistributionVersion)
 	isupport.UpsertModuleCRWithVersion(t, suite, gammaGVK, upgradedDistributionVersion)

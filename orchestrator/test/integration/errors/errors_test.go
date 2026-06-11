@@ -35,31 +35,48 @@ func TestMain(m *testing.M) {
 }
 
 func TestModuleWithFailingConfigDoesNotDeploy(t *testing.T) {
+	assertBrokenModuleDoesNotDeploy(t, failingModuleName, "simulated config failure")
+}
+
+func TestModuleWithBrokenChartDoesNotDeploy(t *testing.T) {
+	assertBrokenModuleDoesNotDeploy(t, brokenModuleName, "missing required value")
+}
+
+func assertBrokenModuleDoesNotDeploy(
+	t *testing.T,
+	brokenName string,
+	expectedMessage string,
+) {
+	t.Helper()
+
 	g := NewWithT(t)
 	ctx := t.Context()
 	suite := isupport.NewSuite(t)
 	suite.SetupTest(t)
 
-	p := &configApi.Platform{
-		ObjectMeta: metav1.ObjectMeta{Name: configApi.PlatformInstanceName},
-		Spec: configApi.PlatformSpec{
-			Modules: []string{healthyModuleName, failingModuleName},
-		},
-	}
+	p := isupport.NewPlatformWithModules([]string{healthyModuleName, brokenName})
 	g.Expect(suite.Client.Create(ctx, p)).To(Succeed())
 
 	g.Eventually(ctx, k8sm.Get(suite.Client, testsupport.PlatformOperator(healthyModuleName))).Should(
 		testsupport.HaveTrackedResources(),
 	)
 
-	g.Consistently(ctx, k8sm.Get(suite.Client, testsupport.PlatformOperator(failingModuleName))).
+	g.Consistently(ctx, k8sm.Get(suite.Client, testsupport.PlatformOperator(brokenName))).
 		WithTimeout(isupport.Timeout).
-		Should(testsupport.HaveNoTrackedResources())
+		Should(Not(testsupport.HaveTrackedResources()))
 
-	g.Eventually(ctx, k8sm.Get(suite.Client, testsupport.Platform())).Should(
-		WithTransform(k8sm.Conditions(), ContainElement(SatisfyAll(
-			HaveKeyWithValue("type", configApi.ConditionReady),
-			HaveKeyWithValue("status", string(metav1.ConditionFalse)),
-		))),
+	g.Eventually(ctx, k8sm.Get(suite.Client, testsupport.PlatformOperator(brokenName))).Should(
+		WithTransform(k8sm.Conditions(), SatisfyAll(
+			ContainElement(SatisfyAll(
+				HaveKeyWithValue("type", Equal("ProvisioningSucceeded")),
+				HaveKeyWithValue("status", Equal(string(metav1.ConditionFalse))),
+				HaveKeyWithValue("message", ContainSubstring(expectedMessage)),
+			)),
+			ContainElement(SatisfyAll(
+				HaveKeyWithValue("type", Equal(configApi.ConditionReady)),
+				HaveKeyWithValue("status", Equal(string(metav1.ConditionFalse))),
+				HaveKeyWithValue("message", ContainSubstring(expectedMessage)),
+			)),
+		)),
 	)
 }
