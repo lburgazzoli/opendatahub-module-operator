@@ -19,7 +19,6 @@ package module_test
 import (
 	"context"
 	"testing"
-	"time"
 
 	. "github.com/onsi/gomega"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -44,11 +43,9 @@ func TestModuleDefaults(t *testing.T) {
 	})
 
 	g.Expect(err).NotTo(HaveOccurred())
-	g.Expect(m.Timeout).To(Equal(time.Duration(0)))
 	g.Expect(m.ConfigHashRollout).To(BeFalse())
 	g.Expect(m.AdminAcks).To(BeNil())
 	g.Expect(m.Values).To(BeNil())
-	g.Expect(m.Ext).To(BeNil())
 }
 
 func TestNewModule(t *testing.T) {

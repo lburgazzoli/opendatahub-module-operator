@@ -311,12 +311,10 @@ func normalizeModule(mod *module.Module, chartPath string) (*module.Module, erro
 		Namespace:         mod.Namespace,
 		Runlevel:          mod.Runlevel,
 		ChartPath:         resolvedChartPath,
-		Timeout:           mod.Timeout,
 		ConfigHashRollout: mod.ConfigHashRollout,
 		AdminAcks:         mod.AdminAcks,
 		Values:            mod.Values,
 		Config:            mod.Config,
-		Ext:               mod.Ext,
 	})
 	if err != nil {
 		return nil, err

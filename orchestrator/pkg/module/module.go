@@ -19,7 +19,6 @@ package module
 import (
 	"context"
 	"fmt"
-	"time"
 
 	"helm.sh/helm/v4/pkg/chart"
 	chartloader "helm.sh/helm/v4/pkg/chart/loader"
@@ -28,7 +27,6 @@ import (
 )
 
 const (
-	DefaultTimeout           = 10 * time.Minute
 	DefaultConfigHashRollout = true
 )
 
@@ -39,7 +37,6 @@ type ModuleSpec struct {
 	Namespace         string
 	Runlevel          int
 	ChartPath         string
-	Timeout           time.Duration
 	AdminAcks         []AdminAck
 	ConfigHashRollout bool
 	Values            map[string]any
@@ -47,9 +44,6 @@ type ModuleSpec struct {
 	// Config returns config values merged into Values.config before chart rendering.
 	// Nil means no config injection.
 	Config func(ctx context.Context, c client.Client) (map[string]any, error)
-
-	// Ext is type-checked for optional interfaces.
-	Ext any
 }
 
 type AdminAck struct {
@@ -70,14 +64,11 @@ type ModuleChart struct {
 }
 
 // Module holds the definition of a managed module.
-// Optional behavioral interfaces (Configurable, etc.) are
-// type-checked on the Ext field.
 type Module struct {
 	Name              string
 	GVK               schema.GroupVersionKind
 	Namespace         string // final namespace, computed at registration time
 	Runlevel          int
-	Timeout           time.Duration
 	AdminAcks         []AdminAck
 	ConfigHashRollout bool
 	Values            map[string]any
@@ -85,9 +76,6 @@ type Module struct {
 	// Config returns config values merged into Values.config before chart rendering.
 	// Nil means no config injection.
 	Config func(ctx context.Context, c client.Client) (map[string]any, error)
-
-	// Ext is type-checked for optional interfaces.
-	Ext any
 
 	Manifests Manifests
 }
@@ -110,12 +98,10 @@ func NewModule(spec ModuleSpec) (*Module, error) {
 		GVK:               spec.GVK,
 		Namespace:         spec.Namespace,
 		Runlevel:          spec.Runlevel,
-		Timeout:           spec.Timeout,
 		AdminAcks:         spec.AdminAcks,
 		ConfigHashRollout: spec.ConfigHashRollout,
 		Values:            spec.Values,
 		Config:            spec.Config,
-		Ext:               spec.Ext,
 		Manifests: Manifests{
 			Chart: moduleChart,
 		},
