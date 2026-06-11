@@ -11,6 +11,7 @@ import (
 	. "github.com/onsi/gomega"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
+	appsv1 "k8s.io/api/apps/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 
@@ -96,6 +97,7 @@ func TestModuleDeployment(t *testing.T) {
 					testsupport.HaveTrackedResource(gvk.Namespace),
 					testsupport.HaveTrackedNamedResource(gvk.Namespace, mod.Namespace),
 					testsupport.HaveTrackedResource(gvk.ConfigMap),
+					testsupport.HaveTrackedResource(gvk.Deployment),
 					testsupport.HaveTrackedResource(gvk.ServiceAccount),
 					testsupport.HaveTrackedResource(gvk.CustomResourceDefinition),
 					testsupport.HaveTrackedNamedResource(gvk.CustomResourceDefinition, crdName),
@@ -162,13 +164,8 @@ func TestModuleVersionPropagation(t *testing.T) {
 		)
 	}
 
-	mod := suite.Modules[0]
-	for _, candidate := range suite.Modules {
-		if candidate.Name == alphaModuleName {
-			mod = candidate
-			break
-		}
-	}
+	mod := suite.ModuleByName(alphaModuleName)
+	g.Expect(mod).NotTo(BeNil())
 
 	isupport.UpsertModuleCRWithVersion(t, suite, mod.GVK, "test-version")
 
@@ -198,13 +195,7 @@ func TestModuleWithoutReleaseDoesNotFallBackToTarget(t *testing.T) {
 		)
 	}
 
-	mod := suite.Modules[0]
-	for _, candidate := range suite.Modules {
-		if candidate.Name == alphaModuleName {
-			mod = candidate
-			break
-		}
-	}
+	mod := suite.ModuleByName(alphaModuleName)
 	isupport.UpsertModuleCRWithVersion(t, suite, mod.GVK, "")
 
 	g.Eventually(ctx, k8sm.Get(suite.Client, testsupport.PlatformOperator(mod.Name))).Should(
@@ -347,4 +338,51 @@ func TestRemovingModuleCleansUpOnlyThatModule(t *testing.T) {
 			)
 		}
 	})
+}
+
+func TestConfigChangeTriggersDeploymentRollout(t *testing.T) {
+	g := NewWithT(t)
+	ctx := t.Context()
+	suite := isupport.NewSuite(t)
+	suite.SetupTest(t)
+
+	p := isupport.NewPlatformWithModules(suite.PlatformModuleNames())
+	g.Expect(suite.Client.Create(ctx, p)).To(Succeed())
+
+	for _, mod := range suite.Modules {
+		g.Eventually(ctx, k8sm.Get(suite.Client, testsupport.PlatformOperator(mod.Name))).Should(
+			testsupport.HaveTrackedResources(),
+		)
+	}
+
+	alphaMod := suite.ModuleByName(alphaModuleName)
+	g.Expect(alphaMod).NotTo(BeNil())
+
+	alphaDeploy := &appsv1.Deployment{ObjectMeta: metav1.ObjectMeta{
+		Name: alphaModuleName, Namespace: alphaMod.Namespace,
+	}}
+
+	g.Eventually(ctx, k8sm.Lookup(suite.Client, alphaDeploy)).Should(Succeed())
+
+	g.Expect(alphaDeploy.Spec.Template.Annotations).To(HaveKey("checksum/config"))
+	g.Expect(alphaDeploy.Generation).To(BeNumerically(">", 0))
+
+	sum := alphaDeploy.Spec.Template.Annotations["checksum/config"]
+	gen := alphaDeploy.Generation
+
+	g.Eventually(ctx, k8sm.Update(suite.Client, testsupport.Platform(),
+		k8sm.SetAnnotation("test/config-value", "changed"),
+	)).Should(
+		k8sm.HasAnnotation("test/config-value", "changed"),
+	)
+
+	g.Eventually(ctx, k8sm.Get(suite.Client, alphaDeploy)).
+		WithTimeout(isupport.Timeout).
+		Should(And(
+			jq.Matchf(`.spec.template.metadata.annotations["checksum/config"] != "%s"`, sum),
+			jq.Matchf(`.metadata.generation > %d`, gen),
+			jq.Match(`.status.observedGeneration == .metadata.generation`),
+			jq.Match(`.status.updatedReplicas == .spec.replicas`),
+			jq.Match(`.status.availableReplicas == .spec.replicas`),
+		))
 }

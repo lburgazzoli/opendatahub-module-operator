@@ -43,7 +43,6 @@ func TestModuleDefaults(t *testing.T) {
 	})
 
 	g.Expect(err).NotTo(HaveOccurred())
-	g.Expect(m.ConfigHashRollout).To(BeFalse())
 	g.Expect(m.AdminAcks).To(BeNil())
 	g.Expect(m.Values).To(BeNil())
 }

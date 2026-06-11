@@ -7,7 +7,9 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
+	configApi "github.com/lburgazzoli/opendatahub-module-operator/orchestrator/api/config/v1alpha1"
 	"github.com/lburgazzoli/opendatahub-module-operator/orchestrator/pkg/module"
+	"github.com/lburgazzoli/opendatahub-module-operator/orchestrator/pkg/resources"
 	isupport "github.com/lburgazzoli/opendatahub-module-operator/orchestrator/test/integration/support"
 )
 
@@ -30,12 +32,26 @@ var (
 )
 
 func foundationModules() []*module.Module {
+	alpha := newModule(alphaModuleName, alphaGVK, 1, nil)
+	alpha.Config = func(ctx context.Context, c client.Client) (map[string]any, error) {
+		p := &configApi.Platform{}
+		if err := resources.GetSingleton(ctx, c, p); err != nil {
+			return nil, err
+		}
+
+		vals := map[string]any{
+			"module-name": alphaModuleName,
+			"test-key":    "test-value",
+		}
+		if v, ok := p.GetAnnotations()["test/config-value"]; ok {
+			vals["extra-config"] = v
+		}
+
+		return vals, nil
+	}
+
 	return []*module.Module{
-		newModule(alphaModuleName, alphaGVK, 1, map[string]any{
-			"module-name":   alphaModuleName,
-			"platform-name": "TestPlatform",
-			"test-key":      "test-value",
-		}),
+		alpha,
 		newModule(betaModuleName, betaGVK, 2, map[string]any{
 			"module-name": betaModuleName,
 		}),

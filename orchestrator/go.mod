@@ -5,10 +5,10 @@ go 1.26.4
 require (
 	github.com/blang/semver/v4 v4.0.0
 	github.com/invopop/jsonschema v0.14.0
-	github.com/k8s-manifest-kit/engine v0.2.1-0.20260604145727-e259f45699d3
+	github.com/k8s-manifest-kit/engine v0.2.1-0.20260611122437-2eac20bfa748
 	github.com/k8s-manifest-kit/pkg v0.2.1-0.20260604145543-c4a39bd14f36
-	github.com/k8s-manifest-kit/renderer-helm v0.3.1-0.20260611072031-a4c19a9d9ac2
-	github.com/lburgazzoli/gomega-matchers v0.4.1-0.20260610174449-273e118f0de1
+	github.com/k8s-manifest-kit/renderer-helm v0.3.1-0.20260611123452-5f516dbf8625
+	github.com/lburgazzoli/gomega-matchers v0.4.1-0.20260611124452-80c59826d05c
 	github.com/onsi/gomega v1.41.0
 	github.com/opendatahub-io/odh-platform-utilities v0.1.0
 	github.com/opendatahub-io/opendatahub-operator/v2 v2.0.0-00010101000000-000000000000

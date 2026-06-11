@@ -31,6 +31,7 @@ var (
 	Namespace                = schema.GroupVersionKind{Version: "v1", Kind: "Namespace"}
 	ServiceAccount           = odhGVK.ServiceAccount
 	ConfigMap                = odhGVK.ConfigMap
+	Deployment               = odhGVK.Deployment
 
 	Ray                  = ComponentsGV.WithKind("Ray")
 	Spark                = ComponentsGV.WithKind("Spark")

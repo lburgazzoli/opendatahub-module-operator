@@ -68,6 +68,16 @@ type Suite struct {
 	Client         client.Client
 }
 
+func (suite *Suite) ModuleByName(name string) *module.Module {
+	for _, mod := range suite.Modules {
+		if mod.Name == name {
+			return mod
+		}
+	}
+
+	return nil
+}
+
 type RunConfig struct {
 	Modules        []*module.Module
 	CleanupModules []*module.Module
@@ -306,15 +316,14 @@ func normalizeModule(mod *module.Module, chartPath string) (*module.Module, erro
 	}
 
 	cloned, err := module.NewModule(module.ModuleSpec{
-		Name:              mod.Name,
-		GVK:               mod.GVK,
-		Namespace:         mod.Namespace,
-		Runlevel:          mod.Runlevel,
-		ChartPath:         resolvedChartPath,
-		ConfigHashRollout: mod.ConfigHashRollout,
-		AdminAcks:         mod.AdminAcks,
-		Values:            mod.Values,
-		Config:            mod.Config,
+		Name:      mod.Name,
+		GVK:       mod.GVK,
+		Namespace: mod.Namespace,
+		Runlevel:  mod.Runlevel,
+		ChartPath: resolvedChartPath,
+		AdminAcks: mod.AdminAcks,
+		Values:    mod.Values,
+		Config:    mod.Config,
 	})
 	if err != nil {
 		return nil, err

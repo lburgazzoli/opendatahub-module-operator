@@ -26,20 +26,15 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-const (
-	DefaultConfigHashRollout = true
-)
-
 // ModuleSpec is the input used to construct a Module.
 type ModuleSpec struct {
-	Name              string
-	GVK               schema.GroupVersionKind
-	Namespace         string
-	Runlevel          int
-	ChartPath         string
-	AdminAcks         []AdminAck
-	ConfigHashRollout bool
-	Values            map[string]any
+	Name      string
+	GVK       schema.GroupVersionKind
+	Namespace string
+	Runlevel  int
+	ChartPath string
+	AdminAcks []AdminAck
+	Values    map[string]any
 
 	// Config returns config values merged into Values.config before chart rendering.
 	// Nil means no config injection.
@@ -65,13 +60,12 @@ type ModuleChart struct {
 
 // Module holds the definition of a managed module.
 type Module struct {
-	Name              string
-	GVK               schema.GroupVersionKind
-	Namespace         string // final namespace, computed at registration time
-	Runlevel          int
-	AdminAcks         []AdminAck
-	ConfigHashRollout bool
-	Values            map[string]any
+	Name      string
+	GVK       schema.GroupVersionKind
+	Namespace string
+	Runlevel  int
+	AdminAcks []AdminAck
+	Values    map[string]any
 
 	// Config returns config values merged into Values.config before chart rendering.
 	// Nil means no config injection.
@@ -94,14 +88,13 @@ func NewModule(spec ModuleSpec) (*Module, error) {
 	}
 
 	return &Module{
-		Name:              spec.Name,
-		GVK:               spec.GVK,
-		Namespace:         spec.Namespace,
-		Runlevel:          spec.Runlevel,
-		AdminAcks:         spec.AdminAcks,
-		ConfigHashRollout: spec.ConfigHashRollout,
-		Values:            spec.Values,
-		Config:            spec.Config,
+		Name:      spec.Name,
+		GVK:       spec.GVK,
+		Namespace: spec.Namespace,
+		Runlevel:  spec.Runlevel,
+		AdminAcks: spec.AdminAcks,
+		Values:    spec.Values,
+		Config:    spec.Config,
 		Manifests: Manifests{
 			Chart: moduleChart,
 		},
