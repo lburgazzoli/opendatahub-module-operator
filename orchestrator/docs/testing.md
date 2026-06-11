@@ -92,10 +92,12 @@ different aspects of the same deployed state.
 
 Test the basic module deployment lifecycle:
 
-1. **Empty platform** — Create Platform CR with no modules, verify it reconciles
-2. **Module deployment** — Enable modules, verify resources, labels, ownerRefs, chart info, config
-3. **Version propagation** — Create module CR with version, verify PlatformOperator picks it up
-4. **Disable modules** — Remove modules from spec, verify cleanup (CRDs and Namespaces survive)
+1. **Empty platform** — Create Platform CR with no modules, verify current and target distribution reconcile
+2. **Module deployment** — Enable modules, verify tracked resources, namespaced objects, labels, ownerRefs, chart info, and rendered config values
+3. **Version propagation** — Create module CR with `status.release`, verify `PlatformOperator` current distribution picks it up while target remains config-driven
+4. **Missing release fallback boundary** — Create module CR without `status.release`, verify `PlatformOperator` does not fall back to target once the module CR exists
+5. **Disable modules** — Remove all modules from spec, verify cleanup (CRDs and Namespaces survive)
+6. **Partial prune** — Remove one module from spec, verify only that module is cleaned up while the others remain deployed
 
 ### Runlevel Tests
 
@@ -132,7 +134,9 @@ the readiness status again.
 Module CRDs are deployed by Helm charts at runtime and are handled in tests as
 `unstructured.Unstructured` objects. The shared helper
 `isupport.UpsertModuleCRWithVersion(...)` creates or updates the test CR and, if
-requested, patches `status.release.version`.
+requested, patches `status.release.name` and `status.release.version`. Passing an
+empty version creates the module CR without populating `status.release`, which is
+useful for testing the no-fallback path after the singleton exists.
 
 ### Gomega Patterns
 

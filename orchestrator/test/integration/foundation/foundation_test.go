@@ -9,12 +9,12 @@ import (
 	"github.com/lburgazzoli/gomega-matchers/pkg/matchers/jq"
 	k8sm "github.com/lburgazzoli/gomega-matchers/pkg/matchers/k8s"
 	. "github.com/onsi/gomega"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 
 	odhLabels "github.com/opendatahub-io/opendatahub-operator/v2/pkg/metadata/labels"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	configApi "github.com/lburgazzoli/opendatahub-module-operator/orchestrator/api/config/v1alpha1"
 	"github.com/lburgazzoli/opendatahub-module-operator/orchestrator/pkg/resources/gvk"
@@ -56,7 +56,12 @@ func TestEmptyPlatformReconciles(t *testing.T) {
 	g.Expect(suite.Client.Create(ctx, p)).To(Succeed())
 
 	g.Eventually(ctx, k8sm.Get(suite.Client, p)).Should(
-		jq.Match(`(.status.distribution.current.version // "") | length > 0`),
+		SatisfyAll(
+			testsupport.HaveCurrentDistributionName(suite.Config.Distribution.Name),
+			testsupport.HaveCurrentDistributionVersion(suite.Config.Distribution.Version),
+			testsupport.HaveTargetDistributionName(suite.Config.Distribution.Name),
+			testsupport.HaveTargetDistributionVersion(suite.Config.Distribution.Version),
+		),
 	)
 	g.Eventually(ctx, k8sm.List(suite.Client, &configApi.PlatformOperatorList{})).Should(
 		k8sm.IsEmptyList(),
@@ -89,6 +94,8 @@ func TestModuleDeployment(t *testing.T) {
 			g.Eventually(ctx, k8sm.Get(suite.Client, testsupport.PlatformOperator(mod.Name))).Should(
 				SatisfyAll(
 					testsupport.HaveTrackedResource(gvk.Namespace),
+					testsupport.HaveTrackedNamedResource(gvk.Namespace, mod.Namespace),
+					testsupport.HaveTrackedResource(gvk.ConfigMap),
 					testsupport.HaveTrackedResource(gvk.ServiceAccount),
 					testsupport.HaveTrackedResource(gvk.CustomResourceDefinition),
 					testsupport.HaveTrackedNamedResource(gvk.CustomResourceDefinition, crdName),
@@ -109,17 +116,27 @@ func TestModuleDeployment(t *testing.T) {
 				case gvk.Namespace, gvk.CustomResourceDefinition:
 					continue
 				case gvk.ConfigMap:
+					configDataMatcher := SatisfyAll(
+						HaveKeyWithValue("module-name", Equal(mod.Name)),
+						HaveKeyWithValue("distribution.name", Equal(suite.Config.Distribution.Name)),
+						HaveKeyWithValue("distribution.version", Equal(suite.Config.Distribution.Version)),
+					)
+					if mod.Name == alphaModuleName {
+						configDataMatcher = SatisfyAll(
+							configDataMatcher,
+							HaveKeyWithValue("test-key", Equal("test-value")),
+						)
+					}
+
 					g.Eventually(ctx, k8sm.Get(suite.Client, obj)).Should(SatisfyAll(
+						k8sm.HasNamespace(mod.Namespace),
 						k8sm.HasLabel(odhLabels.PlatformPartOf, mod.Name),
 						k8sm.IsControlledBy(testsupport.PlatformOperatorOwner(mod.Name)),
-						WithTransform(k8sm.Data(), SatisfyAll(
-							HaveKeyWithValue("module-name", Equal(mod.Name)),
-							HaveKeyWithValue("distribution.name", Not(BeEmpty())),
-							HaveKeyWithValue("distribution.version", Not(BeEmpty())),
-						)),
+						WithTransform(k8sm.Data(), configDataMatcher),
 					))
 				default:
 					g.Eventually(ctx, k8sm.Get(suite.Client, obj)).Should(SatisfyAll(
+						k8sm.HasNamespace(mod.Namespace),
 						k8sm.HasLabel(odhLabels.PlatformPartOf, mod.Name),
 						k8sm.IsControlledBy(testsupport.PlatformOperatorOwner(mod.Name)),
 					))
@@ -146,11 +163,56 @@ func TestModuleVersionPropagation(t *testing.T) {
 	}
 
 	mod := suite.Modules[0]
+	for _, candidate := range suite.Modules {
+		if candidate.Name == alphaModuleName {
+			mod = candidate
+			break
+		}
+	}
 
 	isupport.UpsertModuleCRWithVersion(t, suite, mod.GVK, "test-version")
 
 	g.Eventually(ctx, k8sm.Get(suite.Client, testsupport.PlatformOperator(mod.Name))).Should(
-		testsupport.HaveCurrentDistributionVersion("test-version"),
+		SatisfyAll(
+			testsupport.HaveCurrentDistributionName(suite.Config.Distribution.Name),
+			testsupport.HaveCurrentDistributionVersion("test-version"),
+			testsupport.HaveTargetDistributionName(suite.Config.Distribution.Name),
+			testsupport.HaveTargetDistributionVersion(suite.Config.Distribution.Version),
+		),
+	)
+}
+
+func TestModuleWithoutReleaseDoesNotFallBackToTarget(t *testing.T) {
+	g := NewWithT(t)
+	ctx := t.Context()
+	suite := isupport.NewSuite(t)
+	suite.SetupTest(t)
+
+	p := isupport.NewPlatformWithModules(suite.PlatformModuleNames())
+	g.Expect(suite.Client.Create(ctx, p)).To(Succeed())
+
+	for _, mod := range suite.Modules {
+		moduleName := mod.Name
+		g.Eventually(ctx, k8sm.Get(suite.Client, testsupport.PlatformOperator(moduleName))).Should(
+			testsupport.HaveTrackedResources(),
+		)
+	}
+
+	mod := suite.Modules[0]
+	for _, candidate := range suite.Modules {
+		if candidate.Name == alphaModuleName {
+			mod = candidate
+			break
+		}
+	}
+	isupport.UpsertModuleCRWithVersion(t, suite, mod.GVK, "")
+
+	g.Eventually(ctx, k8sm.Get(suite.Client, testsupport.PlatformOperator(mod.Name))).Should(
+		SatisfyAll(
+			testsupport.HaveEmptyCurrentDistribution(),
+			testsupport.HaveTargetDistributionName(suite.Config.Distribution.Name),
+			testsupport.HaveTargetDistributionVersion(suite.Config.Distribution.Version),
+		),
 	)
 }
 
@@ -212,4 +274,77 @@ func TestDisablingModulesCleansUpResources(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestRemovingModuleCleansUpOnlyThatModule(t *testing.T) {
+	g := NewWithT(t)
+	ctx := t.Context()
+	suite := isupport.NewSuite(t)
+	suite.SetupTest(t)
+
+	p := isupport.NewPlatformWithModules(suite.PlatformModuleNames())
+	g.Expect(suite.Client.Create(ctx, p)).To(Succeed())
+
+	for _, mod := range suite.Modules {
+		moduleName := mod.Name
+		g.Eventually(ctx, k8sm.Get(suite.Client, testsupport.PlatformOperator(moduleName))).Should(
+			testsupport.HaveTrackedResources(),
+		)
+	}
+
+	removedModuleName := betaModuleName
+	removedModule := suite.Modules[0]
+	for _, mod := range suite.Modules {
+		if mod.Name == removedModuleName {
+			removedModule = mod
+			break
+		}
+	}
+
+	removedPO := &configApi.PlatformOperator{}
+	g.Expect(suite.Client.Get(ctx, client.ObjectKey{Name: removedModuleName}, removedPO)).To(Succeed())
+	removedResources := append([]configApi.ResourceRef(nil), removedPO.Status.Resources...)
+
+	remainingModules := make([]string, 0, len(suite.Modules)-1)
+	for _, mod := range suite.Modules {
+		if mod.Name == removedModuleName {
+			continue
+		}
+		remainingModules = append(remainingModules, mod.Name)
+	}
+
+	g.Eventually(ctx, k8sm.Update(suite.Client, testsupport.Platform(), func(p *configApi.Platform) {
+		p.Spec.Modules = remainingModules
+	})).Should(
+		WithTransform(jq.Extract(`.spec.modules`), ConsistOf(remainingModules)),
+	)
+
+	g.Eventually(ctx, k8sm.NotFound(suite.Client, testsupport.PlatformOperator(removedModuleName))).Should(BeTrue())
+
+	for _, mod := range suite.Modules {
+		if mod.Name == removedModuleName {
+			continue
+		}
+
+		moduleName := mod.Name
+		g.Eventually(ctx, k8sm.Get(suite.Client, testsupport.PlatformOperator(moduleName))).Should(
+			testsupport.HaveTrackedResources(),
+		)
+	}
+
+	t.Run(removedModule.Name, func(t *testing.T) {
+		g := NewWithT(t)
+
+		for _, ref := range removedResources {
+			g.Eventually(t.Context(), func(ctx context.Context) error {
+				return suite.CheckResourceResetState(ctx, ref)
+			}).Should(
+				Succeed(),
+				"%s %s/%s should match reset behavior",
+				ref.Kind,
+				ref.Namespace,
+				ref.Name,
+			)
+		}
+	})
 }

@@ -62,8 +62,20 @@ func HaveCurrentDistributionVersion(version string) types.GomegaMatcher {
 	return jq.Matchf(`.status.distribution.current.version == "%s"`, version)
 }
 
+func HaveCurrentDistributionName(name string) types.GomegaMatcher {
+	return jq.Matchf(`.status.distribution.current.name == "%s"`, name)
+}
+
 func HaveTargetDistributionVersion(version string) types.GomegaMatcher {
 	return jq.Matchf(`.status.distribution.target.version == "%s"`, version)
+}
+
+func HaveTargetDistributionName(name string) types.GomegaMatcher {
+	return jq.Matchf(`.status.distribution.target.name == "%s"`, name)
+}
+
+func HaveEmptyCurrentDistribution() types.GomegaMatcher {
+	return jq.Match(`(.status.distribution.current // {}) | (.name // "") == "" and (.version // "") == ""`)
 }
 
 func HaveTrackedResources() types.GomegaMatcher {

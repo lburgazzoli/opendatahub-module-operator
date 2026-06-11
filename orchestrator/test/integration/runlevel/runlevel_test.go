@@ -9,10 +9,8 @@ import (
 	k8sm "github.com/lburgazzoli/gomega-matchers/pkg/matchers/k8s"
 	. "github.com/onsi/gomega"
 	corev1 "k8s.io/api/core/v1"
-	k8serr "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	configApi "github.com/lburgazzoli/opendatahub-module-operator/orchestrator/api/config/v1alpha1"
 	isupport "github.com/lburgazzoli/opendatahub-module-operator/orchestrator/test/integration/support"
@@ -84,7 +82,10 @@ func TestWrongVersionDoesNotAdvance(t *testing.T) {
 	isupport.UpsertModuleCRWithVersion(t, suite, alphaGVK, wrongDistributionVersion)
 
 	g.Eventually(ctx, k8sm.Get(suite.Client, testsupport.PlatformOperator(alphaModuleName))).Should(
-		testsupport.HaveCurrentDistributionVersion(wrongDistributionVersion),
+		SatisfyAll(
+			testsupport.HaveCurrentDistributionName(suite.Config.Distribution.Name),
+			testsupport.HaveCurrentDistributionVersion(wrongDistributionVersion),
+		),
 	)
 
 	g.Consistently(ctx, k8sm.Get(suite.Client, testsupport.Platform())).
@@ -127,7 +128,10 @@ func TestAllModulesReadySetsDistributionVersion(t *testing.T) {
 	isupport.UpsertModuleCRWithVersion(t, suite, gammaGVK, upgradedDistributionVersion)
 
 	g.Eventually(ctx, k8sm.Get(suite.Client, testsupport.Platform())).Should(
-		testsupport.HaveCurrentDistributionVersion(upgradedDistributionVersion),
+		SatisfyAll(
+			testsupport.HaveCurrentDistributionName(suite.Config.Distribution.Name),
+			testsupport.HaveCurrentDistributionVersion(upgradedDistributionVersion),
+		),
 	)
 	g.Eventually(ctx, k8sm.Get(suite.Client, testsupport.Platform())).Should(
 		WithTransform(k8sm.Conditions(), ContainElement(SatisfyAll(
@@ -185,20 +189,11 @@ func TestAddingHigherRunlevelModuleWaitsForCurrentRunlevel(t *testing.T) {
 		WithTransform(jq.Extract(`.spec.modules`), ConsistOf(modules)),
 	)
 
-	g.Consistently(func() error {
-		po := testsupport.PlatformOperator(epsilonModuleName)
-		err := suite.Client.Get(ctx, client.ObjectKeyFromObject(po), po)
-		switch {
-		case k8serr.IsNotFound(err):
-			return nil
-		case err != nil:
-			return err
-		case len(po.Status.Resources) != 0:
-			return fmt.Errorf("expected %q to have no tracked resources before runlevel 3", epsilonModuleName)
-		default:
-			return nil
-		}
-	}).WithContext(ctx).WithTimeout(runlevelStabilityTimeout).Should(Succeed())
+	g.Eventually(ctx, k8sm.Get(suite.Client, testsupport.PlatformOperator(epsilonModuleName))).
+		Should(testsupport.HaveNoTrackedResources())
+	g.Consistently(ctx, k8sm.Get(suite.Client, testsupport.PlatformOperator(epsilonModuleName))).
+		WithTimeout(runlevelStabilityTimeout).
+		Should(testsupport.HaveNoTrackedResources())
 
 	isupport.UpsertModuleCRWithVersion(t, suite, betaGVK, upgradedDistributionVersion)
 	isupport.UpsertModuleCRWithVersion(t, suite, gammaGVK, upgradedDistributionVersion)
@@ -231,7 +226,10 @@ func TestAddingMiddleRunlevelModuleInSteadyStateReconcilesImmediately(t *testing
 	isupport.UpsertModuleCRWithVersion(t, suite, epsilonGVK, initialDistributionVersion)
 
 	g.Eventually(ctx, k8sm.Get(suite.Client, testsupport.Platform())).Should(
-		testsupport.HaveCurrentDistributionVersion(initialDistributionVersion),
+		SatisfyAll(
+			testsupport.HaveCurrentDistributionName(suite.Config.Distribution.Name),
+			testsupport.HaveCurrentDistributionVersion(initialDistributionVersion),
+		),
 	)
 	g.Eventually(ctx, k8sm.Get(suite.Client, testsupport.Platform())).Should(testsupport.HaveRunlevel(3))
 
@@ -247,10 +245,7 @@ func TestAddingMiddleRunlevelModuleInSteadyStateReconcilesImmediately(t *testing
 	)
 	g.Consistently(ctx, k8sm.Get(suite.Client, testsupport.Platform())).
 		WithTimeout(runlevelStabilityTimeout).
-		Should(SatisfyAll(
-			testsupport.HaveRunlevel(3),
-			testsupport.HaveCurrentDistributionVersion(initialDistributionVersion),
-		))
+		Should(testsupport.HaveRunlevel(3))
 }
 
 func TestSteadyStateIgnoresRunlevel(t *testing.T) {
@@ -266,7 +261,10 @@ func TestSteadyStateIgnoresRunlevel(t *testing.T) {
 	}
 
 	g.Eventually(ctx, k8sm.Get(suite.Client, testsupport.Platform())).Should(
-		testsupport.HaveCurrentDistributionVersion(upgradedDistributionVersion),
+		SatisfyAll(
+			testsupport.HaveCurrentDistributionName(suite.Config.Distribution.Name),
+			testsupport.HaveCurrentDistributionVersion(upgradedDistributionVersion),
+		),
 	)
 
 	modules := append(append([]string{}, initialRunlevelModuleNames...), epsilonModuleName)

@@ -92,7 +92,7 @@ func TestEligibleModuleRequests(t *testing.T) {
 		g.Expect(requestNames(requests)).To(ConsistOf("beta"))
 	})
 
-	t.Run("distribution changes in unstructured events enqueue modules with stale target", func(t *testing.T) {
+	t.Run("distribution changes in unstructured events trigger the predicate", func(t *testing.T) {
 		g := NewWithT(t)
 		oldPlatform := newTestPlatform()
 		oldPlatform.Spec.Modules = []string{"alpha", "beta"}
@@ -173,6 +173,35 @@ func TestEligibleModuleRequests(t *testing.T) {
 			t,
 			newTestPlatformOperator("alpha", upgradedTargetVersion, upgradedTargetVersion),
 			newTestPlatformOperator("beta", upgradedTargetVersion, upgradedTargetVersion),
+		)
+		g.Expect(reconciler.platformChangePredicate().Update(event.UpdateEvent{
+			ObjectOld: oldPlatform,
+			ObjectNew: newPlatform,
+		})).To(BeTrue())
+
+		requests := reconciler.eligibleModuleRequests(t.Context(), newPlatform)
+
+		g.Expect(requests).To(BeEmpty())
+	})
+
+	t.Run("distribution changes skip deleting platform operators", func(t *testing.T) {
+		g := NewWithT(t)
+		oldPlatform := newTestPlatform()
+		oldPlatform.Spec.Modules = []string{"alpha", "beta"}
+
+		newPlatform := oldPlatform.DeepCopy()
+		newPlatform.SetResourceVersion("2")
+		newPlatform.Status.Distribution.Target.Version = upgradedTargetVersion
+
+		deletingPO := newTestPlatformOperator("beta", "1.0.0", "2.0.0")
+		now := metav1.Now()
+		deletingPO.SetFinalizers([]string{"test.finalizer"})
+		deletingPO.SetDeletionTimestamp(&now)
+
+		reconciler, _ := testModuleReconciler(
+			t,
+			newTestPlatformOperator("alpha", upgradedTargetVersion, upgradedTargetVersion),
+			deletingPO,
 		)
 		g.Expect(reconciler.platformChangePredicate().Update(event.UpdateEvent{
 			ObjectOld: oldPlatform,
@@ -451,6 +480,34 @@ func TestReportStatus(t *testing.T) {
 
 		g.Expect(err).NotTo(HaveOccurred())
 		g.Expect(po.Status.Distribution.Current).To(Equal(configApi.Distribution{}))
+		g.Expect(po.Status.Distribution.Target).To(Equal(configApi.Distribution{
+			Name:    "TestPlatform",
+			Version: "2.0.0",
+		}))
+	})
+
+	t.Run("uses module release when module resource exists with release", func(t *testing.T) {
+		g := NewWithT(t)
+		resource := newModuleResource(
+			"alpha-cr",
+			schema.GroupVersionKind{Group: "test.io", Version: "v1", Kind: "Alpha"},
+			"TestPlatform",
+			"1.2.3",
+		)
+		reconciler, c := testModuleReconciler(t, resource)
+		po := newTestPlatformOperator("alpha", "", "")
+		rr := &types.ReconciliationRequest{
+			Client:   c,
+			Instance: po,
+		}
+
+		err := reconciler.reportStatus(t.Context(), rr)
+
+		g.Expect(err).NotTo(HaveOccurred())
+		g.Expect(po.Status.Distribution.Current).To(Equal(configApi.Distribution{
+			Name:    "TestPlatform",
+			Version: "1.2.3",
+		}))
 		g.Expect(po.Status.Distribution.Target).To(Equal(configApi.Distribution{
 			Name:    "TestPlatform",
 			Version: "2.0.0",

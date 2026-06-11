@@ -101,7 +101,10 @@ func prepareUpgradeScenario(t *testing.T, suite *isupport.Suite) {
 
 	g.Expect(suite.Client.Create(ctx, p)).To(Succeed())
 	g.Eventually(ctx, k8sm.Get(suite.Client, p)).Should(
-		testsupport.HaveCurrentDistributionVersion(initialDistributionVersion),
+		SatisfyAll(
+			testsupport.HaveCurrentDistributionName(suite.Config.Distribution.Name),
+			testsupport.HaveCurrentDistributionVersion(initialDistributionVersion),
+		),
 	)
 
 	for _, gvk := range []schema.GroupVersionKind{alphaGVK, betaGVK, gammaGVK} {
@@ -116,7 +119,10 @@ func prepareUpgradeScenario(t *testing.T, suite *isupport.Suite) {
 	)
 
 	g.Eventually(ctx, k8sm.Get(suite.Client, testsupport.Platform())).Should(
-		testsupport.HaveTargetDistributionVersion(upgradedDistributionVersion),
+		SatisfyAll(
+			testsupport.HaveTargetDistributionName(suite.Config.Distribution.Name),
+			testsupport.HaveTargetDistributionVersion(upgradedDistributionVersion),
+		),
 	)
 
 	g.Eventually(ctx, k8sm.Get(suite.Client, testsupport.Platform())).Should(testsupport.HaveRunlevel(1))
