@@ -81,13 +81,48 @@ Controller design rules worth preserving:
   PauseError, not as conditions. Let normal aggregation (ConditionUpToDate)
   own readiness.
 
-Matcher conventions that improved clarity in this repo:
+Helm engine conventions:
 
-- Prefer `gomega-matchers` helpers first, and only fall back to custom polling
-  closures when there is no helper for the assertion shape you need.
-- Prefer `jq.Matchf(...)` for scalar status assertions.
-- Prefer `k8sm.Data()` / `k8sm.ListItems()` / `k8sm.IsEmptyList()` /
-  `suite.K.NotFound(...)` for typed Kubernetes assertions instead of ad hoc jq
-  or manual `Eventually(func() ...)`.
-- Use repo-level helpers in `test/support/matchers.go` for tracked resource and
-  runlevel assertions.
+- Set `ReleaseNamespace` and `ReleaseVersion` on `helm.Source` directly;
+  do not use `namespace.EnsureDefault` or similar post-render transformers
+  for values that the engine can wire natively.
+- The `moduleMetadata` transformer adds `platform.opendatahub.io/part-of`
+  label to all rendered resources **except CRDs** (cluster-scoped, no
+  ownership). Namespaces get the label from the deploy framework with a
+  different value — do not assert module-name equality on Namespace labels.
+
+Constants and labels:
+
+- Use `configApi.ConditionReady`, `configApi.ConditionUpToDate`,
+  `configApi.ReasonAdminAckRequired` — never string literals for
+  condition types/reasons.
+- Use `odhLabels.PlatformPartOf` for the `platform.opendatahub.io/part-of`
+  label key — never the raw string.
+- Use `gvk.*` constants for GVK comparisons (`gvk.Namespace`,
+  `gvk.CustomResourceDefinition`, `gvk.ConfigMap`, etc.) — always full
+  GVK comparison, never kind-only.
+
+Matcher conventions:
+
+- Use package-level `k8sm.Get(cli, obj)`, `k8sm.List(cli, list)`,
+  `k8sm.Update(cli, obj, fn)`, `k8sm.NotFound(cli, obj)`,
+  `k8sm.Absent(cli, obj)`, `k8sm.Events(cli, opts...)`,
+  `k8sm.Upsert(cli, obj, fn)`, `k8sm.StatusUpdate(cli, obj, fn)`.
+  Do not use the old `k8sm.NewResources(cli, scheme)` wrapper.
+- Prefer `k8sm.Conditions()` extractor with `ContainElement(SatisfyAll(...))`
+  over `jq.Match` for condition assertions.
+- Keep `jq.Matchf(...)` for scalar status assertions and `jq.Extract`
+  for spec field extraction.
+- Use `k8sm.Data()` / `k8sm.ListItems()` / `k8sm.IsEmptyList()` /
+  `k8sm.HasLabel()` / `k8sm.IsControlledBy()` for typed Kubernetes
+  assertions.
+- For event assertions: use `k8sm.Events(cli, k8sm.ForObject(...))`
+  with `ContainElement(SatisfyAll(...))`.
+- When asserting on deployed resources, iterate `status.resources` from
+  the PlatformOperator and use a `switch` on `schema.FromAPIVersionAndKind`
+  to apply per-resource-type matchers (skip CRD/NS from ownership,
+  add data assertions for ConfigMap, etc.).
+- Use `isupport.ObjectFromResourceRef(ref)` to build unstructured objects
+  from `configApi.ResourceRef` for `k8sm.Get`.
+- Use repo-level helpers in `test/support/matchers.go` for tracked resource
+  and runlevel assertions.
