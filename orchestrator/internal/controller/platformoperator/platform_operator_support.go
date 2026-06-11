@@ -22,7 +22,6 @@ import (
 	"fmt"
 	"maps"
 
-	"github.com/k8s-manifest-kit/engine/pkg/transformer/meta/namespace"
 	engineTypes "github.com/k8s-manifest-kit/engine/pkg/types"
 	kitMaps "github.com/k8s-manifest-kit/pkg/util/maps"
 	helm "github.com/k8s-manifest-kit/renderer-helm/pkg"
@@ -98,8 +97,10 @@ func newModuleContext(
 ) (*moduleContext, error) {
 	e, err := helm.NewEngine(
 		helm.Source{
-			Chart:       m.Manifests.Chart.Path,
-			ReleaseName: m.Name,
+			Chart:            m.Manifests.Chart.Path,
+			ReleaseName:      m.Name,
+			ReleaseNamespace: m.Namespace,
+			ReleaseVersion:   cfg.Distribution.Version,
 			Values: helm.Values(map[string]any{
 				"module": map[string]any{
 					"group":   m.GVK.Group,
@@ -112,7 +113,6 @@ func newModuleContext(
 				},
 			}),
 		},
-		helm.WithTransformer(namespace.EnsureDefault(m.Namespace)),
 		helm.WithTransformer(moduleMetadata(m.Name)),
 	)
 	if err != nil {

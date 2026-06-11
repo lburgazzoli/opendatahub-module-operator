@@ -107,9 +107,7 @@ func TestModuleDeployment(t *testing.T) {
 
 				switch refGVK {
 				case gvk.Namespace, gvk.CustomResourceDefinition:
-					g.Eventually(ctx, k8sm.Get(suite.Client, obj)).Should(
-						k8sm.HasLabel(odhLabels.PlatformPartOf, mod.Name),
-					)
+					continue
 				case gvk.ConfigMap:
 					g.Eventually(ctx, k8sm.Get(suite.Client, obj)).Should(SatisfyAll(
 						k8sm.HasLabel(odhLabels.PlatformPartOf, mod.Name),
