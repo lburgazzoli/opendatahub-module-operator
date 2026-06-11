@@ -25,8 +25,8 @@ import (
 	"github.com/lburgazzoli/opendatahub-module-operator/orchestrator/pkg/module"
 )
 
-// ModuleReconciler handles deployment of all modules via a single controller.
-type ModuleReconciler struct {
+// PlatformOperatorReconciler handles deployment of all modules via a single controller.
+type PlatformOperatorReconciler struct {
 	registry *module.Registry
 	cfg      *orchestratorconfig.Config
 	client   client.Client

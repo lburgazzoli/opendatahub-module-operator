@@ -53,7 +53,7 @@ func TestEligibleModuleRequests(t *testing.T) {
 		newPlatform.SetResourceVersion("2")
 		newPlatform.Status.Runlevel = 2
 
-		reconciler, _ := testModuleReconciler(
+		reconciler, _ := testReconciler(
 			t,
 			newTestPlatformOperator("alpha", "1.0.0", "2.0.0"),
 			newTestPlatformOperator("beta", "1.0.0", "2.0.0"),
@@ -77,7 +77,7 @@ func TestEligibleModuleRequests(t *testing.T) {
 		newPlatform.SetResourceVersion("2")
 		newPlatform.Status.Distribution.Target.Version = upgradedTargetVersion
 
-		reconciler, _ := testModuleReconciler(
+		reconciler, _ := testReconciler(
 			t,
 			newTestPlatformOperator("alpha", upgradedTargetVersion, upgradedTargetVersion),
 			newTestPlatformOperator("beta", "1.0.0", "2.0.0"),
@@ -101,7 +101,7 @@ func TestEligibleModuleRequests(t *testing.T) {
 		newPlatform.SetResourceVersion("2")
 		newPlatform.Status.Distribution.Target.Version = upgradedTargetVersion
 
-		reconciler, _ := testModuleReconciler(
+		reconciler, _ := testReconciler(
 			t,
 			newTestPlatformOperator("alpha", upgradedTargetVersion, upgradedTargetVersion),
 			newTestPlatformOperator("beta", "1.0.0", "2.0.0"),
@@ -122,7 +122,7 @@ func TestEligibleModuleRequests(t *testing.T) {
 		newPlatform.SetResourceVersion("2")
 		newPlatform.Status.Distribution.Target.Version = upgradedTargetVersion
 
-		reconciler, _ := testModuleReconciler(
+		reconciler, _ := testReconciler(
 			t,
 			newTestPlatformOperator("alpha", "1.0.0", "2.0.0"),
 			newTestPlatformOperator("beta", upgradedTargetVersion, upgradedTargetVersion),
@@ -146,7 +146,7 @@ func TestEligibleModuleRequests(t *testing.T) {
 		newPlatform.SetResourceVersion("2")
 		newPlatform.Status.Distribution.Target.Version = upgradedTargetVersion
 
-		reconciler, _ := testModuleReconciler(
+		reconciler, _ := testReconciler(
 			t,
 			newTestPlatformOperator("alpha", upgradedTargetVersion, upgradedTargetVersion),
 		)
@@ -169,7 +169,7 @@ func TestEligibleModuleRequests(t *testing.T) {
 		newPlatform.SetResourceVersion("2")
 		newPlatform.Status.Distribution.Target.Version = upgradedTargetVersion
 
-		reconciler, _ := testModuleReconciler(
+		reconciler, _ := testReconciler(
 			t,
 			newTestPlatformOperator("alpha", upgradedTargetVersion, upgradedTargetVersion),
 			newTestPlatformOperator("beta", upgradedTargetVersion, upgradedTargetVersion),
@@ -198,7 +198,7 @@ func TestEligibleModuleRequests(t *testing.T) {
 		deletingPO.SetFinalizers([]string{"test.finalizer"})
 		deletingPO.SetDeletionTimestamp(&now)
 
-		reconciler, _ := testModuleReconciler(
+		reconciler, _ := testReconciler(
 			t,
 			newTestPlatformOperator("alpha", upgradedTargetVersion, upgradedTargetVersion),
 			deletingPO,
@@ -222,7 +222,7 @@ func TestEligibleModuleRequests(t *testing.T) {
 		newPlatform.SetResourceVersion("2")
 		newPlatform.Status.Distribution.Target.Version = upgradedTargetVersion
 
-		reconciler, _ := testModuleReconciler(
+		reconciler, _ := testReconciler(
 			t,
 			newTestPlatformOperator("alpha", upgradedTargetVersion, "2.0.0"),
 			newTestPlatformOperator("beta", "2.0.0", "2.0.0"),
@@ -246,7 +246,7 @@ func TestEligibleModuleRequests(t *testing.T) {
 		newPlatform.SetResourceVersion("2")
 		newPlatform.Status.Distribution.Target.Version = upgradedTargetVersion
 
-		reconciler, _ := testModuleReconciler(
+		reconciler, _ := testReconciler(
 			t,
 			newTestPlatformOperator("alpha", upgradedTargetVersion, upgradedTargetVersion),
 			newTestPlatformOperator("beta", "1.0.0", "2.0.0"),
@@ -267,7 +267,7 @@ func TestEligibleModuleRequests(t *testing.T) {
 		platform.Spec.Modules = []string{"alpha", "beta"}
 		platform.Status.Distribution.Target.Version = upgradedTargetVersion
 
-		reconciler, _ := testModuleReconciler(
+		reconciler, _ := testReconciler(
 			t,
 			newTestPlatformOperator("alpha", upgradedTargetVersion, upgradedTargetVersion),
 			newTestPlatformOperator("beta", "1.0.0", "2.0.0"),
@@ -282,7 +282,7 @@ func TestEligibleModuleRequests(t *testing.T) {
 func TestCheckRunlevel(t *testing.T) {
 	t.Run("missing Platform pauses with quick retry", func(t *testing.T) {
 		g := NewWithT(t)
-		reconciler, c := testModuleReconciler(t)
+		reconciler, c := testReconciler(t)
 		po := newTestPlatformOperator("alpha", "2.0.0", "2.0.0")
 		rr := &types.ReconciliationRequest{
 			Client:   c,
@@ -301,7 +301,7 @@ func TestCheckRunlevel(t *testing.T) {
 
 	t.Run("deleting PlatformOperator does not pause on missing Platform", func(t *testing.T) {
 		g := NewWithT(t)
-		reconciler, c := testModuleReconciler(t)
+		reconciler, c := testReconciler(t)
 		now := metav1.Now()
 		po := newTestPlatformOperator("alpha", "2.0.0", "2.0.0")
 		po.SetDeletionTimestamp(&now)
@@ -319,7 +319,7 @@ func TestCheckRunlevel(t *testing.T) {
 		g := NewWithT(t)
 		platform := newTestPlatform()
 		platform.Status.Runlevel = 2
-		reconciler, c := testModuleReconciler(t, platform)
+		reconciler, c := testReconciler(t, platform)
 		po := newTestPlatformOperator("alpha", "1.0.0", "2.0.0")
 		rr := &types.ReconciliationRequest{
 			Client:   c,
@@ -336,7 +336,7 @@ func TestCheckRunlevel(t *testing.T) {
 
 	t.Run("higher runlevel modules pause during upgrade", func(t *testing.T) {
 		g := NewWithT(t)
-		reconciler, c := testModuleReconciler(t, newTestPlatform())
+		reconciler, c := testReconciler(t, newTestPlatform())
 		po := newTestPlatformOperator("beta", "1.0.0", "2.0.0")
 		rr := &types.ReconciliationRequest{
 			Client:   c,
@@ -357,7 +357,7 @@ func TestCheckRunlevel(t *testing.T) {
 		g := NewWithT(t)
 		platform := newTestPlatform()
 		platform.Status.Distribution.Current = configApi.Distribution{}
-		reconciler, c := testModuleReconciler(t, platform)
+		reconciler, c := testReconciler(t, platform)
 		po := newTestPlatformOperator("beta", "", "2.0.0")
 		rr := &types.ReconciliationRequest{
 			Client:   c,
@@ -378,7 +378,7 @@ func TestCheckRunlevel(t *testing.T) {
 		g := NewWithT(t)
 		platform := newTestPlatform()
 		platform.Status.Distribution.Current = platform.Status.Distribution.Target
-		reconciler, c := testModuleReconciler(t, platform)
+		reconciler, c := testReconciler(t, platform)
 		po := newTestPlatformOperator("beta", "2.0.0", "2.0.0")
 		rr := &types.ReconciliationRequest{
 			Client:   c,
@@ -397,7 +397,7 @@ func TestCheckRunlevel(t *testing.T) {
 func TestReadModuleRelease(t *testing.T) {
 	t.Run("returns empty distribution when no module resource exists", func(t *testing.T) {
 		g := NewWithT(t)
-		reconciler, c := testModuleReconciler(t)
+		reconciler, c := testReconciler(t)
 		mc := &moduleContext{module: reconciler.registry.ModuleByName("alpha")}
 
 		release, found, err := reconciler.readModuleRelease(t.Context(), c, mc.module)
@@ -410,7 +410,7 @@ func TestReadModuleRelease(t *testing.T) {
 	t.Run("returns release from singleton module resource", func(t *testing.T) {
 		g := NewWithT(t)
 		resource := newModuleResource("alpha-cr", schema.GroupVersionKind{Group: "test.io", Version: "v1", Kind: "Alpha"}, "TestPlatform", "1.2.3")
-		reconciler, c := testModuleReconciler(t, resource)
+		reconciler, c := testReconciler(t, resource)
 		mc := &moduleContext{module: reconciler.registry.ModuleByName("alpha")}
 
 		release, found, err := reconciler.readModuleRelease(t.Context(), c, mc.module)
@@ -422,7 +422,7 @@ func TestReadModuleRelease(t *testing.T) {
 
 	t.Run("errors when multiple module resources exist", func(t *testing.T) {
 		g := NewWithT(t)
-		reconciler, c := testModuleReconciler(
+		reconciler, c := testReconciler(
 			t,
 			newModuleResource("alpha-cr-1", schema.GroupVersionKind{Group: "test.io", Version: "v1", Kind: "Alpha"}, "TestPlatform", "1.2.3"),
 			newModuleResource("alpha-cr-2", schema.GroupVersionKind{Group: "test.io", Version: "v1", Kind: "Alpha"}, "TestPlatform", "4.5.6"),
@@ -441,7 +441,7 @@ func TestReadModuleRelease(t *testing.T) {
 func TestReportStatus(t *testing.T) {
 	t.Run("falls back to configured distribution when module resource is missing", func(t *testing.T) {
 		g := NewWithT(t)
-		reconciler, c := testModuleReconciler(t)
+		reconciler, c := testReconciler(t)
 		po := newTestPlatformOperator("alpha", "", "")
 		rr := &types.ReconciliationRequest{
 			Client:   c,
@@ -469,7 +469,7 @@ func TestReportStatus(t *testing.T) {
 			"",
 			"",
 		)
-		reconciler, c := testModuleReconciler(t, resource)
+		reconciler, c := testReconciler(t, resource)
 		po := newTestPlatformOperator("alpha", "", "")
 		rr := &types.ReconciliationRequest{
 			Client:   c,
@@ -494,7 +494,7 @@ func TestReportStatus(t *testing.T) {
 			"TestPlatform",
 			"1.2.3",
 		)
-		reconciler, c := testModuleReconciler(t, resource)
+		reconciler, c := testReconciler(t, resource)
 		po := newTestPlatformOperator("alpha", "", "")
 		rr := &types.ReconciliationRequest{
 			Client:   c,
@@ -515,7 +515,7 @@ func TestReportStatus(t *testing.T) {
 	})
 }
 
-func testModuleReconciler(t *testing.T, objs ...client.Object) (*ModuleReconciler, client.Client) {
+func testReconciler(t *testing.T, objs ...client.Object) (*PlatformOperatorReconciler, client.Client) {
 	t.Helper()
 
 	scheme := runtime.NewScheme()
@@ -545,7 +545,7 @@ func testModuleReconciler(t *testing.T, objs ...client.Object) (*ModuleReconcile
 		contexts[mod.Name] = mc
 	}
 
-	return &ModuleReconciler{
+	return &PlatformOperatorReconciler{
 		registry: registry,
 		cfg:      cfg,
 		client:   c,

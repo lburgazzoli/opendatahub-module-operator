@@ -79,7 +79,7 @@ func ToResourceRefs(objects []unstructured.Unstructured) []configApi.ResourceRef
 	return refs
 }
 
-func (r *ModuleReconciler) getContext(rr *types.ReconciliationRequest) (*moduleContext, error) {
+func (r *PlatformOperatorReconciler) getContext(rr *types.ReconciliationRequest) (*moduleContext, error) {
 	name := rr.Instance.GetName()
 
 	mc, ok := r.contexts[name]
@@ -125,7 +125,7 @@ func newModuleContext(
 	}, nil
 }
 
-func (r *ModuleReconciler) moduleNamespace(_ context.Context, rr *types.ReconciliationRequest) (string, error) {
+func (r *PlatformOperatorReconciler) moduleNamespace(_ context.Context, rr *types.ReconciliationRequest) (string, error) {
 	mc, err := r.getContext(rr)
 	if err != nil {
 		return "", err
@@ -148,7 +148,7 @@ func moduleMetadata(name string) engineTypes.Transformer {
 	}
 }
 
-func (r *ModuleReconciler) computeValues(
+func (r *PlatformOperatorReconciler) computeValues(
 	ctx context.Context,
 	c client.Client,
 	mc *moduleContext,
@@ -180,7 +180,7 @@ func (r *ModuleReconciler) computeValues(
 	return values, nil
 }
 
-func (r *ModuleReconciler) readModuleRelease(
+func (r *PlatformOperatorReconciler) readModuleRelease(
 	ctx context.Context,
 	c client.Client,
 	mod *module.Module,
@@ -207,7 +207,7 @@ func (r *ModuleReconciler) readModuleRelease(
 	}, true, nil
 }
 
-func (r *ModuleReconciler) reportRunlevelBlocked(
+func (r *PlatformOperatorReconciler) reportRunlevelBlocked(
 	obj client.Object,
 	moduleName string,
 	requiredRunlevel int,
@@ -232,7 +232,7 @@ func (r *ModuleReconciler) reportRunlevelBlocked(
 
 // platformChangePredicate triggers only when the Platform CR's runlevel or
 // target distribution changes.
-func (r *ModuleReconciler) platformChangePredicate() predicate.Predicate {
+func (r *PlatformOperatorReconciler) platformChangePredicate() predicate.Predicate {
 	return predicate.Funcs{
 		CreateFunc:  func(_ event.CreateEvent) bool { return true },
 		DeleteFunc:  func(_ event.DeleteEvent) bool { return false },
@@ -267,7 +267,7 @@ func (r *ModuleReconciler) platformChangePredicate() predicate.Predicate {
 // target distribution, no wakeup is needed. Otherwise, modules whose own target
 // differs from the Platform target are woken immediately; if the target already
 // matches, only modules at or above the current Platform runlevel are woken.
-func (r *ModuleReconciler) eligibleModuleRequests(
+func (r *PlatformOperatorReconciler) eligibleModuleRequests(
 	ctx context.Context,
 	obj client.Object,
 ) []ctrl.Request {

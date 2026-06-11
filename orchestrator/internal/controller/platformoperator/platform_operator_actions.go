@@ -43,7 +43,7 @@ const (
 
 // checkRunlevel reads the Platform CR status and verifies the module's
 // runlevel is at or below the current platform runlevel.
-func (r *ModuleReconciler) checkRunlevel(ctx context.Context, rr *types.ReconciliationRequest) error {
+func (r *PlatformOperatorReconciler) checkRunlevel(ctx context.Context, rr *types.ReconciliationRequest) error {
 	if !rr.Instance.GetDeletionTimestamp().IsZero() {
 		return nil
 	}
@@ -85,7 +85,7 @@ func (r *ModuleReconciler) checkRunlevel(ctx context.Context, rr *types.Reconcil
 // ensureNamespace prepends the module namespace to rr.Resources.
 // The namespace is marked as unmanaged so the deploy action only creates
 // it if missing and never sets an ownerRef on it.
-func (r *ModuleReconciler) ensureNamespace(_ context.Context, rr *types.ReconciliationRequest) error {
+func (r *PlatformOperatorReconciler) ensureNamespace(_ context.Context, rr *types.ReconciliationRequest) error {
 	mc, err := r.getContext(rr)
 	if err != nil {
 		return err
@@ -104,7 +104,7 @@ func (r *ModuleReconciler) ensureNamespace(_ context.Context, rr *types.Reconcil
 }
 
 // renderChart renders the module's Helm chart and populates rr.Resources.
-func (r *ModuleReconciler) renderChart(ctx context.Context, rr *types.ReconciliationRequest) error {
+func (r *PlatformOperatorReconciler) renderChart(ctx context.Context, rr *types.ReconciliationRequest) error {
 	obj, ok := rr.Instance.(*configApi.PlatformOperator)
 	if !ok {
 		return fmt.Errorf("instance is not a PlatformOperator")
@@ -135,7 +135,7 @@ func (r *ModuleReconciler) renderChart(ctx context.Context, rr *types.Reconcilia
 }
 
 // pruneOrphans diffs current resources against status.resources and deletes orphans.
-func (r *ModuleReconciler) pruneOrphans(ctx context.Context, rr *types.ReconciliationRequest) error {
+func (r *PlatformOperatorReconciler) pruneOrphans(ctx context.Context, rr *types.ReconciliationRequest) error {
 	obj, ok := rr.Instance.(*configApi.PlatformOperator)
 	if !ok {
 		return fmt.Errorf("instance is not a PlatformOperator")
@@ -175,7 +175,7 @@ func (r *ModuleReconciler) pruneOrphans(ctx context.Context, rr *types.Reconcili
 }
 
 // reportStatus updates the PlatformOperator status.
-func (r *ModuleReconciler) reportStatus(ctx context.Context, rr *types.ReconciliationRequest) error {
+func (r *PlatformOperatorReconciler) reportStatus(ctx context.Context, rr *types.ReconciliationRequest) error {
 	obj, ok := rr.Instance.(*configApi.PlatformOperator)
 	if !ok {
 		return fmt.Errorf("instance is not a PlatformOperator")

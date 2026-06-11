@@ -59,8 +59,8 @@ func SetupReconcilers(
 		return fmt.Errorf("creating platform reconciler: %w", err)
 	}
 
-	if err := platformoperator.NewModuleReconciler(ctx, wrapped, registry, cfg); err != nil {
-		return fmt.Errorf("creating module reconciler: %w", err)
+	if err := platformoperator.NewReconciler(ctx, wrapped, registry, cfg); err != nil {
+		return fmt.Errorf("creating platform operator reconciler: %w", err)
 	}
 
 	return nil
@@ -123,8 +123,8 @@ func New(
 		return nil, fmt.Errorf("creating platform reconciler: %w", err)
 	}
 
-	if err := platformoperator.NewModuleReconciler(ctx, mgr, registry, cfg); err != nil {
-		return nil, fmt.Errorf("creating module reconciler: %w", err)
+	if err := platformoperator.NewReconciler(ctx, mgr, registry, cfg); err != nil {
+		return nil, fmt.Errorf("creating platform operator reconciler: %w", err)
 	}
 
 	if err := mgr.AddHealthzCheck(healthCheckName, healthz.Ping); err != nil {

@@ -32,16 +32,16 @@ import (
 	"github.com/opendatahub-io/operator-actions-framework/controller/reconciler"
 )
 
-// NewModuleReconciler creates a single controller that handles all
+// NewReconciler creates a single controller that handles all
 // PlatformOperator CRs. It watches the Platform CR for runlevel/version
 // changes and enqueues only eligible modules.
-func NewModuleReconciler(
+func NewReconciler(
 	ctx context.Context,
 	mgr ctrl.Manager,
 	registry *module.Registry,
 	cfg *config.Config,
 ) error {
-	r := &ModuleReconciler{
+	r := &PlatformOperatorReconciler{
 		registry: registry,
 		cfg:      cfg,
 		client:   mgr.GetClient(),
