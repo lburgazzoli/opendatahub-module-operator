@@ -209,5 +209,7 @@ func (r *PlatformOperatorReconciler) reportStatus(ctx context.Context, rr *types
 	}
 	obj.Status.Distribution.Current = release
 
+	recordOperatorInfo(obj.Name, mc.module.Runlevel, obj.Status.Distribution.Current, obj.Status.Distribution.Target)
+
 	return nil
 }

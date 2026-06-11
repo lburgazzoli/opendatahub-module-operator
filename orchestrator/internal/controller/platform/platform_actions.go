@@ -68,6 +68,8 @@ func (a *PlatformReconciler) initialize(_ context.Context, rr *types.Reconciliat
 		obj.Status.Distribution.Current = obj.Status.Distribution.Target
 	}
 
+	recordRunlevel(obj.Status.Runlevel)
+
 	return nil
 }
 
@@ -94,6 +96,7 @@ func (a *PlatformReconciler) checkAdminAcks(ctx context.Context, rr *types.Recon
 	case k8serr.IsNotFound(err):
 		unsatisfied := missingAdminAcks(required)
 		a.reportUnsatisfiedAdminAcks(obj, unsatisfied)
+		recordAdminAcks(required, unsatisfied)
 		return adminAcksPauseError(a.cfg.Namespace(), unsatisfied)
 	case err != nil:
 		return fmt.Errorf(
@@ -105,6 +108,8 @@ func (a *PlatformReconciler) checkAdminAcks(ctx context.Context, rr *types.Recon
 	}
 
 	unsatisfied := unsatisfiedAdminAcks(required, adminAcksConfigMap.Data, strconv.ParseBool)
+
+	recordAdminAcks(required, unsatisfied)
 
 	if len(unsatisfied) > 0 {
 		a.reportUnsatisfiedAdminAcks(obj, unsatisfied)
@@ -206,6 +211,7 @@ func (a *PlatformReconciler) advanceRunlevel(ctx context.Context, rr *types.Reco
 
 		if len(a.enabledModulesAtRunlevel(obj, next)) > 0 {
 			obj.Status.Runlevel = next
+			recordRunlevel(obj.Status.Runlevel)
 			return nil
 		}
 

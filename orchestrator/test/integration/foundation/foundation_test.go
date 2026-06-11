@@ -9,6 +9,7 @@ import (
 	"github.com/lburgazzoli/gomega-matchers/pkg/matchers/jq"
 	k8sm "github.com/lburgazzoli/gomega-matchers/pkg/matchers/k8s"
 	. "github.com/onsi/gomega"
+	"github.com/prometheus/client_golang/prometheus"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	appsv1 "k8s.io/api/apps/v1"
@@ -18,9 +19,12 @@ import (
 	odhLabels "github.com/opendatahub-io/opendatahub-operator/v2/pkg/metadata/labels"
 
 	configApi "github.com/lburgazzoli/opendatahub-module-operator/orchestrator/api/config/v1alpha1"
+	"github.com/lburgazzoli/opendatahub-module-operator/orchestrator/internal/controller/platform"
+	"github.com/lburgazzoli/opendatahub-module-operator/orchestrator/internal/controller/platformoperator"
 	"github.com/lburgazzoli/opendatahub-module-operator/orchestrator/pkg/resources/gvk"
 	isupport "github.com/lburgazzoli/opendatahub-module-operator/orchestrator/test/integration/support"
 	testsupport "github.com/lburgazzoli/opendatahub-module-operator/orchestrator/test/support"
+	testmetrics "github.com/lburgazzoli/opendatahub-module-operator/orchestrator/test/support/metrics"
 )
 
 func TestMain(m *testing.M) {
@@ -146,6 +150,48 @@ func TestModuleDeployment(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestMetricsAfterModuleDeployment(t *testing.T) {
+	g := NewWithT(t)
+	ctx := t.Context()
+	suite := isupport.NewSuite(t)
+	suite.SetupTest(t)
+
+	p := isupport.NewPlatformWithModules(suite.PlatformModuleNames())
+	g.Expect(suite.Client.Create(ctx, p)).To(Succeed())
+
+	for _, mod := range suite.Modules {
+		g.Eventually(ctx, k8sm.Get(suite.Client, testsupport.PlatformOperator(mod.Name))).Should(
+			testsupport.HaveTrackedResources(),
+		)
+	}
+
+	t.Run("platform runlevel gauge is set", func(t *testing.T) {
+		g := NewWithT(t)
+
+		val, err := testmetrics.GaugeValue(platform.MetricPlatformRunlevel)
+		g.Expect(err).NotTo(HaveOccurred())
+		g.Expect(val).To(BeNumerically(">=", 1))
+	})
+
+	t.Run("platform operator info gauge exists per module", func(t *testing.T) {
+		g := NewWithT(t)
+
+		for _, mod := range suite.Modules {
+			val, err := testmetrics.GaugeVecValue(
+				platformoperator.MetricPlatformOperatorInfo,
+				prometheus.Labels{
+					platformoperator.LabelName:           mod.Name,
+					platformoperator.LabelRunlevel:       fmt.Sprintf("%d", mod.Runlevel),
+					platformoperator.LabelCurrentVersion: suite.Config.Distribution.Version,
+					platformoperator.LabelTargetVersion:  suite.Config.Distribution.Version,
+				},
+			)
+			g.Expect(err).NotTo(HaveOccurred(), "module %s", mod.Name)
+			g.Expect(val).To(Equal(float64(1)), "module %s", mod.Name)
+		}
+	})
 }
 
 func TestModuleVersionPropagation(t *testing.T) {
