@@ -39,6 +39,7 @@ Integration coverage is split into dedicated packages with isolated managers:
 - `test/integration/foundation`
 - `test/integration/runlevel`
 - `test/integration/gates`
+- `test/integration/errors`
 - `test/integration/support` for the shared harness/runtime
 
 Each package defines its own module fixtures in a local `*_support_test.go`
@@ -128,6 +129,38 @@ The expected behavior is:
 (`Reason=AdminAcksRequired`). Once the gate is satisfied, that temporary
 condition should disappear and normal `PlatformOperator` aggregation should own
 the readiness status again.
+
+### Errors Tests
+
+Negative-path coverage lives under `test/integration/errors`. The suite
+registers modules with deliberately broken behavior (e.g., a Config function
+that always returns an error) alongside healthy modules.
+
+Tests verify:
+
+1. **Failing Config does not deploy** — Module with failing Config gets a
+   PlatformOperator CR (ensureModules creates it) but no tracked resources
+   (renderChart fails before deploy). The healthy module deploys normally.
+   Platform reports not-ready because not all modules converge.
+
+When adding new error-path tests, prefer creating a dedicated module fixture
+with the specific failure mode rather than injecting errors into existing
+modules. This keeps each test's failure injection self-contained and avoids
+polluting the foundation/runlevel/gates module sets.
+
+### Metrics Tests
+
+Metric assertions use `test/support/metrics/` which provides:
+
+- `GaugeValue(name)` — looks up a gauge by name from `metrics.Registry.Gather()`
+- `GaugeVecValue(name, labels)` — looks up a gauge vec entry by name and labels
+
+These helpers query the controller-runtime default registry in-process (the
+metrics HTTP endpoint is disabled in integration tests with `BindAddress: "0"`
+but the registry is still populated).
+
+Unit tests for metric recording functions use `prometheus/testutil.ToFloat64`
+directly on the package-level metric vars.
 
 ### Creating Module CRs
 

@@ -43,6 +43,7 @@ Integration tests are split into package-local suites:
 - `test/integration/foundation`
 - `test/integration/runlevel`
 - `test/integration/gates`
+- `test/integration/errors`
 - shared harness in `test/integration/support`
 
 Each package owns its own module fixture definitions and passes them into the
@@ -90,6 +91,21 @@ Helm engine conventions:
   label to all rendered resources **except CRDs** (cluster-scoped, no
   ownership). Namespaces get the label from the deploy framework with a
   different value — do not assert module-name equality on Namespace labels.
+
+Prometheus metrics conventions:
+
+- Register custom metrics via `prometheus.New*` + `metrics.Registry.MustRegister()`
+  in `init()` (kubebuilder pattern). Do not use `promauto`.
+- Metric definitions live in `*_metrics.go` alongside the controller that emits them.
+- Metric names use `odh_` prefix: `odh_platform_*` for Platform controller,
+  `odh_platform_operator_*` for PlatformOperator controller.
+- Export metric name strings as constants (`MetricPlatformRunlevel`, etc.)
+  and label names as constants (`LabelName`, `LabelRunlevel`, etc.) so tests
+  can reference them without importing metric vars.
+- For info-style gauge vecs that carry version labels, use `DeletePartialMatch`
+  before `Set(1)` to avoid stale time series on label-value changes.
+- Record metrics at the end of action methods, not in support helpers — keeps
+  the metric call sites visible in the action pipeline.
 
 Constants and labels:
 
