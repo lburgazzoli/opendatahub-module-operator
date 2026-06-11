@@ -85,8 +85,12 @@ test-integration-gates: cleanup-integration manifests generate install ## Run ga
 test-integration-runlevel: cleanup-integration manifests generate install ## Run runlevel integration tests against the current cluster.
 	ODH_MODULE_OPERATOR_CONTROLLER_ZAP_DEV_MODE=true go test -p 1 -v -count=1 -timeout=120s ./test/integration/runlevel/...
 
+.PHONY: test-integration-errors
+test-integration-errors: cleanup-integration manifests generate install ## Run error-path integration tests against the current cluster.
+	ODH_MODULE_OPERATOR_CONTROLLER_ZAP_DEV_MODE=true go test -p 1 -v -count=1 -timeout=120s ./test/integration/errors/...
+
 .PHONY: test-integration
-test-integration: test-integration-foundation test-integration-gates test-integration-runlevel ## Run integration tests against the current cluster.
+test-integration: test-integration-foundation test-integration-gates test-integration-runlevel test-integration-errors ## Run integration tests against the current cluster.
 
 .PHONY: lint
 lint: ## Run golangci-lint linter.

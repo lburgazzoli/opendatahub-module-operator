@@ -17,7 +17,9 @@ limitations under the License.
 package platformoperator
 
 import (
+	"context"
 	"errors"
+	"fmt"
 	"path/filepath"
 	"testing"
 	"time"
@@ -513,6 +515,43 @@ func TestReportStatus(t *testing.T) {
 			Version: "2.0.0",
 		}))
 	})
+}
+
+func TestComputeValuesReturnsConfigError(t *testing.T) {
+	g := NewWithT(t)
+	reconciler, c := testReconciler(t)
+
+	mod := reconciler.registry.ModuleByName("alpha")
+	mod.Config = func(_ context.Context, _ client.Client) (map[string]any, error) {
+		return nil, fmt.Errorf("config lookup failed")
+	}
+
+	mc := reconciler.contexts["alpha"]
+
+	_, err := reconciler.computeValues(t.Context(), c, mc)
+
+	g.Expect(err).To(MatchError(ContainSubstring("computing config values for module")))
+	g.Expect(err).To(MatchError(ContainSubstring("config lookup failed")))
+}
+
+func TestRenderChartPropagatesConfigError(t *testing.T) {
+	g := NewWithT(t)
+	reconciler, c := testReconciler(t)
+
+	mod := reconciler.registry.ModuleByName("alpha")
+	mod.Config = func(_ context.Context, _ client.Client) (map[string]any, error) {
+		return nil, fmt.Errorf("config lookup failed")
+	}
+
+	po := newTestPlatformOperator("alpha", "2.0.0", "2.0.0")
+	rr := &types.ReconciliationRequest{
+		Client:   c,
+		Instance: po,
+	}
+
+	err := reconciler.renderChart(t.Context(), rr)
+
+	g.Expect(err).To(MatchError(ContainSubstring("config lookup failed")))
 }
 
 func testReconciler(t *testing.T, objs ...client.Object) (*PlatformOperatorReconciler, client.Client) {
