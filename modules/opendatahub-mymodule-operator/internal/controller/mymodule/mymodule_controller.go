@@ -27,24 +27,20 @@ import (
 
 	componentApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-mymodule-operator/api/components/v1alpha1"
 	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-mymodule-operator/pkg/config"
+	localreleases "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-mymodule-operator/pkg/controller/actions/releases"
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-mymodule-operator/pkg/controller/status"
-	"github.com/opendatahub-io/opendatahub-operator/v2/api/common"
-	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/controller/actions/render/kustomize"
-	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/controller/actions/status/releases"
-	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/controller/precondition"
-	"github.com/opendatahub-io/operator-actions-framework/api"
-	"github.com/opendatahub-io/operator-actions-framework/controller/actions/deploy"
-	"github.com/opendatahub-io/operator-actions-framework/controller/actions/gc"
-	"github.com/opendatahub-io/operator-actions-framework/controller/actions/status/deployments"
-	"github.com/opendatahub-io/operator-actions-framework/controller/conditions"
-	"github.com/opendatahub-io/operator-actions-framework/controller/handlers"
-	"github.com/opendatahub-io/operator-actions-framework/controller/predicates"
-	"github.com/opendatahub-io/operator-actions-framework/controller/predicates/resources"
-	"github.com/opendatahub-io/operator-actions-framework/controller/reconciler"
-	"github.com/opendatahub-io/operator-actions-framework/controller/types"
+	fwapi "github.com/opendatahub-io/odh-platform-utilities/framework/api"
+	"github.com/opendatahub-io/odh-platform-utilities/framework/controller/actions/deploy"
+	"github.com/opendatahub-io/odh-platform-utilities/framework/controller/actions/gc"
+	"github.com/opendatahub-io/odh-platform-utilities/framework/controller/actions/render/kustomize"
+	"github.com/opendatahub-io/odh-platform-utilities/framework/controller/actions/status/deployments"
+	"github.com/opendatahub-io/odh-platform-utilities/framework/controller/conditions"
+	"github.com/opendatahub-io/odh-platform-utilities/framework/controller/handlers"
+	"github.com/opendatahub-io/odh-platform-utilities/framework/controller/predicates"
+	"github.com/opendatahub-io/odh-platform-utilities/framework/controller/predicates/resources"
+	"github.com/opendatahub-io/odh-platform-utilities/framework/controller/reconciler"
+	"github.com/opendatahub-io/odh-platform-utilities/framework/controller/types"
 )
-
-const platformPartOfLabel = "platform.opendatahub.io/part-of"
 
 // +kubebuilder:rbac:groups=components.platform.opendatahub.io,resources=mymodules,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=components.platform.opendatahub.io,resources=mymodules/status,verbs=get;update;patch
@@ -67,7 +63,7 @@ func NewReconciler(
 	ctx context.Context,
 	mgr ctrl.Manager,
 	cfg *moduleconfig.Config,
-	rel common.Release,
+	rel componentApi.Release,
 ) error {
 	m, err := NewModule(cfg)
 	if err != nil {
@@ -93,7 +89,10 @@ func NewReconciler(
 		// Preconditions: halt the pipeline if the required Ingress is
 		// missing. Nothing is deployed until it exists.
 		WithReconcilerOpts(
-			reconciler.WithRelease(api.Release{Name: rel.Name, Version: rel.Version.Version}),
+			reconciler.WithRelease(fwapi.Release{
+				Name:    fwapi.Platform(rel.Name),
+				Version: rel.Version.Version,
+			}),
 			reconciler.WithPreApplyFn(func(
 				ctx context.Context,
 				rr *types.ReconciliationRequest,
@@ -103,7 +102,7 @@ func NewReconciler(
 					rr.Conditions.MarkUnknown(
 						ConditionIngressAvailable,
 						conditions.WithObservedGeneration(rr.Instance.GetGeneration()),
-						conditions.WithReason(precondition.PreConditionFailedReason),
+						conditions.WithReason(PreConditionFailedReason),
 						conditions.WithMessage("%s", err.Error()),
 					)
 					return true
@@ -113,7 +112,7 @@ func NewReconciler(
 					rr.Conditions.MarkFalse(
 						ConditionIngressAvailable,
 						conditions.WithObservedGeneration(rr.Instance.GetGeneration()),
-						conditions.WithReason(precondition.PreConditionFailedReason),
+						conditions.WithReason(PreConditionFailedReason),
 						conditions.WithMessage("%s", result.Message),
 					)
 					return true
@@ -133,27 +132,21 @@ func NewReconciler(
 		//   gc
 		WithAction(m.initialize).
 		WithAction(m.upgradeIfNeeded).
-		WithAction(kustomize.NewAction(
-			kustomize.WithLabel(platformPartOfLabel, componentName),
-		)).
+		WithAction(kustomize.NewAction()).
 		WithAction(deploy.NewAction(
 			deploy.WithCache(),
 			deploy.WithApplyOrder(),
+			deploy.WithPartOfLabelDefault(componentName),
 		)).
 		WithAction(deployments.NewAction(
-			deployments.InNamespace(cfg.ApplicationsNamespace),
+			deployments.InNamespaceFn(moduleconfig.ApplicationsNamespaceGetter(cfg)),
 		)).
-		WithAction(releases.NewAction()).
+		WithAction(localreleases.NewAction()).
 		// reportStatus runs after deployments and releases have populated
 		// their conditions and release info, so it can override or enrich
 		// any previously set status fields.
 		WithAction(m.reportStatus).
-		WithAction(gc.NewAction(func(
-			_ context.Context,
-			_ *types.ReconciliationRequest,
-		) (string, error) {
-			return cfg.ApplicationsNamespace, nil
-		})).
+		WithAction(gc.NewAction(moduleconfig.ApplicationsNamespaceGetter(cfg))).
 		WithConditions(
 			status.ConditionDeploymentsAvailable,
 			ConditionIngressAvailable,

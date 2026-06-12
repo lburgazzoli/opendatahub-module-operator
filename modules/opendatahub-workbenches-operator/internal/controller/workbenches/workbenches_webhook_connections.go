@@ -33,11 +33,12 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
-	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/metadata/annotations"
-	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/resources"
+	"github.com/opendatahub-io/odh-platform-utilities/framework/resources"
 )
 
 // +kubebuilder:webhook:path=/platform-connection-notebook,mutating=true,failurePolicy=fail,groups=kubeflow.org,resources=notebooks,verbs=create;update,versions=v1,name=connection-notebook.opendatahub.io,sideEffects=None,admissionReviewVersions=v1
+
+const connectionAnnotation = "opendatahub.io/connections"
 
 // handleNotebookConnection validates opendatahub.io/connections annotation and injects
 // referenced secrets into the notebook container's envFrom.
@@ -89,7 +90,7 @@ func (m *Module) validateConnectionAnnotation(
 	nb *unstructured.Unstructured,
 	req *admission.Request,
 ) (admission.Response, bool, []notebookSecretRef) {
-	annotationValue := resources.GetAnnotation(nb, annotations.Connection)
+	annotationValue := resources.GetAnnotation(nb, connectionAnnotation)
 	if req.Operation == admissionv1.Create && annotationValue == "" {
 		return admission.Allowed("no connection annotation"), false, nil
 	}
@@ -193,7 +194,7 @@ func (m *Module) buildSecretRefs(_ context.Context, req *admission.Request, refs
 	if err := m.decoder.DecodeRaw(req.OldObject, old); err != nil {
 		return nil, fmt.Errorf("decoding old object: %w", err)
 	}
-	oldRefs, err := parseConnectionsAnnotation(resources.GetAnnotation(old, annotations.Connection))
+	oldRefs, err := parseConnectionsAnnotation(resources.GetAnnotation(old, connectionAnnotation))
 	if err != nil {
 		return nil, err
 	}

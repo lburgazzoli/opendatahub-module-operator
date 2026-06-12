@@ -17,7 +17,8 @@ limitations under the License.
 package v1alpha1
 
 import (
-	"github.com/opendatahub-io/opendatahub-operator/v2/api/common"
+	common "github.com/opendatahub-io/odh-platform-utilities/api/common"
+	ofVersion "github.com/operator-framework/api/pkg/lib/version"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -26,6 +27,14 @@ const (
 	TrainerInstanceName  = "default-" + TrainerComponentName
 	TrainerKind          = "Trainer"
 )
+
+type Platform string
+
+// Release reports the operator version and platform.
+type Release struct {
+	Name    Platform                  `json:"name,omitempty"`
+	Version ofVersion.OperatorVersion `json:"version,omitempty"`
+}
 
 var _ common.PlatformObject = (*Trainer)(nil)
 
@@ -53,18 +62,13 @@ type TrainerSpec struct {
 
 type TrainerCommonSpec struct{}
 
-// TrainerCommonStatus defines the shared observed state of Trainer.
-type TrainerCommonStatus struct {
-	common.ComponentReleaseStatus `json:",inline"`
-}
-
 // TrainerStatus defines the observed state of Trainer.
 type TrainerStatus struct {
-	common.Status       `json:",inline"`
-	TrainerCommonStatus `json:",inline"`
+	common.Status                 `json:",inline"`
+	common.ComponentReleaseStatus `json:",inline"`
 
 	// Release reports the operator version and platform.
-	Release common.Release `json:"release,omitempty"`
+	Release Release `json:"release,omitempty"`
 }
 
 func (c *Trainer) GetStatus() *common.Status {
@@ -79,12 +83,12 @@ func (c *Trainer) SetConditions(conditions []common.Condition) {
 	c.Status.SetConditions(conditions)
 }
 
-func (c *Trainer) GetReleaseStatus() *[]common.ComponentRelease {
-	return &c.Status.Releases
+func (c *Trainer) GetReleaseStatus() *common.ComponentReleaseStatus {
+	return &c.Status.ComponentReleaseStatus
 }
 
-func (c *Trainer) SetReleaseStatus(releases []common.ComponentRelease) {
-	c.Status.Releases = releases
+func (c *Trainer) SetReleaseStatus(status common.ComponentReleaseStatus) {
+	c.Status.ComponentReleaseStatus = status
 }
 
 // +kubebuilder:object:root=true

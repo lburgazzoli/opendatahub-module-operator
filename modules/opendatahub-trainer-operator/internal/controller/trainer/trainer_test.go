@@ -29,8 +29,9 @@ import (
 
 	componentApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-trainer-operator/api/components/v1alpha1"
 	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-trainer-operator/pkg/config"
-	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/cluster"
-	odhtypes "github.com/opendatahub-io/opendatahub-operator/v2/pkg/controller/types"
+	actionapi "github.com/opendatahub-io/odh-platform-utilities/framework/api"
+	odhtypes "github.com/opendatahub-io/odh-platform-utilities/framework/controller/types"
+	"github.com/opendatahub-io/odh-platform-utilities/pkg/cluster"
 )
 
 func newTestModule(t *testing.T) *Module {
@@ -58,7 +59,10 @@ func newTestRR(obj *componentApi.Trainer) *odhtypes.ReconciliationRequest {
 	return &odhtypes.ReconciliationRequest{
 		Instance:          obj,
 		ManifestsBasePath: "/manifests",
-		Release:           rel,
+		Release: actionapi.Release{
+			Name:    actionapi.Platform(rel.Name),
+			Version: rel.Version.Version,
+		},
 	}
 }
 

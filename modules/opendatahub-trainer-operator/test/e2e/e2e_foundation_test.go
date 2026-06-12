@@ -16,8 +16,10 @@ import (
 
 	componentsv1alpha1 "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-trainer-operator/api/components/v1alpha1"
 	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-trainer-operator/pkg/config"
+	module "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-trainer-operator/pkg/module"
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-trainer-operator/test/support"
-	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/controller/status"
+	common "github.com/opendatahub-io/odh-platform-utilities/api/common"
+	fwapi "github.com/opendatahub-io/odh-platform-utilities/framework/api"
 )
 
 type foundationTests struct {
@@ -84,15 +86,15 @@ func (ft *foundationTests) expectDependenciesUnavailable(
 	g := NewWithT(t)
 	g.Eventually(k.Get(ft.module)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(And(
 		jq.Match(`(.status.conditions // []) | any(.[]; .type == "%s" and .status == "%s")`,
-			status.ConditionDependenciesAvailable, metav1.ConditionFalse),
+			module.ConditionDependenciesAvailable, metav1.ConditionFalse),
 		jq.Match(`(.status.conditions // []) | any(.[]; .type == "%s" and .reason == "%s")`,
-			status.ConditionDependenciesAvailable, "PreConditionFailed"),
+			module.ConditionDependenciesAvailable, module.PreConditionFailedReason),
 		jq.Match(`(.status.conditions // []) | any(.[]; .type == "%s" and .message == "%s")`,
-			status.ConditionDependenciesAvailable, expectedMessage),
+			module.ConditionDependenciesAvailable, expectedMessage),
 		jq.Match(`(.status.conditions // []) | any(.[]; .type == "%s" and .status == "%s")`,
-			status.ConditionTypeReady, metav1.ConditionFalse),
+			fwapi.ConditionTypeReady, metav1.ConditionFalse),
 		jq.Match(`(.status.conditions // []) | any(.[]; .type == "%s" and .status == "%s")`,
-			status.ConditionTypeProvisioningSucceeded, metav1.ConditionFalse),
+			common.ConditionTypeProvisioningSucceeded, metav1.ConditionFalse),
 	))
 }
 
@@ -125,7 +127,7 @@ func (ft *foundationTests) testJobSetOperatorCRDMissing(t *testing.T) {
 
 	ft.module.ResourceVersion = ""
 	g.Expect(k8sClient.Create(ctx, ft.module)).To(Succeed())
-	ft.expectDependenciesUnavailable(t, status.JobSetOperatorNotInstalledMessage)
+	ft.expectDependenciesUnavailable(t, module.JobSetOperatorNotInstalledMessage)
 }
 
 func (ft *foundationTests) testJobSetOperatorCRMissing(t *testing.T) {
@@ -146,7 +148,7 @@ func (ft *foundationTests) testJobSetOperatorCRMissing(t *testing.T) {
 
 	ft.module.ResourceVersion = ""
 	g.Expect(k8sClient.Create(ctx, ft.module)).To(Succeed())
-	ft.expectDependenciesUnavailable(t, status.JobSetOperatorCRNotFoundMessage)
+	ft.expectDependenciesUnavailable(t, module.JobSetOperatorCRNotFoundMessage)
 }
 
 func (ft *foundationTests) testJobSetCRDMissing(t *testing.T) {
@@ -177,7 +179,7 @@ func (ft *foundationTests) testJobSetCRDMissing(t *testing.T) {
 
 	ft.module.ResourceVersion = ""
 	g.Expect(k8sClient.Create(ctx, ft.module)).To(Succeed())
-	ft.expectDependenciesUnavailable(t, status.JobSetCRDMissingMessage)
+	ft.expectDependenciesUnavailable(t, module.JobSetCRDMissingMessage)
 }
 
 func (ft *foundationTests) testOperatorConfigMap(t *testing.T) {
@@ -229,7 +231,7 @@ func (ft *foundationTests) testReleaseStatus(t *testing.T) {
 
 func (ft *foundationTests) testPlatformLabels(t *testing.T) {
 	g := NewWithT(t)
-	module := ft.module.DeepCopy()
+	obj := ft.module.DeepCopy()
 	operatorCfg := &corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      operatorConfigMapName,
@@ -237,23 +239,23 @@ func (ft *foundationTests) testPlatformLabels(t *testing.T) {
 		},
 	}
 
-	g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(module), module)).To(Succeed())
+	g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(obj), obj)).To(Succeed())
 	g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(operatorCfg), operatorCfg)).To(Succeed())
 
 	g.Eventually(k.Get(ft.workloadDeploy)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(And(
 		jq.Match(`.metadata.labels."%s" == "trainer"`, labelPartOf),
 		jq.Match(`.metadata.annotations."%s" == "%s"`,
 			annotationInstanceName,
-			module.GetName()),
+			obj.GetName()),
 		jq.Match(`.metadata.annotations."%s" == "%s"`,
 			annotationInstanceUID,
-			string(module.GetUID())),
+			string(obj.GetUID())),
 		jq.Match(`.metadata.annotations."%s" == "%s"`,
 			annotationType,
 			operatorCfg.Data[moduleconfig.KeyPlatformName]),
 		jq.Match(`.metadata.annotations."%s" == "%s"`,
 			annotationVersion,
-			module.Status.Release.Version.String()),
+			obj.Status.Release.Version.String()),
 	))
 }
 

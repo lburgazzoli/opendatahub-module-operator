@@ -17,7 +17,8 @@ limitations under the License.
 package v1alpha1
 
 import (
-	"github.com/opendatahub-io/opendatahub-operator/v2/api/common"
+	common "github.com/opendatahub-io/odh-platform-utilities/api/common"
+	ofVersion "github.com/operator-framework/api/pkg/lib/version"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -67,13 +68,21 @@ type TrustyAISpec struct {
 	Eval TrustyAIEvalSpec `json:"eval,omitempty"`
 }
 
+type Platform string
+
+// Release reports the operator version and platform.
+type Release struct {
+	Name    Platform                  `json:"name,omitempty"`
+	Version ofVersion.OperatorVersion `json:"version,omitempty"`
+}
+
 // TrustyAIStatus defines the observed state of TrustyAI.
 type TrustyAIStatus struct {
 	common.Status                 `json:",inline"`
 	common.ComponentReleaseStatus `json:",inline"`
 
 	// Release reports the operator version and platform.
-	Release common.Release `json:"release,omitempty"`
+	Release Release `json:"release,omitempty"`
 }
 
 // Compile-time interface assertion.
@@ -101,9 +110,11 @@ func (c *TrustyAI) GetConditions() []common.Condition { return c.Status.GetCondi
 func (c *TrustyAI) SetConditions(conditions []common.Condition) {
 	c.Status.SetConditions(conditions)
 }
-func (c *TrustyAI) GetReleaseStatus() *[]common.ComponentRelease { return &c.Status.Releases }
-func (c *TrustyAI) SetReleaseStatus(releases []common.ComponentRelease) {
-	c.Status.Releases = releases
+func (c *TrustyAI) GetReleaseStatus() *common.ComponentReleaseStatus {
+	return &c.Status.ComponentReleaseStatus
+}
+func (c *TrustyAI) SetReleaseStatus(status common.ComponentReleaseStatus) {
+	c.Status.ComponentReleaseStatus = status
 }
 
 // +kubebuilder:object:root=true

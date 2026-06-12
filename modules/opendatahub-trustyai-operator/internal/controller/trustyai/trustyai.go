@@ -20,10 +20,10 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/opendatahub-io/opendatahub-operator/v2/api/common"
-	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/cluster"
-	odhtypes "github.com/opendatahub-io/opendatahub-operator/v2/pkg/controller/types"
+	fwtypes "github.com/opendatahub-io/odh-platform-utilities/framework/controller/types"
+	odhcluster "github.com/opendatahub-io/odh-platform-utilities/pkg/cluster"
 	odhdeploy "github.com/opendatahub-io/opendatahub-operator/v2/pkg/deploy"
+	ofVersion "github.com/operator-framework/api/pkg/lib/version"
 
 	componentApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-trustyai-operator/api/components/v1alpha1"
 	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-trustyai-operator/pkg/config"
@@ -61,26 +61,26 @@ var imageParamMap = map[string]string{
 type Module struct {
 	cfg *moduleconfig.Config
 	// manifestInfo is the standard platform overlay (odh/rhoai).
-	manifestInfo odhtypes.ManifestInfo
+	manifestInfo fwtypes.ManifestInfo
 	// mcpManifestInfo is used when MCPGuardrailsMode is enabled.
-	mcpManifestInfo odhtypes.ManifestInfo
+	mcpManifestInfo fwtypes.ManifestInfo
 }
 
 // NewModule creates a Module with one-shot computed state.
 func NewModule(cfg *moduleconfig.Config) (*Module, error) {
-	platform := common.Platform(cfg.PlatformName)
+	platform := componentApi.Platform(cfg.PlatformName)
 	overlay := overlayODH
-	if platform == cluster.SelfManagedRhoai || platform == cluster.ManagedRhoai {
+	if platform == componentApi.Platform(odhcluster.SelfManagedRhoai) || platform == componentApi.Platform(odhcluster.ManagedRhoai) {
 		overlay = overlayRhoai
 	}
 
-	mi := odhtypes.ManifestInfo{
+	mi := fwtypes.ManifestInfo{
 		Path:       cfg.ManifestsPath,
 		ContextDir: componentName,
 		SourcePath: overlay,
 	}
 
-	mcpMI := odhtypes.ManifestInfo{
+	mcpMI := fwtypes.ManifestInfo{
 		Path:       cfg.ManifestsPath,
 		ContextDir: componentName,
 		SourcePath: overlayMCP,
@@ -99,7 +99,7 @@ func NewModule(cfg *moduleconfig.Config) (*Module, error) {
 }
 
 // initialize selects the manifest overlay based on MCPGuardrailsMode.
-func (m *Module) initialize(_ context.Context, rr *odhtypes.ReconciliationRequest) error {
+func (m *Module) initialize(_ context.Context, rr *fwtypes.ReconciliationRequest) error {
 	tai, ok := rr.Instance.(*componentApi.TrustyAI)
 	if !ok {
 		return fmt.Errorf("instance is not a TrustyAI")
@@ -115,15 +115,15 @@ func (m *Module) initialize(_ context.Context, rr *odhtypes.ReconciliationReques
 }
 
 // reportStatus populates the release status and config values.
-func (m *Module) reportStatus(_ context.Context, rr *odhtypes.ReconciliationRequest) error {
+func (m *Module) reportStatus(_ context.Context, rr *fwtypes.ReconciliationRequest) error {
 	obj, ok := rr.Instance.(*componentApi.TrustyAI)
 	if !ok {
 		return fmt.Errorf("instance is not a TrustyAI")
 	}
 
-	obj.Status.Release = common.Release{
-		Name:    rr.Release.Name,
-		Version: rr.Release.Version,
+	obj.Status.Release = componentApi.Release{
+		Name:    componentApi.Platform(rr.Release.Name),
+		Version: ofVersion.OperatorVersion{Version: rr.Release.Version},
 	}
 
 	return nil

@@ -20,8 +20,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/opendatahub-io/opendatahub-operator/v2/api/common"
-	odhtypes "github.com/opendatahub-io/opendatahub-operator/v2/pkg/controller/types"
+	odhtypes "github.com/opendatahub-io/odh-platform-utilities/framework/controller/types"
 
 	componentApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-spark-operator/api/components/v1alpha1"
 )
@@ -47,7 +46,7 @@ func (m *Module) upgradeIfNeeded(ctx context.Context, rr *odhtypes.Reconciliatio
 
 // upgrade runs idempotent migrations when the platform version advances.
 // Implement version-gated migrations here.
-func (m *Module) upgrade(_ context.Context, prev common.Release, rr *odhtypes.ReconciliationRequest) error {
+func (m *Module) upgrade(_ context.Context, prev componentApi.Release, rr *odhtypes.ReconciliationRequest) error {
 	_ = prev
 	_ = rr
 	// Add version-gated migrations here, e.g.:

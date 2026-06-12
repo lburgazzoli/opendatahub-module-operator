@@ -17,24 +17,22 @@ limitations under the License.
 // Package gvk centralizes GroupVersionKind constants for the ModelRegistry module operator.
 package gvk
 
-import (
-	clustergvk "github.com/opendatahub-io/opendatahub-operator/v2/pkg/cluster/gvk"
+import fwgvk "github.com/opendatahub-io/odh-platform-utilities/framework/cluster/gvk"
+
+// Shared chartgen GVKs re-exported from the framework cluster package.
+var (
+	Namespace                      = fwgvk.Namespace
+	Deployment                     = fwgvk.Deployment
+	ServiceAccount                 = fwgvk.ServiceAccount
+	ConfigMap                      = fwgvk.ConfigMap
+	ClusterRoleBinding             = fwgvk.ClusterRoleBinding
+	RoleBinding                    = fwgvk.RoleBinding
+	MutatingWebhookConfiguration   = fwgvk.MutatingWebhookConfiguration
+	ValidatingWebhookConfiguration = fwgvk.ValidatingWebhookConfiguration
+	CertManagerCertificate         = fwgvk.CertManagerCertificate
 )
 
-// Shared chartgen GVKs reused from the upstream operator cluster package.
+// ModelRegistry controller GVKs re-exported from the framework cluster package.
 var (
-	Namespace                      = clustergvk.Namespace
-	Deployment                     = clustergvk.Deployment
-	ServiceAccount                 = clustergvk.ServiceAccount
-	ConfigMap                      = clustergvk.ConfigMap
-	ClusterRoleBinding             = clustergvk.ClusterRoleBinding
-	RoleBinding                    = clustergvk.RoleBinding
-	MutatingWebhookConfiguration   = clustergvk.MutatingWebhookConfiguration
-	ValidatingWebhookConfiguration = clustergvk.ValidatingWebhookConfiguration
-	CertManagerCertificate         = clustergvk.CertManagerCertificate
-)
-
-// ModelRegistry controller GVKs reused from the upstream operator cluster package.
-var (
-	OpenshiftTemplate = clustergvk.OpenshiftTemplate
+	OpenshiftTemplate = fwgvk.OpenshiftTemplate
 )

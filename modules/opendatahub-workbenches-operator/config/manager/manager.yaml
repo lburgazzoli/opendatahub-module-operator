@@ -126,12 +126,6 @@ spec:
           valueFrom:
             fieldRef:
               fieldPath: metadata.namespace
-        # Duplicated for compatibility with the opendatahub-operator framework
-        # which reads RHAI_APPLICATIONS_NAMESPACE via the global viper instance.
-        - name: RHAI_APPLICATIONS_NAMESPACE
-          valueFrom:
-            fieldRef:
-              fieldPath: metadata.namespace
       volumes:
       - name: manifests
         emptyDir: {}

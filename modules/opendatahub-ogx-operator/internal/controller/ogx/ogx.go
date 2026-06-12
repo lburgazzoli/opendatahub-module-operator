@@ -20,10 +20,10 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/opendatahub-io/opendatahub-operator/v2/api/common"
-	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/cluster"
-	odhtypes "github.com/opendatahub-io/opendatahub-operator/v2/pkg/controller/types"
+	odhtypes "github.com/opendatahub-io/odh-platform-utilities/framework/controller/types"
+	odhcluster "github.com/opendatahub-io/odh-platform-utilities/pkg/cluster"
 	odhdeploy "github.com/opendatahub-io/opendatahub-operator/v2/pkg/deploy"
+	ofVersion "github.com/operator-framework/api/pkg/lib/version"
 
 	componentApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-ogx-operator/api/components/v1alpha1"
 	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-ogx-operator/pkg/config"
@@ -51,8 +51,8 @@ type Module struct {
 // NewModule creates a Module with one-shot computed state.
 func NewModule(cfg *moduleconfig.Config) (*Module, error) {
 	overlay := overlayODH
-	platform := common.Platform(cfg.PlatformName)
-	if platform == cluster.SelfManagedRhoai || platform == cluster.ManagedRhoai {
+	platform := componentApi.Platform(cfg.PlatformName)
+	if platform == componentApi.Platform(odhcluster.SelfManagedRhoai) || platform == componentApi.Platform(odhcluster.ManagedRhoai) {
 		overlay = overlayRhoai
 	}
 
@@ -86,9 +86,9 @@ func (m *Module) reportStatus(_ context.Context, rr *odhtypes.ReconciliationRequ
 		return fmt.Errorf("instance is not an OGX")
 	}
 
-	obj.Status.Release = common.Release{
-		Name:    rr.Release.Name,
-		Version: rr.Release.Version,
+	obj.Status.Release = componentApi.Release{
+		Name:    componentApi.Platform(rr.Release.Name),
+		Version: ofVersion.OperatorVersion{Version: rr.Release.Version},
 	}
 
 	return nil

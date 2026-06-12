@@ -25,19 +25,18 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	componentApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-modelregistry-operator/api/components/v1alpha1"
-	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/cluster"
-	odhtypes "github.com/opendatahub-io/opendatahub-operator/v2/pkg/controller/types"
+	odhtypes "github.com/opendatahub-io/odh-platform-utilities/framework/controller/types"
 	odhdeploy "github.com/opendatahub-io/opendatahub-operator/v2/pkg/deploy"
 )
 
 // customizeManifests computes kustomize variables (gateway, namespace) and writes them to params.env.
-func customizeManifests(_ context.Context, rr *odhtypes.ReconciliationRequest) error {
+func (m *Module) customizeManifests(_ context.Context, rr *odhtypes.ReconciliationRequest) error {
 	mr, ok := rr.Instance.(*componentApi.ModelRegistry)
 	if !ok {
 		return fmt.Errorf("resource instance %v is not a ModelRegistry", rr.Instance)
 	}
 
-	extraParams, err := computeKustomizeVariables(mr)
+	extraParams, err := m.computeKustomizeVariables(mr)
 	if err != nil {
 		return fmt.Errorf("failed to compute kustomize variables: %w", err)
 	}
@@ -52,7 +51,7 @@ func customizeManifests(_ context.Context, rr *odhtypes.ReconciliationRequest) e
 }
 
 // computeKustomizeVariables returns the gateway and routing kustomize variables from the CR spec.
-func computeKustomizeVariables(mr *componentApi.ModelRegistry) (map[string]string, error) {
+func (m *Module) computeKustomizeVariables(mr *componentApi.ModelRegistry) (map[string]string, error) {
 	var domain string
 	if mr.Spec.Gateway != nil {
 		domain = mr.Spec.Gateway.Domain
@@ -67,7 +66,7 @@ func computeKustomizeVariables(mr *componentApi.ModelRegistry) (map[string]strin
 		"GATEWAY_DOMAIN":      domain,
 		"GATEWAY_NAME":        defaultGatewayName,
 		"GATEWAY_NAMESPACE":   gatewayNamespace,
-		"HTTPROUTE_NAMESPACE": cluster.GetApplicationNamespace(),
+		"HTTPROUTE_NAMESPACE": m.cfg.ApplicationsNamespace,
 	}, nil
 }
 

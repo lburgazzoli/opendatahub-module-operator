@@ -22,19 +22,18 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
-	"github.com/opendatahub-io/opendatahub-operator/v2/api/common"
-	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/cluster"
-	odhtypes "github.com/opendatahub-io/opendatahub-operator/v2/pkg/controller/types"
-	odhdeploy "github.com/opendatahub-io/opendatahub-operator/v2/pkg/deploy"
-
+	componentApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-workbenches-operator/api/components/v1alpha1"
 	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-workbenches-operator/pkg/config"
+	fwtypes "github.com/opendatahub-io/odh-platform-utilities/framework/controller/types"
+	odhcluster "github.com/opendatahub-io/odh-platform-utilities/pkg/cluster"
+	odhdeploy "github.com/opendatahub-io/opendatahub-operator/v2/pkg/deploy"
 )
 
 // Module holds process-lifetime state for the workbenches controller.
 type Module struct {
 	cfg *moduleconfig.Config
 	// manifestInfos is computed once at startup from the fixed platform and manifests path.
-	manifestInfos []odhtypes.ManifestInfo
+	manifestInfos []fwtypes.ManifestInfo
 
 	// apiReader is the uncached reader used by webhooks and upgrade migrations
 	// when they need fresh API state instead of informer-backed cache state.
@@ -46,14 +45,14 @@ type Module struct {
 
 // NewModule creates a Module, pre-computes manifest paths, and applies image parameter substitutions.
 func NewModule(cfg *moduleconfig.Config) (*Module, error) {
-	platform := common.Platform(cfg.PlatformName)
+	platform := componentApi.Platform(cfg.PlatformName)
 
 	imgSourcePath, ok := notebookImagesManifestSourcePath[platform]
 	if !ok {
-		imgSourcePath = notebookImagesManifestSourcePath[cluster.OpenDataHub]
+		imgSourcePath = notebookImagesManifestSourcePath[componentApi.Platform(odhcluster.OpenDataHub)]
 	}
 
-	manifests := []odhtypes.ManifestInfo{
+	manifests := []fwtypes.ManifestInfo{
 		notebookControllerManifestInfo(cfg.ManifestsPath, notebookControllerManifestSourcePath),
 		kfNotebookControllerManifestInfo(cfg.ManifestsPath, kfNotebookControllerManifestSourcePath),
 		notebookImagesManifestInfo(cfg.ManifestsPath, imgSourcePath),

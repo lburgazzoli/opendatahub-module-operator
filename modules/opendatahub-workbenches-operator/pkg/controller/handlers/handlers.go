@@ -1,9 +1,9 @@
-// Package handlers provides controller-runtime event handler aliases from the opendatahub-operator.
+// Package handlers provides controller-runtime event handler aliases from the shared framework.
 package handlers
 
 import (
-	odhhandlers "github.com/opendatahub-io/opendatahub-operator/v2/pkg/controller/handlers"
+	fwhandlers "github.com/opendatahub-io/odh-platform-utilities/framework/controller/handlers"
 )
 
 // ToNamed returns an event handler that routes all events to the named singleton instance.
-var ToNamed = odhhandlers.ToNamed
+var ToNamed = fwhandlers.ToNamed

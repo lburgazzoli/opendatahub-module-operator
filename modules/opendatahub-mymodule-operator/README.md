@@ -1,12 +1,12 @@
 # opendatahub-mymodule-operator
 
-Runnable example ODH module operator used as the current pilot for migrating
-module controllers toward
-`github.com/opendatahub-io/operator-actions-framework`.
+Runnable example ODH module operator used as the pilot for migrating module
+controllers toward the shared framework in
+`github.com/opendatahub-io/odh-platform-utilities/framework`.
 
 ## Framework Migration Status
 
-The `mymodule` pilot already uses the framework directly for:
+The `mymodule` pilot already uses the shared framework directly for:
 
 - reconciler
 - deploy
@@ -18,20 +18,9 @@ The `mymodule` pilot already uses the framework directly for:
 - generic resource helpers
 - cluster GVK constants used by chart generation
 
-`pkg/webhook` from `opendatahub-operator` was previously used only for
-`webhookutils.NewWebhookLogConstructor(...)` and has already been replaced with
-a local helper in this module.
-
-The following `github.com/opendatahub-io/opendatahub-operator/v2` libraries are
-still in use and still need replacement, local extraction, or an accepted
-wrapper strategy:
-
-- `api/common`
-- `pkg/controller/precondition`
-- `pkg/controller/actions/status/releases`
-- `pkg/controller/actions/render/kustomize`
-- `pkg/cluster`
-- `pkg/manager`
+The remaining `github.com/opendatahub-io/opendatahub-operator/v2`
+dependency in this module is `pkg/manager`, which is still used by the
+runtime manager wrapper and the integration test harness.
 
 ## Working On This Module
 

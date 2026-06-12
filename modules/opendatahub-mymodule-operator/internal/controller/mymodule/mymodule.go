@@ -27,11 +27,9 @@ import (
 
 	ofVersion "github.com/operator-framework/api/pkg/lib/version"
 
-	"github.com/opendatahub-io/opendatahub-operator/v2/api/common"
-	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/cluster"
-	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/controller/precondition"
-	"github.com/opendatahub-io/operator-actions-framework/controller/types"
-	"github.com/opendatahub-io/operator-actions-framework/resources"
+	"github.com/opendatahub-io/odh-platform-utilities/framework/controller/types"
+	"github.com/opendatahub-io/odh-platform-utilities/framework/resources"
+	odhcluster "github.com/opendatahub-io/odh-platform-utilities/pkg/cluster"
 
 	componentApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-mymodule-operator/api/components/v1alpha1"
 	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-mymodule-operator/pkg/config"
@@ -51,6 +49,8 @@ const (
 	// ConditionIngressAvailable is the condition type set by the ingress
 	// precondition. True when the required Ingress exists, False otherwise.
 	ConditionIngressAvailable = "IngressAvailable"
+
+	PreConditionFailedReason = "PreConditionFailed"
 
 	// AnnotationManagedVersion is set on the Ingress during upgrade to
 	// record the module version that last managed it.
@@ -77,6 +77,11 @@ type Module struct {
 	apiReader client.Reader
 }
 
+type preconditionResult struct {
+	Pass    bool
+	Message string
+}
+
 // NewModule creates a Module with one-shot computed state. Called once
 // from NewReconciler at module registration; no sync.Once needed.
 func NewModule(cfg *moduleconfig.Config) (*Module, error) {
@@ -87,7 +92,7 @@ func NewModule(cfg *moduleconfig.Config) (*Module, error) {
 		SourcePath: overlayODH,
 	}
 
-	if common.Platform(cfg.PlatformName) == cluster.SelfManagedRhoai {
+	if cfg.PlatformName == string(odhcluster.SelfManagedRhoai) {
 		mi.SourcePath = overlayRhoai
 	}
 
@@ -105,9 +110,8 @@ func (m *Module) initialize(_ context.Context, rr *types.ReconciliationRequest) 
 }
 
 // checkIngress is a precondition check that verifies the required Ingress
-// exists in the application namespace. Used with precondition.NewPreCondition
-// and WithStopReconciliation so the pipeline halts when missing.
-func (m *Module) checkIngress(ctx context.Context, rr *types.ReconciliationRequest) (precondition.CheckResult, error) {
+// exists in the application namespace so the pipeline halts when missing.
+func (m *Module) checkIngress(ctx context.Context, rr *types.ReconciliationRequest) (preconditionResult, error) {
 	ingress := &networkingv1.Ingress{}
 	key := client.ObjectKey{
 		Namespace: m.cfg.ApplicationsNamespace,
@@ -116,7 +120,7 @@ func (m *Module) checkIngress(ctx context.Context, rr *types.ReconciliationReque
 
 	switch err := rr.Client.Get(ctx, key, ingress); {
 	case k8serr.IsNotFound(err):
-		return precondition.CheckResult{
+		return preconditionResult{
 			Pass: false,
 			Message: fmt.Sprintf(
 				"Ingress %q not found in namespace %q",
@@ -125,9 +129,9 @@ func (m *Module) checkIngress(ctx context.Context, rr *types.ReconciliationReque
 			),
 		}, nil
 	case err != nil:
-		return precondition.CheckResult{}, fmt.Errorf("checking ingress: %w", err)
+		return preconditionResult{}, fmt.Errorf("checking ingress: %w", err)
 	default:
-		return precondition.CheckResult{Pass: true}, nil
+		return preconditionResult{Pass: true}, nil
 	}
 }
 
@@ -156,7 +160,7 @@ func (m *Module) upgradeIfNeeded(ctx context.Context, rr *types.ReconciliationRe
 // upgrade runs idempotent migrations when the platform version advances.
 // It amends existing resources before the new manifests are applied by
 // the deploy action.
-func (m *Module) upgrade(ctx context.Context, prev common.Release, rr *types.ReconciliationRequest) error {
+func (m *Module) upgrade(ctx context.Context, prev componentApi.Release, rr *types.ReconciliationRequest) error {
 	existing := &networkingv1.Ingress{}
 	key := client.ObjectKey{
 		Namespace: m.cfg.ApplicationsNamespace,
@@ -196,8 +200,8 @@ func (m *Module) reportStatus(_ context.Context, rr *types.ReconciliationRequest
 		return fmt.Errorf("instance is not a MyModule")
 	}
 
-	obj.Status.Release = common.Release{
-		Name:    rr.Release.Name,
+	obj.Status.Release = componentApi.Release{
+		Name:    componentApi.Platform(rr.Release.Name),
 		Version: ofVersion.OperatorVersion{Version: rr.Release.Version},
 	}
 

@@ -20,7 +20,6 @@ import (
 	"context"
 	"path"
 
-	odhtypes "github.com/opendatahub-io/opendatahub-operator/v2/pkg/controller/types"
 	imagev1 "github.com/openshift/api/image/v1"
 	admissionv1 "k8s.io/api/admissionregistration/v1"
 	appsv1 "k8s.io/api/apps/v1"
@@ -31,20 +30,21 @@ import (
 
 	componentApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-workbenches-operator/api/components/v1alpha1"
 	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-workbenches-operator/pkg/config"
-	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-workbenches-operator/pkg/resources/gvk"
-	"github.com/opendatahub-io/opendatahub-operator/v2/api/common"
-	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/controller/actions/deploy"
-	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/controller/actions/gc"
-	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/controller/actions/render/kustomize"
-	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/controller/actions/status/deployments"
-	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/controller/actions/status/imagestreams"
-	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/controller/actions/status/releases"
-
+	localimagestreams "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-workbenches-operator/pkg/controller/actions/imagestreams"
+	localreleases "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-workbenches-operator/pkg/controller/actions/releases"
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-workbenches-operator/pkg/controller/handlers"
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-workbenches-operator/pkg/controller/predicates"
-	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/controller/reconciler"
-	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/metadata/labels"
+	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-workbenches-operator/pkg/resources/gvk"
+	fwapi "github.com/opendatahub-io/odh-platform-utilities/framework/api"
+	"github.com/opendatahub-io/odh-platform-utilities/framework/controller/actions/deploy"
+	"github.com/opendatahub-io/odh-platform-utilities/framework/controller/actions/gc"
+	"github.com/opendatahub-io/odh-platform-utilities/framework/controller/actions/render/kustomize"
+	"github.com/opendatahub-io/odh-platform-utilities/framework/controller/actions/status/deployments"
+	"github.com/opendatahub-io/odh-platform-utilities/framework/controller/reconciler"
+	fwtypes "github.com/opendatahub-io/odh-platform-utilities/framework/controller/types"
 )
+
+const appLabelPrefix = "app.opendatahub.io"
 
 // Module operator's own CRD
 // +kubebuilder:rbac:groups=components.platform.opendatahub.io,resources=workbenches,verbs=get;list;watch;create;update;patch;delete
@@ -94,7 +94,7 @@ func NewReconciler(
 	ctx context.Context,
 	mgr ctrl.Manager,
 	cfg *moduleconfig.Config,
-	rel common.Release,
+	rel componentApi.Release,
 ) error {
 	m, err := NewModule(cfg)
 	if err != nil {
@@ -122,7 +122,7 @@ func NewReconciler(
 			reconciler.WithEventHandler(
 				handlers.ToNamed(componentApi.WorkbenchesInstanceName)),
 			reconciler.WithPredicates(predicates.Or(
-				predicates.ForComponentLabel(labels.ODH.Component(LegacyComponentName), labels.True),
+				predicates.ForComponentLabel(appLabelPrefix+"/"+LegacyComponentName, "true"),
 				predicates.CreatedOrDeletedNamed(mlflowOperatorCRDName),
 			)),
 		).
@@ -136,33 +136,41 @@ func NewReconciler(
 			&imagev1.ImageStream{},
 			reconciler.WithEventHandler(handlers.ToNamed(componentApi.WorkbenchesInstanceName)),
 			reconciler.WithPredicates(
-				predicates.ForComponentLabel(labels.ODH.Component(LegacyComponentName), labels.True),
+				predicates.ForComponentLabel(appLabelPrefix+"/"+LegacyComponentName, "true"),
 			),
+		).
+		WithReconcilerOpts(
+			reconciler.WithRelease(fwapi.Release{
+				Name:    fwapi.Platform(rel.Name),
+				Version: rel.Version.Version,
+			}),
 		).
 		WithAction(m.initialize).
 		WithAction(m.upgradeIfNeeded).
-		WithAction(releases.NewAction(
-			releases.WithMetadataFilePath(func(rr *odhtypes.ReconciliationRequest) string {
-				return path.Join(rr.ManifestsBasePath, ComponentName, kfNotebookControllerPath, releases.ComponentMetadataFilename)
+		WithAction(localreleases.NewAction(
+			localreleases.WithMetadataFilePath(func(rr *fwtypes.ReconciliationRequest) string {
+				return path.Join(rr.ManifestsBasePath, ComponentName, kfNotebookControllerPath, localreleases.ComponentMetadataFilename)
 			}),
 		)).
 		WithAction(m.configureDependencies).
 		WithAction(m.setKustomizedParams).
 		WithAction(kustomize.NewAction(
 			kustomize.WithCache(false),
-			kustomize.WithLabel(labels.ODH.Component(LegacyComponentName), labels.True),
-			kustomize.WithLabel(labels.K8SCommon.PartOf, LegacyComponentName),
 		)).
 		WithAction(deploy.NewAction(
 			deploy.WithCache(),
 			deploy.WithApplyOrder(),
+			deploy.WithLabel(appLabelPrefix+"/"+LegacyComponentName, "true"),
+			deploy.WithPartOfLabelDefault(LegacyComponentName),
 		)).
-		WithAction(deployments.NewAction()).
-		WithAction(imagestreams.NewAction()).
+		WithAction(deployments.NewAction(
+			deployments.InNamespaceFn(moduleconfig.ApplicationsNamespaceGetter(cfg)),
+		)).
+		WithAction(localimagestreams.NewAction(
+			localimagestreams.InNamespace(cfg.ApplicationsNamespace),
+		)).
 		WithAction(m.reportStatus).
-		WithAction(gc.NewAction(
-			gc.InNamespace(cfg.ApplicationsNamespace),
-		)).
+		WithAction(gc.NewAction(moduleconfig.ApplicationsNamespaceGetter(cfg))).
 		WithConditions(conditionTypes...).
 		Build(ctx)
 
@@ -170,7 +178,10 @@ func NewReconciler(
 		return err
 	}
 
-	r.Release = rel
+	r.Release = fwapi.Release{
+		Name:    fwapi.Platform(rel.Name),
+		Version: rel.Version.Version,
+	}
 
 	if cfg.Controller.Webhook.Enabled {
 		if err := m.RegisterWebhooks(mgr); err != nil {

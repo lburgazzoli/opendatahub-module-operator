@@ -22,13 +22,14 @@ import (
 
 	"github.com/blang/semver/v4"
 	. "github.com/onsi/gomega"
+	fwapi "github.com/opendatahub-io/odh-platform-utilities/framework/api"
+	fwtypes "github.com/opendatahub-io/odh-platform-utilities/framework/controller/types"
 	ofVersion "github.com/operator-framework/api/pkg/lib/version"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	componentApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-trustyai-operator/api/components/v1alpha1"
 	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-trustyai-operator/pkg/config"
-	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/cluster"
-	odhtypes "github.com/opendatahub-io/opendatahub-operator/v2/pkg/controller/types"
+	"github.com/opendatahub-io/odh-platform-utilities/pkg/cluster"
 )
 
 func newTestModule(t *testing.T) *Module {
@@ -47,16 +48,19 @@ func newTestModule(t *testing.T) *Module {
 	return m
 }
 
-func newTestRR(obj *componentApi.TrustyAI) *odhtypes.ReconciliationRequest {
+func newTestRR(obj *componentApi.TrustyAI) *fwtypes.ReconciliationRequest {
 	rel := (&moduleconfig.Config{
 		PlatformName:    string(cluster.OpenDataHub),
 		PlatformVersion: "1.0.0",
 	}).Release()
 
-	return &odhtypes.ReconciliationRequest{
+	return &fwtypes.ReconciliationRequest{
 		Instance:          obj,
 		ManifestsBasePath: "/manifests",
-		Release:           rel,
+		Release: fwapi.Release{
+			Name:    fwapi.Platform(rel.Name),
+			Version: rel.Version.Version,
+		},
 	}
 }
 

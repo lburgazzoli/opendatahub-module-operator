@@ -49,7 +49,7 @@ modules/$name/
     ${name}_test.go             # Unit tests
   pkg/config/config.go
   pkg/resources/gvk/gvk.go      # module-local GVK registry (controller + chartgen)
-  pkg/version/version.go
+  pkg/module/version.go
   pkg/cache/
   config/
     manifests/$name/            # symlink to opt/manifests/$name

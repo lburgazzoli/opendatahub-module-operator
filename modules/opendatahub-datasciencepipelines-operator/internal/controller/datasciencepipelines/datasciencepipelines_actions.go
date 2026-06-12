@@ -22,18 +22,17 @@ import (
 	"fmt"
 
 	componentApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-datasciencepipelines-operator/api/components/v1alpha1"
-	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/cluster"
-	odherr "github.com/opendatahub-io/opendatahub-operator/v2/pkg/controller/actions/errors"
-	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/controller/conditions"
-	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/controller/status"
-	odhtypes "github.com/opendatahub-io/opendatahub-operator/v2/pkg/controller/types"
+	module "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-datasciencepipelines-operator/pkg/module"
+	fwcluster "github.com/opendatahub-io/odh-platform-utilities/framework/cluster"
+	odherr "github.com/opendatahub-io/odh-platform-utilities/framework/controller/actions/errors"
+	"github.com/opendatahub-io/odh-platform-utilities/framework/controller/conditions"
+	fwtypes "github.com/opendatahub-io/odh-platform-utilities/framework/controller/types"
 	odhdeploy "github.com/opendatahub-io/opendatahub-operator/v2/pkg/deploy"
-	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/metadata/labels"
 	operatorv1 "github.com/openshift/api/operator/v1"
 	k8serr "k8s.io/apimachinery/pkg/api/errors"
 )
 
-func checkPreConditions(ctx context.Context, rr *odhtypes.ReconciliationRequest) error {
+func checkPreConditions(ctx context.Context, rr *fwtypes.ReconciliationRequest) error {
 	dsp, ok := rr.Instance.(*componentApi.DataSciencePipelines)
 	if !ok {
 		return fmt.Errorf("resource instance %T is not a DataSciencePipelines", rr.Instance)
@@ -42,17 +41,17 @@ func checkPreConditions(ctx context.Context, rr *odhtypes.ReconciliationRequest)
 	awfSpec := dsp.Spec.ArgoWorkflowsControllers
 	awfRemoved := awfSpec != nil && awfSpec.ManagementState == operatorv1.Removed
 
-	rr.Conditions.MarkTrue(status.ConditionArgoWorkflowAvailable)
+	rr.Conditions.MarkTrue(module.ConditionArgoWorkflowAvailable)
 
-	crd, err := cluster.GetCRD(ctx, rr.Client, ArgoWorkflowCRD)
+	crd, err := fwcluster.GetCRD(ctx, rr.Client, ArgoWorkflowCRD)
 	switch {
 	case k8serr.IsNotFound(err):
 		if awfRemoved {
 			rr.Conditions.MarkFalse(
-				status.ConditionArgoWorkflowAvailable,
+				module.ConditionArgoWorkflowAvailable,
 				conditions.WithObservedGeneration(rr.Instance.GetGeneration()),
-				conditions.WithReason(status.DataSciencePipelinesArgoWorkflowsCRDMissingReason),
-				conditions.WithMessage(status.DataSciencePipelinesArgoWorkflowsCRDMissingMessage),
+				conditions.WithReason(module.DataSciencePipelinesArgoWorkflowsCRDMissingReason),
+				conditions.WithMessage(module.DataSciencePipelinesArgoWorkflowsCRDMissingMessage),
 			)
 
 			return ErrArgoWorkflowCRDMissing
@@ -62,7 +61,7 @@ func checkPreConditions(ctx context.Context, rr *odhtypes.ReconciliationRequest)
 	case err != nil:
 		stopErr := odherr.NewStopError("failed to check for existing %s CRD: %w", ArgoWorkflowCRD, err)
 		rr.Conditions.MarkFalse(
-			status.ConditionArgoWorkflowAvailable,
+			module.ConditionArgoWorkflowAvailable,
 			conditions.WithObservedGeneration(rr.Instance.GetGeneration()),
 			conditions.WithError(stopErr),
 		)
@@ -72,22 +71,22 @@ func checkPreConditions(ctx context.Context, rr *odhtypes.ReconciliationRequest)
 
 	if awfRemoved {
 		rr.Conditions.MarkTrue(
-			status.ConditionArgoWorkflowAvailable,
+			module.ConditionArgoWorkflowAvailable,
 			conditions.WithObservedGeneration(rr.Instance.GetGeneration()),
-			conditions.WithReason(status.DataSciencePipelinesArgoWorkflowsNotManagedReason),
-			conditions.WithMessage(status.DataSciencePipelinesArgoWorkflowsNotManagedMessage),
+			conditions.WithReason(module.DataSciencePipelinesArgoWorkflowsNotManagedReason),
+			conditions.WithMessage(module.DataSciencePipelinesArgoWorkflowsNotManagedMessage),
 		)
 
 		return nil
 	}
 
-	odhLabelValue, odhLabelExists := crd.Labels[labels.ODH.Component(LegacyComponentName)]
+	odhLabelValue, odhLabelExists := crd.Labels[appLabelPrefix+"/"+LegacyComponentName]
 	if !odhLabelExists || odhLabelValue != "true" {
 		rr.Conditions.MarkFalse(
-			status.ConditionArgoWorkflowAvailable,
+			module.ConditionArgoWorkflowAvailable,
 			conditions.WithObservedGeneration(rr.Instance.GetGeneration()),
-			conditions.WithReason(status.DataSciencePipelinesDoesntOwnArgoCRDReason),
-			conditions.WithMessage(status.DataSciencePipelinesDoesntOwnArgoCRDMessage),
+			conditions.WithReason(module.DataSciencePipelinesDoesntOwnArgoCRDReason),
+			conditions.WithMessage(module.DataSciencePipelinesDoesntOwnArgoCRDMessage),
 		)
 
 		return ErrArgoWorkflowAPINotOwned
@@ -96,7 +95,7 @@ func checkPreConditions(ctx context.Context, rr *odhtypes.ReconciliationRequest)
 	return nil
 }
 
-func argoWorkflowsControllersOptions(_ context.Context, rr *odhtypes.ReconciliationRequest) error {
+func argoWorkflowsControllersOptions(_ context.Context, rr *fwtypes.ReconciliationRequest) error {
 	dsp, ok := rr.Instance.(*componentApi.DataSciencePipelines)
 	if !ok {
 		return fmt.Errorf("resource instance %T is not a DataSciencePipelines", rr.Instance)

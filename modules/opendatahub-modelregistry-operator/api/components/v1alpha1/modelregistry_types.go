@@ -17,7 +17,8 @@ limitations under the License.
 package v1alpha1
 
 import (
-	"github.com/opendatahub-io/opendatahub-operator/v2/api/common"
+	common "github.com/opendatahub-io/odh-platform-utilities/api/common"
+	ofVersion "github.com/operator-framework/api/pkg/lib/version"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -32,6 +33,24 @@ const (
 	ModelRegistryKind = "ModelRegistry"
 )
 
+type Platform string
+
+// Release reports the operator version and platform.
+type Release struct {
+	Name    Platform                  `json:"name,omitempty"`
+	Version ofVersion.OperatorVersion `json:"version,omitempty"`
+}
+
+// GatewaySpec defines gateway-related settings for Model Registry.
+type GatewaySpec struct {
+	// Domain is the fully qualified domain name for the gateway.
+	// Example: "rhods-dashboard.apps.example.com"
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MaxLength=253
+	// +kubebuilder:validation:Pattern=`^([a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?\.)*[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?$`
+	Domain string `json:"domain"`
+}
+
 // Compile-time interface assertion.
 var _ common.PlatformObject = (*ModelRegistry)(nil)
 
@@ -41,7 +60,7 @@ type ModelRegistrySpec struct {
 	ModelRegistryCommonSpec `json:",inline"`
 	// Gateway configuration for model registry ingress.
 	// +optional
-	Gateway *common.GatewaySpec `json:"gateway,omitempty"`
+	Gateway *GatewaySpec `json:"gateway,omitempty"`
 }
 
 // ModelRegistryCommonStatus defines the shared observed state of ModelRegistry.
@@ -56,7 +75,7 @@ type ModelRegistryStatus struct {
 	ModelRegistryCommonStatus     `json:",inline"`
 
 	// Release reports the operator version and platform.
-	Release common.Release `json:"release,omitempty"`
+	Release Release `json:"release,omitempty"`
 }
 
 // +kubebuilder:object:root=true
@@ -89,12 +108,12 @@ func (c *ModelRegistry) SetConditions(conditions []common.Condition) {
 	c.Status.SetConditions(conditions)
 }
 
-func (c *ModelRegistry) GetReleaseStatus() *[]common.ComponentRelease {
-	return &c.Status.Releases
+func (c *ModelRegistry) GetReleaseStatus() *common.ComponentReleaseStatus {
+	return &c.Status.ComponentReleaseStatus
 }
 
-func (c *ModelRegistry) SetReleaseStatus(releases []common.ComponentRelease) {
-	c.Status.Releases = releases
+func (c *ModelRegistry) SetReleaseStatus(status common.ComponentReleaseStatus) {
+	c.Status.ComponentReleaseStatus = status
 }
 
 // +kubebuilder:object:root=true

@@ -21,19 +21,18 @@ import (
 
 	componentApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-datasciencepipelines-operator/api/components/v1alpha1"
 	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-datasciencepipelines-operator/pkg/config"
+	localreleases "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-datasciencepipelines-operator/pkg/controller/actions/releases"
+	module "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-datasciencepipelines-operator/pkg/module"
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-datasciencepipelines-operator/pkg/resources/gvk"
-	"github.com/opendatahub-io/opendatahub-operator/v2/api/common"
-	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/controller/actions/deploy"
-	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/controller/actions/gc"
-	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/controller/actions/render/kustomize"
-	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/controller/actions/status/deployments"
-	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/controller/actions/status/releases"
-	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/controller/handlers"
-	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/controller/predicates"
-	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/controller/predicates/component"
-	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/controller/reconciler"
-	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/controller/status"
-	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/metadata/labels"
+	fwapi "github.com/opendatahub-io/odh-platform-utilities/framework/api"
+	"github.com/opendatahub-io/odh-platform-utilities/framework/controller/actions/deploy"
+	"github.com/opendatahub-io/odh-platform-utilities/framework/controller/actions/gc"
+	"github.com/opendatahub-io/odh-platform-utilities/framework/controller/actions/render/kustomize"
+	"github.com/opendatahub-io/odh-platform-utilities/framework/controller/actions/status/deployments"
+	"github.com/opendatahub-io/odh-platform-utilities/framework/controller/handlers"
+	"github.com/opendatahub-io/odh-platform-utilities/framework/controller/predicates"
+	labelpred "github.com/opendatahub-io/odh-platform-utilities/framework/controller/predicates/label"
+	"github.com/opendatahub-io/odh-platform-utilities/framework/controller/reconciler"
 	promv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -41,6 +40,8 @@ import (
 	extv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	ctrl "sigs.k8s.io/controller-runtime"
 )
+
+const appLabelPrefix = "app.opendatahub.io"
 
 // Module CRD.
 // +kubebuilder:rbac:groups=components.platform.opendatahub.io,resources=datasciencepipelines,verbs=get;list;watch;create;update;patch;delete
@@ -87,7 +88,7 @@ func NewReconciler(
 	ctx context.Context,
 	mgr ctrl.Manager,
 	cfg *moduleconfig.Config,
-	rel common.Release,
+	rel componentApi.Release,
 ) error {
 	m, err := NewModule(cfg)
 	if err != nil {
@@ -109,36 +110,45 @@ func NewReconciler(
 		Watches(
 			&extv1.CustomResourceDefinition{},
 			reconciler.WithEventHandler(handlers.ToNamed(componentApi.DataSciencePipelinesInstanceName)),
-			reconciler.WithPredicates(component.ForLabel(labels.ODH.Component(LegacyComponentName), labels.True)),
+			reconciler.WithPredicates(labelpred.ForLabel(appLabelPrefix+"/"+LegacyComponentName, "true")),
+		).
+		WithReconcilerOpts(
+			reconciler.WithRelease(fwapi.Release{
+				Name:    fwapi.Platform(rel.Name),
+				Version: rel.Version.Version,
+			}),
 		).
 		WithAction(checkPreConditions).
 		WithAction(m.initialize).
+		WithAction(m.applyBaseParams).
 		WithAction(m.upgradeIfNeeded).
 		WithAction(argoWorkflowsControllersOptions).
-		WithAction(releases.NewAction()).
-		WithAction(kustomize.NewAction(
-			kustomize.WithLabel(labels.ODH.Component(LegacyComponentName), labels.True),
-			kustomize.WithLabel(labels.K8SCommon.PartOf, LegacyComponentName),
-		)).
+		WithAction(localreleases.NewAction()).
+		WithAction(kustomize.NewAction()).
 		WithAction(deploy.NewAction(
 			deploy.WithCache(),
 			deploy.WithApplyOrder(),
+			deploy.WithLabel(appLabelPrefix+"/"+LegacyComponentName, "true"),
+			deploy.WithPartOfLabelDefault(LegacyComponentName),
 		)).
-		WithAction(deployments.NewAction()).
+		WithAction(deployments.NewAction(
+			deployments.InNamespaceFn(moduleconfig.ApplicationsNamespaceGetter(cfg)),
+		)).
 		WithAction(m.reportStatus).
-		WithAction(gc.NewAction(
-			gc.InNamespace(cfg.ApplicationsNamespace),
-		)).
+		WithAction(gc.NewAction(moduleconfig.ApplicationsNamespaceGetter(cfg))).
 		WithConditions(
-			status.ConditionArgoWorkflowAvailable,
-			status.ConditionDeploymentsAvailable,
+			module.ConditionArgoWorkflowAvailable,
+			deployments.DefaultConditionType,
 		).
 		Build(ctx)
 	if err != nil {
 		return err
 	}
 
-	r.Release = rel
+	r.Release = fwapi.Release{
+		Name:    fwapi.Platform(rel.Name),
+		Version: rel.Version.Version,
+	}
 
 	return nil
 }

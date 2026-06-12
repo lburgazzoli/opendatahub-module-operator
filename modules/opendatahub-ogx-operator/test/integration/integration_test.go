@@ -26,7 +26,6 @@ import (
 	"time"
 
 	. "github.com/onsi/gomega"
-	"github.com/spf13/viper"
 
 	promv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
 	appsv1 "k8s.io/api/apps/v1"
@@ -52,7 +51,6 @@ import (
 	ogxcontroller "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-ogx-operator/internal/controller/ogx"
 	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-ogx-operator/pkg/config"
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-ogx-operator/test/support"
-	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/cluster"
 	odhmanager "github.com/opendatahub-io/opendatahub-operator/v2/pkg/manager"
 )
 
@@ -126,9 +124,6 @@ func runTestMain(m *testing.M) int {
 	_ = directClient.DeleteAllOf(ctx, &componentsv1alpha1.OGX{})
 	_ = directClient.DeleteAllOf(ctx, &appsv1.Deployment{}, client.InNamespace(testNamespace))
 	_ = directClient.DeleteAllOf(ctx, &corev1.Service{}, client.InNamespace(testNamespace))
-
-	viper.Set("rhai-applications-namespace", testNamespace)
-	cluster.SetRHAIApplicationNamespace(testNamespace)
 
 	operatorCfgData = support.MustReadConfigMapData(
 		support.MustProjectFile("config", "manager", "configmap.yaml"))

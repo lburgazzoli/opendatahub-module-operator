@@ -26,7 +26,6 @@ import (
 	"time"
 
 	. "github.com/onsi/gomega"
-	"github.com/spf13/viper"
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -51,8 +50,6 @@ import (
 	mrcontroller "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-modelregistry-operator/internal/controller/modelregistry"
 	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-modelregistry-operator/pkg/config"
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-modelregistry-operator/test/support"
-	"github.com/opendatahub-io/opendatahub-operator/v2/api/common"
-	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/cluster"
 	odhmanager "github.com/opendatahub-io/opendatahub-operator/v2/pkg/manager"
 )
 
@@ -139,9 +136,6 @@ func runTestMain(m *testing.M) int {
 	_ = directClient.DeleteAllOf(ctx, &componentsv1alpha1.ModelRegistry{})
 	_ = directClient.DeleteAllOf(ctx, &appsv1.Deployment{}, client.InNamespace(testNamespace))
 	_ = directClient.DeleteAllOf(ctx, &corev1.Service{}, client.InNamespace(testNamespace))
-
-	viper.Set("rhai-applications-namespace", testNamespace)
-	cluster.SetRHAIApplicationNamespace(testNamespace)
 
 	operatorCfgData = support.MustReadConfigMapData(
 		support.MustProjectFile("config", "manager", "configmap.yaml"))
@@ -241,7 +235,7 @@ func TestModelRegistry(t *testing.T) {
 				Name: componentsv1alpha1.ModelRegistryInstanceName,
 			},
 			Spec: componentsv1alpha1.ModelRegistrySpec{
-				Gateway: &common.GatewaySpec{
+				Gateway: &componentsv1alpha1.GatewaySpec{
 					Domain: testGatewayDomain,
 				},
 			},

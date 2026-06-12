@@ -38,11 +38,10 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
+	"github.com/opendatahub-io/odh-platform-utilities/framework/resources"
 	infrav1 "github.com/opendatahub-io/opendatahub-operator/v2/api/infrastructure/v1"
-	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/cluster"
-	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/resources"
-	webhookutils "github.com/opendatahub-io/opendatahub-operator/v2/pkg/webhook"
 
+	module "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-workbenches-operator/pkg/module"
 	gvk "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-workbenches-operator/pkg/resources/gvk"
 )
 
@@ -79,9 +78,10 @@ func (m *Module) handleHardwareProfileNotebook(ctx context.Context, req admissio
 		return admission.Errored(http.StatusBadRequest, fmt.Errorf("unexpected kind: %s", req.Kind.Kind))
 	}
 
-	obj, err := webhookutils.DecodeUnstructured(m.decoder, req)
+	obj := &unstructured.Unstructured{}
+	err := m.decoder.Decode(req, obj)
 	if err != nil {
-		return admission.Errored(http.StatusInternalServerError, err)
+		return admission.Errored(http.StatusInternalServerError, fmt.Errorf("failed to decode object: %w", err))
 	}
 	if !obj.GetDeletionTimestamp().IsZero() {
 		return admission.Allowed("object marked for deletion")
@@ -310,7 +310,7 @@ func removeHWPSettings(obj *unstructured.Unstructured, hwp *infrav1.HardwareProf
 		}
 	}
 	if hwp.Spec.SchedulingSpec.Kueue != nil && hwp.Spec.SchedulingSpec.Kueue.LocalQueueName != "" {
-		resources.RemoveLabel(obj, cluster.KueueQueueNameLabel)
+		resources.RemoveLabel(obj, module.KueueQueueNameLabel)
 	}
 }
 
@@ -319,7 +319,7 @@ func applyHWPToNotebook(ctx context.Context, obj *unstructured.Unstructured, hwp
 
 	if profileChanged {
 		logf.FromContext(ctx).V(1).Info("clearing scheduling settings due to profile change")
-		resources.RemoveLabel(obj, cluster.KueueQueueNameLabel)
+		resources.RemoveLabel(obj, module.KueueQueueNameLabel)
 		unstructured.RemoveNestedField(obj.Object, notebookWorkloadConfig.nodeSelectorPath...)
 		unstructured.RemoveNestedField(obj.Object, notebookWorkloadConfig.tolerationsPath...)
 	}
@@ -334,11 +334,11 @@ func applyHWPToNotebook(ctx context.Context, obj *unstructured.Unstructured, hwp
 		if hwp.Spec.SchedulingSpec.Kueue != nil && hwp.Spec.SchedulingSpec.Kueue.LocalQueueName != "" {
 			hwpVal := hwp.Spec.SchedulingSpec.Kueue.LocalQueueName
 			if !profileChanged {
-				if existing := resources.GetLabel(obj, cluster.KueueQueueNameLabel); existing != "" && existing != hwpVal {
-					warnings = append(warnings, fmt.Sprintf("label %q overwritten by HardwareProfile %q", cluster.KueueQueueNameLabel, hwp.Name))
+				if existing := resources.GetLabel(obj, module.KueueQueueNameLabel); existing != "" && existing != hwpVal {
+					warnings = append(warnings, fmt.Sprintf("label %q overwritten by HardwareProfile %q", module.KueueQueueNameLabel, hwp.Name))
 				}
 			}
-			resources.SetLabel(obj, cluster.KueueQueueNameLabel, hwpVal)
+			resources.SetLabel(obj, module.KueueQueueNameLabel, hwpVal)
 			return warnings, nil
 		}
 		if hwp.Spec.SchedulingSpec.Node != nil {
@@ -399,15 +399,15 @@ func applyIdentifiers(container any, identifiers []infrav1.HardwareIdentifier) e
 	if !ok {
 		return errors.New("container is not a map")
 	}
-	resMap, err := webhookutils.GetOrCreateNestedMap(cm, "resources")
+	resMap, err := getOrCreateNestedMap(cm, "resources")
 	if err != nil {
 		return err
 	}
-	requests, err := webhookutils.GetOrCreateNestedMap(resMap, "requests")
+	requests, err := getOrCreateNestedMap(resMap, "requests")
 	if err != nil {
 		return err
 	}
-	limits, err := webhookutils.GetOrCreateNestedMap(resMap, "limits")
+	limits, err := getOrCreateNestedMap(resMap, "limits")
 	if err != nil {
 		return err
 	}
@@ -428,6 +428,24 @@ func applyIdentifiers(container any, identifiers []infrav1.HardwareIdentifier) e
 	resMap["limits"] = limits
 	cm["resources"] = resMap
 	return nil
+}
+
+func getOrCreateNestedMap(values map[string]any, key string) (map[string]any, error) {
+	if values == nil {
+		return nil, errors.New("parent map is nil")
+	}
+
+	if existing, ok := values[key]; ok {
+		nested, ok := existing.(map[string]any)
+		if !ok {
+			return nil, fmt.Errorf("field %q is not a map", key)
+		}
+		return nested, nil
+	}
+
+	nested := map[string]any{}
+	values[key] = nested
+	return nested, nil
 }
 
 func convertIntOrString(v intstr.IntOrString) (resource.Quantity, error) {

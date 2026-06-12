@@ -19,7 +19,7 @@ package ogx
 import (
 	"context"
 
-	odhtypes "github.com/opendatahub-io/opendatahub-operator/v2/pkg/controller/types"
+	odhtypes "github.com/opendatahub-io/odh-platform-utilities/framework/controller/types"
 )
 
 // checkPreConditions validates that the environment is ready for OGX.

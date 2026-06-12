@@ -42,7 +42,6 @@ import (
 
 	componentsv1alpha1 "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-modelregistry-operator/api/components/v1alpha1"
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-modelregistry-operator/test/support"
-	"github.com/opendatahub-io/opendatahub-operator/v2/api/common"
 )
 
 const (
@@ -118,7 +117,7 @@ func TestModelRegistry(t *testing.T) {
 				Name: componentsv1alpha1.ModelRegistryInstanceName,
 			},
 			Spec: componentsv1alpha1.ModelRegistrySpec{
-				Gateway: &common.GatewaySpec{
+				Gateway: &componentsv1alpha1.GatewaySpec{
 					Domain: gatewayDomain,
 				},
 			},

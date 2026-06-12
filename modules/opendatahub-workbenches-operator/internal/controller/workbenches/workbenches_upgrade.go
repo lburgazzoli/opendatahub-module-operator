@@ -25,10 +25,9 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
-	"github.com/opendatahub-io/opendatahub-operator/v2/api/common"
+	fwtypes "github.com/opendatahub-io/odh-platform-utilities/framework/controller/types"
 
 	componentApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-workbenches-operator/api/components/v1alpha1"
-	odhtypes "github.com/opendatahub-io/opendatahub-operator/v2/pkg/controller/types"
 )
 
 const upgradeEventReasonStarted = "UpgradeStarted"
@@ -36,7 +35,7 @@ const upgradeEventReasonStarted = "UpgradeStarted"
 // upgradeIfNeeded compares the desired platform version from the release with
 // the last applied version recorded in status, and runs idempotent migrations
 // when the version advances.
-func (m *Module) upgradeIfNeeded(ctx context.Context, rr *odhtypes.ReconciliationRequest) error {
+func (m *Module) upgradeIfNeeded(ctx context.Context, rr *fwtypes.ReconciliationRequest) error {
 	log := logf.FromContext(ctx)
 	obj, ok := rr.Instance.(*componentApi.Workbenches)
 	if !ok {
@@ -69,7 +68,7 @@ func (m *Module) upgradeIfNeeded(ctx context.Context, rr *odhtypes.Reconciliatio
 // upgrade runs idempotent migrations when the platform version advances.
 // It migrates AcceleratorProfile and container-size annotations on Notebooks to HardwareProfile
 // annotations, and creates the corresponding HardwareProfile CRs when they do not yet exist.
-func (m *Module) upgrade(ctx context.Context, _ common.Release, rr *odhtypes.ReconciliationRequest) error {
+func (m *Module) upgrade(ctx context.Context, _ componentApi.Release, rr *fwtypes.ReconciliationRequest) error {
 	return m.migrateHardwareProfilesForNotebooks(ctx, rr.Client)
 }
 

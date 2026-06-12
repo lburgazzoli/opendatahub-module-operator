@@ -27,19 +27,20 @@ import (
 
 	componentApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-trustyai-operator/api/components/v1alpha1"
 	modulegvk "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-trustyai-operator/pkg/resources/gvk"
-	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/cluster"
-	odherrors "github.com/opendatahub-io/opendatahub-operator/v2/pkg/controller/actions/errors"
-	odhtypes "github.com/opendatahub-io/opendatahub-operator/v2/pkg/controller/types"
-	pkgresources "github.com/opendatahub-io/opendatahub-operator/v2/pkg/resources"
+	fwcluster "github.com/opendatahub-io/odh-platform-utilities/framework/cluster"
+	odherrors "github.com/opendatahub-io/odh-platform-utilities/framework/controller/actions/errors"
+	fwtypes "github.com/opendatahub-io/odh-platform-utilities/framework/controller/types"
+	pkgresources "github.com/opendatahub-io/odh-platform-utilities/framework/resources"
+	odhcluster "github.com/opendatahub-io/odh-platform-utilities/pkg/cluster"
 )
 
 // checkPreConditions verifies that:
 //  1. Kserve module CRD (kserves.components.platform.opendatahub.io) exists — KServe module is installed
 //  2. At least one Kserve CR exists — KServe module is enabled
 //  3. InferenceServices CRD (inferenceservices.serving.kserve.io) exists — KServe is installed
-func (m *Module) checkPreConditions(ctx context.Context, rr *odhtypes.ReconciliationRequest) error {
+func (m *Module) checkPreConditions(ctx context.Context, rr *fwtypes.ReconciliationRequest) error {
 	// Check Kserve module CRD — signals the KServe module operator is installed.
-	kserveModuleCRD, err := cluster.HasCRD(ctx, rr.Client, modulegvk.Kserve)
+	kserveModuleCRD, err := fwcluster.HasCRD(ctx, rr.Client, modulegvk.Kserve)
 	switch {
 	case err != nil:
 		return odherrors.NewStopError("failed to check Kserve module CRD: %w", err)
@@ -48,7 +49,7 @@ func (m *Module) checkPreConditions(ctx context.Context, rr *odhtypes.Reconcilia
 	}
 
 	// Check that the Kserve singleton CR exists — signals KServe module is enabled.
-	if err := cluster.GetSingleton(ctx, rr.Client, pkgresources.GvkToUnstructured(modulegvk.Kserve)); err != nil {
+	if err := odhcluster.GetSingleton(ctx, rr.Client, pkgresources.GvkToUnstructured(modulegvk.Kserve)); err != nil {
 		if k8serr.IsNotFound(err) {
 			return odherrors.NewStopError("Kserve CR not found: the KServe module must be enabled before enabling TrustyAI")
 		}
@@ -56,7 +57,7 @@ func (m *Module) checkPreConditions(ctx context.Context, rr *odhtypes.Reconcilia
 	}
 
 	// Check InferenceServices CRD (same check as monolith).
-	isvc, err := cluster.HasCRD(ctx, rr.Client, modulegvk.InferenceServices)
+	isvc, err := fwcluster.HasCRD(ctx, rr.Client, modulegvk.InferenceServices)
 	switch {
 	case err != nil:
 		return odherrors.NewStopError("failed to check %s CRD: %w", modulegvk.InferenceServices, err)
@@ -69,7 +70,7 @@ func (m *Module) checkPreConditions(ctx context.Context, rr *odhtypes.Reconcilia
 
 // createConfigMap creates the trustyai-dsc-config ConfigMap with eval permission settings.
 // This mirrors the monolith's createConfigMap action (trustyai_controller_actions.go:64).
-func (m *Module) createConfigMap(_ context.Context, rr *odhtypes.ReconciliationRequest) error {
+func (m *Module) createConfigMap(_ context.Context, rr *fwtypes.ReconciliationRequest) error {
 	tai, ok := rr.Instance.(*componentApi.TrustyAI)
 	if !ok {
 		return fmt.Errorf("instance is not a TrustyAI")

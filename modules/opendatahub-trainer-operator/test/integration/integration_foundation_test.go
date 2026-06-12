@@ -14,8 +14,10 @@ import (
 
 	componentsv1alpha1 "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-trainer-operator/api/components/v1alpha1"
 	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-trainer-operator/pkg/config"
+	module "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-trainer-operator/pkg/module"
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-trainer-operator/test/support"
-	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/controller/status"
+	common "github.com/opendatahub-io/odh-platform-utilities/api/common"
+	fwapi "github.com/opendatahub-io/odh-platform-utilities/framework/api"
 )
 
 type foundationTests struct {
@@ -59,29 +61,29 @@ func (ft *foundationTests) testModuleCRDInstalled(t *testing.T) {
 
 func (ft *foundationTests) expectDependenciesUnavailable(
 	t *testing.T,
-	module *componentsv1alpha1.Trainer,
+	obj *componentsv1alpha1.Trainer,
 	expectedMessage string,
 ) {
 	t.Helper()
 
 	g := NewWithT(t)
-	g.Eventually(k.Get(module)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(And(
+	g.Eventually(k.Get(obj)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(And(
 		jq.Match(`(.status.conditions // []) | any(.[]; .type == "%s" and .status == "%s")`,
-			status.ConditionDependenciesAvailable, metav1.ConditionFalse),
+			module.ConditionDependenciesAvailable, metav1.ConditionFalse),
 		jq.Match(`(.status.conditions // []) | any(.[]; .type == "%s" and .reason == "%s")`,
-			status.ConditionDependenciesAvailable, "PreConditionFailed"),
+			module.ConditionDependenciesAvailable, module.PreConditionFailedReason),
 		jq.Match(`(.status.conditions // []) | any(.[]; .type == "%s" and .message == "%s")`,
-			status.ConditionDependenciesAvailable, expectedMessage),
+			module.ConditionDependenciesAvailable, expectedMessage),
 		jq.Match(`(.status.conditions // []) | any(.[]; .type == "%s" and .status == "%s")`,
-			status.ConditionTypeReady, metav1.ConditionFalse),
+			fwapi.ConditionTypeReady, metav1.ConditionFalse),
 		jq.Match(`(.status.conditions // []) | any(.[]; .type == "%s" and .status == "%s")`,
-			status.ConditionTypeProvisioningSucceeded, metav1.ConditionFalse),
+			common.ConditionTypeProvisioningSucceeded, metav1.ConditionFalse),
 	))
 }
 
 func (ft *foundationTests) testJobSetOperatorCRDMissing(t *testing.T) {
 	g := NewWithT(t)
-	module := ft.module.DeepCopy()
+	obj := ft.module.DeepCopy()
 	ft.cleanupModuleWorkload(t)
 
 	jobSetOperatorCRD := &apiextensionsv1.CustomResourceDefinition{
@@ -100,19 +102,19 @@ func (ft *foundationTests) testJobSetOperatorCRDMissing(t *testing.T) {
 			"jobsetoperators",
 		)
 		_, _ = support.EnsureStubJobSetOperatorCRIfMissing(ctx, directClient)
-		_ = k8sClient.Delete(ctx, module)
-		waitForSingletonDeleted(t, module)
+		_ = k8sClient.Delete(ctx, obj)
+		waitForSingletonDeleted(t, obj)
 		waitForDeleted(t, ft.workloadDeploy)
 	})
 
-	module.ResourceVersion = ""
-	g.Expect(k8sClient.Create(ctx, module)).To(Succeed())
-	ft.expectDependenciesUnavailable(t, module, status.JobSetOperatorNotInstalledMessage)
+	obj.ResourceVersion = ""
+	g.Expect(k8sClient.Create(ctx, obj)).To(Succeed())
+	ft.expectDependenciesUnavailable(t, obj, module.JobSetOperatorNotInstalledMessage)
 }
 
 func (ft *foundationTests) testJobSetOperatorCRMissing(t *testing.T) {
 	g := NewWithT(t)
-	module := ft.module.DeepCopy()
+	obj := ft.module.DeepCopy()
 	ft.cleanupModuleWorkload(t)
 
 	jobSetOperatorCR := support.NewStubJobSetOperatorCR()
@@ -120,19 +122,19 @@ func (ft *foundationTests) testJobSetOperatorCRMissing(t *testing.T) {
 	waitForDeleted(t, jobSetOperatorCR)
 	t.Cleanup(func() {
 		_, _ = support.EnsureStubJobSetOperatorCRIfMissing(ctx, directClient)
-		_ = k8sClient.Delete(ctx, module)
-		waitForSingletonDeleted(t, module)
+		_ = k8sClient.Delete(ctx, obj)
+		waitForSingletonDeleted(t, obj)
 		waitForDeleted(t, ft.workloadDeploy)
 	})
 
-	module.ResourceVersion = ""
-	g.Expect(k8sClient.Create(ctx, module)).To(Succeed())
-	ft.expectDependenciesUnavailable(t, module, status.JobSetOperatorCRNotFoundMessage)
+	obj.ResourceVersion = ""
+	g.Expect(k8sClient.Create(ctx, obj)).To(Succeed())
+	ft.expectDependenciesUnavailable(t, obj, module.JobSetOperatorCRNotFoundMessage)
 }
 
 func (ft *foundationTests) testJobSetCRDMissing(t *testing.T) {
 	g := NewWithT(t)
-	module := ft.module.DeepCopy()
+	obj := ft.module.DeepCopy()
 	ft.cleanupModuleWorkload(t)
 
 	jobSetCRD := &apiextensionsv1.CustomResourceDefinition{
@@ -150,14 +152,14 @@ func (ft *foundationTests) testJobSetCRDMissing(t *testing.T) {
 			"JobSet",
 			"jobsets",
 		)
-		_ = k8sClient.Delete(ctx, module)
-		waitForSingletonDeleted(t, module)
+		_ = k8sClient.Delete(ctx, obj)
+		waitForSingletonDeleted(t, obj)
 		waitForDeleted(t, ft.workloadDeploy)
 	})
 
-	module.ResourceVersion = ""
-	g.Expect(k8sClient.Create(ctx, module)).To(Succeed())
-	ft.expectDependenciesUnavailable(t, module, status.JobSetCRDMissingMessage)
+	obj.ResourceVersion = ""
+	g.Expect(k8sClient.Create(ctx, obj)).To(Succeed())
+	ft.expectDependenciesUnavailable(t, obj, module.JobSetCRDMissingMessage)
 }
 
 func (ft *foundationTests) testBecomesReady(t *testing.T) {

@@ -21,8 +21,7 @@ import (
 	"fmt"
 
 	componentApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-feast-operator/api/components/v1alpha1"
-	"github.com/opendatahub-io/opendatahub-operator/v2/api/common"
-	odhtypes "github.com/opendatahub-io/opendatahub-operator/v2/pkg/controller/types"
+	odhtypes "github.com/opendatahub-io/odh-platform-utilities/framework/controller/types"
 )
 
 func (m *Module) upgradeIfNeeded(ctx context.Context, rr *odhtypes.ReconciliationRequest) error {
@@ -46,7 +45,7 @@ func (m *Module) upgradeIfNeeded(ctx context.Context, rr *odhtypes.Reconciliatio
 
 // upgrade runs idempotent migrations when the platform version advances.
 // Add version-gated migrations here as needed.
-func (m *Module) upgrade(_ context.Context, prev common.Release, rr *odhtypes.ReconciliationRequest) error {
+func (m *Module) upgrade(_ context.Context, prev componentApi.Release, rr *odhtypes.ReconciliationRequest) error {
 	_ = prev
 	_ = rr
 	return nil

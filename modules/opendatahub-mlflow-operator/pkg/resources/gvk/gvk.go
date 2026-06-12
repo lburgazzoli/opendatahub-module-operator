@@ -22,26 +22,32 @@ package gvk
 import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 
-	odhgvk "github.com/opendatahub-io/opendatahub-operator/v2/pkg/cluster/gvk"
+	fwgvk "github.com/opendatahub-io/odh-platform-utilities/framework/cluster/gvk"
 )
 
 var (
 	// Chartgen GVKs (shared across module Helm chart generation).
-	Namespace                      = odhgvk.Namespace
-	Deployment                     = odhgvk.Deployment
-	ServiceAccount                 = odhgvk.ServiceAccount
-	ConfigMap                      = odhgvk.ConfigMap
-	ClusterRoleBinding             = odhgvk.ClusterRoleBinding
-	RoleBinding                    = odhgvk.RoleBinding
-	MutatingWebhookConfiguration   = odhgvk.MutatingWebhookConfiguration
-	ValidatingWebhookConfiguration = odhgvk.ValidatingWebhookConfiguration
-	CertManagerCertificate         = odhgvk.CertManagerCertificate
+	Namespace                      = fwgvk.Namespace
+	Deployment                     = fwgvk.Deployment
+	ServiceAccount                 = fwgvk.ServiceAccount
+	ConfigMap                      = fwgvk.ConfigMap
+	ClusterRoleBinding             = fwgvk.ClusterRoleBinding
+	RoleBinding                    = fwgvk.RoleBinding
+	MutatingWebhookConfiguration   = fwgvk.MutatingWebhookConfiguration
+	ValidatingWebhookConfiguration = fwgvk.ValidatingWebhookConfiguration
+	CertManagerCertificate         = fwgvk.CertManagerCertificate
 
 	// Controller GVKs (reconciler watches and dynamic ownership).
-	MLflow        = odhgvk.MLflow
-	GatewayConfig = odhgvk.GatewayConfig
+	MLflow = fwgvk.MLflow
+	// Keep local to the MLflow module unless it becomes shared across components.
+	GatewayConfig = schema.GroupVersionKind{
+		Group:   "services.platform.opendatahub.io",
+		Version: "v1alpha1",
+		Kind:    "GatewayConfig",
+	}
 
-	// ConsoleLink is the OpenShift ConsoleLink GVK (no upstream gvk.* constant).
+	// ConsoleLink is the OpenShift ConsoleLink GVK.
+	// Keep local to the MLflow module unless it becomes shared across components.
 	ConsoleLink = schema.GroupVersionKind{
 		Group:   "console.openshift.io",
 		Version: "v1",

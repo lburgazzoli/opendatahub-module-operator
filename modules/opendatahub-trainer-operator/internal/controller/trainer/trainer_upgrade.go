@@ -20,8 +20,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/opendatahub-io/opendatahub-operator/v2/api/common"
-	odhtypes "github.com/opendatahub-io/opendatahub-operator/v2/pkg/controller/types"
+	odhtypes "github.com/opendatahub-io/odh-platform-utilities/framework/controller/types"
 
 	componentApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-trainer-operator/api/components/v1alpha1"
 )
@@ -45,7 +44,7 @@ func (m *Module) upgradeIfNeeded(ctx context.Context, rr *odhtypes.Reconciliatio
 	return m.upgrade(ctx, prev, rr)
 }
 
-func (m *Module) upgrade(_ context.Context, prev common.Release, rr *odhtypes.ReconciliationRequest) error {
+func (m *Module) upgrade(_ context.Context, prev componentApi.Release, rr *odhtypes.ReconciliationRequest) error {
 	_ = prev
 	_ = rr
 

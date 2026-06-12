@@ -29,19 +29,19 @@ import (
 
 	componentApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-trustyai-operator/api/components/v1alpha1"
 	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-trustyai-operator/pkg/config"
-	"github.com/opendatahub-io/opendatahub-operator/v2/api/common"
-	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/controller/actions/deploy"
-	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/controller/actions/gc"
-	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/controller/actions/render/kustomize"
-	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/controller/actions/status/deployments"
-	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/controller/actions/status/releases"
-	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/controller/handlers"
-	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/controller/predicates"
-	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/controller/predicates/component"
-	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/controller/reconciler"
-	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/controller/status"
-	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/metadata/labels"
+	localreleases "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-trustyai-operator/pkg/controller/actions/releases"
+	fwapi "github.com/opendatahub-io/odh-platform-utilities/framework/api"
+	"github.com/opendatahub-io/odh-platform-utilities/framework/controller/actions/deploy"
+	"github.com/opendatahub-io/odh-platform-utilities/framework/controller/actions/gc"
+	"github.com/opendatahub-io/odh-platform-utilities/framework/controller/actions/render/kustomize"
+	"github.com/opendatahub-io/odh-platform-utilities/framework/controller/actions/status/deployments"
+	"github.com/opendatahub-io/odh-platform-utilities/framework/controller/handlers"
+	"github.com/opendatahub-io/odh-platform-utilities/framework/controller/predicates"
+	labelpred "github.com/opendatahub-io/odh-platform-utilities/framework/controller/predicates/label"
+	"github.com/opendatahub-io/odh-platform-utilities/framework/controller/reconciler"
 )
+
+const appLabelPrefix = "app.opendatahub.io"
 
 // +kubebuilder:rbac:groups=components.platform.opendatahub.io,resources=trustyais,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=components.platform.opendatahub.io,resources=trustyais/status,verbs=get;update;patch
@@ -83,7 +83,7 @@ func NewReconciler(
 	ctx context.Context,
 	mgr ctrl.Manager,
 	cfg *moduleconfig.Config,
-	rel common.Release,
+	rel componentApi.Release,
 ) error {
 	m, err := NewModule(cfg)
 	if err != nil {
@@ -106,7 +106,7 @@ func NewReconciler(
 				handlers.ToNamed(componentApi.TrustyAIInstanceName)),
 			reconciler.WithPredicates(predicate.Or(
 				// Re-enqueue when TrustyAI-labelled CRDs change.
-				component.ForLabel(labels.ODH.Component(LegacyComponentName), labels.True),
+				labelpred.ForLabel(appLabelPrefix+"/"+LegacyComponentName, "true"),
 				// Re-enqueue when InferenceServices CRD appears/disappears (KServe dependency).
 				createdOrDeletedNamed(InferenceServicesCRDName),
 				// Re-enqueue when Kserve module CRD appears/disappears (module readiness signal).
@@ -118,26 +118,31 @@ func NewReconciler(
 			reconciler.WithEventHandler(
 				handlers.ToNamed(componentApi.TrustyAIInstanceName)),
 		).
+		WithReconcilerOpts(
+			reconciler.WithRelease(fwapi.Release{
+				Name:    fwapi.Platform(rel.Name),
+				Version: rel.Version.Version,
+			}),
+		).
 		WithAction(m.checkPreConditions).
 		WithAction(m.initialize).
 		WithAction(m.upgradeIfNeeded).
 		WithAction(m.createConfigMap).
-		WithAction(releases.NewAction()).
-		WithAction(kustomize.NewAction(
-			kustomize.WithLabel(labels.ODH.Component(LegacyComponentName), labels.True),
-			kustomize.WithLabel(labels.K8SCommon.PartOf, LegacyComponentName),
-		)).
+		WithAction(localreleases.NewAction()).
+		WithAction(kustomize.NewAction()).
 		WithAction(deploy.NewAction(
 			deploy.WithCache(),
 			deploy.WithApplyOrder(),
+			deploy.WithLabel(appLabelPrefix+"/"+LegacyComponentName, "true"),
+			deploy.WithPartOfLabelDefault(LegacyComponentName),
 		)).
-		WithAction(deployments.NewAction()).
+		WithAction(deployments.NewAction(
+			deployments.InNamespaceFn(moduleconfig.ApplicationsNamespaceGetter(cfg)),
+		)).
 		WithAction(m.reportStatus).
-		WithAction(gc.NewAction(
-			gc.InNamespace(cfg.ApplicationsNamespace),
-		)).
+		WithAction(gc.NewAction(moduleconfig.ApplicationsNamespaceGetter(cfg))).
 		WithConditions(
-			status.ConditionDeploymentsAvailable,
+			deployments.DefaultConditionType,
 		).
 		Build(ctx)
 
@@ -145,7 +150,10 @@ func NewReconciler(
 		return err
 	}
 
-	r.Release = rel
+	r.Release = fwapi.Release{
+		Name:    fwapi.Platform(rel.Name),
+		Version: rel.Version.Version,
+	}
 
 	return nil
 }

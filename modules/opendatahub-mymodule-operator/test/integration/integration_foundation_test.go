@@ -16,7 +16,7 @@ import (
 	componentsv1alpha1 "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-mymodule-operator/api/components/v1alpha1"
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-mymodule-operator/internal/controller/mymodule"
 	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-mymodule-operator/pkg/config"
-	"github.com/opendatahub-io/operator-actions-framework/resources"
+	"github.com/opendatahub-io/odh-platform-utilities/framework/resources"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 

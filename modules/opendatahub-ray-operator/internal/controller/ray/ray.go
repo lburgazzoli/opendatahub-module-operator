@@ -20,9 +20,9 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/opendatahub-io/opendatahub-operator/v2/api/common"
-	odhtypes "github.com/opendatahub-io/opendatahub-operator/v2/pkg/controller/types"
+	fwtypes "github.com/opendatahub-io/odh-platform-utilities/framework/controller/types"
 	odhdeploy "github.com/opendatahub-io/opendatahub-operator/v2/pkg/deploy"
+	ofVersion "github.com/operator-framework/api/pkg/lib/version"
 
 	componentApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-ray-operator/api/components/v1alpha1"
 	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-ray-operator/pkg/config"
@@ -46,12 +46,12 @@ var imageParamMap = map[string]string{
 // Module holds process-lifetime state for the ray controller.
 type Module struct {
 	cfg          *moduleconfig.Config
-	manifestInfo odhtypes.ManifestInfo
+	manifestInfo fwtypes.ManifestInfo
 }
 
 // NewModule creates a Module with one-shot computed state.
 func NewModule(cfg *moduleconfig.Config) (*Module, error) {
-	mi := odhtypes.ManifestInfo{
+	mi := fwtypes.ManifestInfo{
 		Path:       cfg.ManifestsPath,
 		ContextDir: componentName,
 		SourcePath: overlayOpenShift,
@@ -70,7 +70,7 @@ func NewModule(cfg *moduleconfig.Config) (*Module, error) {
 }
 
 // initialize appends manifests and applies image/namespace parameters.
-func (m *Module) initialize(_ context.Context, rr *odhtypes.ReconciliationRequest) error {
+func (m *Module) initialize(_ context.Context, rr *fwtypes.ReconciliationRequest) error {
 	rr.Manifests = append(rr.Manifests, m.manifestInfo)
 
 	if err := odhdeploy.ApplyParams(
@@ -86,15 +86,15 @@ func (m *Module) initialize(_ context.Context, rr *odhtypes.ReconciliationReques
 }
 
 // reportStatus populates the release status with platform version and name.
-func (m *Module) reportStatus(_ context.Context, rr *odhtypes.ReconciliationRequest) error {
+func (m *Module) reportStatus(_ context.Context, rr *fwtypes.ReconciliationRequest) error {
 	obj, ok := rr.Instance.(*componentApi.Ray)
 	if !ok {
 		return fmt.Errorf("instance is not a Ray")
 	}
 
-	obj.Status.Release = common.Release{
-		Name:    rr.Release.Name,
-		Version: rr.Release.Version,
+	obj.Status.Release = componentApi.Release{
+		Name:    componentApi.Platform(rr.Release.Name),
+		Version: ofVersion.OperatorVersion{Version: rr.Release.Version},
 	}
 
 	return nil

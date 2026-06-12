@@ -33,13 +33,13 @@ To extend the **example module** only (`modules/opendatahub-mymodule-operator/`)
 
 ## Build Metadata
 
-The Makefile injects version info via `-ldflags` into `pkg/version`:
+The Makefile injects version info via `-ldflags` into `pkg/module`:
 
 ```
--X pkg/version.Version=$(VERSION)
--X pkg/version.Commit=$(GIT_COMMIT)
--X pkg/version.Branch=$(GIT_BRANCH)
--X pkg/version.Repo=$(GIT_REPO)
+-X pkg/module.Version=$(VERSION)
+-X pkg/module.Commit=$(GIT_COMMIT)
+-X pkg/module.Branch=$(GIT_BRANCH)
+-X pkg/module.Repo=$(GIT_REPO)
 ```
 
 These surface in the `reportStatus` action as `status.module.version` and

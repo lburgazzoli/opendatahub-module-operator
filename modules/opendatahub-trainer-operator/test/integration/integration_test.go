@@ -28,7 +28,6 @@ import (
 	. "github.com/onsi/gomega"
 	imagev1 "github.com/openshift/api/image/v1"
 	promv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
-	"github.com/spf13/viper"
 	admissionv1 "k8s.io/api/admissionregistration/v1"
 
 	appsv1 "k8s.io/api/apps/v1"
@@ -52,7 +51,6 @@ import (
 	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-trainer-operator/pkg/config"
 	modulemanager "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-trainer-operator/pkg/manager"
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-trainer-operator/test/support"
-	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/cluster"
 )
 
 const (
@@ -146,9 +144,6 @@ func runTestMain(m *testing.M) int {
 	_ = directClient.DeleteAllOf(ctx, &componentsv1alpha1.Trainer{})
 	_ = directClient.DeleteAllOf(ctx, &appsv1.Deployment{}, client.InNamespace(testNamespace))
 	_ = directClient.DeleteAllOf(ctx, &corev1.Service{}, client.InNamespace(testNamespace))
-
-	viper.Set("rhai-applications-namespace", testNamespace)
-	cluster.SetRHAIApplicationNamespace(testNamespace)
 
 	operatorCfgData = support.MustReadConfigMapData(
 		support.MustProjectFile("config", "manager", "configmap.yaml"))

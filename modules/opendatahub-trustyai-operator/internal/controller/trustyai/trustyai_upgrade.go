@@ -21,11 +21,10 @@ import (
 	"fmt"
 
 	componentApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-trustyai-operator/api/components/v1alpha1"
-	"github.com/opendatahub-io/opendatahub-operator/v2/api/common"
-	odhtypes "github.com/opendatahub-io/opendatahub-operator/v2/pkg/controller/types"
+	fwtypes "github.com/opendatahub-io/odh-platform-utilities/framework/controller/types"
 )
 
-func (m *Module) upgradeIfNeeded(ctx context.Context, rr *odhtypes.ReconciliationRequest) error {
+func (m *Module) upgradeIfNeeded(ctx context.Context, rr *fwtypes.ReconciliationRequest) error {
 	obj, ok := rr.Instance.(*componentApi.TrustyAI)
 	if !ok {
 		return fmt.Errorf("instance is not a TrustyAI")
@@ -44,7 +43,7 @@ func (m *Module) upgradeIfNeeded(ctx context.Context, rr *odhtypes.Reconciliatio
 	return m.upgrade(ctx, prev, rr)
 }
 
-func (m *Module) upgrade(_ context.Context, prev common.Release, rr *odhtypes.ReconciliationRequest) error {
+func (m *Module) upgrade(_ context.Context, prev componentApi.Release, rr *fwtypes.ReconciliationRequest) error {
 	_ = prev
 	_ = rr
 	return nil

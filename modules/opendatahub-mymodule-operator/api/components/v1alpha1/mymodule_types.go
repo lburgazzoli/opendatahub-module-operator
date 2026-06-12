@@ -17,7 +17,8 @@ limitations under the License.
 package v1alpha1
 
 import (
-	"github.com/opendatahub-io/opendatahub-operator/v2/api/common"
+	common "github.com/opendatahub-io/odh-platform-utilities/api/common"
+	ofVersion "github.com/operator-framework/api/pkg/lib/version"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -31,6 +32,14 @@ const (
 	// MyModuleKind is the Kubernetes kind string.
 	MyModuleKind = "MyModule"
 )
+
+type Platform string
+
+// Release reports the operator version and platform.
+type Release struct {
+	Name    Platform                  `json:"name,omitempty"`
+	Version ofVersion.OperatorVersion `json:"version,omitempty"`
+}
 
 // Compile-time interface assertions.
 var (
@@ -48,7 +57,7 @@ type MyModuleStatus struct {
 	common.ComponentReleaseStatus `json:",inline"`
 
 	// Release reports the operator version and platform.
-	Release common.Release `json:"release,omitempty"`
+	Release Release `json:"release,omitempty"`
 
 	// ConfigValues holds the parsed controller ConfigMap entries for observability.
 	ConfigValues map[string]string `json:"configValues,omitempty"`
@@ -83,12 +92,12 @@ func (c *MyModule) SetConditions(conditions []common.Condition) {
 	c.Status.SetConditions(conditions)
 }
 
-func (c *MyModule) GetReleaseStatus() *[]common.ComponentRelease {
-	return &c.Status.Releases
+func (c *MyModule) GetReleaseStatus() *common.ComponentReleaseStatus {
+	return &c.Status.ComponentReleaseStatus
 }
 
-func (c *MyModule) SetReleaseStatus(releases []common.ComponentRelease) {
-	c.Status.Releases = releases
+func (c *MyModule) SetReleaseStatus(status common.ComponentReleaseStatus) {
+	c.Status.ComponentReleaseStatus = status
 }
 
 // +kubebuilder:object:root=true

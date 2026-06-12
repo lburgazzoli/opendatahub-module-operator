@@ -29,20 +29,20 @@ import (
 
 	componentApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-mlflow-operator/api/components/v1alpha1"
 	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-mlflow-operator/pkg/config"
+	localreleases "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-mlflow-operator/pkg/controller/actions/releases"
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-mlflow-operator/pkg/resources/gvk"
-	"github.com/opendatahub-io/opendatahub-operator/v2/api/common"
-	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/controller/actions/deploy"
-	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/controller/actions/gc"
-	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/controller/actions/render/kustomize"
-	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/controller/actions/status/deployments"
-	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/controller/actions/status/releases"
-	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/controller/handlers"
-	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/controller/predicates"
-	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/controller/predicates/component"
-	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/controller/reconciler"
-	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/controller/status"
-	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/metadata/labels"
+	fwapi "github.com/opendatahub-io/odh-platform-utilities/framework/api"
+	"github.com/opendatahub-io/odh-platform-utilities/framework/controller/actions/deploy"
+	"github.com/opendatahub-io/odh-platform-utilities/framework/controller/actions/gc"
+	"github.com/opendatahub-io/odh-platform-utilities/framework/controller/actions/render/kustomize"
+	"github.com/opendatahub-io/odh-platform-utilities/framework/controller/actions/status/deployments"
+	"github.com/opendatahub-io/odh-platform-utilities/framework/controller/handlers"
+	"github.com/opendatahub-io/odh-platform-utilities/framework/controller/predicates"
+	labelpred "github.com/opendatahub-io/odh-platform-utilities/framework/controller/predicates/label"
+	"github.com/opendatahub-io/odh-platform-utilities/framework/controller/reconciler"
 )
+
+const appLabelPrefix = "app.opendatahub.io"
 
 // +kubebuilder:rbac:groups=components.platform.opendatahub.io,resources=mlflowoperators,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=components.platform.opendatahub.io,resources=mlflowoperators/status,verbs=get;update;patch
@@ -73,7 +73,7 @@ func NewReconciler(
 	ctx context.Context,
 	mgr ctrl.Manager,
 	cfg *moduleconfig.Config,
-	rel common.Release,
+	rel componentApi.Release,
 ) error {
 	m, err := NewModule(cfg)
 	if err != nil {
@@ -97,7 +97,7 @@ func NewReconciler(
 			reconciler.WithEventHandler(
 				handlers.ToNamed(componentApi.MLflowOperatorInstanceName)),
 			reconciler.WithPredicates(
-				component.ForLabel(labels.ODH.Component(componentName), labels.True)),
+				labelpred.ForLabel(appLabelPrefix+"/"+componentName, "true")),
 		).
 		Watches(&gwapiv1.HTTPRoute{}).
 		// Re-reconcile when GatewayConfig changes so mlflow-url stays current.
@@ -106,24 +106,30 @@ func NewReconciler(
 			reconciler.Dynamic(reconciler.CrdExists(gvk.GatewayConfig)),
 			reconciler.WithEventHandler(handlers.ToNamed(componentApi.MLflowOperatorInstanceName)),
 		).
+		WithReconcilerOpts(
+			reconciler.WithRelease(fwapi.Release{
+				Name:    fwapi.Platform(rel.Name),
+				Version: rel.Version.Version,
+			}),
+		).
 		WithAction(m.initialize).
 		WithAction(m.upgradeIfNeeded).
 		WithAction(m.setKustomizedParams).
-		WithAction(releases.NewAction()).
+		WithAction(localreleases.NewAction()).
 		WithAction(kustomize.NewAction()).
 		WithAction(m.fixDeploymentNamespace).
 		WithAction(deploy.NewAction(
 			deploy.WithCache(),
 			deploy.WithApplyOrder(),
-			deploy.WithLabel(labels.ODH.Component(componentName), labels.True),
+			deploy.WithLabel(appLabelPrefix+"/"+componentName, "true"),
 		)).
-		WithAction(deployments.NewAction()).
+		WithAction(deployments.NewAction(
+			deployments.InNamespaceFn(moduleconfig.ApplicationsNamespaceGetter(cfg)),
+		)).
 		WithAction(m.reportStatus).
-		WithAction(gc.NewAction(
-			gc.InNamespace(cfg.ApplicationsNamespace),
-		)).
+		WithAction(gc.NewAction(moduleconfig.ApplicationsNamespaceGetter(cfg))).
 		WithConditions(
-			status.ConditionDeploymentsAvailable,
+			deployments.DefaultConditionType,
 		).
 		Build(ctx)
 
@@ -131,7 +137,10 @@ func NewReconciler(
 		return err
 	}
 
-	r.Release = rel
+	r.Release = fwapi.Release{
+		Name:    fwapi.Platform(rel.Name),
+		Version: rel.Version.Version,
+	}
 
 	return nil
 }

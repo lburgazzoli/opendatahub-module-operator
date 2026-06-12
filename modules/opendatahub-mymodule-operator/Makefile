@@ -112,7 +112,7 @@ lint-fix: ## Run golangci-lint linter and perform fixes.
 
 ##@ Build
 
-VERSION_PKG    = github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-mymodule-operator/pkg/version
+VERSION_PKG    = github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-mymodule-operator/pkg/module
 VERSION       ?= 0.0.0-dev
 GIT_COMMIT    ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)
 GIT_BRANCH    ?= $(shell git rev-parse --abbrev-ref HEAD 2>/dev/null || echo unknown)

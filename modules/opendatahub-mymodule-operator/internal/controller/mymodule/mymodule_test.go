@@ -31,9 +31,9 @@ import (
 
 	componentApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-mymodule-operator/api/components/v1alpha1"
 	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-mymodule-operator/pkg/config"
-	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/cluster"
-	actionapi "github.com/opendatahub-io/operator-actions-framework/api"
-	"github.com/opendatahub-io/operator-actions-framework/controller/types"
+	actionapi "github.com/opendatahub-io/odh-platform-utilities/framework/api"
+	"github.com/opendatahub-io/odh-platform-utilities/framework/controller/types"
+	"github.com/opendatahub-io/odh-platform-utilities/pkg/cluster"
 )
 
 const (
@@ -78,7 +78,10 @@ func newTestRR(obj *componentApi.MyModule) *types.ReconciliationRequest {
 	return &types.ReconciliationRequest{
 		Instance:          obj,
 		ManifestsBasePath: "/manifests",
-		Release:           actionapi.Release{Name: rel.Name, Version: rel.Version.Version},
+		Release: actionapi.Release{
+			Name:    actionapi.Platform(rel.Name),
+			Version: rel.Version.Version,
+		},
 	}
 }
 
@@ -100,7 +103,10 @@ func newTestRRWithClientAndVersion(
 		Client:            cl,
 		Instance:          obj,
 		ManifestsBasePath: "/manifests",
-		Release:           actionapi.Release{Name: rel.Name, Version: rel.Version.Version},
+		Release: actionapi.Release{
+			Name:    actionapi.Platform(rel.Name),
+			Version: rel.Version.Version,
+		},
 	}
 }
 

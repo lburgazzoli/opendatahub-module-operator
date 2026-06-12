@@ -29,19 +29,19 @@ import (
 
 	componentApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-ogx-operator/api/components/v1alpha1"
 	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-ogx-operator/pkg/config"
-	"github.com/opendatahub-io/opendatahub-operator/v2/api/common"
-	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/controller/actions/deploy"
-	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/controller/actions/gc"
-	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/controller/actions/render/kustomize"
-	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/controller/actions/status/deployments"
-	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/controller/actions/status/releases"
-	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/controller/handlers"
-	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/controller/predicates"
-	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/controller/predicates/component"
-	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/controller/reconciler"
-	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/controller/status"
-	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/metadata/labels"
+	localreleases "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-ogx-operator/pkg/controller/actions/releases"
+	fwapi "github.com/opendatahub-io/odh-platform-utilities/framework/api"
+	"github.com/opendatahub-io/odh-platform-utilities/framework/controller/actions/deploy"
+	"github.com/opendatahub-io/odh-platform-utilities/framework/controller/actions/gc"
+	"github.com/opendatahub-io/odh-platform-utilities/framework/controller/actions/render/kustomize"
+	"github.com/opendatahub-io/odh-platform-utilities/framework/controller/actions/status/deployments"
+	"github.com/opendatahub-io/odh-platform-utilities/framework/controller/handlers"
+	"github.com/opendatahub-io/odh-platform-utilities/framework/controller/predicates"
+	labelpred "github.com/opendatahub-io/odh-platform-utilities/framework/controller/predicates/label"
+	"github.com/opendatahub-io/odh-platform-utilities/framework/controller/reconciler"
 )
+
+const appLabelPrefix = "app.opendatahub.io"
 
 // +kubebuilder:rbac:groups=components.platform.opendatahub.io,resources=ogxs,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=components.platform.opendatahub.io,resources=ogxs/status,verbs=get;update;patch
@@ -68,7 +68,7 @@ func NewReconciler(
 	ctx context.Context,
 	mgr ctrl.Manager,
 	cfg *moduleconfig.Config,
-	rel common.Release,
+	rel componentApi.Release,
 ) error {
 	m, err := NewModule(cfg)
 	if err != nil {
@@ -91,27 +91,26 @@ func NewReconciler(
 			reconciler.WithEventHandler(
 				handlers.ToNamed(componentApi.OGXInstanceName)),
 			reconciler.WithPredicates(
-				component.ForLabel(labels.ODH.Component(componentName), labels.True)),
+				labelpred.ForLabel(appLabelPrefix+"/"+componentName, "true")),
 		).
 		WithAction(m.initialize).
 		WithAction(m.upgradeIfNeeded).
 		WithAction(m.checkPreConditions).
-		WithAction(releases.NewAction()).
-		WithAction(kustomize.NewAction(
-			kustomize.WithLabel(labels.ODH.Component(componentName), labels.True),
-			kustomize.WithLabel(labels.K8SCommon.PartOf, componentName),
-		)).
+		WithAction(localreleases.NewAction()).
+		WithAction(kustomize.NewAction()).
 		WithAction(deploy.NewAction(
 			deploy.WithCache(),
 			deploy.WithApplyOrder(),
+			deploy.WithLabel(appLabelPrefix+"/"+componentName, "true"),
+			deploy.WithPartOfLabelDefault(componentName),
 		)).
-		WithAction(deployments.NewAction()).
+		WithAction(deployments.NewAction(
+			deployments.InNamespaceFn(moduleconfig.ApplicationsNamespaceGetter(cfg)),
+		)).
 		WithAction(m.reportStatus).
-		WithAction(gc.NewAction(
-			gc.InNamespace(cfg.ApplicationsNamespace),
-		)).
+		WithAction(gc.NewAction(moduleconfig.ApplicationsNamespaceGetter(cfg))).
 		WithConditions(
-			status.ConditionDeploymentsAvailable,
+			deployments.DefaultConditionType,
 		).
 		Build(ctx)
 
@@ -119,7 +118,10 @@ func NewReconciler(
 		return err
 	}
 
-	r.Release = rel
+	r.Release = fwapi.Release{
+		Name:    fwapi.Platform(rel.Name),
+		Version: rel.Version.Version,
+	}
 
 	return nil
 }

@@ -27,8 +27,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
+	"github.com/opendatahub-io/odh-platform-utilities/framework/resources"
 	webhookutils "github.com/opendatahub-io/odh-platform-utilities/pkg/webhook"
-	"github.com/opendatahub-io/operator-actions-framework/resources"
 
 	componentApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-mymodule-operator/api/components/v1alpha1"
 )

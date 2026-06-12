@@ -11,7 +11,9 @@ import (
 
 	componentsv1alpha1 "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-datasciencepipelines-operator/api/components/v1alpha1"
 	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-datasciencepipelines-operator/pkg/config"
-	operatorstatus "github.com/opendatahub-io/opendatahub-operator/v2/pkg/controller/status"
+	module "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-datasciencepipelines-operator/pkg/module"
+	common "github.com/opendatahub-io/odh-platform-utilities/api/common"
+	fwapi "github.com/opendatahub-io/odh-platform-utilities/framework/api"
 )
 
 type foundationTests struct {
@@ -38,55 +40,55 @@ func (ft *foundationTests) testModuleCRDInstalled(t *testing.T) {
 func (ft *foundationTests) testMissingArgoWorkflowCRD(t *testing.T) {
 	ensureArgoWorkflowCRDMissing(t)
 
-	module := ft.module.DeepCopy()
-	module.Spec.ArgoWorkflowsControllers = &componentsv1alpha1.ArgoWorkflowsControllersSpec{
+	obj := ft.module.DeepCopy()
+	obj.Spec.ArgoWorkflowsControllers = &componentsv1alpha1.ArgoWorkflowsControllersSpec{
 		ManagementState: "Removed",
 	}
-	createModule(t, module)
+	createModule(t, obj)
 
 	g := NewWithT(t)
-	g.Eventually(k.Get(module)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(And(
+	g.Eventually(k.Get(obj)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(And(
 		jq.Match(`.status.conditions[]? | select(.type == "%s") | .status == "False"`,
-			operatorstatus.ConditionArgoWorkflowAvailable),
+			module.ConditionArgoWorkflowAvailable),
 		jq.Match(`.status.conditions[]? | select(.type == "%s") | .reason == "%s"`,
-			operatorstatus.ConditionArgoWorkflowAvailable,
-			operatorstatus.DataSciencePipelinesArgoWorkflowsCRDMissingReason),
+			module.ConditionArgoWorkflowAvailable,
+			module.DataSciencePipelinesArgoWorkflowsCRDMissingReason),
 		jq.Match(`.status.conditions[]? | select(.type == "%s") | .status == "False"`,
-			operatorstatus.ConditionTypeReady),
+			fwapi.ConditionTypeReady),
 	))
 }
 
 func (ft *foundationTests) testForeignOwnedArgoWorkflowCRD(t *testing.T) {
 	ensureArgoWorkflowCRDForeignOwned(t)
 
-	module := ft.module.DeepCopy()
-	createModule(t, module)
+	obj := ft.module.DeepCopy()
+	createModule(t, obj)
 
 	g := NewWithT(t)
-	g.Eventually(k.Get(module)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(And(
+	g.Eventually(k.Get(obj)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(And(
 		jq.Match(`.status.conditions[]? | select(.type == "%s") | .status == "False"`,
-			operatorstatus.ConditionArgoWorkflowAvailable),
+			module.ConditionArgoWorkflowAvailable),
 		jq.Match(`.status.conditions[]? | select(.type == "%s") | .reason == "%s"`,
-			operatorstatus.ConditionArgoWorkflowAvailable,
-			operatorstatus.DataSciencePipelinesDoesntOwnArgoCRDReason),
+			module.ConditionArgoWorkflowAvailable,
+			module.DataSciencePipelinesDoesntOwnArgoCRDReason),
 	))
 }
 
 func (ft *foundationTests) testBecomesReady(t *testing.T) {
 	ensureArgoWorkflowCRDOwnedByODH(t)
 
-	module := ft.module.DeepCopy()
-	createModule(t, module)
+	obj := ft.module.DeepCopy()
+	createModule(t, obj)
 
 	g := NewWithT(t)
-	g.Eventually(k.Get(module)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(And(
+	g.Eventually(k.Get(obj)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(And(
 		jq.Match(`.status.phase == "Ready"`),
 		jq.Match(`.status.conditions[]? | select(.type == "%s") | .status == "True"`,
-			operatorstatus.ConditionTypeReady),
+			fwapi.ConditionTypeReady),
 		jq.Match(`.status.conditions[]? | select(.type == "%s") | .status == "True"`,
-			operatorstatus.ConditionArgoWorkflowAvailable),
+			module.ConditionArgoWorkflowAvailable),
 		jq.Match(`.status.conditions[]? | select(.type == "%s") | .status == "True"`,
-			operatorstatus.ConditionTypeProvisioningSucceeded),
+			common.ConditionTypeProvisioningSucceeded),
 	))
 
 	eventuallyDeploymentReady(t, ft.workloadDeploy)
@@ -101,11 +103,11 @@ func (ft *foundationTests) testBecomesReady(t *testing.T) {
 func (ft *foundationTests) testReleaseStatus(t *testing.T) {
 	ensureArgoWorkflowCRDOwnedByODH(t)
 
-	module := ft.module.DeepCopy()
-	createModule(t, module)
+	obj := ft.module.DeepCopy()
+	createModule(t, obj)
 
 	g := NewWithT(t)
-	g.Eventually(k.Get(module)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(And(
+	g.Eventually(k.Get(obj)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(And(
 		jq.Match(`.status.release.version == "%s"`, operatorReleaseVersion),
 		jq.Match(`.status.release.name == "%s"`,
 			operatorCfgData[moduleconfig.KeyPlatformName]),
@@ -115,18 +117,18 @@ func (ft *foundationTests) testReleaseStatus(t *testing.T) {
 func (ft *foundationTests) testPlatformLabels(t *testing.T) {
 	ensureArgoWorkflowCRDOwnedByODH(t)
 
-	module := ft.module.DeepCopy()
-	createModule(t, module)
+	obj := ft.module.DeepCopy()
+	createModule(t, obj)
 
 	g := NewWithT(t)
 	g.Eventually(k.Get(ft.workloadDeploy)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(And(
 		jq.Match(`.metadata.labels."%s" == "%s"`, labelPartOf, componentsv1alpha1.DataSciencePipelinesComponentName),
 		jq.Match(`.metadata.annotations."%s" == "%s"`,
 			annotationInstanceName,
-			module.GetName()),
+			obj.GetName()),
 		jq.Match(`.metadata.annotations."%s" == "%s"`,
 			annotationInstanceUID,
-			string(module.GetUID())),
+			string(obj.GetUID())),
 		jq.Match(`.metadata.annotations."%s" == "%s"`,
 			annotationType,
 			operatorCfgData[moduleconfig.KeyPlatformName]),
@@ -139,8 +141,8 @@ func (ft *foundationTests) testPlatformLabels(t *testing.T) {
 func (ft *foundationTests) testOwnerReferences(t *testing.T) {
 	ensureArgoWorkflowCRDOwnedByODH(t)
 
-	module := ft.module.DeepCopy()
-	createModule(t, module)
+	obj := ft.module.DeepCopy()
+	createModule(t, obj)
 
 	g := NewWithT(t)
 	g.Eventually(k.Get(ft.workloadDeploy)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(

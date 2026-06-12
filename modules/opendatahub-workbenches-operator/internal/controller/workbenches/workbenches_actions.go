@@ -23,23 +23,22 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 
-	"github.com/opendatahub-io/opendatahub-operator/v2/api/common"
-	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/cluster"
-	odhtypes "github.com/opendatahub-io/opendatahub-operator/v2/pkg/controller/types"
-	odhdeploy "github.com/opendatahub-io/opendatahub-operator/v2/pkg/deploy"
-	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/metadata/labels"
-
 	localapi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-workbenches-operator/api/components/v1alpha1"
+	module "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-workbenches-operator/pkg/module"
+	fwtypes "github.com/opendatahub-io/odh-platform-utilities/framework/controller/types"
+	odhcluster "github.com/opendatahub-io/odh-platform-utilities/pkg/cluster"
+	odhdeploy "github.com/opendatahub-io/opendatahub-operator/v2/pkg/deploy"
+	ofVersion "github.com/operator-framework/api/pkg/lib/version"
 )
 
 // initialize assigns the pre-computed manifest infos for this reconcile cycle.
-func (m *Module) initialize(_ context.Context, rr *odhtypes.ReconciliationRequest) error {
+func (m *Module) initialize(_ context.Context, rr *fwtypes.ReconciliationRequest) error {
 	rr.Manifests = m.manifestInfos
 	return nil
 }
 
 // configureDependencies creates the workbench namespace with the owned-namespace label.
-func (m *Module) configureDependencies(_ context.Context, rr *odhtypes.ReconciliationRequest) error {
+func (m *Module) configureDependencies(_ context.Context, rr *fwtypes.ReconciliationRequest) error {
 	workbench, ok := rr.Instance.(*localapi.Workbenches)
 	if !ok {
 		return fmt.Errorf("resource instance %v is not a Workbenches", rr.Instance)
@@ -47,16 +46,17 @@ func (m *Module) configureDependencies(_ context.Context, rr *odhtypes.Reconcili
 
 	ns := &corev1.Namespace{}
 	ns.Labels = map[string]string{
-		labels.ODH.OwnedNamespace: "true",
+		module.OwnedNamespaceLabel: "true",
 	}
 
 	switch {
 	case workbench.Spec.WorkbenchNamespace != "":
 		ns.Name = workbench.Spec.WorkbenchNamespace
-	case rr.Release.Name == cluster.SelfManagedRhoai || rr.Release.Name == cluster.ManagedRhoai:
-		ns.Name = cluster.DefaultNotebooksNamespaceRHOAI
+	case localapi.Platform(rr.Release.Name) == localapi.Platform(odhcluster.SelfManagedRhoai) ||
+		localapi.Platform(rr.Release.Name) == localapi.Platform(odhcluster.ManagedRhoai):
+		ns.Name = module.DefaultNotebooksNamespaceRHOAI
 	default:
-		ns.Name = cluster.DefaultNotebooksNamespaceODH
+		ns.Name = module.DefaultNotebooksNamespaceODH
 	}
 
 	if err := rr.AddResources(ns); err != nil {
@@ -67,7 +67,7 @@ func (m *Module) configureDependencies(_ context.Context, rr *odhtypes.Reconcili
 }
 
 // reportStatus populates the release status and workbench-specific fields (WorkbenchNamespace).
-func (m *Module) reportStatus(_ context.Context, rr *odhtypes.ReconciliationRequest) error {
+func (m *Module) reportStatus(_ context.Context, rr *fwtypes.ReconciliationRequest) error {
 	obj, ok := rr.Instance.(*localapi.Workbenches)
 	if !ok {
 		return fmt.Errorf("instance is not a Workbenches")
@@ -75,17 +75,17 @@ func (m *Module) reportStatus(_ context.Context, rr *odhtypes.ReconciliationRequ
 
 	obj.Status.WorkbenchNamespace = obj.Spec.WorkbenchNamespace
 
-	obj.Status.Release = common.Release{
-		Name:    rr.Release.Name,
-		Version: rr.Release.Version,
+	obj.Status.Release = localapi.Release{
+		Name:    localapi.Platform(rr.Release.Name),
+		Version: ofVersion.OperatorVersion{Version: rr.Release.Version},
 	}
 
 	return nil
 }
 
 // setKustomizedParams writes gateway URL, section title, and mlflow-enabled into params.env.
-func (m *Module) setKustomizedParams(ctx context.Context, rr *odhtypes.ReconciliationRequest) error {
-	extraParamsMap, err := ComputeKustomizeVariable(ctx, rr.Client, rr.Release.Name)
+func (m *Module) setKustomizedParams(ctx context.Context, rr *fwtypes.ReconciliationRequest) error {
+	extraParamsMap, err := ComputeKustomizeVariable(ctx, rr.Client, localapi.Platform(rr.Release.Name))
 	if err != nil {
 		return fmt.Errorf("computing kustomize variables: %w", err)
 	}

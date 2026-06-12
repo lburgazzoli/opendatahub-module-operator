@@ -20,7 +20,6 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/spf13/viper"
 	corev1 "k8s.io/api/core/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	k8slabels "k8s.io/apimachinery/pkg/labels"
@@ -38,13 +37,13 @@ import (
 	componentsv1alpha1 "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-workbenches-operator/api/components/v1alpha1"
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-workbenches-operator/internal/controller/workbenches"
 	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-workbenches-operator/pkg/config"
+	module "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-workbenches-operator/pkg/module"
+	platform "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-workbenches-operator/pkg/platform"
 	gvkpkg "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-workbenches-operator/pkg/resources/gvk"
+	fwresources "github.com/opendatahub-io/odh-platform-utilities/framework/resources"
 	libcache "github.com/opendatahub-io/odh-platform-utilities/pkg/cache"
 	infrav1 "github.com/opendatahub-io/opendatahub-operator/v2/api/infrastructure/v1"
-	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/cluster"
 	odhmanager "github.com/opendatahub-io/opendatahub-operator/v2/pkg/manager"
-	odhLabels "github.com/opendatahub-io/opendatahub-operator/v2/pkg/metadata/labels"
-	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/resources"
 	imagev1 "github.com/openshift/api/image/v1"
 )
 
@@ -80,9 +79,6 @@ func New(
 		return nil, fmt.Errorf("config is nil")
 	}
 
-	viper.Set("rhai-applications-namespace", cfg.ApplicationsNamespace)
-	cluster.SetRHAIApplicationNamespace(cfg.ApplicationsNamespace)
-
 	scheme := NewScheme()
 	mgrOpts := ctrl.Options{
 		Scheme: scheme,
@@ -99,12 +95,12 @@ func New(
 			DefaultNamespaces: map[string]cache.Config{
 				cfg.ApplicationsNamespace: {
 					LabelSelector: k8slabels.SelectorFromSet(k8slabels.Set{
-						odhLabels.PlatformPartOf: odhLabels.NormalizePartOfValue(componentsv1alpha1.WorkbenchesKind),
+						platform.PartOfLabel: module.Name,
 					}),
 				},
 				cache.AllNamespaces: {
 					LabelSelector: k8slabels.SelectorFromSet(k8slabels.Set{
-						odhLabels.PlatformPartOf: odhLabels.NormalizePartOfValue(componentsv1alpha1.WorkbenchesKind),
+						platform.PartOfLabel: module.Name,
 					}),
 				},
 			},
@@ -121,8 +117,8 @@ func New(
 				DisableFor: []client.Object{
 					&corev1.ConfigMap{},
 					&corev1.Secret{},
-					resources.GvkToUnstructured(gvkpkg.MLflowOperator),
-					resources.GvkToUnstructured(gvkpkg.OpenshiftIngress),
+					fwresources.GvkToUnstructured(gvkpkg.MLflowOperator),
+					fwresources.GvkToUnstructured(gvkpkg.OpenshiftIngress),
 				},
 			},
 		},

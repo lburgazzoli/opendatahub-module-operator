@@ -2,58 +2,87 @@
 package gvk
 
 import (
-	clustergvk "github.com/opendatahub-io/opendatahub-operator/v2/pkg/cluster/gvk"
+	oauthv1 "github.com/openshift/api/oauth/v1"
+	"k8s.io/apimachinery/pkg/runtime/schema"
+	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
+
+	fwgvk "github.com/opendatahub-io/odh-platform-utilities/framework/cluster/gvk"
 )
 
 // Shared chartgen GVKs reused from the upstream operator cluster package.
 var (
-	Namespace                      = clustergvk.Namespace
-	Deployment                     = clustergvk.Deployment
-	ServiceAccount                 = clustergvk.ServiceAccount
-	ConfigMap                      = clustergvk.ConfigMap
-	ClusterRoleBinding             = clustergvk.ClusterRoleBinding
-	RoleBinding                    = clustergvk.RoleBinding
-	MutatingWebhookConfiguration   = clustergvk.MutatingWebhookConfiguration
-	ValidatingWebhookConfiguration = clustergvk.ValidatingWebhookConfiguration
-	CertManagerCertificate         = clustergvk.CertManagerCertificate
+	Namespace                      = fwgvk.Namespace
+	Deployment                     = fwgvk.Deployment
+	ServiceAccount                 = fwgvk.ServiceAccount
+	ConfigMap                      = fwgvk.ConfigMap
+	ClusterRoleBinding             = fwgvk.ClusterRoleBinding
+	RoleBinding                    = fwgvk.RoleBinding
+	MutatingWebhookConfiguration   = fwgvk.MutatingWebhookConfiguration
+	ValidatingWebhookConfiguration = fwgvk.ValidatingWebhookConfiguration
+	CertManagerCertificate         = fwgvk.CertManagerCertificate
 )
 
 // OpenShift cluster-level types read uncached.
 var (
-	OpenshiftIngress = clustergvk.OpenshiftIngress
+	OpenshiftIngress = fwgvk.OpenshiftIngress
 )
 
 // Workbenches controller GVKs.
 var (
 	// ImageStream is watched conditionally (only if CRD exists).
-	ImageStream = clustergvk.ImageStream
+	ImageStream = fwgvk.ImageStream
 
 	// Notebook is the primary workload CRD managed by workbenches.
-	Notebook = clustergvk.Notebook
+	Notebook = fwgvk.Notebook
 
 	// MLflowOperator is watched to refresh mlflow-enabled param.
-	MLflowOperator = clustergvk.MLflowOperator
+	// Keep local to the Workbenches module unless it becomes shared across components.
+	MLflowOperator = schema.GroupVersionKind{
+		Group:   "components.platform.opendatahub.io",
+		Version: "v1alpha1",
+		Kind:    "MLflowOperator",
+	}
 
 	// GatewayConfig is used to resolve the gateway domain URL.
-	GatewayConfig = clustergvk.GatewayConfig
+	// Keep local to the Workbenches module unless it becomes shared across components.
+	GatewayConfig = schema.GroupVersionKind{
+		Group:   "services.platform.opendatahub.io",
+		Version: "v1alpha1",
+		Kind:    "GatewayConfig",
+	}
 
 	// KubernetesGateway is queried for the data-science-gateway hostname.
-	KubernetesGateway = clustergvk.KubernetesGateway
+	// Keep local to the Workbenches module unless it becomes shared across components.
+	KubernetesGateway = schema.GroupVersionKind{
+		Group:   gwapiv1.GroupVersion.Group,
+		Version: gwapiv1.GroupVersion.Version,
+		Kind:    "Gateway",
+	}
 
 	// OAuthClient is managed by the deployed odh-notebook-controller.
-	OAuthClient = clustergvk.OAuthClient
+	// Keep local to the Workbenches module unless it becomes shared across components.
+	OAuthClient = schema.GroupVersionKind{
+		Group:   oauthv1.GroupVersion.Group,
+		Version: oauthv1.GroupVersion.Version,
+		Kind:    "OAuthClient",
+	}
 
 	// HardwareProfile is fetched by the hardware profile webhook.
-	HardwareProfile = clustergvk.HardwareProfile
+	// Keep local to the Workbenches module unless it becomes shared across components.
+	HardwareProfile = schema.GroupVersionKind{
+		Group:   "infrastructure.opendatahub.io",
+		Version: "v1",
+		Kind:    "HardwareProfile",
+	}
 
 	// OdhDashboardConfig drives notebook size migration and upgrade behavior.
-	OdhDashboardConfig = clustergvk.OdhDashboardConfig
+	OdhDashboardConfig = fwgvk.OdhDashboardConfig
 
 	// DashboardAcceleratorProfile is migrated to notebook HardwareProfiles on upgrade.
-	DashboardAcceleratorProfile = clustergvk.DashboardAcceleratorProfile
+	DashboardAcceleratorProfile = fwgvk.DashboardAcceleratorProfile
 
 	// LLMInferenceServiceV1Alpha1/V1Alpha2 — referenced only in the hardware profile
 	// webhook for kind validation (not owned/watched by the workbenches controller).
-	LLMInferenceServiceV1Alpha1 = clustergvk.LLMInferenceServiceV1Alpha1
-	LLMInferenceServiceV1Alpha2 = clustergvk.LLMInferenceServiceV1Alpha2
+	LLMInferenceServiceV1Alpha1 = fwgvk.LLMInferenceServiceV1Alpha1
+	LLMInferenceServiceV1Alpha2 = fwgvk.LLMInferenceServiceV1Alpha2
 )

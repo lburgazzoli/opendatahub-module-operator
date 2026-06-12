@@ -9,11 +9,11 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
+	module "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-trainer-operator/pkg/module"
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-trainer-operator/pkg/resources/gvk"
-	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/cluster"
-	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/controller/precondition"
-	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/controller/status"
-	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/controller/types"
+	fwcluster "github.com/opendatahub-io/odh-platform-utilities/framework/cluster"
+	"github.com/opendatahub-io/odh-platform-utilities/framework/controller/actions/status/deployments"
+	"github.com/opendatahub-io/odh-platform-utilities/framework/controller/types"
 )
 
 const (
@@ -39,10 +39,15 @@ var (
 	}
 
 	conditionTypes = []string{
-		status.ConditionDeploymentsAvailable,
-		status.ConditionDependenciesAvailable,
+		deployments.DefaultConditionType,
+		module.ConditionDependenciesAvailable,
 	}
 )
+
+type preconditionResult struct {
+	Pass    bool
+	Message string
+}
 
 func manifestPath(basePath string) types.ManifestInfo {
 	return types.ManifestInfo{
@@ -100,44 +105,44 @@ func getSingletonUnstructured(
 	}
 }
 
-func (m *Module) checkPreConditions(ctx context.Context, rr *types.ReconciliationRequest) (precondition.CheckResult, error) {
-	jobSetOperatorCRDExists, err := cluster.HasCRD(ctx, rr.Client, gvk.JobSetOperatorV1)
+func (m *Module) checkPreConditions(ctx context.Context, rr *types.ReconciliationRequest) (preconditionResult, error) {
+	jobSetOperatorCRDExists, err := fwcluster.HasCRD(ctx, rr.Client, gvk.JobSetOperatorV1)
 	switch {
 	case err != nil:
-		return precondition.CheckResult{}, fmt.Errorf("checking JobSet operator CRD: %w", err)
+		return preconditionResult{}, fmt.Errorf("checking JobSet operator CRD: %w", err)
 	case !jobSetOperatorCRDExists:
-		return precondition.CheckResult{
+		return preconditionResult{
 			Pass:    false,
-			Message: status.JobSetOperatorNotInstalledMessage,
+			Message: module.JobSetOperatorNotInstalledMessage,
 		}, nil
 	}
 
 	switch err := getSingletonUnstructured(ctx, m.singletonReader(rr), gvk.JobSetOperatorV1, "jobsetoperators"); {
 	case k8serr.IsNotFound(err):
-		return precondition.CheckResult{
+		return preconditionResult{
 			Pass:    false,
-			Message: status.JobSetOperatorCRNotFoundMessage,
+			Message: module.JobSetOperatorCRNotFoundMessage,
 		}, nil
 	case err != nil:
-		return precondition.CheckResult{}, fmt.Errorf("checking JobSetOperator CR: %w", err)
+		return preconditionResult{}, fmt.Errorf("checking JobSetOperator CR: %w", err)
 	}
 
-	return precondition.CheckResult{Pass: true}, nil
+	return preconditionResult{Pass: true}, nil
 }
 
 // checkJobSetCRD verifies that the JobSet workload CRD exists before the
 // trainer manifests are rendered and applied.
-func (m *Module) checkJobSetCRD(ctx context.Context, rr *types.ReconciliationRequest) (precondition.CheckResult, error) {
-	jobSetCRDExists, err := cluster.HasCRD(ctx, rr.Client, gvk.JobSetv1alpha2)
+func (m *Module) checkJobSetCRD(ctx context.Context, rr *types.ReconciliationRequest) (preconditionResult, error) {
+	jobSetCRDExists, err := fwcluster.HasCRD(ctx, rr.Client, gvk.JobSetv1alpha2)
 	switch {
 	case err != nil:
-		return precondition.CheckResult{}, fmt.Errorf("checking JobSet CRD: %w", err)
+		return preconditionResult{}, fmt.Errorf("checking JobSet CRD: %w", err)
 	case !jobSetCRDExists:
-		return precondition.CheckResult{
+		return preconditionResult{
 			Pass:    false,
-			Message: status.JobSetCRDMissingMessage,
+			Message: module.JobSetCRDMissingMessage,
 		}, nil
 	}
 
-	return precondition.CheckResult{Pass: true}, nil
+	return preconditionResult{Pass: true}, nil
 }

@@ -28,9 +28,9 @@ import (
 
 	componentApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-feast-operator/api/components/v1alpha1"
 	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-feast-operator/pkg/config"
-	"github.com/opendatahub-io/opendatahub-operator/v2/api/common"
-	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/cluster"
-	odhtypes "github.com/opendatahub-io/opendatahub-operator/v2/pkg/controller/types"
+	actionapi "github.com/opendatahub-io/odh-platform-utilities/framework/api"
+	odhtypes "github.com/opendatahub-io/odh-platform-utilities/framework/controller/types"
+	"github.com/opendatahub-io/odh-platform-utilities/pkg/cluster"
 )
 
 func newTestModule(t *testing.T) *Module {
@@ -50,13 +50,18 @@ func newTestModule(t *testing.T) *Module {
 }
 
 func newTestRR(obj *componentApi.FeastOperator) *odhtypes.ReconciliationRequest {
+	rel := (&moduleconfig.Config{
+		PlatformName:    string(cluster.OpenDataHub),
+		PlatformVersion: "1.0.0",
+	}).Release()
+
 	return &odhtypes.ReconciliationRequest{
 		Instance:          obj,
 		ManifestsBasePath: "/manifests",
-		Release: (&moduleconfig.Config{
-			PlatformName:    string(cluster.OpenDataHub),
-			PlatformVersion: "1.0.0",
-		}).Release(),
+		Release: actionapi.Release{
+			Name:    actionapi.Platform(rel.Name),
+			Version: rel.Version.Version,
+		},
 	}
 }
 
@@ -152,7 +157,7 @@ func TestSetKustomizedParamsWithOIDC(t *testing.T) {
 
 	m := newTestModule(t)
 	obj := newTestFeastOperator()
-	obj.Spec.OIDC = &common.GatewayOIDCSpec{IssuerURL: "https://issuer.example.com"}
+	obj.Spec.OIDC = &componentApi.GatewayOIDCSpec{IssuerURL: "https://issuer.example.com"}
 	rr := newTestRR(obj)
 	g.Expect(m.initialize(context.Background(), rr)).To(Succeed())
 
@@ -164,7 +169,7 @@ func TestSetKustomizedParamsInvalidOIDC(t *testing.T) {
 
 	m := newTestModule(t)
 	obj := newTestFeastOperator()
-	obj.Spec.OIDC = &common.GatewayOIDCSpec{IssuerURL: "not-a-url"}
+	obj.Spec.OIDC = &componentApi.GatewayOIDCSpec{IssuerURL: "not-a-url"}
 	rr := newTestRR(obj)
 	g.Expect(m.initialize(context.Background(), rr)).To(Succeed())
 

@@ -24,11 +24,11 @@ import (
 
 	componentApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-datasciencepipelines-operator/api/components/v1alpha1"
 	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-datasciencepipelines-operator/pkg/config"
-	"github.com/opendatahub-io/opendatahub-operator/v2/api/common"
-	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/cluster"
-	odherrors "github.com/opendatahub-io/opendatahub-operator/v2/pkg/controller/actions/errors"
-	odhtypes "github.com/opendatahub-io/opendatahub-operator/v2/pkg/controller/types"
+	fwerrors "github.com/opendatahub-io/odh-platform-utilities/framework/controller/actions/errors"
+	fwtypes "github.com/opendatahub-io/odh-platform-utilities/framework/controller/types"
+	odhcluster "github.com/opendatahub-io/odh-platform-utilities/pkg/cluster"
 	odhdeploy "github.com/opendatahub-io/opendatahub-operator/v2/pkg/deploy"
+	ofVersion "github.com/operator-framework/api/pkg/lib/version"
 )
 
 const (
@@ -66,38 +66,35 @@ var (
 		"RELATED_IMAGE_ODH_AUTORAG_IMAGE": "RELATED_IMAGE_ODH_AUTORAG_IMAGE",
 	}
 
-	ErrArgoWorkflowAPINotOwned = odherrors.NewStopError(
+	ErrArgoWorkflowAPINotOwned = fwerrors.NewStopError(
 		"Failed upgrade. DataSciencePipelines component found existing Argo Workflow CRD, which is not managed by ODH.",
 	)
-	ErrArgoWorkflowCRDMissing = odherrors.NewStopError(
+	ErrArgoWorkflowCRDMissing = fwerrors.NewStopError(
 		"DataSciencePipelines component is configured not to manage Argo Workflow controllers, but workflows.argoproj.io CRD is missing.",
 	)
 )
 
 type Module struct {
 	cfg          *moduleconfig.Config
-	manifestInfo odhtypes.ManifestInfo
+	manifestInfo fwtypes.ManifestInfo
 }
 
 func NewModule(cfg *moduleconfig.Config) (*Module, error) {
 	overlay := overlayODH
-	platform := common.Platform(cfg.PlatformName)
-	if platform == cluster.SelfManagedRhoai || platform == cluster.ManagedRhoai {
+	platform := componentApi.Platform(cfg.PlatformName)
+	if platform == componentApi.Platform(odhcluster.SelfManagedRhoai) || platform == componentApi.Platform(odhcluster.ManagedRhoai) {
 		overlay = overlayRhoai
 	}
 
-	mi := odhtypes.ManifestInfo{
+	mi := fwtypes.ManifestInfo{
 		Path:       cfg.ManifestsPath,
 		ContextDir: componentName,
 		SourcePath: overlay,
 	}
 
-	extraParams := map[string]string{
+	if err := odhdeploy.ApplyParams(paramsPath(cfg.ManifestsPath), "params.env", imageParamMap, map[string]string{
 		platformVersionParamsKey: cfg.PlatformVersion,
-		fipsEnabledParamsKey:     strconv.FormatBool(cluster.GetClusterInfo().FipsEnabled),
-	}
-
-	if err := odhdeploy.ApplyParams(paramsPath(cfg.ManifestsPath), "params.env", imageParamMap, extraParams); err != nil {
+	}); err != nil {
 		return nil, fmt.Errorf("failed to update images on path %s: %w", paramsPath(cfg.ManifestsPath), err)
 	}
 
@@ -111,18 +108,37 @@ func paramsPath(basePath string) string {
 	return path.Join(basePath, componentName, "base")
 }
 
-func (m *Module) initialize(_ context.Context, rr *odhtypes.ReconciliationRequest) error {
+func (m *Module) initialize(_ context.Context, rr *fwtypes.ReconciliationRequest) error {
 	rr.Manifests = append(rr.Manifests, m.manifestInfo)
 	return nil
 }
 
-func (m *Module) reportStatus(_ context.Context, rr *odhtypes.ReconciliationRequest) error {
+func (m *Module) applyBaseParams(ctx context.Context, rr *fwtypes.ReconciliationRequest) error {
+	info, err := odhcluster.DetectClusterInfo(ctx, rr.Client)
+	if err != nil {
+		return fmt.Errorf("detecting cluster info: %w", err)
+	}
+
+	if err := odhdeploy.ApplyParams(paramsPath(m.cfg.ManifestsPath), "params.env", nil, map[string]string{
+		platformVersionParamsKey: m.cfg.PlatformVersion,
+		fipsEnabledParamsKey:     strconv.FormatBool(info.FipsEnabled),
+	}); err != nil {
+		return fmt.Errorf("failed to update params on path %s: %w", paramsPath(m.cfg.ManifestsPath), err)
+	}
+
+	return nil
+}
+
+func (m *Module) reportStatus(_ context.Context, rr *fwtypes.ReconciliationRequest) error {
 	obj, ok := rr.Instance.(*componentApi.DataSciencePipelines)
 	if !ok {
 		return fmt.Errorf("instance is not a DataSciencePipelines")
 	}
 
-	obj.Status.Release = rr.Release
+	obj.Status.Release = componentApi.Release{
+		Name:    componentApi.Platform(rr.Release.Name),
+		Version: ofVersion.OperatorVersion{Version: rr.Release.Version},
+	}
 
 	return nil
 }

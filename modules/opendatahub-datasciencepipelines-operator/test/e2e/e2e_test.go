@@ -30,7 +30,6 @@ import (
 	componentsv1alpha1 "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-datasciencepipelines-operator/api/components/v1alpha1"
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-datasciencepipelines-operator/test/support"
 	. "github.com/onsi/gomega"
-	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/metadata/labels"
 	promv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -49,6 +48,8 @@ const (
 	interval = 2 * time.Second
 
 	labelPartOf            = "platform.opendatahub.io/part-of"
+	labelTrue              = "true"
+	appLabelPrefix         = "app.opendatahub.io"
 	annotationInstanceName = "platform.opendatahub.io/instance.name"
 	annotationInstanceUID  = "platform.opendatahub.io/instance.uid"
 	annotationType         = "platform.opendatahub.io/type"
@@ -279,12 +280,12 @@ func ensureArgoWorkflowCRDOwnedByODH(t *testing.T) {
 	manageArgoWorkflowCRD(t)
 
 	crd := loadOrCreateWorkflowCRD(t)
-	odhLabel := labels.ODH.Component(legacyComponentName)
-	if crd.Labels[odhLabel] == labels.True {
+	odhLabel := appLabelPrefix + "/" + legacyComponentName
+	if crd.Labels[odhLabel] == labelTrue {
 		return
 	}
 	updateWorkflowCRDEventually(t, func(crd *apiextensionsv1.CustomResourceDefinition) {
-		crd.Labels[odhLabel] = labels.True
+		crd.Labels[odhLabel] = labelTrue
 		crd.Labels[testManagedByLabel] = testManagedByValue
 	})
 }
@@ -294,8 +295,8 @@ func ensureArgoWorkflowCRDForeignOwned(t *testing.T) {
 	manageArgoWorkflowCRD(t)
 
 	crd := loadOrCreateWorkflowCRD(t)
-	odhLabel := labels.ODH.Component(legacyComponentName)
-	if crd.Labels[odhLabel] != labels.True && crd.Labels[testManagedByLabel] == testManagedByValue {
+	odhLabel := appLabelPrefix + "/" + legacyComponentName
+	if crd.Labels[odhLabel] != "true" && crd.Labels[testManagedByLabel] == testManagedByValue {
 		return
 	}
 	updateWorkflowCRDEventually(t, func(crd *apiextensionsv1.CustomResourceDefinition) {

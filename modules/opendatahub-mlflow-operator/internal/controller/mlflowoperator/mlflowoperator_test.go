@@ -32,7 +32,8 @@ import (
 
 	componentApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-mlflow-operator/api/components/v1alpha1"
 	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-mlflow-operator/pkg/config"
-	odhtypes "github.com/opendatahub-io/opendatahub-operator/v2/pkg/controller/types"
+	fwapi "github.com/opendatahub-io/odh-platform-utilities/framework/api"
+	fwtypes "github.com/opendatahub-io/odh-platform-utilities/framework/controller/types"
 )
 
 type staticErrReader struct {
@@ -196,14 +197,19 @@ func newTestModule(t *testing.T) *Module {
 	return m
 }
 
-func newTestRR(obj *componentApi.MLflowOperator) *odhtypes.ReconciliationRequest {
-	return &odhtypes.ReconciliationRequest{
+func newTestRR(obj *componentApi.MLflowOperator) *fwtypes.ReconciliationRequest {
+	rel := (&moduleconfig.Config{
+		PlatformName:    "OpenDataHub",
+		PlatformVersion: "1.0.0",
+	}).Release()
+
+	return &fwtypes.ReconciliationRequest{
 		Instance:          obj,
 		ManifestsBasePath: "/manifests",
-		Release: (&moduleconfig.Config{
-			PlatformName:    "OpenDataHub",
-			PlatformVersion: "1.0.0",
-		}).Release(),
+		Release: fwapi.Release{
+			Name:    fwapi.Platform(rel.Name),
+			Version: rel.Version.Version,
+		},
 	}
 }
 

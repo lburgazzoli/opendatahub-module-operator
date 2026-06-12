@@ -18,24 +18,37 @@ limitations under the License.
 package gvk
 
 import (
-	clustergvk "github.com/opendatahub-io/opendatahub-operator/v2/pkg/cluster/gvk"
+	securityv1 "github.com/openshift/api/security/v1"
+	"k8s.io/apimachinery/pkg/runtime/schema"
+
+	fwgvk "github.com/opendatahub-io/odh-platform-utilities/framework/cluster/gvk"
 )
 
 // Shared chartgen GVKs reused from the upstream operator cluster package.
 var (
-	Namespace                      = clustergvk.Namespace
-	Deployment                     = clustergvk.Deployment
-	ServiceAccount                 = clustergvk.ServiceAccount
-	ConfigMap                      = clustergvk.ConfigMap
-	ClusterRoleBinding             = clustergvk.ClusterRoleBinding
-	RoleBinding                    = clustergvk.RoleBinding
-	MutatingWebhookConfiguration   = clustergvk.MutatingWebhookConfiguration
-	ValidatingWebhookConfiguration = clustergvk.ValidatingWebhookConfiguration
-	CertManagerCertificate         = clustergvk.CertManagerCertificate
+	Namespace                      = fwgvk.Namespace
+	Deployment                     = fwgvk.Deployment
+	ServiceAccount                 = fwgvk.ServiceAccount
+	ConfigMap                      = fwgvk.ConfigMap
+	ClusterRoleBinding             = fwgvk.ClusterRoleBinding
+	RoleBinding                    = fwgvk.RoleBinding
+	MutatingWebhookConfiguration   = fwgvk.MutatingWebhookConfiguration
+	ValidatingWebhookConfiguration = fwgvk.ValidatingWebhookConfiguration
+	CertManagerCertificate         = fwgvk.CertManagerCertificate
 )
 
 // Ray controller GVKs reused from the upstream operator cluster package.
 var (
-	SecurityContextConstraints = clustergvk.SecurityContextConstraints
-	CodeFlare                  = clustergvk.CodeFlare
+	// Keep local to the Ray module unless it becomes shared across components.
+	SecurityContextConstraints = schema.GroupVersionKind{
+		Group:   securityv1.SchemeGroupVersion.Group,
+		Version: securityv1.SchemeGroupVersion.Version,
+		Kind:    "SecurityContextConstraints",
+	}
+	// Keep local to the Ray module unless it becomes shared across components.
+	CodeFlare = schema.GroupVersionKind{
+		Group:   "components.platform.opendatahub.io",
+		Version: "v1alpha1",
+		Kind:    "CodeFlare",
+	}
 )

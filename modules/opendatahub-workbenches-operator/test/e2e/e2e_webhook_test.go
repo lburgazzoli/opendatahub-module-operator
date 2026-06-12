@@ -20,10 +20,10 @@ import (
 	"github.com/lburgazzoli/gomega-matchers/pkg/matchers/jq"
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-workbenches-operator/test/support"
 	infrav1 "github.com/opendatahub-io/opendatahub-operator/v2/api/infrastructure/v1"
-	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/metadata/annotations"
 )
 
 const (
+	connectionAnnotation   = "opendatahub.io/connections"
 	hwpNameAnnotation      = "opendatahub.io/hardware-profile-name"
 	hwpNamespaceAnnotation = "opendatahub.io/hardware-profile-namespace"
 	notebookSampleImage    = "quay.io/thoth-station/s2i-minimal-notebook:v0.2.2"
@@ -97,7 +97,7 @@ func (wt *webhookTests) testConnectionWebhookInjectsSecretEnvFrom(t *testing.T) 
 	}
 	nb := newWebhookExampleNotebook(operatorNamespace, "workbenches-webhook-conn-valid-"+suffix)
 	nb.SetAnnotations(map[string]string{
-		annotations.Connection: fmt.Sprintf("%s/%s", operatorNamespace, secret.GetName()),
+		connectionAnnotation: fmt.Sprintf("%s/%s", operatorNamespace, secret.GetName()),
 	})
 
 	cleanupObject(t, secret)
@@ -129,7 +129,7 @@ func (wt *webhookTests) testConnectionWebhookDeniesMissingSecret(t *testing.T) {
 	operatorNamespace := support.OperatorNamespace()
 	nb := newWebhookExampleNotebook(operatorNamespace, "workbenches-webhook-conn-missing-"+xid.New().String())
 	nb.SetAnnotations(map[string]string{
-		annotations.Connection: fmt.Sprintf("%s/%s", operatorNamespace, "missing-secret"),
+		connectionAnnotation: fmt.Sprintf("%s/%s", operatorNamespace, "missing-secret"),
 	})
 
 	cleanupObject(t, nb)

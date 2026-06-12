@@ -17,7 +17,8 @@ limitations under the License.
 package v1alpha1
 
 import (
-	"github.com/opendatahub-io/opendatahub-operator/v2/api/common"
+	common "github.com/opendatahub-io/odh-platform-utilities/api/common"
+	ofVersion "github.com/operator-framework/api/pkg/lib/version"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -26,6 +27,14 @@ const (
 	OGXInstanceName  = "default-ogx"
 	OGXKind          = "OGX"
 )
+
+type Platform string
+
+// Release reports the operator version and platform.
+type Release struct {
+	Name    Platform                  `json:"name,omitempty"`
+	Version ofVersion.OperatorVersion `json:"version,omitempty"`
+}
 
 // Compile-time interface assertion.
 var _ common.PlatformObject = (*OGX)(nil)
@@ -39,7 +48,7 @@ type OGXStatus struct {
 	common.ComponentReleaseStatus `json:",inline"`
 
 	// Release reports the operator version and platform.
-	Release common.Release `json:"release,omitempty"`
+	Release Release `json:"release,omitempty"`
 }
 
 // +kubebuilder:object:root=true
@@ -71,12 +80,12 @@ func (c *OGX) SetConditions(conditions []common.Condition) {
 	c.Status.SetConditions(conditions)
 }
 
-func (c *OGX) GetReleaseStatus() *[]common.ComponentRelease {
-	return &c.Status.Releases
+func (c *OGX) GetReleaseStatus() *common.ComponentReleaseStatus {
+	return &c.Status.ComponentReleaseStatus
 }
 
-func (c *OGX) SetReleaseStatus(releases []common.ComponentRelease) {
-	c.Status.Releases = releases
+func (c *OGX) SetReleaseStatus(status common.ComponentReleaseStatus) {
+	c.Status.ComponentReleaseStatus = status
 }
 
 // +kubebuilder:object:root=true

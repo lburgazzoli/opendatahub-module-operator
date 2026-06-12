@@ -42,7 +42,7 @@ import (
 	componentsv1alpha1 "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-workbenches-operator/api/components/v1alpha1"
 	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-workbenches-operator/pkg/config"
 	workbenchesmanager "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-workbenches-operator/pkg/manager"
-	workbenchesversion "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-workbenches-operator/pkg/version"
+	module "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-workbenches-operator/pkg/module"
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-workbenches-operator/test/support"
 )
 
@@ -113,7 +113,7 @@ func runTestMain(m *testing.M) int {
 	operatorCfgData = support.MustReadConfigMapData(
 		support.MustProjectFile("config", "manager", "configmap.yaml"))
 
-	workbenchesversion.Version = desiredUpgradeVersion
+	module.Version = desiredUpgradeVersion
 
 	moduleCfg = &moduleconfig.Config{
 		PlatformName:          operatorCfgData[moduleconfig.KeyPlatformName],

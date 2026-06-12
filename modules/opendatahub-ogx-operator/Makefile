@@ -116,7 +116,7 @@ get-manifests: ## Download component manifests.
 
 ##@ Build
 
-VERSION_PKG    = github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-ogx-operator/pkg/version
+VERSION_PKG    = github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-ogx-operator/pkg/module
 VERSION       ?= 0.0.0-dev
 GIT_COMMIT    ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)
 GIT_BRANCH    ?= $(shell git rev-parse --abbrev-ref HEAD 2>/dev/null || echo unknown)

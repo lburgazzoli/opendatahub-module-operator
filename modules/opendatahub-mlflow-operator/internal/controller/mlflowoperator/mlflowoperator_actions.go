@@ -28,7 +28,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-mlflow-operator/pkg/resources/gvk"
-	odhtypes "github.com/opendatahub-io/opendatahub-operator/v2/pkg/controller/types"
+	fwtypes "github.com/opendatahub-io/odh-platform-utilities/framework/controller/types"
 	odhdeploy "github.com/opendatahub-io/opendatahub-operator/v2/pkg/deploy"
 )
 
@@ -60,7 +60,7 @@ func getGatewayDomain(ctx context.Context, reader client.Reader) (string, error)
 // to replace the hardcoded --namespace arg with the configured ApplicationsNamespace.
 //
 // TODO(module-team): use the namespace in which the oeprator runs.
-func (m *Module) fixDeploymentNamespace(_ context.Context, rr *odhtypes.ReconciliationRequest) error {
+func (m *Module) fixDeploymentNamespace(_ context.Context, rr *fwtypes.ReconciliationRequest) error {
 	target := "--namespace=" + m.cfg.ApplicationsNamespace
 
 	for i := range rr.Resources {
@@ -111,7 +111,7 @@ func (m *Module) fixDeploymentNamespace(_ context.Context, rr *odhtypes.Reconcil
 // if GatewayConfig is absent or domain is not yet set, the params are skipped and
 // mlflow-url / section-title will not be rendered. The ConsoleLink will be broken
 // until GatewayConfig is available.
-func (m *Module) setKustomizedParams(ctx context.Context, rr *odhtypes.ReconciliationRequest) error {
+func (m *Module) setKustomizedParams(ctx context.Context, rr *fwtypes.ReconciliationRequest) error {
 	consoleLinkDomain, err := getGatewayDomain(ctx, rr.Client)
 	if err != nil {
 		switch {

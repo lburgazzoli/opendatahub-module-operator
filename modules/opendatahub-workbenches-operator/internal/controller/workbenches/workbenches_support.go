@@ -28,13 +28,12 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	"github.com/opendatahub-io/opendatahub-operator/v2/api/common"
-	serviceApi "github.com/opendatahub-io/opendatahub-operator/v2/api/services/v1alpha1"
-	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/cluster"
-
+	localapi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-workbenches-operator/api/components/v1alpha1"
 	gvk "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-workbenches-operator/pkg/resources/gvk"
-	pkgstatus "github.com/opendatahub-io/opendatahub-operator/v2/pkg/controller/status"
-	odhtypes "github.com/opendatahub-io/opendatahub-operator/v2/pkg/controller/types"
+	"github.com/opendatahub-io/odh-platform-utilities/framework/controller/actions/status/deployments"
+	fwtypes "github.com/opendatahub-io/odh-platform-utilities/framework/controller/types"
+	odhcluster "github.com/opendatahub-io/odh-platform-utilities/pkg/cluster"
+	odhopenshift "github.com/opendatahub-io/odh-platform-utilities/pkg/cluster/openshift"
 )
 
 const (
@@ -58,6 +57,7 @@ const (
 	defaultGatewayName      = "data-science-gateway"
 	gatewayNamespace        = "openshift-ingress"
 	defaultGatewaySubdomain = "rh-ai"
+	gatewayConfigName       = "cluster"
 
 	// mlflowOperatorCRDName is the cluster-scoped CRD name for MLflowOperator.
 	// Watching this CRD lets the controller react when mlflow is installed or removed.
@@ -65,26 +65,26 @@ const (
 )
 
 var (
-	sectionTitle = map[common.Platform]string{
-		cluster.SelfManagedRhoai: "OpenShift Self Managed Services",
-		cluster.ManagedRhoai:     "OpenShift Managed Services",
-		cluster.OpenDataHub:      "OpenShift Open Data Hub",
+	sectionTitle = map[localapi.Platform]string{
+		localapi.Platform(odhcluster.SelfManagedRhoai): "OpenShift Self Managed Services",
+		localapi.Platform(odhcluster.ManagedRhoai):     "OpenShift Managed Services",
+		localapi.Platform(odhcluster.OpenDataHub):      "OpenShift Open Data Hub",
 	}
 
 	notebookControllerContextDir   = path.Join(ComponentName, notebookControllerPath)
 	kfNotebookControllerContextDir = path.Join(ComponentName, kfNotebookControllerPath)
 	notebookContextDir             = path.Join(ComponentName, notebooksPath)
 
-	notebookImagesManifestSourcePath = map[common.Platform]string{
-		cluster.SelfManagedRhoai: "rhoai/overlays/additional",
-		cluster.ManagedRhoai:     "rhoai/overlays/additional",
-		cluster.OpenDataHub:      "odh/overlays/additional",
+	notebookImagesManifestSourcePath = map[localapi.Platform]string{
+		localapi.Platform(odhcluster.SelfManagedRhoai): "rhoai/overlays/additional",
+		localapi.Platform(odhcluster.ManagedRhoai):     "rhoai/overlays/additional",
+		localapi.Platform(odhcluster.OpenDataHub):      "odh/overlays/additional",
 	}
 
-	notebookImagesParamsPath = map[common.Platform]string{
-		cluster.SelfManagedRhoai: "rhoai/base",
-		cluster.ManagedRhoai:     "rhoai/base",
-		cluster.OpenDataHub:      "odh/base",
+	notebookImagesParamsPath = map[localapi.Platform]string{
+		localapi.Platform(odhcluster.SelfManagedRhoai): "rhoai/base",
+		localapi.Platform(odhcluster.ManagedRhoai):     "rhoai/base",
+		localapi.Platform(odhcluster.OpenDataHub):      "odh/base",
 	}
 
 	// conditionTypes contributing to the controller Ready status.
@@ -92,7 +92,7 @@ var (
 	// (CUDA/ROCm) may not be published yet so including it would prevent Workbenches
 	// from reaching Ready=True on those clusters.
 	conditionTypes = []string{
-		pkgstatus.ConditionDeploymentsAvailable,
+		deployments.DefaultConditionType,
 	}
 
 	// notebookImageParamMap maps params-latest.env keys to RELATED_IMAGE env vars.
@@ -118,24 +118,24 @@ var (
 	}
 )
 
-func notebookControllerManifestInfo(basePath string, sourcePath string) odhtypes.ManifestInfo {
-	return odhtypes.ManifestInfo{
+func notebookControllerManifestInfo(basePath string, sourcePath string) fwtypes.ManifestInfo {
+	return fwtypes.ManifestInfo{
 		Path:       basePath,
 		ContextDir: notebookControllerContextDir,
 		SourcePath: sourcePath,
 	}
 }
 
-func kfNotebookControllerManifestInfo(basePath string, sourcePath string) odhtypes.ManifestInfo {
-	return odhtypes.ManifestInfo{
+func kfNotebookControllerManifestInfo(basePath string, sourcePath string) fwtypes.ManifestInfo {
+	return fwtypes.ManifestInfo{
 		Path:       basePath,
 		ContextDir: kfNotebookControllerContextDir,
 		SourcePath: sourcePath,
 	}
 }
 
-func notebookImagesManifestInfo(basePath string, sourcePath string) odhtypes.ManifestInfo {
-	return odhtypes.ManifestInfo{
+func notebookImagesManifestInfo(basePath string, sourcePath string) fwtypes.ManifestInfo {
+	return fwtypes.ManifestInfo{
 		Path:       basePath,
 		ContextDir: notebookContextDir,
 		SourcePath: sourcePath,
@@ -143,7 +143,7 @@ func notebookImagesManifestInfo(basePath string, sourcePath string) odhtypes.Man
 }
 
 // ComputeKustomizeVariable builds the dynamic kustomize parameter map.
-func ComputeKustomizeVariable(ctx context.Context, cli client.Client, platform common.Platform) (map[string]string, error) {
+func ComputeKustomizeVariable(ctx context.Context, cli client.Client, platform localapi.Platform) (map[string]string, error) {
 	mlflowEnabled, err := isMLflowEnabled(ctx, cli)
 	if err != nil {
 		return nil, fmt.Errorf("checking MLflow status: %w", err)
@@ -151,7 +151,7 @@ func ComputeKustomizeVariable(ctx context.Context, cli client.Client, platform c
 
 	title, ok := sectionTitle[platform]
 	if !ok {
-		title = sectionTitle[cluster.SelfManagedRhoai]
+		title = sectionTitle[localapi.Platform(odhcluster.SelfManagedRhoai)]
 	}
 
 	consoleLinkDomain, err := getGatewayDomain(ctx, cli)
@@ -181,7 +181,7 @@ func ComputeKustomizeVariable(ctx context.Context, cli client.Client, platform c
 func isMLflowEnabled(ctx context.Context, cli client.Client) (bool, error) {
 	obj := &unstructured.Unstructured{}
 	obj.SetGroupVersionKind(gvk.MLflowOperator)
-	switch err := cluster.GetSingleton(ctx, cli, obj); {
+	switch err := odhcluster.GetSingleton(ctx, cli, obj); {
 	case err == nil:
 		return true, nil
 	case k8serr.IsNotFound(err), meta.IsNoMatchError(err):
@@ -209,7 +209,7 @@ func getGatewayDomain(ctx context.Context, cli client.Client) (string, error) {
 
 	gwCfg := &unstructured.Unstructured{}
 	gwCfg.SetGroupVersionKind(gvk.GatewayConfig)
-	switch err := cli.Get(ctx, client.ObjectKey{Name: serviceApi.GatewayConfigName}, gwCfg); {
+	switch err := cli.Get(ctx, client.ObjectKey{Name: gatewayConfigName}, gwCfg); {
 	case err == nil:
 		return getFQDNFromConfig(ctx, cli, gwCfg)
 	case k8serr.IsNotFound(err), meta.IsNoMatchError(err):
@@ -232,7 +232,7 @@ func getFQDNFromConfig(ctx context.Context, cli client.Client, gwCfg *unstructur
 		return fmt.Sprintf("%s.%s", subdomain, baseDomain), nil
 	}
 
-	clusterDomain, err := cluster.GetDomain(ctx, cli)
+	clusterDomain, err := odhopenshift.GetDomain(ctx, cli)
 	if err != nil {
 		return "", fmt.Errorf("getting cluster domain: %w", err)
 	}
@@ -240,7 +240,7 @@ func getFQDNFromConfig(ctx context.Context, cli client.Client, gwCfg *unstructur
 }
 
 func getDefaultFQDN(ctx context.Context, cli client.Client) (string, error) {
-	clusterDomain, err := cluster.GetDomain(ctx, cli)
+	clusterDomain, err := odhopenshift.GetDomain(ctx, cli)
 	if err != nil {
 		return "", fmt.Errorf("getting cluster domain: %w", err)
 	}

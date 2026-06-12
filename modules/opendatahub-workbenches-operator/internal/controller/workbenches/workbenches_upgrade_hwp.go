@@ -14,8 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-// Hardware profile migration helpers ported from
-// github.com/opendatahub-io/opendatahub-operator/v2/pkg/upgrade.
+// Hardware profile migration helpers ported from the upstream upgrade logic.
 // Only the notebook-facing operations are included; serving/InferenceService
 // migration belongs in the kserve module.
 
@@ -42,8 +41,8 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
 	infrav1 "github.com/opendatahub-io/opendatahub-operator/v2/api/infrastructure/v1"
-	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/cluster"
 
+	module "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-workbenches-operator/pkg/module"
 	gvk "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-workbenches-operator/pkg/resources/gvk"
 )
 
@@ -157,7 +156,7 @@ func (m *Module) migrateAcceleratorProfilesToHWPForNotebooks(
 			multiErr = multierror.Append(multiErr, fmt.Errorf("generating notebook HWP for AP %s: %w", ap.GetName(), err))
 			continue
 		}
-		if err := cluster.CreateHardwareProfile(ctx, writer, hwp); err != nil {
+		if err := createHardwareProfile(ctx, writer, hwp); err != nil {
 			multiErr = multierror.Append(multiErr, fmt.Errorf("creating notebook HWP for AP %s: %w", ap.GetName(), err))
 			continue
 		}
@@ -188,7 +187,7 @@ func (m *Module) migrateContainerSizesToHWPForNotebooks(
 	log.Info("Discovered notebook container sizes for migration", "count", len(notebookSizes))
 	for _, size := range notebookSizes {
 		hwp := generateHWPFromContainerSize(ctx, size, upgradeNotebooks, notebooksOnlyToleration, m.cfg.ApplicationsNamespace)
-		if err := cluster.CreateHardwareProfile(ctx, writer, hwp); err != nil {
+		if err := createHardwareProfile(ctx, writer, hwp); err != nil {
 			multiErr = multierror.Append(multiErr, fmt.Errorf("creating notebook size HWP %s: %w", size.Name, err))
 			continue
 		}
@@ -248,8 +247,8 @@ func (m *Module) attachHWPAnnotationsToNotebooks(
 		kueueNS, err := m.isNamespaceManagedByKueue(ctx, nb.GetNamespace())
 		if err != nil {
 			log.Error(err, "Failed to check Kueue namespace, continuing", "notebook", nb.GetName())
-		} else if kueueNS && nb.GetLabels()[cluster.KueueQueueNameLabel] == "" {
-			msg := fmt.Sprintf("Skipping HWP migration for Notebook %s: namespace is Kueue-managed but missing label %q", nb.GetName(), cluster.KueueQueueNameLabel)
+		} else if kueueNS && nb.GetLabels()[module.KueueQueueNameLabel] == "" {
+			msg := fmt.Sprintf("Skipping HWP migration for Notebook %s: namespace is Kueue-managed but missing label %q", nb.GetName(), module.KueueQueueNameLabel)
 			log.Info(msg)
 			_ = recordUpgradeEvent(ctx, writer, nb, upgradeEventReasonHWPMigSkipped, msg)
 			continue
@@ -465,8 +464,16 @@ func (m *Module) isNamespaceManagedByKueue(ctx context.Context, namespaceName st
 	if err := m.apiReader.Get(ctx, client.ObjectKey{Name: namespaceName}, ns); err != nil {
 		return false, err
 	}
-	return ns.Labels[cluster.KueueManagedLabelKey] == "true" ||
-		ns.Labels[cluster.KueueLegacyManagedLabelKey] == "true", nil
+	return ns.Labels[module.KueueManagedLabelKey] == "true" ||
+		ns.Labels[module.KueueLegacyManagedLabelKey] == "true", nil
+}
+
+func createHardwareProfile(ctx context.Context, cli client.Client, hwp *infrav1.HardwareProfile) error {
+	if err := cli.Create(ctx, hwp); err != nil && !k8serr.IsAlreadyExists(err) {
+		return fmt.Errorf("failed to create HardwareProfile %q/%q: %w", hwp.Namespace, hwp.Name, err)
+	}
+
+	return nil
 }
 
 func (m *Module) getHardwareProfile(ctx context.Context, name string, namespace string) (*infrav1.HardwareProfile, error) {

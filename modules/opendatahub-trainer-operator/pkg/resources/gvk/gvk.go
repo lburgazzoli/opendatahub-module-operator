@@ -17,27 +17,25 @@ limitations under the License.
 // Package gvk centralizes GroupVersionKind constants for the Trainer module operator.
 package gvk
 
-import (
-	clustergvk "github.com/opendatahub-io/opendatahub-operator/v2/pkg/cluster/gvk"
+import fwgvk "github.com/opendatahub-io/odh-platform-utilities/framework/cluster/gvk"
+
+// Shared chartgen GVKs reused from the framework cluster package.
+var (
+	Namespace                      = fwgvk.Namespace
+	CustomResourceDefinition       = fwgvk.CustomResourceDefinition
+	Deployment                     = fwgvk.Deployment
+	ServiceAccount                 = fwgvk.ServiceAccount
+	ConfigMap                      = fwgvk.ConfigMap
+	ClusterRoleBinding             = fwgvk.ClusterRoleBinding
+	RoleBinding                    = fwgvk.RoleBinding
+	MutatingWebhookConfiguration   = fwgvk.MutatingWebhookConfiguration
+	ValidatingWebhookConfiguration = fwgvk.ValidatingWebhookConfiguration
+	CertManagerCertificate         = fwgvk.CertManagerCertificate
 )
 
-// Shared chartgen GVKs reused from the upstream operator cluster package.
+// Trainer controller GVKs reused from the framework cluster package.
 var (
-	Namespace                      = clustergvk.Namespace
-	CustomResourceDefinition       = clustergvk.CustomResourceDefinition
-	Deployment                     = clustergvk.Deployment
-	ServiceAccount                 = clustergvk.ServiceAccount
-	ConfigMap                      = clustergvk.ConfigMap
-	ClusterRoleBinding             = clustergvk.ClusterRoleBinding
-	RoleBinding                    = clustergvk.RoleBinding
-	MutatingWebhookConfiguration   = clustergvk.MutatingWebhookConfiguration
-	ValidatingWebhookConfiguration = clustergvk.ValidatingWebhookConfiguration
-	CertManagerCertificate         = clustergvk.CertManagerCertificate
-)
-
-// Trainer controller GVKs reused from the upstream operator cluster package.
-var (
-	ClusterTrainingRuntime = clustergvk.ClusterTrainingRuntime
-	JobSetOperatorV1       = clustergvk.JobSetOperatorV1
-	JobSetv1alpha2         = clustergvk.JobSetv1alpha2
+	ClusterTrainingRuntime = fwgvk.ClusterTrainingRuntime
+	JobSetOperatorV1       = fwgvk.JobSetOperatorV1
+	JobSetv1alpha2         = fwgvk.JobSetv1alpha2
 )

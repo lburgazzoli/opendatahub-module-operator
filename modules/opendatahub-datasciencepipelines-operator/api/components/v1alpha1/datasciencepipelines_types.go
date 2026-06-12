@@ -17,8 +17,9 @@ limitations under the License.
 package v1alpha1
 
 import (
-	"github.com/opendatahub-io/opendatahub-operator/v2/api/common"
+	common "github.com/opendatahub-io/odh-platform-utilities/api/common"
 	operatorv1 "github.com/openshift/api/operator/v1"
+	ofVersion "github.com/operator-framework/api/pkg/lib/version"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -29,6 +30,14 @@ const (
 	// AIPipelinesKind is the user-facing v2 alias in the monolith API.
 	AIPipelinesKind = "AIPipelines"
 )
+
+type Platform string
+
+// Release reports the operator version and platform.
+type Release struct {
+	Name    Platform                  `json:"name,omitempty"`
+	Version ofVersion.OperatorVersion `json:"version,omitempty"`
+}
 
 var _ common.PlatformObject = (*DataSciencePipelines)(nil)
 
@@ -57,7 +66,7 @@ type DataSciencePipelinesStatus struct {
 	DataSciencePipelinesCommonStatus `json:",inline"`
 
 	// Release reports the operator version and platform.
-	Release common.Release `json:"release,omitempty"`
+	Release Release `json:"release,omitempty"`
 }
 
 // +kubebuilder:object:root=true
@@ -87,12 +96,12 @@ func (c *DataSciencePipelines) SetConditions(conditions []common.Condition) {
 	c.Status.SetConditions(conditions)
 }
 
-func (c *DataSciencePipelines) GetReleaseStatus() *[]common.ComponentRelease {
-	return &c.Status.Releases
+func (c *DataSciencePipelines) GetReleaseStatus() *common.ComponentReleaseStatus {
+	return &c.Status.ComponentReleaseStatus
 }
 
-func (c *DataSciencePipelines) SetReleaseStatus(releases []common.ComponentRelease) {
-	c.Status.Releases = releases
+func (c *DataSciencePipelines) SetReleaseStatus(status common.ComponentReleaseStatus) {
+	c.Status.ComponentReleaseStatus = status
 }
 
 // +kubebuilder:object:root=true

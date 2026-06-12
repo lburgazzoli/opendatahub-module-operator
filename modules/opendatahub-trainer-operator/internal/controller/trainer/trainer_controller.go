@@ -31,22 +31,25 @@ import (
 
 	componentApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-trainer-operator/api/components/v1alpha1"
 	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-trainer-operator/pkg/config"
+	localreleases "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-trainer-operator/pkg/controller/actions/releases"
+	module "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-trainer-operator/pkg/module"
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-trainer-operator/pkg/resources/gvk"
-	"github.com/opendatahub-io/opendatahub-operator/v2/api/common"
-	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/controller/actions/deploy"
-	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/controller/actions/gc"
-	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/controller/actions/render/kustomize"
-	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/controller/actions/status/deployments"
-	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/controller/actions/status/releases"
-	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/controller/handlers"
-	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/controller/precondition"
-	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/controller/predicates"
-	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/controller/predicates/component"
-	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/controller/predicates/dependent"
-	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/controller/predicates/resources"
-	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/controller/reconciler"
-	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/metadata/labels"
+	fwapi "github.com/opendatahub-io/odh-platform-utilities/framework/api"
+	"github.com/opendatahub-io/odh-platform-utilities/framework/controller/actions/deploy"
+	"github.com/opendatahub-io/odh-platform-utilities/framework/controller/actions/gc"
+	"github.com/opendatahub-io/odh-platform-utilities/framework/controller/actions/render/kustomize"
+	"github.com/opendatahub-io/odh-platform-utilities/framework/controller/actions/status/deployments"
+	fwconditions "github.com/opendatahub-io/odh-platform-utilities/framework/controller/conditions"
+	"github.com/opendatahub-io/odh-platform-utilities/framework/controller/handlers"
+	"github.com/opendatahub-io/odh-platform-utilities/framework/controller/predicates"
+	dependentpred "github.com/opendatahub-io/odh-platform-utilities/framework/controller/predicates/dependent"
+	labelpred "github.com/opendatahub-io/odh-platform-utilities/framework/controller/predicates/label"
+	resourcepred "github.com/opendatahub-io/odh-platform-utilities/framework/controller/predicates/resources"
+	"github.com/opendatahub-io/odh-platform-utilities/framework/controller/reconciler"
+	fwtypes "github.com/opendatahub-io/odh-platform-utilities/framework/controller/types"
 )
+
+const appLabelPrefix = "app.opendatahub.io"
 
 // +kubebuilder:rbac:groups=components.platform.opendatahub.io,resources=trainers,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=components.platform.opendatahub.io,resources=trainers/status,verbs=get;update;patch
@@ -78,7 +81,7 @@ func NewReconciler(
 	ctx context.Context,
 	mgr ctrl.Manager,
 	cfg *moduleconfig.Config,
-	rel common.Release,
+	rel componentApi.Release,
 ) error {
 	m, err := NewModule(cfg)
 	if err != nil {
@@ -86,7 +89,7 @@ func NewReconciler(
 	}
 	m.apiReader = mgr.GetAPIReader()
 
-	r, err := reconciler.ReconcilerFor(mgr, &componentApi.Trainer{}).
+	_, err = reconciler.ReconcilerFor(mgr, &componentApi.Trainer{}).
 		Owns(&corev1.ConfigMap{}).
 		Owns(&corev1.Secret{}).
 		Owns(&monitoringv1.PodMonitor{}).
@@ -103,9 +106,9 @@ func NewReconciler(
 			reconciler.WithEventHandler(
 				handlers.ToNamed(componentApi.TrainerInstanceName)),
 			reconciler.WithPredicates(predicate.Or(
-				component.ForLabel(labels.ODH.Component(componentName), labels.True),
-				resources.CreatedOrUpdatedOrDeletedNamed(jobSetOperatorCRDName),
-				resources.CreatedOrUpdatedOrDeletedNamed(jobSetCRDName),
+				labelpred.ForLabel(appLabelPrefix+"/"+componentName, "true"),
+				resourcepred.CreatedOrUpdatedOrDeletedNamed(jobSetOperatorCRDName),
+				resourcepred.CreatedOrUpdatedOrDeletedNamed(jobSetCRDName),
 			)),
 		).
 		WatchesGVK(
@@ -114,42 +117,87 @@ func NewReconciler(
 				handlers.ToNamed(componentApi.TrainerInstanceName),
 			),
 			reconciler.WithPredicates(predicate.Or(
-				dependent.New(dependent.WithWatchStatus(true)),
-				resources.CreatedOrUpdatedOrDeletedNamed(jobSetOperatorCRName),
+				dependentpred.New(dependentpred.WithWatchStatus(true)),
+				resourcepred.CreatedOrUpdatedOrDeletedNamed(jobSetOperatorCRName),
 			)),
 			reconciler.Dynamic(reconciler.CrdExists(gvk.JobSetOperatorV1)),
 		).
-		WithPreCondition(precondition.NewPreCondition(
-			m.checkPreConditions,
-			precondition.WithStopReconciliation(),
-		)).
-		WithPreCondition(precondition.NewPreCondition(
-			m.checkJobSetCRD,
-			precondition.WithStopReconciliation(),
-		)).
+		WithReconcilerOpts(
+			reconciler.WithRelease(fwapi.Release{
+				Name:    fwapi.Platform(rel.Name),
+				Version: rel.Version.Version,
+			}),
+			reconciler.WithPreApplyFn(func(
+				ctx context.Context,
+				rr *fwtypes.ReconciliationRequest,
+			) bool {
+				result, err := m.checkPreConditions(ctx, rr)
+				if err != nil {
+					rr.Conditions.MarkUnknown(
+						module.ConditionDependenciesAvailable,
+						fwconditions.WithObservedGeneration(rr.Instance.GetGeneration()),
+						fwconditions.WithReason(module.PreConditionFailedReason),
+						fwconditions.WithMessage("%s", err.Error()),
+					)
+					return true
+				}
+				if !result.Pass {
+					rr.Conditions.MarkFalse(
+						module.ConditionDependenciesAvailable,
+						fwconditions.WithObservedGeneration(rr.Instance.GetGeneration()),
+						fwconditions.WithReason(module.PreConditionFailedReason),
+						fwconditions.WithMessage("%s", result.Message),
+					)
+					return true
+				}
+
+				result, err = m.checkJobSetCRD(ctx, rr)
+				if err != nil {
+					rr.Conditions.MarkUnknown(
+						module.ConditionDependenciesAvailable,
+						fwconditions.WithObservedGeneration(rr.Instance.GetGeneration()),
+						fwconditions.WithReason(module.PreConditionFailedReason),
+						fwconditions.WithMessage("%s", err.Error()),
+					)
+					return true
+				}
+				if !result.Pass {
+					rr.Conditions.MarkFalse(
+						module.ConditionDependenciesAvailable,
+						fwconditions.WithObservedGeneration(rr.Instance.GetGeneration()),
+						fwconditions.WithReason(module.PreConditionFailedReason),
+						fwconditions.WithMessage("%s", result.Message),
+					)
+					return true
+				}
+
+				rr.Conditions.MarkTrue(
+					module.ConditionDependenciesAvailable,
+					fwconditions.WithObservedGeneration(rr.Instance.GetGeneration()),
+				)
+				return false
+			}),
+		).
 		WithAction(m.initialize).
 		WithAction(m.upgradeIfNeeded).
-		WithAction(releases.NewAction()).
-		WithAction(kustomize.NewAction(
-			kustomize.WithLabel(labels.ODH.Component(LegacyComponentName), labels.True),
-			kustomize.WithLabel(labels.K8SCommon.PartOf, LegacyComponentName),
-		)).
+		WithAction(localreleases.NewAction()).
+		WithAction(kustomize.NewAction()).
 		WithAction(deploy.NewAction(
 			deploy.WithCache(),
 			deploy.WithApplyOrder(),
+			deploy.WithLabel(appLabelPrefix+"/"+LegacyComponentName, "true"),
+			deploy.WithPartOfLabelDefault(LegacyComponentName),
 		)).
-		WithAction(deployments.NewAction()).
+		WithAction(deployments.NewAction(
+			deployments.InNamespaceFn(moduleconfig.ApplicationsNamespaceGetter(cfg)),
+		)).
 		WithAction(m.reportStatus).
-		WithAction(gc.NewAction(
-			gc.InNamespace(cfg.ApplicationsNamespace),
-		)).
+		WithAction(gc.NewAction(moduleconfig.ApplicationsNamespaceGetter(cfg))).
 		WithConditions(conditionTypes...).
 		Build(ctx)
 	if err != nil {
 		return err
 	}
-
-	r.Release = rel
 
 	return nil
 }

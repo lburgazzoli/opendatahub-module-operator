@@ -17,18 +17,25 @@ limitations under the License.
 package gvk
 
 import (
-	clustergvk "github.com/opendatahub-io/opendatahub-operator/v2/pkg/cluster/gvk"
+	securityv1 "github.com/openshift/api/security/v1"
+	"k8s.io/apimachinery/pkg/runtime/schema"
+
+	fwgvk "github.com/opendatahub-io/odh-platform-utilities/framework/cluster/gvk"
 )
 
 var (
-	Namespace                      = clustergvk.Namespace
-	Deployment                     = clustergvk.Deployment
-	ServiceAccount                 = clustergvk.ServiceAccount
-	ConfigMap                      = clustergvk.ConfigMap
-	ClusterRoleBinding             = clustergvk.ClusterRoleBinding
-	RoleBinding                    = clustergvk.RoleBinding
-	MutatingWebhookConfiguration   = clustergvk.MutatingWebhookConfiguration
-	ValidatingWebhookConfiguration = clustergvk.ValidatingWebhookConfiguration
-	CertManagerCertificate         = clustergvk.CertManagerCertificate
-	SecurityContextConstraints     = clustergvk.SecurityContextConstraints
+	Namespace                      = fwgvk.Namespace
+	Deployment                     = fwgvk.Deployment
+	ServiceAccount                 = fwgvk.ServiceAccount
+	ConfigMap                      = fwgvk.ConfigMap
+	ClusterRoleBinding             = fwgvk.ClusterRoleBinding
+	RoleBinding                    = fwgvk.RoleBinding
+	MutatingWebhookConfiguration   = fwgvk.MutatingWebhookConfiguration
+	ValidatingWebhookConfiguration = fwgvk.ValidatingWebhookConfiguration
+	CertManagerCertificate         = fwgvk.CertManagerCertificate
+	SecurityContextConstraints     = schema.GroupVersionKind{
+		Group:   securityv1.SchemeGroupVersion.Group,
+		Version: securityv1.SchemeGroupVersion.Version,
+		Kind:    "SecurityContextConstraints",
+	}
 )

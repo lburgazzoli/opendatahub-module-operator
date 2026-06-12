@@ -17,6 +17,7 @@ limitations under the License.
 package config
 
 import (
+	"context"
 	"fmt"
 	"io/fs"
 	"os"
@@ -26,8 +27,11 @@ import (
 	"github.com/blang/semver/v4"
 	"github.com/spf13/viper"
 
-	"github.com/opendatahub-io/opendatahub-operator/v2/api/common"
+	fwactions "github.com/opendatahub-io/odh-platform-utilities/framework/controller/actions"
+	fwtypes "github.com/opendatahub-io/odh-platform-utilities/framework/controller/types"
 	ofVersion "github.com/operator-framework/api/pkg/lib/version"
+
+	componentApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-workbenches-operator/api/components/v1alpha1"
 )
 
 const (
@@ -132,12 +136,12 @@ type PprofConfig struct {
 	BindAddress string `mapstructure:"bind-address"`
 }
 
-// Release builds a common.Release from the configured platform type and
+// Release builds a module release from the configured platform type and
 // version. If PlatformVersion is not valid semver, the version defaults
 // to 0.0.0.
-func (c *Config) Release() common.Release {
-	rel := common.Release{
-		Name: common.Platform(c.PlatformName),
+func (c *Config) Release() componentApi.Release {
+	rel := componentApi.Release{
+		Name: componentApi.Platform(c.PlatformName),
 	}
 
 	if c.PlatformVersion != "" {
@@ -148,6 +152,12 @@ func (c *Config) Release() common.Release {
 	}
 
 	return rel
+}
+
+func ApplicationsNamespaceGetter(cfg *Config) fwactions.Getter[string] {
+	return func(_ context.Context, _ *fwtypes.ReconciliationRequest) (string, error) {
+		return cfg.ApplicationsNamespace, nil
+	}
 }
 
 // Load reads operator configuration from all available sources.

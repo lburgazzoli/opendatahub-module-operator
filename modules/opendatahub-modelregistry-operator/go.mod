@@ -8,10 +8,12 @@ require (
 	github.com/lburgazzoli/gomega-matchers v0.4.1-0.20260219145423-4061a5fb8799
 	github.com/onsi/gomega v1.41.0
 	github.com/opendatahub-io/odh-platform-utilities v0.0.0-20260528075406-6d9164111905
+	github.com/opendatahub-io/odh-platform-utilities/framework v0.0.0-00010101000000-000000000000
 	github.com/opendatahub-io/opendatahub-operator/v2 v2.0.0-00010101000000-000000000000
 	github.com/operator-framework/api v0.42.0
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/viper v1.21.0
+	gopkg.in/yaml.v3 v3.0.1
 	k8s.io/api v0.36.1
 	k8s.io/apiextensions-apiserver v0.36.1
 	k8s.io/apimachinery v0.36.1
@@ -114,7 +116,6 @@ require (
 	google.golang.org/protobuf v1.36.12-0.20260120151049-f2248ac996af // indirect
 	gopkg.in/evanphx/json-patch.v4 v4.13.0 // indirect
 	gopkg.in/inf.v0 v0.9.1 // indirect
-	gopkg.in/yaml.v3 v3.0.1 // indirect
 	helm.sh/helm/v4 v4.1.1 // indirect
 	k8s.io/klog/v2 v2.140.0 // indirect
 	k8s.io/kube-openapi v0.0.0-20260414162039-ec9c827d403f // indirect
@@ -128,4 +129,10 @@ require (
 	sigs.k8s.io/structured-merge-diff/v6 v6.4.0 // indirect
 )
 
+replace github.com/opendatahub-io/odh-platform-utilities => ../../../odh-platform-utilities
+
+replace github.com/opendatahub-io/odh-platform-utilities/framework => ../../../odh-platform-utilities/framework
+
 replace github.com/opendatahub-io/opendatahub-operator/v2 => github.com/lburgazzoli/opendatahub-operator/v2 v2.0.0-20260522211029-67d95fa3b5a1
+
+replace github.com/opendatahub-io/operator-actions-framework => github.com/lburgazzoli/opendatahub-operator/operator-actions-framework v0.0.0-20260606070426-37227c168d1b

@@ -22,23 +22,68 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/lburgazzoli/gomega-matchers/pkg/matchers/jq"
 	componentApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-datasciencepipelines-operator/api/components/v1alpha1"
+	module "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-datasciencepipelines-operator/pkg/module"
 	. "github.com/onsi/gomega"
-	common "github.com/opendatahub-io/opendatahub-operator/v2/api/common"
-	upstreamcomponents "github.com/opendatahub-io/opendatahub-operator/v2/api/components/v1alpha1"
+	common "github.com/opendatahub-io/odh-platform-utilities/api/common"
+	fwapi "github.com/opendatahub-io/odh-platform-utilities/framework/api"
+	"github.com/opendatahub-io/odh-platform-utilities/framework/controller/conditions"
+	fwtypes "github.com/opendatahub-io/odh-platform-utilities/framework/controller/types"
+	"github.com/opendatahub-io/odh-platform-utilities/framework/resources"
 	operatorv1 "github.com/openshift/api/operator/v1"
 	extv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-
-	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/controller/conditions"
-	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/controller/status"
-	odhtypes "github.com/opendatahub-io/opendatahub-operator/v2/pkg/controller/types"
-	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/metadata/labels"
-	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/resources"
-	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/utils/test/fakeclient"
-	"github.com/opendatahub-io/opendatahub-operator/v2/pkg/utils/test/matchers/jq"
+	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 )
+
+type fakePlatformObject struct {
+	metav1.TypeMeta
+	metav1.ObjectMeta
+	status        common.Status
+	conditions    []common.Condition
+	releaseStatus common.ComponentReleaseStatus
+}
+
+func (f *fakePlatformObject) DeepCopyObject() runtime.Object {
+	out := *f
+	return &out
+}
+
+func (f *fakePlatformObject) GetStatus() *common.Status {
+	return &f.status
+}
+
+func (f *fakePlatformObject) GetConditions() []common.Condition {
+	return f.conditions
+}
+
+func (f *fakePlatformObject) SetConditions(newConditions []common.Condition) {
+	f.conditions = newConditions
+}
+
+func (f *fakePlatformObject) GetReleaseStatus() *common.ComponentReleaseStatus {
+	return &f.releaseStatus
+}
+
+func (f *fakePlatformObject) SetReleaseStatus(newStatus common.ComponentReleaseStatus) {
+	f.releaseStatus = newStatus
+}
+
+func newFakeClient(
+	t *testing.T,
+) client.Client {
+	t.Helper()
+
+	g := NewWithT(t)
+	scheme := runtime.NewScheme()
+	g.Expect(extv1.AddToScheme(scheme)).To(Succeed())
+	g.Expect(componentApi.AddToScheme(scheme)).To(Succeed())
+
+	return fake.NewClientBuilder().WithScheme(scheme).Build()
+}
 
 func TestCheckPreConditions(t *testing.T) {
 	ctx := context.Background()
@@ -56,9 +101,7 @@ func TestCheckPreConditions(t *testing.T) {
 		{
 			name: "removed state fails when workflows CRD is missing",
 			setupClient: func() client.Client {
-				cli, err := fakeclient.New()
-				g.Expect(err).NotTo(HaveOccurred())
-				return cli
+				return newFakeClient(t)
 			},
 			instance: &componentApi.DataSciencePipelines{
 				ObjectMeta: metav1.ObjectMeta{Name: componentApi.DataSciencePipelinesInstanceName},
@@ -72,15 +115,14 @@ func TestCheckPreConditions(t *testing.T) {
 			},
 			expectedError:           ErrArgoWorkflowCRDMissing,
 			expectedConditionStatus: metav1.ConditionFalse,
-			expectedReason:          status.DataSciencePipelinesArgoWorkflowsCRDMissingReason,
-			expectedMessage:         status.DataSciencePipelinesArgoWorkflowsCRDMissingMessage,
+			expectedReason:          module.DataSciencePipelinesArgoWorkflowsCRDMissingReason,
+			expectedMessage:         module.DataSciencePipelinesArgoWorkflowsCRDMissingMessage,
 		},
 		{
 			name: "removed state passes when workflows CRD already exists",
 			setupClient: func() client.Client {
-				cli, err := fakeclient.New()
-				g.Expect(err).NotTo(HaveOccurred())
-				err = cli.Create(ctx, &extv1.CustomResourceDefinition{
+				cli := newFakeClient(t)
+				err := cli.Create(ctx, &extv1.CustomResourceDefinition{
 					ObjectMeta: metav1.ObjectMeta{Name: ArgoWorkflowCRD},
 				})
 				g.Expect(err).NotTo(HaveOccurred())
@@ -97,15 +139,13 @@ func TestCheckPreConditions(t *testing.T) {
 				},
 			},
 			expectedConditionStatus: metav1.ConditionTrue,
-			expectedReason:          status.DataSciencePipelinesArgoWorkflowsNotManagedReason,
-			expectedMessage:         status.DataSciencePipelinesArgoWorkflowsNotManagedMessage,
+			expectedReason:          module.DataSciencePipelinesArgoWorkflowsNotManagedReason,
+			expectedMessage:         module.DataSciencePipelinesArgoWorkflowsNotManagedMessage,
 		},
 		{
 			name: "managed state passes when workflows CRD is missing",
 			setupClient: func() client.Client {
-				cli, err := fakeclient.New()
-				g.Expect(err).NotTo(HaveOccurred())
-				return cli
+				return newFakeClient(t)
 			},
 			instance: &componentApi.DataSciencePipelines{
 				ObjectMeta: metav1.ObjectMeta{Name: componentApi.DataSciencePipelinesInstanceName},
@@ -122,13 +162,12 @@ func TestCheckPreConditions(t *testing.T) {
 		{
 			name: "managed state passes when workflows CRD is ODH-owned",
 			setupClient: func() client.Client {
-				cli, err := fakeclient.New()
-				g.Expect(err).NotTo(HaveOccurred())
-				err = cli.Create(ctx, &extv1.CustomResourceDefinition{
+				cli := newFakeClient(t)
+				err := cli.Create(ctx, &extv1.CustomResourceDefinition{
 					ObjectMeta: metav1.ObjectMeta{
 						Name: ArgoWorkflowCRD,
 						Labels: map[string]string{
-							labels.ODH.Component(LegacyComponentName): "true",
+							appLabelPrefix + "/" + LegacyComponentName: "true",
 						},
 					},
 				})
@@ -150,9 +189,8 @@ func TestCheckPreConditions(t *testing.T) {
 		{
 			name: "managed state fails when workflows CRD is foreign-owned",
 			setupClient: func() client.Client {
-				cli, err := fakeclient.New()
-				g.Expect(err).NotTo(HaveOccurred())
-				err = cli.Create(ctx, &extv1.CustomResourceDefinition{
+				cli := newFakeClient(t)
+				err := cli.Create(ctx, &extv1.CustomResourceDefinition{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:   ArgoWorkflowCRD,
 						Labels: map[string]string{"some-other-label": "value"},
@@ -173,15 +211,13 @@ func TestCheckPreConditions(t *testing.T) {
 			},
 			expectedError:           ErrArgoWorkflowAPINotOwned,
 			expectedConditionStatus: metav1.ConditionFalse,
-			expectedReason:          status.DataSciencePipelinesDoesntOwnArgoCRDReason,
-			expectedMessage:         status.DataSciencePipelinesDoesntOwnArgoCRDMessage,
+			expectedReason:          module.DataSciencePipelinesDoesntOwnArgoCRDReason,
+			expectedMessage:         module.DataSciencePipelinesDoesntOwnArgoCRDMessage,
 		},
 		{
 			name: "default managed behavior passes when option is omitted",
 			setupClient: func() client.Client {
-				cli, err := fakeclient.New()
-				g.Expect(err).NotTo(HaveOccurred())
-				return cli
+				return newFakeClient(t)
 			},
 			instance: &componentApi.DataSciencePipelines{
 				ObjectMeta: metav1.ObjectMeta{Name: componentApi.DataSciencePipelinesInstanceName},
@@ -193,10 +229,10 @@ func TestCheckPreConditions(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			cli := tt.setupClient()
-			rr := odhtypes.ReconciliationRequest{
+			rr := fwtypes.ReconciliationRequest{
 				Client:     cli,
 				Instance:   tt.instance,
-				Conditions: conditions.NewManager(tt.instance, status.ConditionTypeReady),
+				Conditions: conditions.NewManager(tt.instance, string(fwapi.ConditionTypeReady)),
 			}
 
 			err := checkPreConditions(ctx, &rr)
@@ -209,7 +245,7 @@ func TestCheckPreConditions(t *testing.T) {
 			g.Expect(tt.instance).To(
 				WithTransform(resources.ToUnstructured, jq.Match(
 					`.status.conditions[] | select(.type == "%s") | .status == "%s"`,
-					status.ConditionArgoWorkflowAvailable,
+					module.ConditionArgoWorkflowAvailable,
 					tt.expectedConditionStatus,
 				)),
 			)
@@ -218,7 +254,7 @@ func TestCheckPreConditions(t *testing.T) {
 				g.Expect(tt.instance).To(
 					WithTransform(resources.ToUnstructured, jq.Match(
 						`.status.conditions[] | select(.type == "%s") | .reason == "%s"`,
-						status.ConditionArgoWorkflowAvailable,
+						module.ConditionArgoWorkflowAvailable,
 						tt.expectedReason,
 					)),
 				)
@@ -228,7 +264,7 @@ func TestCheckPreConditions(t *testing.T) {
 				g.Expect(tt.instance).To(
 					WithTransform(resources.ToUnstructured, jq.Match(
 						`.status.conditions[] | select(.type == "%s") | .message == "%s"`,
-						status.ConditionArgoWorkflowAvailable,
+						module.ConditionArgoWorkflowAvailable,
 						tt.expectedMessage,
 					)),
 				)
@@ -240,19 +276,18 @@ func TestCheckPreConditions(t *testing.T) {
 func TestCheckPreConditionsWrongInstanceType(t *testing.T) {
 	g := NewWithT(t)
 
-	cli, err := fakeclient.New()
-	g.Expect(err).NotTo(HaveOccurred())
+	cli := newFakeClient(t)
 
-	wrongInstance := &upstreamcomponents.Dashboard{
+	wrongInstance := &fakePlatformObject{
 		ObjectMeta: metav1.ObjectMeta{Name: "wrong-type"},
 	}
-	rr := odhtypes.ReconciliationRequest{
+	rr := fwtypes.ReconciliationRequest{
 		Client:     cli,
 		Instance:   wrongInstance,
-		Conditions: conditions.NewManager(wrongInstance, status.ConditionTypeReady),
+		Conditions: conditions.NewManager(wrongInstance, string(fwapi.ConditionTypeReady)),
 	}
 
-	err = checkPreConditions(context.Background(), &rr)
+	err := checkPreConditions(context.Background(), &rr)
 	g.Expect(err).To(HaveOccurred())
 	g.Expect(err.Error()).To(ContainSubstring("is not a DataSciencePipelines"))
 }
@@ -287,7 +322,7 @@ func TestArgoWorkflowsControllersOptions(t *testing.T) {
 		},
 		{
 			name:          "fails for wrong instance type",
-			instance:      &upstreamcomponents.Dashboard{ObjectMeta: metav1.ObjectMeta{Name: "wrong-type"}},
+			instance:      &fakePlatformObject{ObjectMeta: metav1.ObjectMeta{Name: "wrong-type"}},
 			expectedError: true,
 		},
 	}
@@ -295,7 +330,7 @@ func TestArgoWorkflowsControllersOptions(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			root := writeTestParamsEnv(t)
-			rr := odhtypes.ReconciliationRequest{
+			rr := fwtypes.ReconciliationRequest{
 				Instance:          tt.instance,
 				ManifestsBasePath: root,
 			}

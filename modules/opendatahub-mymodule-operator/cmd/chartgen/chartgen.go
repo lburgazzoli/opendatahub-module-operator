@@ -30,7 +30,7 @@ import (
 	utilyaml "k8s.io/apimachinery/pkg/util/yaml"
 	"sigs.k8s.io/yaml"
 
-	"github.com/opendatahub-io/operator-actions-framework/cluster/gvk"
+	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-mymodule-operator/pkg/resources/gvk"
 )
 
 const (
