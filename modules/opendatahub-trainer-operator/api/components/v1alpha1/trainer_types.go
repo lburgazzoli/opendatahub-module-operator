@@ -26,6 +26,9 @@ const (
 	TrainerComponentName = "trainer"
 	TrainerInstanceName  = "default-" + TrainerComponentName
 	TrainerKind          = "Trainer"
+
+	TrainerResource = "trainers"
+	TrainerCRDName  = TrainerResource + "." + GroupName
 )
 
 type Platform string

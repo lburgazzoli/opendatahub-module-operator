@@ -1,43 +1,34 @@
-//go:build integration
-
 package integration
 
 import (
 	"testing"
 
 	. "github.com/onsi/gomega"
+	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/lburgazzoli/gomega-matchers/pkg/matchers/jq"
+	k8sm "github.com/lburgazzoli/gomega-matchers/pkg/matchers/k8s"
 
 	componentsv1alpha1 "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-trainer-operator/api/components/v1alpha1"
-	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-trainer-operator/pkg/config"
-	module "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-trainer-operator/pkg/module"
+	modulemeta "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-trainer-operator/pkg/module"
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-trainer-operator/test/support"
 	common "github.com/opendatahub-io/odh-platform-utilities/api/common"
 	fwapi "github.com/opendatahub-io/odh-platform-utilities/framework/api"
+	"github.com/opendatahub-io/odh-platform-utilities/pkg/metadata/annotations"
+	"github.com/opendatahub-io/odh-platform-utilities/pkg/metadata/labels"
+)
+
+const (
+	jobSetOperatorCRDName = "jobsetoperators.operator.openshift.io"
+	jobSetCRDName         = "jobsets.jobset.x-k8s.io"
 )
 
 type foundationTests struct {
-	*trainerTest
-}
-
-func (ft *foundationTests) cleanupModuleWorkload(t *testing.T) {
-	t.Helper()
-
-	serviceAccount := &corev1.ServiceAccount{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      workloadDeployName,
-			Namespace: ft.workloadDeploy.Namespace,
-		},
-	}
-
-	_ = k8sClient.Delete(ctx, ft.module)
-	waitForSingletonDeleted(t, ft.module)
-	waitForDeleted(t, ft.workloadDeploy)
-	waitForDeleted(t, serviceAccount)
+	Client client.Client
 }
 
 func (ft *foundationTests) Execute(t *testing.T) {
@@ -51,12 +42,77 @@ func (ft *foundationTests) Execute(t *testing.T) {
 	t.Run("should report not ready when JobSet CRD is missing", ft.testJobSetCRDMissing)
 }
 
-func (ft *foundationTests) testModuleCRDInstalled(t *testing.T) {
-	g := NewWithT(t)
+func moduleObject() *componentsv1alpha1.Trainer {
+	return &componentsv1alpha1.Trainer{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: componentsv1alpha1.TrainerInstanceName,
+		},
+	}
+}
 
-	g.Eventually(k.Get(ft.moduleCRD)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(
-		jq.Match(`.metadata.name == "%s"`, moduleCRDName),
+func workloadDeployment() *appsv1.Deployment {
+	return &appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "kubeflow-trainer-controller-manager",
+			Namespace: support.IntegrationTestNamespace(),
+		},
+	}
+}
+
+func (ft *foundationTests) cleanupModuleWorkload(t *testing.T) {
+	t.Helper()
+
+	trainer := moduleObject()
+	workloadDeploy := workloadDeployment()
+	serviceAccount := &corev1.ServiceAccount{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      workloadDeploy.Name,
+			Namespace: workloadDeploy.Namespace,
+		},
+	}
+
+	_ = ft.Client.Delete(t.Context(), trainer)
+	g := NewWithT(t)
+	g.Eventually(t.Context(), k8sm.NotFound(ft.Client, trainer)).Should(BeTrue())
+	g.Eventually(t.Context(), k8sm.NotFound(ft.Client, workloadDeploy)).Should(BeTrue())
+	g.Eventually(t.Context(), k8sm.NotFound(ft.Client, serviceAccount)).Should(BeTrue())
+}
+
+func (ft *foundationTests) ensureReadyModule(t *testing.T) *componentsv1alpha1.Trainer {
+	t.Helper()
+
+	g := NewWithT(t)
+	trainer := moduleObject()
+	workloadDeploy := workloadDeployment()
+
+	_ = ft.Client.Delete(t.Context(), trainer)
+	g.Eventually(t.Context(), k8sm.NotFound(ft.Client, trainer)).Should(BeTrue())
+
+	t.Cleanup(func() {
+		_ = ft.Client.Delete(t.Context(), trainer)
+	})
+
+	g.Expect(ft.Client.Create(t.Context(), trainer)).To(Succeed())
+
+	g.Eventually(t.Context(), k8sm.Get(ft.Client, trainer)).Should(And(
+		jq.Match(`.status.phase == "Ready"`),
+		WithTransform(k8sm.Conditions(), SatisfyAll(
+			ContainElement(SatisfyAll(
+				HaveKeyWithValue("type", "Ready"),
+				HaveKeyWithValue("status", string(metav1.ConditionTrue)),
+			)),
+			ContainElement(SatisfyAll(
+				HaveKeyWithValue("type", "ProvisioningSucceeded"),
+				HaveKeyWithValue("status", string(metav1.ConditionTrue)),
+			)),
+		)),
+	))
+
+	g.Eventually(t.Context(), k8sm.Get(ft.Client, workloadDeploy)).Should(
+		jq.Match(`.status.readyReplicas >= 1`),
 	)
+
+	return trainer
 }
 
 func (ft *foundationTests) expectDependenciesUnavailable(
@@ -67,151 +123,152 @@ func (ft *foundationTests) expectDependenciesUnavailable(
 	t.Helper()
 
 	g := NewWithT(t)
-	g.Eventually(k.Get(obj)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(And(
-		jq.Match(`(.status.conditions // []) | any(.[]; .type == "%s" and .status == "%s")`,
-			module.ConditionDependenciesAvailable, metav1.ConditionFalse),
-		jq.Match(`(.status.conditions // []) | any(.[]; .type == "%s" and .reason == "%s")`,
-			module.ConditionDependenciesAvailable, module.PreConditionFailedReason),
-		jq.Match(`(.status.conditions // []) | any(.[]; .type == "%s" and .message == "%s")`,
-			module.ConditionDependenciesAvailable, expectedMessage),
-		jq.Match(`(.status.conditions // []) | any(.[]; .type == "%s" and .status == "%s")`,
-			fwapi.ConditionTypeReady, metav1.ConditionFalse),
-		jq.Match(`(.status.conditions // []) | any(.[]; .type == "%s" and .status == "%s")`,
-			common.ConditionTypeProvisioningSucceeded, metav1.ConditionFalse),
-	))
+	g.Eventually(t.Context(), k8sm.Get(ft.Client, obj)).Should(
+		WithTransform(k8sm.Conditions(), SatisfyAll(
+			ContainElement(SatisfyAll(
+				HaveKeyWithValue("type", modulemeta.ConditionDependenciesAvailable),
+				HaveKeyWithValue("status", metav1.ConditionFalse),
+				HaveKeyWithValue("reason", modulemeta.PreConditionFailedReason),
+				HaveKeyWithValue("message", expectedMessage),
+			)),
+			ContainElement(SatisfyAll(
+				HaveKeyWithValue("type", fwapi.ConditionTypeReady),
+				HaveKeyWithValue("status", metav1.ConditionFalse),
+			)),
+			ContainElement(SatisfyAll(
+				HaveKeyWithValue("type", common.ConditionTypeProvisioningSucceeded),
+				HaveKeyWithValue("status", metav1.ConditionFalse),
+			)),
+		)),
+	)
+}
+
+func (ft *foundationTests) testModuleCRDInstalled(t *testing.T) {
+	g := NewWithT(t)
+
+	moduleCRD := &apiextensionsv1.CustomResourceDefinition{
+		ObjectMeta: metav1.ObjectMeta{Name: componentsv1alpha1.TrainerCRDName},
+	}
+	g.Eventually(t.Context(), k8sm.Lookup(ft.Client, moduleCRD)).Should(Succeed())
 }
 
 func (ft *foundationTests) testJobSetOperatorCRDMissing(t *testing.T) {
 	g := NewWithT(t)
-	obj := ft.module.DeepCopy()
+	obj := moduleObject()
 	ft.cleanupModuleWorkload(t)
 
 	jobSetOperatorCRD := &apiextensionsv1.CustomResourceDefinition{
 		ObjectMeta: metav1.ObjectMeta{Name: jobSetOperatorCRDName},
 	}
-	g.Expect(directClient.Delete(ctx, jobSetOperatorCRD)).To(Succeed())
-	waitForDeleted(t, jobSetOperatorCRD)
+	g.Expect(ft.Client.Delete(t.Context(), jobSetOperatorCRD)).To(Succeed())
+	g.Eventually(t.Context(), k8sm.NotFound(ft.Client, jobSetOperatorCRD)).Should(BeTrue())
 	t.Cleanup(func() {
 		_, _ = support.EnsureStubCRDIfMissing(
-			ctx,
-			directClient,
+			t.Context(),
+			ft.Client,
 			jobSetOperatorCRDName,
 			"operator.openshift.io",
 			"v1",
 			"JobSetOperator",
 			"jobsetoperators",
 		)
-		_, _ = support.EnsureStubJobSetOperatorCRIfMissing(ctx, directClient)
-		_ = k8sClient.Delete(ctx, obj)
-		waitForSingletonDeleted(t, obj)
-		waitForDeleted(t, ft.workloadDeploy)
+		_, _ = support.EnsureStubJobSetOperatorCRIfMissing(t.Context(), ft.Client)
+		ft.cleanupModuleWorkload(t)
 	})
 
-	obj.ResourceVersion = ""
-	g.Expect(k8sClient.Create(ctx, obj)).To(Succeed())
-	ft.expectDependenciesUnavailable(t, obj, module.JobSetOperatorNotInstalledMessage)
+	g.Expect(ft.Client.Create(t.Context(), obj)).To(Succeed())
+	ft.expectDependenciesUnavailable(t, obj, modulemeta.JobSetOperatorNotInstalledMessage)
 }
 
 func (ft *foundationTests) testJobSetOperatorCRMissing(t *testing.T) {
 	g := NewWithT(t)
-	obj := ft.module.DeepCopy()
+	obj := moduleObject()
 	ft.cleanupModuleWorkload(t)
 
 	jobSetOperatorCR := support.NewStubJobSetOperatorCR()
-	g.Expect(directClient.Delete(ctx, jobSetOperatorCR)).To(Succeed())
-	waitForDeleted(t, jobSetOperatorCR)
+	g.Expect(ft.Client.Delete(t.Context(), jobSetOperatorCR)).To(Succeed())
+	g.Eventually(t.Context(), k8sm.NotFound(ft.Client, jobSetOperatorCR)).Should(BeTrue())
 	t.Cleanup(func() {
-		_, _ = support.EnsureStubJobSetOperatorCRIfMissing(ctx, directClient)
-		_ = k8sClient.Delete(ctx, obj)
-		waitForSingletonDeleted(t, obj)
-		waitForDeleted(t, ft.workloadDeploy)
+		_, _ = support.EnsureStubJobSetOperatorCRIfMissing(t.Context(), ft.Client)
+		ft.cleanupModuleWorkload(t)
 	})
 
-	obj.ResourceVersion = ""
-	g.Expect(k8sClient.Create(ctx, obj)).To(Succeed())
-	ft.expectDependenciesUnavailable(t, obj, module.JobSetOperatorCRNotFoundMessage)
+	g.Expect(ft.Client.Create(t.Context(), obj)).To(Succeed())
+	ft.expectDependenciesUnavailable(t, obj, modulemeta.JobSetOperatorCRNotFoundMessage)
 }
 
 func (ft *foundationTests) testJobSetCRDMissing(t *testing.T) {
 	g := NewWithT(t)
-	obj := ft.module.DeepCopy()
+	obj := moduleObject()
 	ft.cleanupModuleWorkload(t)
 
 	jobSetCRD := &apiextensionsv1.CustomResourceDefinition{
 		ObjectMeta: metav1.ObjectMeta{Name: jobSetCRDName},
 	}
-	g.Expect(directClient.Delete(ctx, jobSetCRD)).To(Succeed())
-	waitForDeleted(t, jobSetCRD)
+	g.Expect(ft.Client.Delete(t.Context(), jobSetCRD)).To(Succeed())
+	g.Eventually(t.Context(), k8sm.NotFound(ft.Client, jobSetCRD)).Should(BeTrue())
 	t.Cleanup(func() {
 		_, _ = support.EnsureStubCRDIfMissing(
-			ctx,
-			directClient,
+			t.Context(),
+			ft.Client,
 			jobSetCRDName,
 			"jobset.x-k8s.io",
 			"v1alpha2",
 			"JobSet",
 			"jobsets",
 		)
-		_ = k8sClient.Delete(ctx, obj)
-		waitForSingletonDeleted(t, obj)
-		waitForDeleted(t, ft.workloadDeploy)
+		ft.cleanupModuleWorkload(t)
 	})
 
-	obj.ResourceVersion = ""
-	g.Expect(k8sClient.Create(ctx, obj)).To(Succeed())
-	ft.expectDependenciesUnavailable(t, obj, module.JobSetCRDMissingMessage)
+	g.Expect(ft.Client.Create(t.Context(), obj)).To(Succeed())
+	ft.expectDependenciesUnavailable(t, obj, modulemeta.JobSetCRDMissingMessage)
 }
 
 func (ft *foundationTests) testBecomesReady(t *testing.T) {
-	g := NewWithT(t)
-
-	ft.module.ResourceVersion = ""
-	g.Expect(k8sClient.Create(ctx, ft.module)).To(Succeed())
-
-	g.Eventually(k.Get(ft.module)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(And(
-		jq.Match(`.status.phase == "Ready"`),
-		jq.Match(`.status.conditions[] | select(.type == "Ready") | .status == "True"`),
-		jq.Match(`.status.conditions[] | select(.type == "ProvisioningSucceeded") | .status == "True"`),
-	))
-
-	eventuallyDeploymentReady(t, ft.workloadDeploy)
+	ft.ensureReadyModule(t)
 }
 
 func (ft *foundationTests) testReleaseStatus(t *testing.T) {
 	g := NewWithT(t)
 
-	g.Eventually(k.Get(ft.module)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(And(
-		jq.Match(`.status.release.version == "%s"`, operatorReleaseVersion),
-		jq.Match(`.status.release.name == "%s"`,
-			operatorCfgData[moduleconfig.KeyPlatformName]),
+	trainer := ft.ensureReadyModule(t)
+	cfg, err := loadOperatorConfig()
+	g.Expect(err).NotTo(HaveOccurred())
+
+	g.Eventually(t.Context(), k8sm.Get(ft.Client, trainer)).Should(And(
+		jq.Matchf(`.status.release.version == "%s"`, cfg.Release().Version.String()),
+		jq.Matchf(`.status.release.name == "%s"`, cfg.PlatformName),
 	))
 }
 
 func (ft *foundationTests) testPlatformLabels(t *testing.T) {
 	g := NewWithT(t)
 
-	g.Eventually(k.Get(ft.workloadDeploy)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(And(
-		jq.Match(`.metadata.labels."%s" == "trainer"`, labelPartOf),
-		jq.Match(`.metadata.annotations."%s" == "%s"`,
-			annotationInstanceName,
-			ft.module.GetName()),
-		jq.Match(`.metadata.annotations."%s" == "%s"`,
-			annotationInstanceUID,
-			string(ft.module.GetUID())),
-		jq.Match(`.metadata.annotations."%s" == "%s"`,
-			annotationType,
-			operatorCfgData[moduleconfig.KeyPlatformName]),
-		jq.Match(`.metadata.annotations."%s" == "%s"`,
-			annotationVersion,
-			operatorReleaseVersion),
+	trainer := ft.ensureReadyModule(t)
+	workloadDeploy := workloadDeployment()
+	cfg, err := loadOperatorConfig()
+	g.Expect(err).NotTo(HaveOccurred())
+
+	g.Eventually(t.Context(), k8sm.Get(ft.Client, workloadDeploy)).Should(And(
+		k8sm.HasLabel(labels.PlatformPartOf, componentsv1alpha1.TrainerComponentName),
+		k8sm.HasAnnotation(annotations.InstanceName, trainer.GetName()),
+		k8sm.HasAnnotation(annotations.InstanceUID, string(trainer.GetUID())),
+		k8sm.HasAnnotation(annotations.PlatformType, cfg.PlatformName),
+		k8sm.HasAnnotation(annotations.PlatformVersion, cfg.Release().Version.String()),
 	))
 }
 
 func (ft *foundationTests) testOwnerReferences(t *testing.T) {
 	g := NewWithT(t)
 
-	g.Eventually(k.Get(ft.workloadDeploy)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(
-		jq.Match(`.metadata.ownerReferences[] | select(.kind == "Trainer") | .name == "%s"`,
-			componentsv1alpha1.TrainerInstanceName),
+	owner := ft.ensureReadyModule(t)
+	workloadDeploy := workloadDeployment()
+	owner.TypeMeta = metav1.TypeMeta{
+		APIVersion: componentsv1alpha1.GroupVersion.String(),
+		Kind:       componentsv1alpha1.TrainerKind,
+	}
+
+	g.Eventually(t.Context(), k8sm.Get(ft.Client, workloadDeploy)).Should(
+		k8sm.HasOwnerReference(owner),
 	)
 }

@@ -1,7 +1,8 @@
 package module
 
 const (
-	Name = "trainer"
+	Name               = "trainer"
+	OperatorConfigName = "opendatahub-trainer-config"
 
 	ConditionDependenciesAvailable = "DependenciesAvailable"
 	PreConditionFailedReason       = "PreConditionFailed"

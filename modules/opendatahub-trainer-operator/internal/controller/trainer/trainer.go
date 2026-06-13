@@ -21,7 +21,7 @@ import (
 	"fmt"
 
 	odhtypes "github.com/opendatahub-io/odh-platform-utilities/framework/controller/types"
-	odhdeploy "github.com/opendatahub-io/opendatahub-operator/v2/pkg/deploy"
+	fwparams "github.com/opendatahub-io/odh-platform-utilities/framework/utils/params"
 	ofVersion "github.com/operator-framework/api/pkg/lib/version"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -44,7 +44,11 @@ type Module struct {
 func NewModule(cfg *moduleconfig.Config) (*Module, error) {
 	mi := manifestPath(cfg.ManifestsPath)
 
-	if err := odhdeploy.ApplyParams(mi.String(), "params.env", imageParamMap); err != nil {
+	if err := fwparams.Apply(
+		mi.String(),
+		"params.env",
+		fwparams.Replacement(fwparams.FromEnv(imageParamMap)),
+	); err != nil {
 		return nil, fmt.Errorf("failed to update images on path %s: %w", mi, err)
 	}
 
