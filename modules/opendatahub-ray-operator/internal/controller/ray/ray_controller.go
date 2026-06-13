@@ -28,7 +28,6 @@ import (
 
 	componentApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-ray-operator/api/components/v1alpha1"
 	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-ray-operator/pkg/config"
-	localreleases "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-ray-operator/pkg/controller/actions/releases"
 	module "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-ray-operator/pkg/module"
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-ray-operator/pkg/resources/gvk"
 	fwapi "github.com/opendatahub-io/odh-platform-utilities/framework/api"
@@ -37,6 +36,7 @@ import (
 	"github.com/opendatahub-io/odh-platform-utilities/framework/controller/actions/render/kustomize"
 	"github.com/opendatahub-io/odh-platform-utilities/framework/controller/actions/sanitycheck"
 	"github.com/opendatahub-io/odh-platform-utilities/framework/controller/actions/status/deployments"
+	fwreleases "github.com/opendatahub-io/odh-platform-utilities/framework/controller/actions/status/releases"
 	"github.com/opendatahub-io/odh-platform-utilities/framework/controller/handlers"
 	"github.com/opendatahub-io/odh-platform-utilities/framework/controller/predicates"
 	labelpred "github.com/opendatahub-io/odh-platform-utilities/framework/controller/predicates/label"
@@ -126,7 +126,7 @@ func NewReconciler(
 		)).
 		WithAction(m.initialize).
 		WithAction(m.upgradeIfNeeded).
-		WithAction(localreleases.NewAction()).
+		WithAction(fwreleases.NewAction()).
 		WithAction(kustomize.NewAction()).
 		WithAction(deploy.NewAction(
 			deploy.WithCache(),

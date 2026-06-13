@@ -31,6 +31,9 @@ const (
 
 	// RayKind is the Kubernetes kind string.
 	RayKind = "Ray"
+
+	RayResource = "rays"
+	RayCRDName  = RayResource + "." + GroupName
 )
 
 type Platform string
