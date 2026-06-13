@@ -22,8 +22,8 @@ import (
 	"path"
 
 	fwtypes "github.com/opendatahub-io/odh-platform-utilities/framework/controller/types"
+	fwparams "github.com/opendatahub-io/odh-platform-utilities/framework/utils/params"
 	odhcluster "github.com/opendatahub-io/odh-platform-utilities/pkg/cluster"
-	odhdeploy "github.com/opendatahub-io/opendatahub-operator/v2/pkg/deploy"
 	ofVersion "github.com/operator-framework/api/pkg/lib/version"
 
 	componentApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-mlflow-operator/api/components/v1alpha1"
@@ -79,7 +79,11 @@ func NewModule(cfg *moduleconfig.Config) (*Module, error) {
 
 	// Apply image params to base/ (not the overlay) — matches the monolith's paramsPath.
 	baseParamsPath := path.Join(cfg.ManifestsPath, componentName, paramsSubDir)
-	if err := odhdeploy.ApplyParams(baseParamsPath, "params.env", imageParamMap); err != nil {
+	if err := fwparams.Apply(
+		baseParamsPath,
+		"params.env",
+		fwparams.Replacement(fwparams.FromEnv(imageParamMap)),
+	); err != nil {
 		return nil, fmt.Errorf("failed to update images on path %s: %w", baseParamsPath, err)
 	}
 

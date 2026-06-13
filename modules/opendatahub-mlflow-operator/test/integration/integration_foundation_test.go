@@ -1,20 +1,25 @@
-//go:build integration
-
 package integration
 
 import (
 	"testing"
 
 	. "github.com/onsi/gomega"
+	appsv1 "k8s.io/api/apps/v1"
+	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/lburgazzoli/gomega-matchers/pkg/matchers/jq"
+	k8sm "github.com/lburgazzoli/gomega-matchers/pkg/matchers/k8s"
 
 	componentsv1alpha1 "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-mlflow-operator/api/components/v1alpha1"
-	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-mlflow-operator/pkg/config"
+	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-mlflow-operator/test/support"
+	"github.com/opendatahub-io/odh-platform-utilities/pkg/metadata/annotations"
+	"github.com/opendatahub-io/odh-platform-utilities/pkg/metadata/labels"
 )
 
 type foundationTests struct {
-	*mlflowTest
+	Client client.Client
 }
 
 func (ft *foundationTests) Execute(t *testing.T) {
@@ -25,64 +30,114 @@ func (ft *foundationTests) Execute(t *testing.T) {
 	t.Run("should set owner references", ft.testOwnerReferences)
 }
 
+func moduleObject() *componentsv1alpha1.MLflowOperator {
+	return &componentsv1alpha1.MLflowOperator{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: componentsv1alpha1.MLflowOperatorInstanceName,
+		},
+	}
+}
+
+func workloadDeployment() *appsv1.Deployment {
+	return &appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "mlflow-operator-controller-manager",
+			Namespace: support.IntegrationTestNamespace(),
+		},
+	}
+}
+
+func (ft *foundationTests) ensureReadyModule(t *testing.T) *componentsv1alpha1.MLflowOperator {
+	t.Helper()
+
+	g := NewWithT(t)
+	module := moduleObject()
+	workloadDeploy := workloadDeployment()
+
+	_ = ft.Client.Delete(t.Context(), module)
+	g.Eventually(t.Context(), k8sm.NotFound(ft.Client, module)).Should(BeTrue())
+
+	t.Cleanup(func() {
+		_ = ft.Client.Delete(t.Context(), module)
+	})
+
+	g.Expect(ft.Client.Create(t.Context(), module)).To(Succeed())
+
+	g.Eventually(t.Context(), k8sm.Get(ft.Client, module)).Should(And(
+		jq.Match(`.status.phase == "Ready"`),
+		WithTransform(k8sm.Conditions(), SatisfyAll(
+			ContainElement(SatisfyAll(
+				HaveKeyWithValue("type", "Ready"),
+				HaveKeyWithValue("status", string(metav1.ConditionTrue)),
+			)),
+			ContainElement(SatisfyAll(
+				HaveKeyWithValue("type", "ProvisioningSucceeded"),
+				HaveKeyWithValue("status", string(metav1.ConditionTrue)),
+			)),
+		)),
+	))
+
+	g.Eventually(t.Context(), k8sm.Get(ft.Client, workloadDeploy)).Should(
+		jq.Match(`.status.readyReplicas >= 1`),
+	)
+
+	return module
+}
+
 func (ft *foundationTests) testModuleCRDInstalled(t *testing.T) {
 	g := NewWithT(t)
 
-	g.Eventually(k.Get(ft.moduleCRD)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(
-		jq.Match(`.metadata.name == "%s"`, moduleCRDName),
-	)
+	moduleCRD := &apiextensionsv1.CustomResourceDefinition{
+		ObjectMeta: metav1.ObjectMeta{Name: componentsv1alpha1.MLflowOperatorCRDName},
+	}
+	g.Eventually(t.Context(), k8sm.Lookup(ft.Client, moduleCRD)).Should(Succeed())
 }
 
 func (ft *foundationTests) testBecomesReady(t *testing.T) {
-	g := NewWithT(t)
-
-	ft.module.ResourceVersion = ""
-	g.Expect(k8sClient.Create(ctx, ft.module)).To(Succeed())
-
-	g.Eventually(k.Get(ft.module)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(And(
-		jq.Match(`.status.phase == "Ready"`),
-		jq.Match(`.status.conditions[] | select(.type == "Ready") | .status == "True"`),
-		jq.Match(`.status.conditions[] | select(.type == "ProvisioningSucceeded") | .status == "True"`),
-	))
-
-	eventuallyDeploymentReady(t, ft.workloadDeploy)
+	ft.ensureReadyModule(t)
 }
 
 func (ft *foundationTests) testReleaseStatus(t *testing.T) {
 	g := NewWithT(t)
 
-	g.Eventually(k.Get(ft.module)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(And(
-		jq.Match(`.status.release.version == "%s"`, operatorReleaseVersion),
-		jq.Match(`.status.release.name == "%s"`,
-			operatorCfgData[moduleconfig.KeyPlatformName]),
+	module := ft.ensureReadyModule(t)
+	cfg, err := loadOperatorConfig()
+	g.Expect(err).NotTo(HaveOccurred())
+
+	g.Eventually(t.Context(), k8sm.Get(ft.Client, module)).Should(And(
+		jq.Matchf(`.status.release.version == "%s"`, cfg.Release().Version.String()),
+		jq.Matchf(`.status.release.name == "%s"`, cfg.PlatformName),
 	))
 }
 
 func (ft *foundationTests) testPlatformLabels(t *testing.T) {
 	g := NewWithT(t)
 
-	g.Eventually(k.Get(ft.workloadDeploy)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(And(
-		jq.Match(`.metadata.labels."%s" == "mlflowoperator"`, labelPartOf),
-		jq.Match(`.metadata.annotations."%s" == "%s"`,
-			annotationInstanceName,
-			ft.module.GetName()),
-		jq.Match(`.metadata.annotations."%s" == "%s"`,
-			annotationInstanceUID,
-			string(ft.module.GetUID())),
-		jq.Match(`.metadata.annotations."%s" == "%s"`,
-			annotationType,
-			operatorCfgData[moduleconfig.KeyPlatformName]),
-		jq.Match(`.metadata.annotations."%s" == "%s"`,
-			annotationVersion,
-			operatorReleaseVersion),
+	module := ft.ensureReadyModule(t)
+	workloadDeploy := workloadDeployment()
+	cfg, err := loadOperatorConfig()
+	g.Expect(err).NotTo(HaveOccurred())
+
+	g.Eventually(t.Context(), k8sm.Get(ft.Client, workloadDeploy)).Should(And(
+		k8sm.HasLabel(labels.PlatformPartOf, componentsv1alpha1.MLflowOperatorComponentName),
+		k8sm.HasAnnotation(annotations.InstanceName, module.GetName()),
+		k8sm.HasAnnotation(annotations.InstanceUID, string(module.GetUID())),
+		k8sm.HasAnnotation(annotations.PlatformType, cfg.PlatformName),
+		k8sm.HasAnnotation(annotations.PlatformVersion, cfg.Release().Version.String()),
 	))
 }
 
 func (ft *foundationTests) testOwnerReferences(t *testing.T) {
 	g := NewWithT(t)
 
-	g.Eventually(k.Get(ft.workloadDeploy)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(
-		jq.Match(`.metadata.ownerReferences[] | select(.kind == "MLflowOperator") | .name == "%s"`,
-			componentsv1alpha1.MLflowOperatorInstanceName),
+	owner := ft.ensureReadyModule(t)
+	workloadDeploy := workloadDeployment()
+	owner.TypeMeta = metav1.TypeMeta{
+		APIVersion: componentsv1alpha1.GroupVersion.String(),
+		Kind:       componentsv1alpha1.MLflowOperatorKind,
+	}
+
+	g.Eventually(t.Context(), k8sm.Get(ft.Client, workloadDeploy)).Should(
+		k8sm.HasOwnerReference(owner),
 	)
 }

@@ -26,6 +26,9 @@ const (
 	MLflowOperatorComponentName = "mlflowoperator"
 	MLflowOperatorInstanceName  = "default-mlflowoperator"
 	MLflowOperatorKind          = "MLflowOperator"
+
+	MLflowOperatorResource = "mlflowoperators"
+	MLflowOperatorCRDName  = MLflowOperatorResource + "." + GroupName
 )
 
 type Platform string

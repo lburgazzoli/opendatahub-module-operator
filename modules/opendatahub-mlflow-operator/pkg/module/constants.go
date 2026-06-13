@@ -1,5 +1,6 @@
 package module
 
 const (
-	Name = "mlflowoperator"
+	Name               = "mlflowoperator"
+	OperatorConfigName = "opendatahub-mlflow-config"
 )

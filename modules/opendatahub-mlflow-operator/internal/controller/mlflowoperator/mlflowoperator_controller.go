@@ -29,13 +29,13 @@ import (
 
 	componentApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-mlflow-operator/api/components/v1alpha1"
 	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-mlflow-operator/pkg/config"
-	localreleases "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-mlflow-operator/pkg/controller/actions/releases"
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-mlflow-operator/pkg/resources/gvk"
 	fwapi "github.com/opendatahub-io/odh-platform-utilities/framework/api"
 	"github.com/opendatahub-io/odh-platform-utilities/framework/controller/actions/deploy"
 	"github.com/opendatahub-io/odh-platform-utilities/framework/controller/actions/gc"
 	"github.com/opendatahub-io/odh-platform-utilities/framework/controller/actions/render/kustomize"
 	"github.com/opendatahub-io/odh-platform-utilities/framework/controller/actions/status/deployments"
+	fwreleases "github.com/opendatahub-io/odh-platform-utilities/framework/controller/actions/status/releases"
 	"github.com/opendatahub-io/odh-platform-utilities/framework/controller/handlers"
 	"github.com/opendatahub-io/odh-platform-utilities/framework/controller/predicates"
 	labelpred "github.com/opendatahub-io/odh-platform-utilities/framework/controller/predicates/label"
@@ -115,7 +115,7 @@ func NewReconciler(
 		WithAction(m.initialize).
 		WithAction(m.upgradeIfNeeded).
 		WithAction(m.setKustomizedParams).
-		WithAction(localreleases.NewAction()).
+		WithAction(fwreleases.NewAction()).
 		WithAction(kustomize.NewAction()).
 		WithAction(m.fixDeploymentNamespace).
 		WithAction(deploy.NewAction(
