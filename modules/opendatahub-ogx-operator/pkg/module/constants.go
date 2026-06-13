@@ -1,5 +1,6 @@
 package module
 
 const (
-	Name = "ogx"
+	Name               = "ogx"
+	OperatorConfigName = "opendatahub-ogx-config"
 )

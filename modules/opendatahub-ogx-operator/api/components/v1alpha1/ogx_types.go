@@ -26,6 +26,8 @@ const (
 	OGXComponentName = "ogx"
 	OGXInstanceName  = "default-ogx"
 	OGXKind          = "OGX"
+	OGXResource      = "ogxs"
+	OGXCRDName       = OGXResource + "." + GroupName
 )
 
 type Platform string

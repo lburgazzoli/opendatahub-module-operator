@@ -24,10 +24,12 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/scheme"
 )
 
+const GroupName = "components.platform.opendatahub.io"
+
 var (
 	// SchemeGroupVersion is group version used to register these objects.
 	// This name is used by applyconfiguration generators (e.g. controller-gen).
-	SchemeGroupVersion = schema.GroupVersion{Group: "components.platform.opendatahub.io", Version: "v1alpha1"}
+	SchemeGroupVersion = schema.GroupVersion{Group: GroupName, Version: "v1alpha1"}
 
 	// GroupVersion is an alias for SchemeGroupVersion, for backward compatibility.
 	GroupVersion = SchemeGroupVersion

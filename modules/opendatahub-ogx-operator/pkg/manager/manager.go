@@ -38,9 +38,9 @@ import (
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-ogx-operator/internal/controller/ogx"
 	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-ogx-operator/pkg/config"
 	module "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-ogx-operator/pkg/module"
-	platform "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-ogx-operator/pkg/platform"
+	odhmanager "github.com/opendatahub-io/odh-platform-utilities/framework/manager"
 	libcache "github.com/opendatahub-io/odh-platform-utilities/pkg/cache"
-	odhmanager "github.com/opendatahub-io/opendatahub-operator/v2/pkg/manager"
+	"github.com/opendatahub-io/odh-platform-utilities/pkg/metadata/labels"
 )
 
 const (
@@ -90,12 +90,12 @@ func New(
 			DefaultNamespaces: map[string]cache.Config{
 				cfg.ApplicationsNamespace: {
 					LabelSelector: k8slabels.SelectorFromSet(k8slabels.Set{
-						platform.PartOfLabel: module.Name,
+						labels.PlatformPartOf: module.Name,
 					}),
 				},
 				cache.AllNamespaces: {
 					LabelSelector: k8slabels.SelectorFromSet(k8slabels.Set{
-						platform.PartOfLabel: module.Name,
+						labels.PlatformPartOf: module.Name,
 					}),
 				},
 			},
