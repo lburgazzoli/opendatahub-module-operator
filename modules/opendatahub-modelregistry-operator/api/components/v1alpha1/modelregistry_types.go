@@ -31,6 +31,9 @@ const (
 
 	// ModelRegistryKind is the Kubernetes kind string.
 	ModelRegistryKind = "ModelRegistry"
+
+	ModelRegistryResource = "modelregistries"
+	ModelRegistryCRDName  = ModelRegistryResource + "." + GroupName
 )
 
 type Platform string

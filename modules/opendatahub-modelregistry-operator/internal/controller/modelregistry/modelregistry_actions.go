@@ -26,7 +26,7 @@ import (
 
 	componentApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-modelregistry-operator/api/components/v1alpha1"
 	odhtypes "github.com/opendatahub-io/odh-platform-utilities/framework/controller/types"
-	odhdeploy "github.com/opendatahub-io/opendatahub-operator/v2/pkg/deploy"
+	fwparams "github.com/opendatahub-io/odh-platform-utilities/framework/utils/params"
 )
 
 // customizeManifests computes kustomize variables (gateway, namespace) and writes them to params.env.
@@ -43,7 +43,11 @@ func (m *Module) customizeManifests(_ context.Context, rr *odhtypes.Reconciliati
 
 	extraParams["REGISTRIES_NAMESPACE"] = mr.Spec.RegistriesNamespace
 
-	if err := odhdeploy.ApplyParams(rr.Manifests[0].String(), "params.env", nil, extraParams); err != nil {
+	if err := fwparams.Apply(
+		rr.Manifests[0].String(),
+		"params.env",
+		fwparams.Values(extraParams),
+	); err != nil {
 		return fmt.Errorf("failed to update params on path %s: %w", rr.Manifests[0].String(), err)
 	}
 

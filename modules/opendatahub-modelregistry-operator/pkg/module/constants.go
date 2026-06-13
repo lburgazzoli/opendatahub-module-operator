@@ -1,5 +1,6 @@
 package module
 
 const (
-	Name = "modelregistry"
+	Name               = "modelregistry"
+	OperatorConfigName = "opendatahub-modelregistry-config"
 )

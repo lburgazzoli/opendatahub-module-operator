@@ -2,10 +2,11 @@ package support
 
 import "os"
 
-const DefaultOperatorNamespace = "opendatahub-modelregistry-system"
+const (
+	DefaultOperatorNamespace        = "opendatahub-modelregistry-system"
+	DefaultIntegrationTestNamespace = "integration-test"
+)
 
-// OperatorNamespace returns the namespace where the module operator is deployed.
-// OPERATOR_NAMESPACE takes precedence, then HELM_NAMESPACE for Makefile compatibility.
 func OperatorNamespace() string {
 	if namespace := os.Getenv("OPERATOR_NAMESPACE"); namespace != "" {
 		return namespace
@@ -18,7 +19,15 @@ func OperatorNamespace() string {
 	return DefaultOperatorNamespace
 }
 
-// HelmNamespace is an alias for OperatorNamespace kept for older call sites.
+func IntegrationTestNamespace() string {
+	if namespace := os.Getenv("INTEGRATION_TEST_NAMESPACE"); namespace != "" {
+		return namespace
+	}
+
+	return DefaultIntegrationTestNamespace
+}
+
+// HelmNamespace returns the operator namespace used by e2e and Helm deploy targets.
 func HelmNamespace() string {
 	return OperatorNamespace()
 }
