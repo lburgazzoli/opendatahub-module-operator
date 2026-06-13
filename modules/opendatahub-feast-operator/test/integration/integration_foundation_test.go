@@ -68,11 +68,11 @@ func (ft *foundationTests) ensureReadyModule(t *testing.T) *componentsv1alpha1.F
 		WithTransform(k8sm.Conditions(), SatisfyAll(
 			ContainElement(SatisfyAll(
 				HaveKeyWithValue("type", "Ready"),
-				HaveKeyWithValue("status", "True"),
+				HaveKeyWithValue("status", string(metav1.ConditionTrue)),
 			)),
 			ContainElement(SatisfyAll(
 				HaveKeyWithValue("type", "ProvisioningSucceeded"),
-				HaveKeyWithValue("status", "True"),
+				HaveKeyWithValue("status", string(metav1.ConditionTrue)),
 			)),
 		)),
 	))
@@ -90,9 +90,7 @@ func (ft *foundationTests) testModuleCRDInstalled(t *testing.T) {
 	moduleCRD := &apiextensionsv1.CustomResourceDefinition{
 		ObjectMeta: metav1.ObjectMeta{Name: componentsv1alpha1.FeastOperatorCRDName},
 	}
-	g.Eventually(t.Context(), k8sm.Get(ft.Client, moduleCRD)).Should(
-		jq.Matchf(`.metadata.name == "%s"`, componentsv1alpha1.FeastOperatorCRDName),
-	)
+	g.Eventually(t.Context(), k8sm.Lookup(ft.Client, moduleCRD)).Should(Succeed())
 }
 
 func (ft *foundationTests) testBecomesReady(t *testing.T) {
