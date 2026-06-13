@@ -21,8 +21,8 @@ import (
 	"fmt"
 
 	odhtypes "github.com/opendatahub-io/odh-platform-utilities/framework/controller/types"
+	fwparams "github.com/opendatahub-io/odh-platform-utilities/framework/utils/params"
 	odhcluster "github.com/opendatahub-io/odh-platform-utilities/pkg/cluster"
-	odhdeploy "github.com/opendatahub-io/opendatahub-operator/v2/pkg/deploy"
 	ofVersion "github.com/operator-framework/api/pkg/lib/version"
 
 	componentApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-spark-operator/api/components/v1alpha1"
@@ -64,7 +64,11 @@ func NewModule(cfg *moduleconfig.Config) (*Module, error) {
 	}
 
 	// Apply image params once at startup (equivalent to Init in the monolith).
-	if err := odhdeploy.ApplyParams(mi.String(), "params.env", imageParamMap); err != nil {
+	if err := fwparams.Apply(
+		mi.String(),
+		"params.env",
+		fwparams.Replacement(fwparams.FromEnv(imageParamMap)),
+	); err != nil {
 		return nil, fmt.Errorf("failed to update images on path %s: %w", mi, err)
 	}
 

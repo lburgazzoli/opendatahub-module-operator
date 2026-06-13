@@ -4,6 +4,7 @@ package e2e
 
 import (
 	"testing"
+	"testing/fstest"
 
 	. "github.com/onsi/gomega"
 	appsv1 "k8s.io/api/apps/v1"
@@ -13,45 +14,18 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/lburgazzoli/gomega-matchers/pkg/matchers/jq"
+	k8sm "github.com/lburgazzoli/gomega-matchers/pkg/matchers/k8s"
 
 	componentsv1alpha1 "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-spark-operator/api/components/v1alpha1"
 	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-spark-operator/pkg/config"
+	modulemeta "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-spark-operator/pkg/module"
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-spark-operator/test/support"
+	"github.com/opendatahub-io/odh-platform-utilities/pkg/metadata/annotations"
+	"github.com/opendatahub-io/odh-platform-utilities/pkg/metadata/labels"
 )
 
 type foundationTests struct {
-	*sparkE2ETest
-	moduleCRD      *apiextensionsv1.CustomResourceDefinition
-	operatorDeploy *appsv1.Deployment
-	operatorCfgMap *corev1.ConfigMap
-	workloadDeploy *appsv1.Deployment
-}
-
-func newFoundationTests(suite *sparkE2ETest) *foundationTests {
-	return &foundationTests{
-		sparkE2ETest: suite,
-		moduleCRD: &apiextensionsv1.CustomResourceDefinition{
-			ObjectMeta: metav1.ObjectMeta{Name: moduleCRDName},
-		},
-		operatorDeploy: &appsv1.Deployment{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "opendatahub-spark-operator",
-				Namespace: suite.operatorNamespace,
-			},
-		},
-		operatorCfgMap: &corev1.ConfigMap{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      operatorConfigMapName,
-				Namespace: suite.operatorNamespace,
-			},
-		},
-		workloadDeploy: &appsv1.Deployment{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "spark-operator-controller",
-				Namespace: suite.operatorNamespace,
-			},
-		},
-	}
+	Client client.Client
 }
 
 func (ft *foundationTests) Execute(t *testing.T) {
@@ -63,96 +37,154 @@ func (ft *foundationTests) Execute(t *testing.T) {
 	t.Run("should set owner references", ft.testOwnerReferences)
 }
 
+func moduleObject() *componentsv1alpha1.SparkOperator {
+	return &componentsv1alpha1.SparkOperator{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: componentsv1alpha1.SparkOperatorInstanceName,
+		},
+	}
+}
+
+func workloadDeployment() *appsv1.Deployment {
+	return &appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "spark-operator-controller",
+			Namespace: support.OperatorNamespace(),
+		},
+	}
+}
+
+func (ft *foundationTests) ensureReadyModule(t *testing.T) *componentsv1alpha1.SparkOperator {
+	t.Helper()
+
+	g := NewWithT(t)
+	module := moduleObject()
+	workloadDeploy := workloadDeployment()
+
+	_ = ft.Client.Delete(t.Context(), module)
+	g.Eventually(t.Context(), k8sm.NotFound(ft.Client, module)).Should(BeTrue())
+
+	t.Cleanup(func() {
+		_ = ft.Client.Delete(t.Context(), module)
+	})
+
+	g.Expect(ft.Client.Create(t.Context(), module)).To(Succeed())
+
+	g.Eventually(t.Context(), k8sm.Get(ft.Client, module)).Should(And(
+		jq.Match(`.status.phase == "Ready"`),
+		WithTransform(k8sm.Conditions(), SatisfyAll(
+			ContainElement(SatisfyAll(
+				HaveKeyWithValue("type", "Ready"),
+				HaveKeyWithValue("status", string(metav1.ConditionTrue)),
+			)),
+			ContainElement(SatisfyAll(
+				HaveKeyWithValue("type", "ProvisioningSucceeded"),
+				HaveKeyWithValue("status", string(metav1.ConditionTrue)),
+			)),
+		)),
+	))
+
+	g.Eventually(t.Context(), k8sm.Get(ft.Client, workloadDeploy)).Should(
+		jq.Match(`.status.readyReplicas >= 1`),
+	)
+
+	return module
+}
+
 func (ft *foundationTests) testModuleCRDInstalled(t *testing.T) {
 	g := NewWithT(t)
 
-	g.Eventually(k.Get(ft.moduleCRD)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(
-		jq.Match(`.metadata.name == "%s"`, moduleCRDName),
-	)
+	moduleCRD := &apiextensionsv1.CustomResourceDefinition{
+		ObjectMeta: metav1.ObjectMeta{Name: componentsv1alpha1.SparkOperatorCRDName},
+	}
+	g.Eventually(t.Context(), k8sm.Lookup(ft.Client, moduleCRD)).Should(Succeed())
 }
 
 func (ft *foundationTests) testOperatorConfigMap(t *testing.T) {
 	g := NewWithT(t)
 
-	g.Eventually(k.Get(ft.operatorCfgMap)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(And(
-		jq.Match(`.data."%s" != ""`, moduleconfig.KeyPlatformName),
-		jq.Match(`.data."%s" != ""`, moduleconfig.KeyPlatformVersion),
-	))
+	operatorCfgMap := &corev1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      modulemeta.OperatorConfigName,
+			Namespace: support.OperatorNamespace(),
+		},
+	}
+	g.Eventually(t.Context(), k8sm.Get(ft.Client, operatorCfgMap)).Should(
+		WithTransform(k8sm.Data(), SatisfyAll(
+			HaveKeyWithValue(moduleconfig.KeyPlatformName, Not(BeEmpty())),
+			HaveKeyWithValue(moduleconfig.KeyPlatformVersion, Not(BeEmpty())),
+		)),
+	)
 }
 
 func (ft *foundationTests) testBecomesReady(t *testing.T) {
-	g := NewWithT(t)
-
-	ft.module.ResourceVersion = ""
-	g.Expect(k8sClient.Create(ctx, ft.module)).To(Succeed())
-
-	g.Eventually(k.Get(ft.module)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(And(
-		jq.Match(`.status.phase == "Ready"`),
-		jq.Match(`.status.conditions[] | select(.type == "Ready") | .status == "True"`),
-		jq.Match(`.status.conditions[] | select(.type == "ProvisioningSucceeded") | .status == "True"`),
-	))
-
-	eventuallyDeploymentReady(t, ft.workloadDeploy)
+	ft.ensureReadyModule(t)
 }
 
 func (ft *foundationTests) testReleaseStatus(t *testing.T) {
 	g := NewWithT(t)
+
 	operatorCfg := &corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      operatorConfigMapName,
+			Name:      modulemeta.OperatorConfigName,
 			Namespace: support.OperatorNamespace(),
 		},
 	}
+	module := ft.ensureReadyModule(t)
 
-	g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(operatorCfg), operatorCfg)).To(Succeed())
+	g.Eventually(t.Context(), k8sm.Lookup(ft.Client, operatorCfg)).Should(Succeed())
 
-	cfg := &moduleconfig.Config{
-		PlatformName:    operatorCfg.Data[moduleconfig.KeyPlatformName],
-		PlatformVersion: operatorCfg.Data[moduleconfig.KeyPlatformVersion],
-	}
+	cfg, err := moduleconfig.LoadFromFS(fstest.MapFS{
+		moduleconfig.KeyPlatformName: {
+			Data: []byte(operatorCfg.Data[moduleconfig.KeyPlatformName]),
+		},
+		moduleconfig.KeyPlatformVersion: {
+			Data: []byte(operatorCfg.Data[moduleconfig.KeyPlatformVersion]),
+		},
+	})
+	g.Expect(err).NotTo(HaveOccurred())
 	expectedRelease := cfg.Release()
 
-	g.Eventually(k.Get(ft.module)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(And(
-		jq.Match(`.status.release.version == "%s"`, expectedRelease.Version.String()),
-		jq.Match(`.status.release.name == "%s"`, string(expectedRelease.Name)),
+	g.Eventually(t.Context(), k8sm.Get(ft.Client, module)).Should(And(
+		jq.Matchf(`.status.release.version == "%s"`, expectedRelease.Version.String()),
+		jq.Matchf(`.status.release.name == "%s"`, string(expectedRelease.Name)),
 	))
 }
 
 func (ft *foundationTests) testPlatformLabels(t *testing.T) {
 	g := NewWithT(t)
-	module := ft.module.DeepCopy()
+
+	module := ft.ensureReadyModule(t)
 	operatorCfg := &corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      operatorConfigMapName,
+			Name:      modulemeta.OperatorConfigName,
 			Namespace: support.OperatorNamespace(),
 		},
 	}
+	workloadDeploy := workloadDeployment()
 
-	g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(module), module)).To(Succeed())
-	g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(operatorCfg), operatorCfg)).To(Succeed())
+	g.Eventually(t.Context(), k8sm.Lookup(ft.Client, operatorCfg)).Should(Succeed())
 
-	g.Eventually(k.Get(ft.workloadDeploy)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(And(
-		jq.Match(`.metadata.labels."%s" == "sparkoperator"`, labelPartOf),
-		jq.Match(`.metadata.annotations."%s" == "%s"`,
-			annotationInstanceName,
-			module.GetName()),
-		jq.Match(`.metadata.annotations."%s" == "%s"`,
-			annotationInstanceUID,
-			string(module.GetUID())),
-		jq.Match(`.metadata.annotations."%s" == "%s"`,
-			annotationType,
-			operatorCfg.Data[moduleconfig.KeyPlatformName]),
-		jq.Match(`.metadata.annotations."%s" == "%s"`,
-			annotationVersion,
-			module.Status.Release.Version),
+	g.Eventually(t.Context(), k8sm.Get(ft.Client, workloadDeploy)).Should(And(
+		k8sm.HasLabel(labels.PlatformPartOf, componentsv1alpha1.SparkOperatorComponentName),
+		k8sm.HasAnnotation(annotations.InstanceName, module.GetName()),
+		k8sm.HasAnnotation(annotations.InstanceUID, string(module.GetUID())),
+		k8sm.HasAnnotation(annotations.PlatformType, operatorCfg.Data[moduleconfig.KeyPlatformName]),
+		k8sm.HasAnnotation(annotations.PlatformVersion, module.Status.Release.Version.String()),
 	))
 }
 
 func (ft *foundationTests) testOwnerReferences(t *testing.T) {
 	g := NewWithT(t)
 
-	g.Eventually(k.Get(ft.workloadDeploy)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(
-		jq.Match(`.metadata.ownerReferences[] | select(.kind == "SparkOperator") | .name == "%s"`,
-			componentsv1alpha1.SparkOperatorInstanceName),
+	owner := ft.ensureReadyModule(t)
+	workloadDeploy := workloadDeployment()
+	owner.TypeMeta = metav1.TypeMeta{
+		APIVersion: componentsv1alpha1.GroupVersion.String(),
+		Kind:       componentsv1alpha1.SparkOperatorKind,
+	}
+
+	g.Eventually(t.Context(), k8sm.Get(ft.Client, workloadDeploy)).Should(
+		k8sm.HasOwnerReference(owner),
 	)
 }

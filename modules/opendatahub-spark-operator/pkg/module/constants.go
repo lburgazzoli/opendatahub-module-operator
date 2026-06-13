@@ -1,5 +1,6 @@
 package module
 
 const (
-	Name = "sparkoperator"
+	Name               = "sparkoperator"
+	OperatorConfigName = "opendatahub-spark-config"
 )

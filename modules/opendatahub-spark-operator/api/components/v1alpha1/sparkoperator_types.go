@@ -31,6 +31,9 @@ const (
 
 	// SparkOperatorKind is the Kubernetes kind string.
 	SparkOperatorKind = "SparkOperator"
+
+	SparkOperatorResource = "sparkoperators"
+	SparkOperatorCRDName  = SparkOperatorResource + "." + GroupName
 )
 
 type Platform string
