@@ -7,8 +7,10 @@ import (
 
 	"github.com/blang/semver/v4"
 	. "github.com/onsi/gomega"
+	"github.com/onsi/gomega/gstruct"
 	ofVersion "github.com/operator-framework/api/pkg/lib/version"
 	corev1 "k8s.io/api/core/v1"
+	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	k8serr "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -16,10 +18,10 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/lburgazzoli/gomega-matchers/pkg/matchers/jq"
+	k8sm "github.com/lburgazzoli/gomega-matchers/pkg/matchers/k8s"
 
 	componentsv1alpha1 "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-workbenches-operator/api/components/v1alpha1"
 	gvk "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-workbenches-operator/pkg/resources/gvk"
-	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-workbenches-operator/test/support"
 	infrav1 "github.com/opendatahub-io/opendatahub-operator/v2/api/infrastructure/v1"
 )
 
@@ -30,97 +32,99 @@ const (
 )
 
 type migrationTests struct {
-	*workbenchesUpgradeTest
+	s                  suite
+	module             *componentsv1alpha1.Workbenches
+	moduleCRD          *apiextensionsv1.CustomResourceDefinition
 	notebook           *unstructured.Unstructured
 	odhDashboardConfig *unstructured.Unstructured
 	hardwareProfile    *infrav1.HardwareProfile
 }
 
-func newMigrationTests(suite *workbenchesUpgradeTest) *migrationTests {
-	return &migrationTests{
-		workbenchesUpgradeTest: suite,
-		notebook:               newNotebook(suite.operatorNamespace, "upgrade-notebook"),
-		odhDashboardConfig:     newOdhDashboardConfig(suite.operatorNamespace),
-		hardwareProfile: &infrav1.HardwareProfile{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "containersize-small-notebooks",
-				Namespace: suite.operatorNamespace,
-			},
+func (mt *migrationTests) Execute(t *testing.T) {
+	mt.notebook = newNotebook(mt.s.operatorNamespace(), "upgrade-notebook")
+	mt.odhDashboardConfig = newOdhDashboardConfig(mt.s.operatorNamespace())
+	mt.hardwareProfile = &infrav1.HardwareProfile{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "containersize-small-notebooks",
+			Namespace: mt.s.operatorNamespace(),
 		},
 	}
-}
 
-func (mt *migrationTests) Execute(t *testing.T) {
 	t.Run("should migrate container size annotations to hardware profiles", mt.testContainerSizeMigration)
 }
 
 func (mt *migrationTests) testContainerSizeMigration(t *testing.T) {
+	ctx := t.Context()
 	g := NewWithT(t)
 
-	deleteIfExists(t, mt.notebook)
-	deleteIfExists(t, mt.odhDashboardConfig)
-	deleteIfExists(t, mt.hardwareProfile)
-	deleteIfExists(t, mt.module)
-	waitForSingletonDeleted(t, mt.module)
+	deleteIfExists(t, mt.s, mt.notebook)
+	deleteIfExists(t, mt.s, mt.odhDashboardConfig)
+	deleteIfExists(t, mt.s, mt.hardwareProfile)
+	deleteIfExists(t, mt.s, mt.module)
+	g.Eventually(ctx, k8sm.NotFound(mt.s.directClient, mt.module)).Should(BeTrue())
+	mt.module.SetResourceVersion("")
+	mt.module.SetUID("")
 
 	t.Cleanup(func() {
-		deleteIfExists(t, mt.notebook)
-		deleteIfExists(t, mt.odhDashboardConfig)
-		deleteIfExists(t, mt.hardwareProfile)
-		deleteIfExists(t, mt.module)
+		deleteIfExists(t, mt.s, mt.notebook)
+		deleteIfExists(t, mt.s, mt.odhDashboardConfig)
+		deleteIfExists(t, mt.s, mt.hardwareProfile)
+		deleteIfExists(t, mt.s, mt.module)
 	})
 
-	g.Expect(directClient.Create(ctx, mt.module)).To(Succeed())
+	g.Expect(mt.s.directClient.Create(ctx, mt.module)).To(Succeed())
 
 	seededModule := &componentsv1alpha1.Workbenches{
 		ObjectMeta: metav1.ObjectMeta{Name: componentsv1alpha1.WorkbenchesInstanceName},
 	}
-	g.Expect(directClient.Get(ctx, client.ObjectKeyFromObject(seededModule), seededModule)).To(Succeed())
+	g.Eventually(ctx, k8sm.Lookup(mt.s.directClient, seededModule)).Should(Succeed())
 	seededModule.Status.Release.Version = ofVersion.OperatorVersion{Version: semver.MustParse(appliedUpgradeVersion)}
-	g.Expect(directClient.Status().Update(ctx, seededModule)).To(Succeed())
-	g.Expect(directClient.Create(ctx, mt.odhDashboardConfig)).To(Succeed())
-	g.Expect(directClient.Create(ctx, mt.notebook)).To(Succeed())
+	g.Expect(mt.s.directClient.Status().Update(ctx, seededModule)).To(Succeed())
+	g.Expect(mt.s.directClient.Create(ctx, mt.odhDashboardConfig)).To(Succeed())
+	g.Expect(mt.s.directClient.Create(ctx, mt.notebook)).To(Succeed())
 
-	g.Expect(directClient.Get(ctx, client.ObjectKeyFromObject(seededModule), seededModule)).To(Succeed())
+	g.Eventually(ctx, k8sm.Lookup(mt.s.directClient, seededModule)).Should(Succeed())
 	g.Expect(seededModule.Status.Release.Version.String()).To(Equal(appliedUpgradeVersion))
-	g.Eventually(directK.Get(mt.odhDashboardConfig)).
-		WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(And(
+	g.Eventually(ctx, k8sm.Get(mt.s.directClient, mt.odhDashboardConfig)).Should(And(
 		jq.Match(`.metadata.name == "odh-dashboard-config"`),
-		jq.Match(`.metadata.namespace == "%s"`, mt.operatorNamespace),
+		jq.Matchf(`.metadata.namespace == "%s"`, mt.s.operatorNamespace()),
 	))
-	g.Eventually(directK.Get(mt.notebook)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(And(
+	g.Eventually(ctx, k8sm.Get(mt.s.directClient, mt.notebook)).Should(And(
 		jq.Match(`.metadata.name == "upgrade-notebook"`),
-		jq.Match(`.metadata.namespace == "%s"`, mt.operatorNamespace),
+		jq.Matchf(`.metadata.namespace == "%s"`, mt.s.operatorNamespace()),
 	))
 
-	startManager(t)
+	mt.s = startManager(t, mt.s)
 
-	g.Eventually(k.Get(mt.moduleCRD)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(
-		jq.Match(`.metadata.name == "%s"`, moduleCRDName),
-	)
+	g.Eventually(ctx, k8sm.Lookup(mt.s.directClient, mt.moduleCRD)).Should(Succeed())
 
-	g.Eventually(directK.Get(mt.hardwareProfile)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(And(
+	g.Eventually(ctx, k8sm.Get(mt.s.directClient, mt.hardwareProfile)).Should(And(
 		jq.Match(`.metadata.name == "containersize-small-notebooks"`),
-		jq.Match(`.metadata.namespace == "%s"`, mt.operatorNamespace),
+		jq.Matchf(`.metadata.namespace == "%s"`, mt.s.operatorNamespace()),
 	))
-	g.Eventually(directK.Get(mt.notebook)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(And(
-		jq.Match(`.metadata.annotations."%s" == "Small"`, notebookSizeAnnotation),
-		jq.Match(`.metadata.annotations."%s" == "containersize-small-notebooks"`, hwpNameAnnotation),
-		jq.Match(`.metadata.annotations."%s" == "%s"`, hwpNamespaceAnnotation, mt.operatorNamespace),
+	g.Eventually(ctx, k8sm.Get(mt.s.directClient, mt.notebook)).Should(And(
+		jq.Matchf(`.metadata.annotations."%s" == "Small"`, notebookSizeAnnotation),
+		jq.Matchf(`.metadata.annotations."%s" == "containersize-small-notebooks"`, hwpNameAnnotation),
+		jq.Matchf(`.metadata.annotations."%s" == "%s"`, hwpNamespaceAnnotation, mt.s.operatorNamespace()),
 	))
 
-	g.Eventually(directK.Get(mt.module)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(
-		jq.Match(`.status.release.version == "%s"`, desiredUpgradeVersion),
+	g.Eventually(ctx, k8sm.Get(mt.s.directClient, mt.module)).Should(
+		jq.Matchf(`.status.release.version == "%s"`, desiredUpgradeVersion),
 	)
-	g.Eventually(directK.Get(mt.notebook)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(And(
-		jq.Match(`.metadata.annotations."%s" == "containersize-small-notebooks"`, hwpNameAnnotation),
-		jq.Match(`.metadata.annotations."%s" == "%s"`, hwpNamespaceAnnotation, mt.operatorNamespace),
+	g.Eventually(ctx, k8sm.Get(mt.s.directClient, mt.notebook)).Should(And(
+		jq.Matchf(`.metadata.annotations."%s" == "containersize-small-notebooks"`, hwpNameAnnotation),
+		jq.Matchf(`.metadata.annotations."%s" == "%s"`, hwpNamespaceAnnotation, mt.s.operatorNamespace()),
 	))
-	g.Eventually(moduleHasEventReason(mt.module.GetName(), "UpgradeStarted")).
-		WithContext(ctx).
-		WithTimeout(timeout).
-		WithPolling(interval).
-		Should(BeTrue())
+	g.Eventually(ctx, k8sm.Events(
+		mt.s.directClient,
+		k8sm.InNamespace(mt.s.operatorNamespace()),
+		k8sm.ForObject(corev1.ObjectReference{
+			Kind: componentsv1alpha1.WorkbenchesKind,
+			Name: mt.module.GetName(),
+		}),
+	)).Should(ContainElement(gstruct.MatchFields(gstruct.IgnoreExtras, gstruct.Fields{
+		"Reason": Equal("UpgradeStarted"),
+	})))
 }
 
 func newNotebook(namespace string, name string) *unstructured.Unstructured {
@@ -182,36 +186,12 @@ func newOdhDashboardConfig(namespace string) *unstructured.Unstructured {
 	return cfg
 }
 
-func moduleHasEventReason(moduleName string, reason string) func() bool {
-	return func() bool {
-		events := &corev1.EventList{}
-		if err := directClient.List(ctx, events, client.InNamespace(support.OperatorNamespace())); err != nil {
-			return false
-		}
-		for i := range events.Items {
-			event := &events.Items[i]
-			if event.Reason != reason {
-				continue
-			}
-			if event.InvolvedObject.Kind != componentsv1alpha1.WorkbenchesKind {
-				continue
-			}
-			if event.InvolvedObject.Name != moduleName {
-				continue
-			}
-
-			return true
-		}
-
-		return false
-	}
-}
-
-func deleteIfExists(t *testing.T, obj client.Object) {
+func deleteIfExists(t *testing.T, s suite, obj client.Object) {
 	t.Helper()
+	ctx := t.Context()
 
 	g := NewWithT(t)
-	err := directClient.Delete(ctx, obj)
+	err := s.directClient.Delete(ctx, obj)
 	g.Expect(err).To(SatisfyAny(
 		BeNil(),
 		MatchError(k8serr.IsNotFound, "IsNotFound"),

@@ -38,12 +38,12 @@ import (
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-workbenches-operator/internal/controller/workbenches"
 	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-workbenches-operator/pkg/config"
 	module "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-workbenches-operator/pkg/module"
-	platform "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-workbenches-operator/pkg/platform"
 	gvkpkg "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-workbenches-operator/pkg/resources/gvk"
+	odhmanager "github.com/opendatahub-io/odh-platform-utilities/framework/manager"
 	fwresources "github.com/opendatahub-io/odh-platform-utilities/framework/resources"
 	libcache "github.com/opendatahub-io/odh-platform-utilities/pkg/cache"
+	"github.com/opendatahub-io/odh-platform-utilities/pkg/metadata/labels"
 	infrav1 "github.com/opendatahub-io/opendatahub-operator/v2/api/infrastructure/v1"
-	odhmanager "github.com/opendatahub-io/opendatahub-operator/v2/pkg/manager"
 	imagev1 "github.com/openshift/api/image/v1"
 )
 
@@ -95,12 +95,12 @@ func New(
 			DefaultNamespaces: map[string]cache.Config{
 				cfg.ApplicationsNamespace: {
 					LabelSelector: k8slabels.SelectorFromSet(k8slabels.Set{
-						platform.PartOfLabel: module.Name,
+						labels.PlatformPartOf: module.Name,
 					}),
 				},
 				cache.AllNamespaces: {
 					LabelSelector: k8slabels.SelectorFromSet(k8slabels.Set{
-						platform.PartOfLabel: module.Name,
+						labels.PlatformPartOf: module.Name,
 					}),
 				},
 			},

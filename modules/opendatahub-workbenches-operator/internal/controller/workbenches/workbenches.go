@@ -25,8 +25,8 @@ import (
 	componentApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-workbenches-operator/api/components/v1alpha1"
 	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-workbenches-operator/pkg/config"
 	fwtypes "github.com/opendatahub-io/odh-platform-utilities/framework/controller/types"
+	fwparams "github.com/opendatahub-io/odh-platform-utilities/framework/utils/params"
 	odhcluster "github.com/opendatahub-io/odh-platform-utilities/pkg/cluster"
-	odhdeploy "github.com/opendatahub-io/opendatahub-operator/v2/pkg/deploy"
 )
 
 // Module holds process-lifetime state for the workbenches controller.
@@ -59,21 +59,33 @@ func NewModule(cfg *moduleconfig.Config) (*Module, error) {
 	}
 
 	// Apply image parameters once at startup — these are constant for the process lifetime.
-	if err := odhdeploy.ApplyParams(manifests[0].String(), "params.env", map[string]string{
-		"odh-notebook-controller-image": "RELATED_IMAGE_ODH_NOTEBOOK_CONTROLLER_IMAGE",
-		"kube-rbac-proxy":               "RELATED_IMAGE_ODH_KUBE_RBAC_PROXY_IMAGE",
-	}); err != nil {
+	if err := fwparams.Apply(
+		manifests[0].String(),
+		"params.env",
+		fwparams.Replacement(fwparams.FromEnv(map[string]string{
+			"odh-notebook-controller-image": "RELATED_IMAGE_ODH_NOTEBOOK_CONTROLLER_IMAGE",
+			"kube-rbac-proxy":               "RELATED_IMAGE_ODH_KUBE_RBAC_PROXY_IMAGE",
+		})),
+	); err != nil {
 		return nil, fmt.Errorf("updating notebook-controller image params: %w", err)
 	}
 
-	if err := odhdeploy.ApplyParams(manifests[1].String(), "params.env", map[string]string{
-		"odh-kf-notebook-controller-image": "RELATED_IMAGE_ODH_KF_NOTEBOOK_CONTROLLER_IMAGE",
-	}); err != nil {
+	if err := fwparams.Apply(
+		manifests[1].String(),
+		"params.env",
+		fwparams.Replacement(fwparams.FromEnv(map[string]string{
+			"odh-kf-notebook-controller-image": "RELATED_IMAGE_ODH_KF_NOTEBOOK_CONTROLLER_IMAGE",
+		})),
+	); err != nil {
 		return nil, fmt.Errorf("updating kf-notebook-controller image params: %w", err)
 	}
 
 	nbImgParamsPath := notebookImagesManifestInfo(cfg.ManifestsPath, notebookImagesParamsPath[platform])
-	if err := odhdeploy.ApplyParams(nbImgParamsPath.String(), "params-latest.env", notebookImageParamMap); err != nil {
+	if err := fwparams.Apply(
+		nbImgParamsPath.String(),
+		"params-latest.env",
+		fwparams.Replacement(fwparams.FromEnv(notebookImageParamMap)),
+	); err != nil {
 		return nil, fmt.Errorf("updating notebook image params: %w", err)
 	}
 

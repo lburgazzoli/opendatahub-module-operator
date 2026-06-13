@@ -31,6 +31,9 @@ const (
 
 	// WorkbenchesKind is the Kubernetes kind string.
 	WorkbenchesKind = "Workbenches"
+
+	WorkbenchesResource = "workbenches"
+	WorkbenchesCRDName  = WorkbenchesResource + "." + GroupName
 )
 
 type Platform string

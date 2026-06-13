@@ -26,8 +26,8 @@ import (
 	localapi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-workbenches-operator/api/components/v1alpha1"
 	module "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-workbenches-operator/pkg/module"
 	fwtypes "github.com/opendatahub-io/odh-platform-utilities/framework/controller/types"
+	fwparams "github.com/opendatahub-io/odh-platform-utilities/framework/utils/params"
 	odhcluster "github.com/opendatahub-io/odh-platform-utilities/pkg/cluster"
-	odhdeploy "github.com/opendatahub-io/opendatahub-operator/v2/pkg/deploy"
 	ofVersion "github.com/operator-framework/api/pkg/lib/version"
 )
 
@@ -91,7 +91,11 @@ func (m *Module) setKustomizedParams(ctx context.Context, rr *fwtypes.Reconcilia
 	}
 
 	paramsPath := path.Join(rr.ManifestsBasePath, notebookControllerContextDir, notebookControllerManifestSourcePath)
-	if err := odhdeploy.ApplyParams(paramsPath, "params.env", nil, extraParamsMap); err != nil {
+	if err := fwparams.Apply(
+		paramsPath,
+		"params.env",
+		fwparams.Values(extraParamsMap),
+	); err != nil {
 		return fmt.Errorf("applying params.env from %s: %w", paramsPath, err)
 	}
 	return nil

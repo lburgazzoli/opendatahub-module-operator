@@ -1,5 +1,3 @@
-//go:build integration
-
 /*
 Copyright 2026.
 
@@ -23,22 +21,17 @@ import (
 	"fmt"
 	"os"
 	"testing"
-	"time"
 
 	. "github.com/onsi/gomega"
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
-	k8serr "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/config"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
-
-	"github.com/lburgazzoli/gomega-matchers/pkg/matchers/jq"
-	k8sm "github.com/lburgazzoli/gomega-matchers/pkg/matchers/k8s"
 
 	componentsv1alpha1 "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-workbenches-operator/api/components/v1alpha1"
 	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-workbenches-operator/pkg/config"
@@ -46,90 +39,100 @@ import (
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-workbenches-operator/test/support"
 )
 
-const (
-	timeout  = 90 * time.Second
-	interval = 2 * time.Second
+const testPlatformName = "OpenDataHub"
 
-	labelPartOf            = "platform.opendatahub.io/part-of"
-	annotationInstanceName = "platform.opendatahub.io/instance.name"
-	annotationInstanceUID  = "platform.opendatahub.io/instance.uid"
-	annotationType         = "platform.opendatahub.io/type"
-	annotationVersion      = "platform.opendatahub.io/version"
-	moduleCRDName          = "workbenches.components.platform.opendatahub.io"
-)
+func loadOperatorConfig() (*moduleconfig.Config, error) {
+	moduleCfg, err := moduleconfig.LoadFromFS(nil)
+	if err != nil {
+		return nil, fmt.Errorf("loading operator config: %w", err)
+	}
 
-var (
-	ctx                    context.Context
-	cancel                 context.CancelFunc
-	k8sClient              client.Client
-	k                      *k8sm.Matcher
-	operatorCfgData        map[string]string
-	operatorReleaseVersion string
-	testScheme             = workbenchesmanager.NewScheme()
-)
+	moduleCfg.PlatformName = testPlatformName
+	moduleCfg.PlatformVersion = moduleconfig.DefaultPlatformVersion
+	moduleCfg.ApplicationsNamespace = support.IntegrationTestNamespace()
+	moduleCfg.ManifestsPath = support.MustProjectFile("config", "manifests")
+	moduleCfg.Controller.Webhook.Enabled = false
+
+	return moduleCfg, nil
+}
 
 func TestMain(m *testing.M) {
 	os.Exit(runTestMain(m))
 }
 
 func runTestMain(m *testing.M) int {
-	ctx, cancel = context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+
+	gomegaCfg, err := support.LoadGomegaConfig()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to load test config: %v\n", err)
+		return 1
+	}
+
+	SetDefaultEventuallyTimeout(gomegaCfg.EventuallyTimeout)
+	SetDefaultEventuallyPollingInterval(gomegaCfg.EventuallyPollingInterval)
+	SetDefaultConsistentlyPollingInterval(gomegaCfg.ConsistentlyPollingInterval)
 
 	ctrl.SetLogger(zap.New(zap.UseDevMode(true)))
 
-	kubeConfig, err := config.GetConfig()
+	cfg, err := config.GetConfig()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to get kubeconfig: %v\n", err)
 		return 1
 	}
 
-	directClient, err := client.New(kubeConfig, client.Options{Scheme: testScheme})
+	moduleCfg, err := loadOperatorConfig()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to load operator config: %v\n", err)
+		return 1
+	}
+	moduleCfg.ApplicationsNamespace = support.IntegrationTestNamespace()
+	moduleCfg.Controller.Metrics.BindAddress = "0"
+	moduleCfg.Controller.Health.BindAddress = "0"
+	moduleCfg.Controller.LeaderElection.Enabled = false
+	moduleCfg.Controller.Pprof.BindAddress = "0"
+	moduleCfg.Controller.Webhook.Enabled = false
+
+	logger, err := moduleCfg.Controller.Zap.NewLogger()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to build zap logger: %v\n", err)
+		return 1
+	}
+
+	ctrl.SetLogger(logger)
+
+	cli, err := support.NewClient()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to create client: %v\n", err)
 		return 1
 	}
 
-	testNamespace := support.IntegrationTestNamespace()
-
-	if err := support.EnsureNamespace(ctx, directClient, testNamespace); err != nil {
+	if err := support.EnsureNamespace(ctx, cli, moduleCfg.ApplicationsNamespace); err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to create namespace: %v\n", err)
 		return 1
 	}
 
 	moduleCRD := &apiextensionsv1.CustomResourceDefinition{
-		ObjectMeta: metav1.ObjectMeta{Name: moduleCRDName},
+		ObjectMeta: metav1.ObjectMeta{Name: componentsv1alpha1.WorkbenchesCRDName},
 	}
-	if err := directClient.Get(ctx, client.ObjectKeyFromObject(moduleCRD), moduleCRD); err != nil {
-		fmt.Fprintf(os.Stderr, "Expected CRD %s to be installed before running integration tests: %v\n", moduleCRDName, err)
+	if err := cli.Get(ctx, client.ObjectKeyFromObject(moduleCRD), moduleCRD); err != nil {
+		fmt.Fprintf(
+			os.Stderr,
+			"Expected CRD %s to be installed before running integration tests: %v\n",
+			componentsv1alpha1.WorkbenchesCRDName,
+			err,
+		)
 		return 1
 	}
 
-	// Clean up leftovers from previous runs.
-	_ = directClient.DeleteAllOf(ctx, &componentsv1alpha1.Workbenches{})
-	_ = directClient.DeleteAllOf(ctx, &appsv1.Deployment{}, client.InNamespace(testNamespace))
-	_ = directClient.DeleteAllOf(ctx, &corev1.Service{}, client.InNamespace(testNamespace))
-
-	operatorCfgData = support.MustReadConfigMapData(
-		support.MustProjectFile("config", "manager", "configmap.yaml"))
-
-	moduleCfg := &moduleconfig.Config{
-		PlatformName:          operatorCfgData[moduleconfig.KeyPlatformName],
-		PlatformVersion:       operatorCfgData[moduleconfig.KeyPlatformVersion],
-		ApplicationsNamespace: testNamespace,
-		ManifestsPath:         support.MustProjectFile("config", "manifests"),
-		Controller: moduleconfig.ControllerConfig{
-			Metrics:        moduleconfig.MetricsConfig{BindAddress: "0"},
-			Health:         moduleconfig.HealthConfig{BindAddress: "0"},
-			LeaderElection: moduleconfig.LeaderElectionConfig{Enabled: false},
-			Webhook:        moduleconfig.WebhookConfig{Enabled: false},
-		},
-	}
-	operatorReleaseVersion = moduleCfg.Release().Version.String()
+	_ = cli.DeleteAllOf(ctx, &componentsv1alpha1.Workbenches{})
+	_ = cli.DeleteAllOf(ctx, &appsv1.Deployment{}, client.InNamespace(moduleCfg.ApplicationsNamespace))
+	_ = cli.DeleteAllOf(ctx, &corev1.Service{}, client.InNamespace(moduleCfg.ApplicationsNamespace))
 
 	mgr, err := workbenchesmanager.New(
 		ctx,
-		kubeConfig,
+		cfg,
 		moduleCfg,
 		func(opts *ctrl.Options) {
 			opts.Cache.DefaultTransform = nil
@@ -152,74 +155,14 @@ func runTestMain(m *testing.M) int {
 		return 1
 	}
 
-	k8sClient = mgr.GetClient()
-	k = k8sm.New(k8sClient, testScheme)
-
 	return m.Run()
 }
 
-type workbenchesIntegrationTest struct {
-	module    *componentsv1alpha1.Workbenches
-	moduleCRD *apiextensionsv1.CustomResourceDefinition
-	nbcDeploy *appsv1.Deployment
-}
-
 func TestWorkbenches(t *testing.T) {
-	testNamespace := support.IntegrationTestNamespace()
-
-	suite := &workbenchesIntegrationTest{
-		module: &componentsv1alpha1.Workbenches{
-			ObjectMeta: metav1.ObjectMeta{
-				Name: componentsv1alpha1.WorkbenchesInstanceName,
-			},
-		},
-		moduleCRD: &apiextensionsv1.CustomResourceDefinition{
-			ObjectMeta: metav1.ObjectMeta{Name: moduleCRDName},
-		},
-		nbcDeploy: &appsv1.Deployment{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "odh-notebook-controller-manager",
-				Namespace: testNamespace,
-			},
-		},
+	k8sClient, err := support.NewClient()
+	if err != nil {
+		t.Fatalf("failed to create client: %v", err)
 	}
-	foundation := &foundationTests{workbenchesIntegrationTest: suite}
 
-	// Clean up any leftover CR from a previous run before starting.
-	_ = k8sClient.Delete(ctx, suite.module)
-	waitForSingletonDeleted(t, suite.module)
-
-	t.Cleanup(func() {
-		_ = k8sClient.Delete(ctx, suite.module)
-	})
-
-	t.Run("foundation", foundation.Execute)
-}
-
-func waitForDeleted(t *testing.T, obj client.Object) {
-	t.Helper()
-
-	g := NewWithT(t)
-	g.Eventually(func(g Gomega) {
-		fresh := obj.DeepCopyObject().(client.Object)
-		err := k8sClient.Get(ctx, client.ObjectKeyFromObject(obj), fresh)
-		g.Expect(k8serr.IsNotFound(err)).To(BeTrue())
-	}).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(Succeed())
-}
-
-func waitForSingletonDeleted(t *testing.T, obj client.Object) {
-	t.Helper()
-
-	waitForDeleted(t, obj)
-	obj.SetResourceVersion("")
-	obj.SetUID("")
-}
-
-func eventuallyDeploymentReady(t *testing.T, deploy *appsv1.Deployment) {
-	t.Helper()
-
-	g := NewWithT(t)
-	g.Eventually(k.Get(deploy)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(
-		jq.Match(`.status.readyReplicas >= 1`),
-	)
+	t.Run("foundation", (&foundationTests{Client: k8sClient}).Execute)
 }

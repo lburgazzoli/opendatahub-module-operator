@@ -3,23 +3,24 @@
 package e2e
 
 import (
+	"context"
 	"fmt"
 	"testing"
-	"time"
 
 	. "github.com/onsi/gomega"
 	"github.com/rs/xid"
 	admissionv1 "k8s.io/api/admissionregistration/v1"
 	corev1 "k8s.io/api/core/v1"
-	k8serr "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/lburgazzoli/gomega-matchers/pkg/matchers/jq"
-	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-workbenches-operator/test/support"
+	k8sm "github.com/lburgazzoli/gomega-matchers/pkg/matchers/k8s"
 	infrav1 "github.com/opendatahub-io/opendatahub-operator/v2/api/infrastructure/v1"
+
+	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-workbenches-operator/test/support"
 )
 
 const (
@@ -30,26 +31,7 @@ const (
 )
 
 type webhookTests struct {
-	*workbenchesE2ETest
-	webhookService *corev1.Service
-	webhookConfig  *admissionv1.MutatingWebhookConfiguration
-}
-
-func newWebhookTests(suite *workbenchesE2ETest) *webhookTests {
-	return &webhookTests{
-		workbenchesE2ETest: suite,
-		webhookService: &corev1.Service{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "opendatahub-workbenches-webhook-service",
-				Namespace: suite.operatorNamespace,
-			},
-		},
-		webhookConfig: &admissionv1.MutatingWebhookConfiguration{
-			ObjectMeta: metav1.ObjectMeta{
-				Name: "opendatahub-workbenches-mutating-webhook-configuration",
-			},
-		},
-	}
+	Client client.Client
 }
 
 func (wt *webhookTests) Execute(t *testing.T) {
@@ -60,12 +42,24 @@ func (wt *webhookTests) Execute(t *testing.T) {
 func (wt *webhookTests) testWebhookResources(t *testing.T) {
 	g := NewWithT(t)
 
-	g.Eventually(k.Get(wt.webhookService)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(And(
+	webhookService := &corev1.Service{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "opendatahub-workbenches-webhook-service",
+			Namespace: support.OperatorNamespace(),
+		},
+	}
+	webhookConfig := &admissionv1.MutatingWebhookConfiguration{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "opendatahub-workbenches-mutating-webhook-configuration",
+		},
+	}
+
+	g.Eventually(t.Context(), k8sm.Get(wt.Client, webhookService)).Should(And(
 		jq.Match(`.metadata.name == "opendatahub-workbenches-webhook-service"`),
 		jq.Match(`[.spec.ports[] | select(.port == 443 and .targetPort == 9443)] | length == 1`),
 	))
 
-	g.Eventually(k.Get(wt.webhookConfig)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(And(
+	g.Eventually(t.Context(), k8sm.Get(wt.Client, webhookConfig)).Should(And(
 		jq.Match(`.metadata.name == "opendatahub-workbenches-mutating-webhook-configuration"`),
 		jq.Match(`.webhooks[] | select(.name == "connection-notebook.opendatahub.io")`+
 			` | .clientConfig.service.name == "opendatahub-workbenches-webhook-service"`),
@@ -100,28 +94,24 @@ func (wt *webhookTests) testConnectionWebhookInjectsSecretEnvFrom(t *testing.T) 
 		connectionAnnotation: fmt.Sprintf("%s/%s", operatorNamespace, secret.GetName()),
 	})
 
-	cleanupObject(t, secret)
-	cleanupObject(t, nb)
+	cleanupObject(t, wt.Client, secret)
+	cleanupObject(t, wt.Client, nb)
 	t.Cleanup(func() {
-		cleanupObject(t, nb)
-		cleanupObject(t, secret)
+		cleanupObject(t, wt.Client, nb)
+		cleanupObject(t, wt.Client, secret)
 	})
 
-	g.Expect(k8sClient.Create(ctx, secret)).To(Succeed())
-	g.Expect(k8sClient.Create(ctx, nb)).To(Succeed())
+	g.Expect(wt.Client.Create(t.Context(), secret)).To(Succeed())
+	g.Expect(wt.Client.Create(t.Context(), nb)).To(Succeed())
 
-	g.Eventually(func(g Gomega) {
-		stored := &unstructured.Unstructured{}
-		stored.SetGroupVersionKind(nb.GroupVersionKind())
-		g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(nb), stored)).To(Succeed())
-
-		containers, found, err := unstructured.NestedSlice(stored.Object, "spec", "template", "spec", "containers")
-		g.Expect(err).NotTo(HaveOccurred())
-		g.Expect(found).To(BeTrue())
-		envFrom := containers[0].(map[string]any)["envFrom"].([]any)
-		g.Expect(envFrom).To(HaveLen(1))
-		g.Expect(envFrom[0].(map[string]any)["secretRef"].(map[string]any)["name"]).To(Equal(secret.GetName()))
-	}).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(Succeed())
+	stored := &unstructured.Unstructured{}
+	stored.SetGroupVersionKind(nb.GroupVersionKind())
+	g.Eventually(t.Context(), k8sm.Get(wt.Client, stored)).Should(And(
+		jq.Matchf(
+			`((.spec.template.spec.containers[0].envFrom // []) | map(select(.secretRef.name == "%s")) | length) == 1`,
+			secret.GetName(),
+		),
+	))
 }
 
 func (wt *webhookTests) testConnectionWebhookDeniesMissingSecret(t *testing.T) {
@@ -132,12 +122,12 @@ func (wt *webhookTests) testConnectionWebhookDeniesMissingSecret(t *testing.T) {
 		connectionAnnotation: fmt.Sprintf("%s/%s", operatorNamespace, "missing-secret"),
 	})
 
-	cleanupObject(t, nb)
+	cleanupObject(t, wt.Client, nb)
 	t.Cleanup(func() {
-		cleanupObject(t, nb)
+		cleanupObject(t, wt.Client, nb)
 	})
 
-	err := k8sClient.Create(ctx, nb)
+	err := wt.Client.Create(t.Context(), nb)
 	g.Expect(err).To(HaveOccurred())
 	g.Expect(err.Error()).To(ContainSubstring("connection secrets not found"))
 }
@@ -176,35 +166,23 @@ func (wt *webhookTests) testHardwareProfileWebhookMutatesNotebook(t *testing.T) 
 		hwpNameAnnotation: hwp.GetName(),
 	})
 
-	cleanupObject(t, hwp)
-	cleanupObject(t, nb)
+	cleanupObject(t, wt.Client, hwp)
+	cleanupObject(t, wt.Client, nb)
 	t.Cleanup(func() {
-		cleanupObject(t, nb)
-		cleanupObject(t, hwp)
+		cleanupObject(t, wt.Client, nb)
+		cleanupObject(t, wt.Client, hwp)
 	})
 
-	g.Expect(k8sClient.Create(ctx, hwp)).To(Succeed())
-	g.Expect(k8sClient.Create(ctx, nb)).To(Succeed())
+	g.Expect(wt.Client.Create(t.Context(), hwp)).To(Succeed())
+	g.Expect(wt.Client.Create(t.Context(), nb)).To(Succeed())
 
-	g.Eventually(func(g Gomega) {
-		stored := &unstructured.Unstructured{}
-		stored.SetGroupVersionKind(nb.GroupVersionKind())
-		g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(nb), stored)).To(Succeed())
-
-		g.Expect(stored.GetAnnotations()).To(HaveKeyWithValue(hwpNamespaceAnnotation, operatorNamespace))
-
-		containers, found, err := unstructured.NestedSlice(stored.Object, "spec", "template", "spec", "containers")
-		g.Expect(err).NotTo(HaveOccurred())
-		g.Expect(found).To(BeTrue())
-		resourcesMap := containers[0].(map[string]any)["resources"].(map[string]any)
-		requests := resourcesMap["requests"].(map[string]any)
-		g.Expect(requests["cpu"]).To(Equal("2"))
-
-		nodeSelector, found, err := unstructured.NestedStringMap(stored.Object, "spec", "template", "spec", "nodeSelector")
-		g.Expect(err).NotTo(HaveOccurred())
-		g.Expect(found).To(BeTrue())
-		g.Expect(nodeSelector).To(HaveKeyWithValue("kubernetes.io/os", "linux"))
-	}).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(Succeed())
+	stored := &unstructured.Unstructured{}
+	stored.SetGroupVersionKind(nb.GroupVersionKind())
+	g.Eventually(t.Context(), k8sm.Get(wt.Client, stored)).Should(And(
+		k8sm.HasAnnotation(hwpNamespaceAnnotation, operatorNamespace),
+		jq.Match(`.spec.template.spec.containers[0].resources.requests.cpu == "2"`),
+		jq.Match(`.spec.template.spec.nodeSelector."kubernetes.io/os" == "linux"`),
+	))
 }
 
 func (wt *webhookTests) testHardwareProfileWebhookDeniesMissingProfile(t *testing.T) {
@@ -215,37 +193,28 @@ func (wt *webhookTests) testHardwareProfileWebhookDeniesMissingProfile(t *testin
 		hwpNameAnnotation: "missing-profile",
 	})
 
-	cleanupObject(t, nb)
+	cleanupObject(t, wt.Client, nb)
 	t.Cleanup(func() {
-		cleanupObject(t, nb)
+		cleanupObject(t, wt.Client, nb)
 	})
 
-	err := k8sClient.Create(ctx, nb)
+	err := wt.Client.Create(t.Context(), nb)
 	g.Expect(err).To(HaveOccurred())
 	g.Expect(err.Error()).To(ContainSubstring(`hardware profile "missing-profile" not found`))
 }
 
-func deleteIfExists(obj client.Object) {
-	_ = k8sClient.Delete(ctx, obj)
+func deleteIfExists(ctx context.Context, cli client.Client, obj client.Object) {
+	_ = cli.Delete(ctx, obj)
 }
 
-func cleanupObject(t *testing.T, obj client.Object) {
+func cleanupObject(t *testing.T, cli client.Client, obj client.Object) {
 	t.Helper()
 
-	deleteIfExists(obj)
+	ctx := t.Context()
+	deleteIfExists(ctx, cli, obj)
 
-	deadline := time.Now().Add(timeout)
-	for time.Now().Before(deadline) {
-		fresh := obj.DeepCopyObject().(client.Object)
-		err := k8sClient.Get(ctx, client.ObjectKeyFromObject(obj), fresh)
-		if k8serr.IsNotFound(err) {
-			return
-		}
-
-		time.Sleep(interval)
-	}
-
-	t.Logf("cleanup warning: object %T %s was not deleted before timeout", obj, client.ObjectKeyFromObject(obj))
+	g := NewWithT(t)
+	g.Eventually(ctx, k8sm.NotFound(cli, obj)).Should(BeTrue())
 }
 
 func newWebhookExampleNotebook(namespace string, name string) *unstructured.Unstructured {

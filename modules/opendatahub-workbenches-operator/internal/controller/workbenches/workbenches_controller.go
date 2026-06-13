@@ -30,8 +30,6 @@ import (
 
 	componentApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-workbenches-operator/api/components/v1alpha1"
 	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-workbenches-operator/pkg/config"
-	localimagestreams "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-workbenches-operator/pkg/controller/actions/imagestreams"
-	localreleases "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-workbenches-operator/pkg/controller/actions/releases"
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-workbenches-operator/pkg/controller/handlers"
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-workbenches-operator/pkg/controller/predicates"
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-workbenches-operator/pkg/resources/gvk"
@@ -40,6 +38,8 @@ import (
 	"github.com/opendatahub-io/odh-platform-utilities/framework/controller/actions/gc"
 	"github.com/opendatahub-io/odh-platform-utilities/framework/controller/actions/render/kustomize"
 	"github.com/opendatahub-io/odh-platform-utilities/framework/controller/actions/status/deployments"
+	fwimagestreams "github.com/opendatahub-io/odh-platform-utilities/framework/controller/actions/status/imagestreams"
+	fwreleases "github.com/opendatahub-io/odh-platform-utilities/framework/controller/actions/status/releases"
 	"github.com/opendatahub-io/odh-platform-utilities/framework/controller/reconciler"
 	fwtypes "github.com/opendatahub-io/odh-platform-utilities/framework/controller/types"
 )
@@ -147,9 +147,9 @@ func NewReconciler(
 		).
 		WithAction(m.initialize).
 		WithAction(m.upgradeIfNeeded).
-		WithAction(localreleases.NewAction(
-			localreleases.WithMetadataFilePath(func(rr *fwtypes.ReconciliationRequest) string {
-				return path.Join(rr.ManifestsBasePath, ComponentName, kfNotebookControllerPath, localreleases.ComponentMetadataFilename)
+		WithAction(fwreleases.NewAction(
+			fwreleases.WithMetadataFilePath(func(rr *fwtypes.ReconciliationRequest) string {
+				return path.Join(rr.ManifestsBasePath, ComponentName, kfNotebookControllerPath, fwreleases.ComponentMetadataFilename)
 			}),
 		)).
 		WithAction(m.configureDependencies).
@@ -166,8 +166,8 @@ func NewReconciler(
 		WithAction(deployments.NewAction(
 			deployments.InNamespaceFn(moduleconfig.ApplicationsNamespaceGetter(cfg)),
 		)).
-		WithAction(localimagestreams.NewAction(
-			localimagestreams.InNamespace(cfg.ApplicationsNamespace),
+		WithAction(fwimagestreams.NewAction(
+			fwimagestreams.InNamespace(cfg.ApplicationsNamespace),
 		)).
 		WithAction(m.reportStatus).
 		WithAction(gc.NewAction(moduleconfig.ApplicationsNamespaceGetter(cfg))).

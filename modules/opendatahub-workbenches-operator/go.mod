@@ -11,12 +11,11 @@ require (
 	github.com/opendatahub-io/odh-platform-utilities v0.0.0-20260528075406-6d9164111905
 	github.com/opendatahub-io/odh-platform-utilities/framework v0.0.0-00010101000000-000000000000
 	github.com/opendatahub-io/opendatahub-operator/v2 v2.0.0-00010101000000-000000000000
-	github.com/openshift/api v0.0.0-20230823114715-5fdd7511b790
+	github.com/openshift/api v0.0.0-20260610192510-1b2a074e0bd6
 	github.com/operator-framework/api v0.42.0
 	github.com/rs/xid v1.6.0
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/viper v1.21.0
-	gopkg.in/yaml.v3 v3.0.1
 	k8s.io/api v0.36.1
 	k8s.io/apiextensions-apiserver v0.36.1
 	k8s.io/apimachinery v0.36.1
@@ -63,7 +62,6 @@ require (
 	github.com/go-openapi/swag/yamlutils v0.25.4 // indirect
 	github.com/go-viper/mapstructure/v2 v2.4.0 // indirect
 	github.com/gobwas/glob v0.2.3 // indirect
-	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/google/gnostic-models v0.7.1 // indirect
 	github.com/google/go-cmp v0.7.0 // indirect
 	github.com/google/uuid v1.6.0 // indirect
@@ -94,7 +92,6 @@ require (
 	github.com/sagikazarmark/locafero v0.11.0 // indirect
 	github.com/santhosh-tekuri/jsonschema/v6 v6.0.2 // indirect
 	github.com/shopspring/decimal v1.4.0 // indirect
-	github.com/sirupsen/logrus v1.9.4 // indirect
 	github.com/sourcegraph/conc v0.3.1-0.20240121214520-5f936abd7ae8 // indirect
 	github.com/spf13/afero v1.15.0 // indirect
 	github.com/spf13/cast v1.10.0 // indirect
@@ -119,6 +116,7 @@ require (
 	google.golang.org/protobuf v1.36.12-0.20260120151049-f2248ac996af // indirect
 	gopkg.in/evanphx/json-patch.v4 v4.13.0 // indirect
 	gopkg.in/inf.v0 v0.9.1 // indirect
+	gopkg.in/yaml.v3 v3.0.1 // indirect
 	helm.sh/helm/v4 v4.1.1 // indirect
 	k8s.io/klog/v2 v2.140.0 // indirect
 	k8s.io/kube-openapi v0.0.0-20260414162039-ec9c827d403f // indirect
@@ -132,6 +130,8 @@ require (
 )
 
 replace github.com/opendatahub-io/odh-platform-utilities => ../../../odh-platform-utilities
+
+replace github.com/lburgazzoli/gomega-matchers => ../../../../gomega-matchers
 
 replace github.com/opendatahub-io/odh-platform-utilities/framework => ../../../odh-platform-utilities/framework
 

@@ -48,6 +48,8 @@ const (
 	KeyWebhookPort        = "controller.webhook.port"
 	KeyWebhookCertDir     = "controller.webhook.cert-dir"
 	KeyZapLevel           = "controller.zap.level"
+	KeyZapDevMode         = "controller.zap.dev-mode"
+	KeyZapEncoder         = "controller.zap.encoder"
 	KeyPprofEnabled       = "controller.pprof.enabled"
 	KeyPprofBindAddr      = "controller.pprof.bind-address"
 
@@ -63,6 +65,8 @@ const (
 	DefaultWebhookPort        = 9443
 	DefaultWebhookCertDir     = "/tmp/k8s-webhook-server/serving-certs"
 	DefaultZapLevel           = "info"
+	DefaultZapDevMode         = false
+	DefaultZapEncoder         = ""
 	DefaultPprofEnabled       = false
 
 	// ConfigPathEnvVar is the environment variable that points to the mounted
@@ -128,7 +132,9 @@ type WebhookConfig struct {
 }
 
 type ZapConfig struct {
-	Level string `mapstructure:"level"`
+	Level   string `mapstructure:"level"`
+	DevMode bool   `mapstructure:"dev-mode"`
+	Encoder string `mapstructure:"encoder"`
 }
 
 type PprofConfig struct {
@@ -217,6 +223,8 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault(KeyWebhookPort, DefaultWebhookPort)
 	v.SetDefault(KeyWebhookCertDir, DefaultWebhookCertDir)
 	v.SetDefault(KeyZapLevel, DefaultZapLevel)
+	v.SetDefault(KeyZapDevMode, DefaultZapDevMode)
+	v.SetDefault(KeyZapEncoder, DefaultZapEncoder)
 	v.SetDefault(KeyPprofEnabled, DefaultPprofEnabled)
 	v.SetDefault(KeyPprofBindAddr, "")
 }
