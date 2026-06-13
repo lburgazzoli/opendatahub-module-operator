@@ -21,7 +21,6 @@ import (
 
 	"github.com/spf13/cobra"
 	ctrl "sigs.k8s.io/controller-runtime"
-	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
 	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-feast-operator/pkg/config"
 	modulemgr "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-feast-operator/pkg/manager"
@@ -43,7 +42,11 @@ func run(cmd *cobra.Command, _ []string) error {
 		return fmt.Errorf("loading operator config: %w", err)
 	}
 
-	ctrl.SetLogger(zap.New(zap.UseDevMode(false)))
+	logger, err := cfg.Controller.Zap.NewLogger()
+	if err != nil {
+		return fmt.Errorf("building zap logger: %w", err)
+	}
+	ctrl.SetLogger(logger)
 
 	mgr, err := modulemgr.New(cmd.Context(), ctrl.GetConfigOrDie(), cfg)
 	if err != nil {

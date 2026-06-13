@@ -29,7 +29,7 @@ import (
 
 	componentApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-feast-operator/api/components/v1alpha1"
 	odhtypes "github.com/opendatahub-io/odh-platform-utilities/framework/controller/types"
-	odhdeploy "github.com/opendatahub-io/opendatahub-operator/v2/pkg/deploy"
+	fwparams "github.com/opendatahub-io/odh-platform-utilities/framework/utils/params"
 )
 
 const (
@@ -67,7 +67,11 @@ func (m *Module) setKustomizedParams(_ context.Context, rr *odhtypes.Reconciliat
 		ParamsEnvKeyOIDCIssuerURL: issuerURL,
 	}
 
-	if err := odhdeploy.ApplyParams(rr.Manifests[0].String(), "params.env", nil, extraParams); err != nil {
+	if err := fwparams.Apply(
+		rr.Manifests[0].String(),
+		"params.env",
+		fwparams.Values(extraParams),
+	); err != nil {
 		return fmt.Errorf("failed to update params.env with kustomize parameters: %w", err)
 	}
 

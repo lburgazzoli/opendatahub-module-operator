@@ -1,5 +1,6 @@
 package module
 
 const (
-	Name = "feastoperator"
+	Name               = "feastoperator"
+	OperatorConfigName = "opendatahub-feast-config"
 )

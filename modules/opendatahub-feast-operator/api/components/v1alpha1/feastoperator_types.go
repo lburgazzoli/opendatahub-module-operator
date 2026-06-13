@@ -26,6 +26,8 @@ const (
 	FeastOperatorComponentName = "feastoperator"
 	FeastOperatorInstanceName  = "default-feastoperator"
 	FeastOperatorKind          = "FeastOperator"
+	FeastOperatorResource      = "feastoperators"
+	FeastOperatorCRDName       = FeastOperatorResource + "." + GroupName
 )
 
 type Platform string
