@@ -1,7 +1,8 @@
 package module
 
 const (
-	Name = "datasciencepipelines"
+	Name               = "datasciencepipelines"
+	OperatorConfigName = "opendatahub-datasciencepipelines-config"
 
 	ConditionArgoWorkflowAvailable = "ArgoWorkflowAvailable"
 

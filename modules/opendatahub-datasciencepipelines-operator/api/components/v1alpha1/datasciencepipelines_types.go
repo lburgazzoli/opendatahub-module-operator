@@ -27,6 +27,8 @@ const (
 	DataSciencePipelinesComponentName = "datasciencepipelines"
 	DataSciencePipelinesInstanceName  = "default-" + DataSciencePipelinesComponentName
 	DataSciencePipelinesKind          = "DataSciencePipelines"
+	DataSciencePipelinesResource      = "datasciencepipelines"
+	DataSciencePipelinesCRDName       = DataSciencePipelinesResource + "." + GroupName
 	// AIPipelinesKind is the user-facing v2 alias in the monolith API.
 	AIPipelinesKind = "AIPipelines"
 )

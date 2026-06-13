@@ -27,7 +27,7 @@ import (
 	odherr "github.com/opendatahub-io/odh-platform-utilities/framework/controller/actions/errors"
 	"github.com/opendatahub-io/odh-platform-utilities/framework/controller/conditions"
 	fwtypes "github.com/opendatahub-io/odh-platform-utilities/framework/controller/types"
-	odhdeploy "github.com/opendatahub-io/opendatahub-operator/v2/pkg/deploy"
+	fwparams "github.com/opendatahub-io/odh-platform-utilities/framework/utils/params"
 	operatorv1 "github.com/openshift/api/operator/v1"
 	k8serr "k8s.io/apimachinery/pkg/api/errors"
 )
@@ -117,7 +117,11 @@ func argoWorkflowsControllersOptions(_ context.Context, rr *fwtypes.Reconciliati
 		argoWorkflowsControllersParamsKey: string(awfSpecJSON),
 	}
 
-	if err := odhdeploy.ApplyParams(paramsPath(rr.ManifestsBasePath), "params.env", nil, extraParams); err != nil {
+	if err := fwparams.Apply(
+		paramsPath(rr.ManifestsBasePath),
+		"params.env",
+		fwparams.Values(extraParams),
+	); err != nil {
 		return fmt.Errorf("failed to update params.env: %w", err)
 	}
 

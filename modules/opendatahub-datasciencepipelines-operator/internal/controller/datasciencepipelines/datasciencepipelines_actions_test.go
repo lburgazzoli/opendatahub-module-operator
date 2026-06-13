@@ -22,10 +22,11 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/lburgazzoli/gomega-matchers/pkg/matchers/jq"
+	"github.com/lburgazzoli/gomega-matchers/pkg/matchers/k8s"
 	componentApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-datasciencepipelines-operator/api/components/v1alpha1"
 	module "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-datasciencepipelines-operator/pkg/module"
 	. "github.com/onsi/gomega"
+	"github.com/onsi/gomega/types"
 	common "github.com/opendatahub-io/odh-platform-utilities/api/common"
 	fwapi "github.com/opendatahub-io/odh-platform-utilities/framework/api"
 	"github.com/opendatahub-io/odh-platform-utilities/framework/controller/conditions"
@@ -242,33 +243,24 @@ func TestCheckPreConditions(t *testing.T) {
 				g.Expect(err).NotTo(HaveOccurred())
 			}
 
-			g.Expect(tt.instance).To(
-				WithTransform(resources.ToUnstructured, jq.Match(
-					`.status.conditions[] | select(.type == "%s") | .status == "%s"`,
-					module.ConditionArgoWorkflowAvailable,
-					tt.expectedConditionStatus,
-				)),
-			)
-
+			conditionChecks := []types.GomegaMatcher{
+				HaveKeyWithValue("type", module.ConditionArgoWorkflowAvailable),
+				HaveKeyWithValue("status", string(tt.expectedConditionStatus)),
+			}
 			if tt.expectedReason != "" {
-				g.Expect(tt.instance).To(
-					WithTransform(resources.ToUnstructured, jq.Match(
-						`.status.conditions[] | select(.type == "%s") | .reason == "%s"`,
-						module.ConditionArgoWorkflowAvailable,
-						tt.expectedReason,
-					)),
-				)
+				conditionChecks = append(conditionChecks, HaveKeyWithValue("reason", tt.expectedReason))
+			}
+			if tt.expectedMessage != "" {
+				conditionChecks = append(conditionChecks, HaveKeyWithValue("message", tt.expectedMessage))
 			}
 
-			if tt.expectedMessage != "" {
-				g.Expect(tt.instance).To(
-					WithTransform(resources.ToUnstructured, jq.Match(
-						`.status.conditions[] | select(.type == "%s") | .message == "%s"`,
-						module.ConditionArgoWorkflowAvailable,
-						tt.expectedMessage,
+			g.Expect(tt.instance).To(
+				WithTransform(resources.ToUnstructured,
+					WithTransform(k8s.Conditions(), SatisfyAll(
+						ContainElement(SatisfyAll(conditionChecks...)),
 					)),
-				)
-			}
+				),
+			)
 		})
 	}
 }

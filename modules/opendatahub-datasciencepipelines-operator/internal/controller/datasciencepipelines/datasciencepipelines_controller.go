@@ -21,7 +21,6 @@ import (
 
 	componentApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-datasciencepipelines-operator/api/components/v1alpha1"
 	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-datasciencepipelines-operator/pkg/config"
-	localreleases "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-datasciencepipelines-operator/pkg/controller/actions/releases"
 	module "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-datasciencepipelines-operator/pkg/module"
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-datasciencepipelines-operator/pkg/resources/gvk"
 	fwapi "github.com/opendatahub-io/odh-platform-utilities/framework/api"
@@ -29,6 +28,7 @@ import (
 	"github.com/opendatahub-io/odh-platform-utilities/framework/controller/actions/gc"
 	"github.com/opendatahub-io/odh-platform-utilities/framework/controller/actions/render/kustomize"
 	"github.com/opendatahub-io/odh-platform-utilities/framework/controller/actions/status/deployments"
+	fwreleases "github.com/opendatahub-io/odh-platform-utilities/framework/controller/actions/status/releases"
 	"github.com/opendatahub-io/odh-platform-utilities/framework/controller/handlers"
 	"github.com/opendatahub-io/odh-platform-utilities/framework/controller/predicates"
 	labelpred "github.com/opendatahub-io/odh-platform-utilities/framework/controller/predicates/label"
@@ -123,7 +123,7 @@ func NewReconciler(
 		WithAction(m.applyBaseParams).
 		WithAction(m.upgradeIfNeeded).
 		WithAction(argoWorkflowsControllersOptions).
-		WithAction(localreleases.NewAction()).
+		WithAction(fwreleases.NewAction()).
 		WithAction(kustomize.NewAction()).
 		WithAction(deploy.NewAction(
 			deploy.WithCache(),

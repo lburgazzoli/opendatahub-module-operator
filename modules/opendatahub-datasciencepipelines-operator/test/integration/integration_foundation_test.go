@@ -1,5 +1,3 @@
-//go:build integration
-
 package integration
 
 import (
@@ -8,16 +6,25 @@ import (
 	. "github.com/onsi/gomega"
 
 	"github.com/lburgazzoli/gomega-matchers/pkg/matchers/jq"
+	k8sm "github.com/lburgazzoli/gomega-matchers/pkg/matchers/k8s"
 
 	componentsv1alpha1 "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-datasciencepipelines-operator/api/components/v1alpha1"
-	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-datasciencepipelines-operator/pkg/config"
-	module "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-datasciencepipelines-operator/pkg/module"
+	modulemeta "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-datasciencepipelines-operator/pkg/module"
+	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-datasciencepipelines-operator/test/support"
 	common "github.com/opendatahub-io/odh-platform-utilities/api/common"
 	fwapi "github.com/opendatahub-io/odh-platform-utilities/framework/api"
+	"github.com/opendatahub-io/odh-platform-utilities/pkg/metadata/annotations"
+	"github.com/opendatahub-io/odh-platform-utilities/pkg/metadata/labels"
+	promv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
+	appsv1 "k8s.io/api/apps/v1"
+	corev1 "k8s.io/api/core/v1"
+	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 type foundationTests struct {
-	*dspIntegrationTest
+	Client client.Client
 }
 
 func (ft *foundationTests) Execute(t *testing.T) {
@@ -30,123 +37,180 @@ func (ft *foundationTests) Execute(t *testing.T) {
 	t.Run("should fail when workflows CRD is missing and Argo is removed", ft.testMissingArgoWorkflowCRD)
 }
 
+func moduleObject() *componentsv1alpha1.DataSciencePipelines {
+	return &componentsv1alpha1.DataSciencePipelines{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: componentsv1alpha1.DataSciencePipelinesInstanceName,
+		},
+	}
+}
+
+func workloadDeployment() *appsv1.Deployment {
+	return &appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      workloadDeploymentName,
+			Namespace: support.IntegrationTestNamespace(),
+		},
+	}
+}
+
+func (ft *foundationTests) ensureReadyModule(t *testing.T) *componentsv1alpha1.DataSciencePipelines {
+	t.Helper()
+
+	ensureArgoWorkflowCRDOwnedByODH(t, ft.Client)
+
+	g := NewWithT(t)
+	module := moduleObject()
+	workloadDeploy := workloadDeployment()
+	workloadConfigMap := &corev1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      workloadConfigMapName,
+			Namespace: support.IntegrationTestNamespace(),
+		},
+	}
+	workloadServiceMon := &promv1.ServiceMonitor{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      workloadServiceMonName,
+			Namespace: support.IntegrationTestNamespace(),
+		},
+	}
+
+	_ = ft.Client.Delete(t.Context(), module)
+	g.Eventually(t.Context(), k8sm.NotFound(ft.Client, module)).Should(BeTrue())
+
+	t.Cleanup(func() {
+		_ = ft.Client.Delete(t.Context(), module)
+	})
+
+	g.Expect(ft.Client.Create(t.Context(), module)).To(Succeed())
+
+	g.Eventually(t.Context(), k8sm.Get(ft.Client, module)).Should(And(
+		jq.Match(`.status.phase == "Ready"`),
+		WithTransform(k8sm.Conditions(), SatisfyAll(
+			ContainElement(SatisfyAll(
+				HaveKeyWithValue("type", fwapi.ConditionTypeReady),
+				HaveKeyWithValue("status", string(metav1.ConditionTrue)),
+			)),
+			ContainElement(SatisfyAll(
+				HaveKeyWithValue("type", modulemeta.ConditionArgoWorkflowAvailable),
+				HaveKeyWithValue("status", string(metav1.ConditionTrue)),
+			)),
+			ContainElement(SatisfyAll(
+				HaveKeyWithValue("type", common.ConditionTypeProvisioningSucceeded),
+				HaveKeyWithValue("status", string(metav1.ConditionTrue)),
+			)),
+		)),
+	))
+
+	g.Eventually(t.Context(), k8sm.Get(ft.Client, workloadDeploy)).Should(
+		jq.Match(`.status.readyReplicas >= 1`),
+	)
+	g.Eventually(t.Context(), k8sm.Get(ft.Client, workloadConfigMap)).Should(
+		jq.Matchf(`.metadata.name == "%s"`, workloadConfigMapName),
+	)
+	g.Eventually(t.Context(), k8sm.Get(ft.Client, workloadServiceMon)).Should(
+		jq.Matchf(`.metadata.name == "%s"`, workloadServiceMonName),
+	)
+
+	return module
+}
+
 func (ft *foundationTests) testModuleCRDInstalled(t *testing.T) {
 	g := NewWithT(t)
-	g.Eventually(k.Get(ft.moduleCRD)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(
-		jq.Match(`.metadata.name == "%s"`, moduleCRDName),
-	)
+
+	moduleCRD := &apiextensionsv1.CustomResourceDefinition{
+		ObjectMeta: metav1.ObjectMeta{Name: componentsv1alpha1.DataSciencePipelinesCRDName},
+	}
+	g.Eventually(t.Context(), k8sm.Lookup(ft.Client, moduleCRD)).Should(Succeed())
 }
 
 func (ft *foundationTests) testMissingArgoWorkflowCRD(t *testing.T) {
-	ensureArgoWorkflowCRDMissing(t)
+	ensureArgoWorkflowCRDMissing(t, ft.Client)
 
-	obj := ft.module.DeepCopy()
+	obj := moduleObject()
 	obj.Spec.ArgoWorkflowsControllers = &componentsv1alpha1.ArgoWorkflowsControllersSpec{
 		ManagementState: "Removed",
 	}
-	createModule(t, obj)
+	createModule(t, ft.Client, obj)
 
 	g := NewWithT(t)
-	g.Eventually(k.Get(obj)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(And(
-		jq.Match(`.status.conditions[]? | select(.type == "%s") | .status == "False"`,
-			module.ConditionArgoWorkflowAvailable),
-		jq.Match(`.status.conditions[]? | select(.type == "%s") | .reason == "%s"`,
-			module.ConditionArgoWorkflowAvailable,
-			module.DataSciencePipelinesArgoWorkflowsCRDMissingReason),
-		jq.Match(`.status.conditions[]? | select(.type == "%s") | .status == "False"`,
-			fwapi.ConditionTypeReady),
-	))
+	g.Eventually(t.Context(), k8sm.Get(ft.Client, obj)).Should(
+		WithTransform(k8sm.Conditions(), SatisfyAll(
+			ContainElement(SatisfyAll(
+				HaveKeyWithValue("type", modulemeta.ConditionArgoWorkflowAvailable),
+				HaveKeyWithValue("status", "False"),
+				HaveKeyWithValue("reason", modulemeta.DataSciencePipelinesArgoWorkflowsCRDMissingReason),
+			)),
+			ContainElement(SatisfyAll(
+				HaveKeyWithValue("type", fwapi.ConditionTypeReady),
+				HaveKeyWithValue("status", "False"),
+			)),
+		)),
+	)
 }
 
 func (ft *foundationTests) testForeignOwnedArgoWorkflowCRD(t *testing.T) {
-	ensureArgoWorkflowCRDForeignOwned(t)
-
-	obj := ft.module.DeepCopy()
-	createModule(t, obj)
+	ensureArgoWorkflowCRDForeignOwned(t, ft.Client)
+	obj := moduleObject()
+	createModule(t, ft.Client, obj)
 
 	g := NewWithT(t)
-	g.Eventually(k.Get(obj)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(And(
-		jq.Match(`.status.conditions[]? | select(.type == "%s") | .status == "False"`,
-			module.ConditionArgoWorkflowAvailable),
-		jq.Match(`.status.conditions[]? | select(.type == "%s") | .reason == "%s"`,
-			module.ConditionArgoWorkflowAvailable,
-			module.DataSciencePipelinesDoesntOwnArgoCRDReason),
-	))
+	g.Eventually(t.Context(), k8sm.Get(ft.Client, obj)).Should(
+		WithTransform(k8sm.Conditions(), SatisfyAll(
+			ContainElement(SatisfyAll(
+				HaveKeyWithValue("type", modulemeta.ConditionArgoWorkflowAvailable),
+				HaveKeyWithValue("status", "False"),
+				HaveKeyWithValue("reason", modulemeta.DataSciencePipelinesDoesntOwnArgoCRDReason),
+			)),
+		)),
+	)
 }
 
 func (ft *foundationTests) testBecomesReady(t *testing.T) {
-	ensureArgoWorkflowCRDOwnedByODH(t)
-
-	obj := ft.module.DeepCopy()
-	createModule(t, obj)
-
-	g := NewWithT(t)
-	g.Eventually(k.Get(obj)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(And(
-		jq.Match(`.status.phase == "Ready"`),
-		jq.Match(`.status.conditions[]? | select(.type == "%s") | .status == "True"`,
-			fwapi.ConditionTypeReady),
-		jq.Match(`.status.conditions[]? | select(.type == "%s") | .status == "True"`,
-			module.ConditionArgoWorkflowAvailable),
-		jq.Match(`.status.conditions[]? | select(.type == "%s") | .status == "True"`,
-			common.ConditionTypeProvisioningSucceeded),
-	))
-
-	eventuallyDeploymentReady(t, ft.workloadDeploy)
-	g.Eventually(k.Get(ft.workloadConfigMap)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(
-		jq.Match(`.metadata.name == "%s"`, workloadConfigMapName),
-	)
-	g.Eventually(k.Get(ft.workloadServiceMon)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(
-		jq.Match(`.metadata.name == "%s"`, workloadServiceMonName),
-	)
+	ft.ensureReadyModule(t)
 }
 
 func (ft *foundationTests) testReleaseStatus(t *testing.T) {
-	ensureArgoWorkflowCRDOwnedByODH(t)
-
-	obj := ft.module.DeepCopy()
-	createModule(t, obj)
-
 	g := NewWithT(t)
-	g.Eventually(k.Get(obj)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(And(
-		jq.Match(`.status.release.version == "%s"`, operatorReleaseVersion),
-		jq.Match(`.status.release.name == "%s"`,
-			operatorCfgData[moduleconfig.KeyPlatformName]),
+
+	module := ft.ensureReadyModule(t)
+	cfg, err := loadOperatorConfig()
+	g.Expect(err).NotTo(HaveOccurred())
+
+	g.Eventually(t.Context(), k8sm.Get(ft.Client, module)).Should(And(
+		jq.Matchf(`.status.release.version == "%s"`, cfg.Release().Version.String()),
+		jq.Matchf(`.status.release.name == "%s"`, cfg.PlatformName),
 	))
 }
 
 func (ft *foundationTests) testPlatformLabels(t *testing.T) {
-	ensureArgoWorkflowCRDOwnedByODH(t)
-
-	obj := ft.module.DeepCopy()
-	createModule(t, obj)
-
 	g := NewWithT(t)
-	g.Eventually(k.Get(ft.workloadDeploy)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(And(
-		jq.Match(`.metadata.labels."%s" == "%s"`, labelPartOf, componentsv1alpha1.DataSciencePipelinesComponentName),
-		jq.Match(`.metadata.annotations."%s" == "%s"`,
-			annotationInstanceName,
-			obj.GetName()),
-		jq.Match(`.metadata.annotations."%s" == "%s"`,
-			annotationInstanceUID,
-			string(obj.GetUID())),
-		jq.Match(`.metadata.annotations."%s" == "%s"`,
-			annotationType,
-			operatorCfgData[moduleconfig.KeyPlatformName]),
-		jq.Match(`.metadata.annotations."%s" == "%s"`,
-			annotationVersion,
-			operatorReleaseVersion),
+
+	module := ft.ensureReadyModule(t)
+	workloadDeploy := workloadDeployment()
+	cfg, err := loadOperatorConfig()
+	g.Expect(err).NotTo(HaveOccurred())
+
+	g.Eventually(t.Context(), k8sm.Get(ft.Client, workloadDeploy)).Should(And(
+		k8sm.HasLabel(labels.PlatformPartOf, componentsv1alpha1.DataSciencePipelinesComponentName),
+		k8sm.HasAnnotation(annotations.InstanceName, module.GetName()),
+		k8sm.HasAnnotation(annotations.InstanceUID, string(module.GetUID())),
+		k8sm.HasAnnotation(annotations.PlatformType, cfg.PlatformName),
+		k8sm.HasAnnotation(annotations.PlatformVersion, cfg.Release().Version.String()),
 	))
 }
 
 func (ft *foundationTests) testOwnerReferences(t *testing.T) {
-	ensureArgoWorkflowCRDOwnedByODH(t)
-
-	obj := ft.module.DeepCopy()
-	createModule(t, obj)
-
 	g := NewWithT(t)
-	g.Eventually(k.Get(ft.workloadDeploy)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(
-		jq.Match(`.metadata.ownerReferences[] | select(.kind == "DataSciencePipelines") | .name == "%s"`,
-			componentsv1alpha1.DataSciencePipelinesInstanceName),
+
+	owner := ft.ensureReadyModule(t)
+	workloadDeploy := workloadDeployment()
+	owner.TypeMeta = metav1.TypeMeta{
+		APIVersion: componentsv1alpha1.GroupVersion.String(),
+		Kind:       componentsv1alpha1.DataSciencePipelinesKind,
+	}
+
+	g.Eventually(t.Context(), k8sm.Get(ft.Client, workloadDeploy)).Should(
+		k8sm.HasOwnerReference(owner),
 	)
 }

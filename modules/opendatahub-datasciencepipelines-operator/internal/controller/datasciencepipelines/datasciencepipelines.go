@@ -26,8 +26,8 @@ import (
 	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-datasciencepipelines-operator/pkg/config"
 	fwerrors "github.com/opendatahub-io/odh-platform-utilities/framework/controller/actions/errors"
 	fwtypes "github.com/opendatahub-io/odh-platform-utilities/framework/controller/types"
+	fwparams "github.com/opendatahub-io/odh-platform-utilities/framework/utils/params"
 	odhcluster "github.com/opendatahub-io/odh-platform-utilities/pkg/cluster"
-	odhdeploy "github.com/opendatahub-io/opendatahub-operator/v2/pkg/deploy"
 	ofVersion "github.com/operator-framework/api/pkg/lib/version"
 )
 
@@ -92,9 +92,14 @@ func NewModule(cfg *moduleconfig.Config) (*Module, error) {
 		SourcePath: overlay,
 	}
 
-	if err := odhdeploy.ApplyParams(paramsPath(cfg.ManifestsPath), "params.env", imageParamMap, map[string]string{
-		platformVersionParamsKey: cfg.PlatformVersion,
-	}); err != nil {
+	if err := fwparams.Apply(
+		paramsPath(cfg.ManifestsPath),
+		"params.env",
+		fwparams.Replacement(fwparams.FromEnv(imageParamMap)),
+		fwparams.Values(map[string]string{
+			platformVersionParamsKey: cfg.PlatformVersion,
+		}),
+	); err != nil {
 		return nil, fmt.Errorf("failed to update images on path %s: %w", paramsPath(cfg.ManifestsPath), err)
 	}
 
@@ -119,10 +124,14 @@ func (m *Module) applyBaseParams(ctx context.Context, rr *fwtypes.Reconciliation
 		return fmt.Errorf("detecting cluster info: %w", err)
 	}
 
-	if err := odhdeploy.ApplyParams(paramsPath(m.cfg.ManifestsPath), "params.env", nil, map[string]string{
-		platformVersionParamsKey: m.cfg.PlatformVersion,
-		fipsEnabledParamsKey:     strconv.FormatBool(info.FipsEnabled),
-	}); err != nil {
+	if err := fwparams.Apply(
+		paramsPath(m.cfg.ManifestsPath),
+		"params.env",
+		fwparams.Values(map[string]string{
+			platformVersionParamsKey: m.cfg.PlatformVersion,
+			fipsEnabledParamsKey:     strconv.FormatBool(info.FipsEnabled),
+		}),
+	); err != nil {
 		return fmt.Errorf("failed to update params on path %s: %w", paramsPath(m.cfg.ManifestsPath), err)
 	}
 
