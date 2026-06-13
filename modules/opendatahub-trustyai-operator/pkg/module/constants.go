@@ -1,5 +1,6 @@
 package module
 
 const (
-	Name = "trustyai"
+	Name               = "trustyai"
+	OperatorConfigName = "opendatahub-trustyai-config"
 )

@@ -26,6 +26,9 @@ const (
 	TrustyAIComponentName = "trustyai"
 	TrustyAIInstanceName  = "default-trustyai"
 	TrustyAIKind          = "TrustyAI"
+
+	TrustyAIResource = "trustyais"
+	TrustyAICRDName  = TrustyAIResource + "." + GroupName
 )
 
 // EvalPermission controls whether an evaluation capability is allowed.

@@ -45,6 +45,8 @@ const (
 	KeyLeaderElectEnabled = "controller.leader-election.enabled"
 	KeyLeaderElectID      = "controller.leader-election.id"
 	KeyZapLevel           = "controller.zap.level"
+	KeyZapDevMode         = "controller.zap.dev-mode"
+	KeyZapEncoder         = "controller.zap.encoder"
 	KeyPprofEnabled       = "controller.pprof.enabled"
 	KeyPprofBindAddr      = "controller.pprof.bind-address"
 
@@ -57,6 +59,8 @@ const (
 	DefaultLeaderElectEnabled = true
 	DefaultLeaderElectID      = "opendatahub-trustyai-operator-lock"
 	DefaultZapLevel           = "info"
+	DefaultZapDevMode         = false
+	DefaultZapEncoder         = ""
 	DefaultPprofEnabled       = false
 
 	// ConfigPathEnvVar is the environment variable that points to the mounted
@@ -115,7 +119,9 @@ type LeaderElectionConfig struct {
 }
 
 type ZapConfig struct {
-	Level string `mapstructure:"level"`
+	Level   string `mapstructure:"level"`
+	DevMode bool   `mapstructure:"dev-mode"`
+	Encoder string `mapstructure:"encoder"`
 }
 
 type PprofConfig struct {
@@ -201,6 +207,8 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault(KeyLeaderElectEnabled, DefaultLeaderElectEnabled)
 	v.SetDefault(KeyLeaderElectID, DefaultLeaderElectID)
 	v.SetDefault(KeyZapLevel, DefaultZapLevel)
+	v.SetDefault(KeyZapDevMode, DefaultZapDevMode)
+	v.SetDefault(KeyZapEncoder, DefaultZapEncoder)
 	v.SetDefault(KeyPprofEnabled, DefaultPprofEnabled)
 	v.SetDefault(KeyPprofBindAddr, "")
 }
