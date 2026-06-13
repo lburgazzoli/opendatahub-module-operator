@@ -1,27 +1,33 @@
-//go:build integration
-
 package integration
 
 import (
 	"testing"
 	"time"
 
-	. "github.com/onsi/gomega"
-
 	"github.com/blang/semver/v4"
+	. "github.com/onsi/gomega"
 	ofVersion "github.com/operator-framework/api/pkg/lib/version"
 
 	"github.com/lburgazzoli/gomega-matchers/pkg/matchers/jq"
+	k8sm "github.com/lburgazzoli/gomega-matchers/pkg/matchers/k8s"
 
 	componentsv1alpha1 "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-mymodule-operator/api/components/v1alpha1"
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-mymodule-operator/internal/controller/mymodule"
 	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-mymodule-operator/pkg/config"
+	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-mymodule-operator/test/support"
 	"github.com/opendatahub-io/odh-platform-utilities/framework/resources"
+	"github.com/opendatahub-io/odh-platform-utilities/pkg/metadata/annotations"
+	"github.com/opendatahub-io/odh-platform-utilities/pkg/metadata/labels"
+	appsv1 "k8s.io/api/apps/v1"
+	corev1 "k8s.io/api/core/v1"
+	networkingv1 "k8s.io/api/networking/v1"
+	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 type foundationTests struct {
-	*myModuleTest
+	Client client.Client
 }
 
 func (ft *foundationTests) Execute(t *testing.T) {
@@ -37,175 +43,313 @@ func (ft *foundationTests) Execute(t *testing.T) {
 	t.Run("should not update version on upgrade fault", ft.testUpgradeFaultInjection)
 }
 
+func moduleObject() *componentsv1alpha1.MyModule {
+	return &componentsv1alpha1.MyModule{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: componentsv1alpha1.MyModuleInstanceName,
+		},
+	}
+}
+
+func testIngress(namespace string) *networkingv1.Ingress {
+	return &networkingv1.Ingress{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      mymodule.IngressName,
+			Namespace: namespace,
+		},
+		Spec: networkingv1.IngressSpec{
+			DefaultBackend: &networkingv1.IngressBackend{
+				Service: &networkingv1.IngressServiceBackend{
+					Name: "mymodule-workload",
+					Port: networkingv1.ServiceBackendPort{Number: 8080},
+				},
+			},
+		},
+	}
+}
+
+func workloadDeployment() *appsv1.Deployment {
+	return &appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "mymodule-workload",
+			Namespace: support.IntegrationTestNamespace(),
+		},
+	}
+}
+
+func workloadService() *corev1.Service {
+	return &corev1.Service{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "mymodule-workload",
+			Namespace: support.IntegrationTestNamespace(),
+		},
+	}
+}
+
+func (ft *foundationTests) cleanupModuleAndIngress(t *testing.T) {
+	t.Helper()
+
+	g := NewWithT(t)
+	module := moduleObject()
+	ingress := testIngress(support.IntegrationTestNamespace())
+
+	_ = ft.Client.Delete(t.Context(), module)
+	_ = ft.Client.Delete(t.Context(), ingress)
+	g.Eventually(t.Context(), k8sm.NotFound(ft.Client, module)).Should(BeTrue())
+	g.Eventually(t.Context(), k8sm.NotFound(ft.Client, ingress)).Should(BeTrue())
+}
+
+func (ft *foundationTests) ensureReadyModule(t *testing.T) *componentsv1alpha1.MyModule {
+	t.Helper()
+
+	g := NewWithT(t)
+	module := moduleObject()
+	ingress := testIngress(support.IntegrationTestNamespace())
+	workloadDeploy := workloadDeployment()
+
+	ft.cleanupModuleAndIngress(t)
+
+	t.Cleanup(func() {
+		_ = ft.Client.Delete(t.Context(), module)
+		_ = ft.Client.Delete(t.Context(), ingress)
+	})
+
+	g.Expect(ft.Client.Create(t.Context(), ingress)).To(Succeed())
+	g.Expect(ft.Client.Create(t.Context(), module)).To(Succeed())
+
+	g.Eventually(t.Context(), k8sm.Get(ft.Client, module)).Should(And(
+		jq.Match(`.status.phase == "Ready"`),
+		WithTransform(k8sm.Conditions(), SatisfyAll(
+			ContainElement(SatisfyAll(
+				HaveKeyWithValue("type", "Ready"),
+				HaveKeyWithValue("status", string(metav1.ConditionTrue)),
+			)),
+			ContainElement(SatisfyAll(
+				HaveKeyWithValue("type", mymodule.ConditionIngressAvailable),
+				HaveKeyWithValue("status", string(metav1.ConditionTrue)),
+			)),
+			ContainElement(SatisfyAll(
+				HaveKeyWithValue("type", "ProvisioningSucceeded"),
+				HaveKeyWithValue("status", string(metav1.ConditionTrue)),
+			)),
+		)),
+	))
+
+	g.Eventually(t.Context(), k8sm.Get(ft.Client, workloadDeploy)).Should(
+		jq.Match(`.status.readyReplicas >= 1`),
+	)
+
+	return module
+}
+
 func (ft *foundationTests) testModuleCRDInstalled(t *testing.T) {
 	g := NewWithT(t)
 
-	g.Eventually(k.Get(ft.moduleCRD)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(
-		jq.Match(`.metadata.name == "%s"`, moduleCRDName),
-	)
+	moduleCRD := &apiextensionsv1.CustomResourceDefinition{
+		ObjectMeta: metav1.ObjectMeta{Name: componentsv1alpha1.MyModuleCRDName},
+	}
+	g.Eventually(t.Context(), k8sm.Lookup(ft.Client, moduleCRD)).Should(Succeed())
 }
 
 func (ft *foundationTests) testIngressBlocks(t *testing.T) {
 	g := NewWithT(t)
+	module := moduleObject()
 
-	_ = k8sClient.Delete(ctx, ft.module)
-	_ = k8sClient.Delete(ctx, ft.ingress)
+	ft.cleanupModuleAndIngress(t)
 
-	ft.module.ResourceVersion = ""
-	g.Expect(k8sClient.Create(ctx, ft.module)).To(Succeed())
+	t.Cleanup(func() {
+		_ = ft.Client.Delete(t.Context(), module)
+	})
 
-	g.Eventually(k.Get(ft.module)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(And(
+	g.Expect(ft.Client.Create(t.Context(), module)).To(Succeed())
+
+	g.Eventually(t.Context(), k8sm.Get(ft.Client, module)).Should(And(
 		jq.Match(`.status.phase == "Not Ready"`),
-		jq.Match(`[(.status.conditions // [])[] | select(.type == "%s" and .status == "False")] | length > 0`,
-			mymodule.ConditionIngressAvailable),
+		WithTransform(k8sm.Conditions(), SatisfyAll(
+			ContainElement(SatisfyAll(
+				HaveKeyWithValue("type", mymodule.ConditionIngressAvailable),
+				HaveKeyWithValue("status", "False"),
+			)),
+		)),
 	))
 }
 
 func (ft *foundationTests) testIngressRecovers(t *testing.T) {
 	g := NewWithT(t)
+	module := moduleObject()
+	ingress := testIngress(support.IntegrationTestNamespace())
+	workloadDeploy := workloadDeployment()
 
-	ft.ingress.ResourceVersion = ""
-	g.Expect(k8sClient.Create(ctx, ft.ingress)).To(Succeed())
+	ft.cleanupModuleAndIngress(t)
 
-	g.Eventually(k.Get(ft.module)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(And(
+	t.Cleanup(func() {
+		_ = ft.Client.Delete(t.Context(), module)
+		_ = ft.Client.Delete(t.Context(), ingress)
+	})
+
+	g.Expect(ft.Client.Create(t.Context(), module)).To(Succeed())
+	g.Expect(ft.Client.Create(t.Context(), ingress)).To(Succeed())
+
+	g.Eventually(t.Context(), k8sm.Get(ft.Client, module)).Should(And(
 		jq.Match(`.status.phase == "Ready"`),
-		jq.Match(`.status.conditions[] | select(.type == "Ready") | .status == "True"`),
-		jq.Match(`.status.conditions[] | select(.type == "%s") | .status == "True"`,
-			mymodule.ConditionIngressAvailable),
-		jq.Match(`.status.conditions[] | select(.type == "ProvisioningSucceeded") | .status == "True"`),
+		WithTransform(k8sm.Conditions(), SatisfyAll(
+			ContainElement(SatisfyAll(
+				HaveKeyWithValue("type", "Ready"),
+				HaveKeyWithValue("status", string(metav1.ConditionTrue)),
+			)),
+			ContainElement(SatisfyAll(
+				HaveKeyWithValue("type", mymodule.ConditionIngressAvailable),
+				HaveKeyWithValue("status", string(metav1.ConditionTrue)),
+			)),
+			ContainElement(SatisfyAll(
+				HaveKeyWithValue("type", "ProvisioningSucceeded"),
+				HaveKeyWithValue("status", string(metav1.ConditionTrue)),
+			)),
+		)),
 	))
 
-	eventuallyDeploymentReady(t, ft.workloadDeploy)
+	g.Eventually(t.Context(), k8sm.Get(ft.Client, workloadDeploy)).Should(
+		jq.Match(`.status.readyReplicas >= 1`),
+	)
 }
 
 func (ft *foundationTests) testConfigValues(t *testing.T) {
 	g := NewWithT(t)
 
-	g.Eventually(k.Get(ft.module)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(And(
-		jq.Match(`.status.configValues."%s" == "%s"`,
+	module := ft.ensureReadyModule(t)
+	cfg, err := loadOperatorConfig()
+	g.Expect(err).NotTo(HaveOccurred())
+
+	g.Eventually(t.Context(), k8sm.Get(ft.Client, module)).Should(And(
+		jq.Matchf(`.status.configValues."%s" == "%s"`,
 			moduleconfig.KeyPlatformName,
-			operatorCfgData[moduleconfig.KeyPlatformName]),
-		jq.Match(`.status.configValues."%s" == "%s"`,
+			cfg.PlatformName),
+		jq.Matchf(`.status.configValues."%s" == "%s"`,
 			moduleconfig.KeyPlatformVersion,
-			operatorCfgData[moduleconfig.KeyPlatformVersion]),
+			cfg.PlatformVersion),
 	))
 }
 
 func (ft *foundationTests) testReleaseStatus(t *testing.T) {
 	g := NewWithT(t)
 
-	g.Eventually(k.Get(ft.module)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(And(
-		jq.Match(`.status.release.version == "%s"`, operatorReleaseVersion),
-		jq.Match(`.status.release.name == "%s"`,
-			operatorCfgData[moduleconfig.KeyPlatformName]),
+	module := ft.ensureReadyModule(t)
+	cfg, err := loadOperatorConfig()
+	g.Expect(err).NotTo(HaveOccurred())
+
+	g.Eventually(t.Context(), k8sm.Get(ft.Client, module)).Should(And(
+		jq.Matchf(`.status.release.version == "%s"`, cfg.Release().Version.String()),
+		jq.Matchf(`.status.release.name == "%s"`, cfg.PlatformName),
 	))
 }
 
 func (ft *foundationTests) testPlatformLabels(t *testing.T) {
 	g := NewWithT(t)
 
-	g.Eventually(k.Get(ft.workloadDeploy)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(And(
-		jq.Match(`.metadata.labels."%s" == "mymodule"`, labelPartOf),
-		jq.Match(`.metadata.annotations."%s" == "%s"`,
-			annotationInstanceName,
-			ft.module.GetName()),
-		jq.Match(`.metadata.annotations."%s" == "%s"`,
-			annotationInstanceUID,
-			string(ft.module.GetUID())),
-		jq.Match(`.metadata.annotations."%s" == "%s"`,
-			annotationType,
-			operatorCfgData[moduleconfig.KeyPlatformName]),
-		jq.Match(`.metadata.annotations."%s" == "%s"`,
-			annotationVersion,
-			operatorReleaseVersion),
+	module := ft.ensureReadyModule(t)
+	workloadDeploy := workloadDeployment()
+	workloadSvc := workloadService()
+	cfg, err := loadOperatorConfig()
+	g.Expect(err).NotTo(HaveOccurred())
+
+	g.Eventually(t.Context(), k8sm.Get(ft.Client, workloadDeploy)).Should(And(
+		k8sm.HasLabel(labels.PlatformPartOf, componentsv1alpha1.MyModuleComponentName),
+		k8sm.HasAnnotation(annotations.InstanceName, module.GetName()),
+		k8sm.HasAnnotation(annotations.InstanceUID, string(module.GetUID())),
+		k8sm.HasAnnotation(annotations.PlatformType, cfg.PlatformName),
+		k8sm.HasAnnotation(annotations.PlatformVersion, cfg.Release().Version.String()),
 	))
 
-	g.Eventually(k.Get(ft.workloadService)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(And(
-		jq.Match(`.metadata.labels."%s" == "mymodule"`, labelPartOf),
-		jq.Match(`.metadata.annotations."%s" == "%s"`,
-			annotationType,
-			operatorCfgData[moduleconfig.KeyPlatformName]),
-		jq.Match(`.metadata.annotations."%s" == "%s"`,
-			annotationVersion,
-			operatorReleaseVersion),
+	g.Eventually(t.Context(), k8sm.Get(ft.Client, workloadSvc)).Should(And(
+		k8sm.HasLabel(labels.PlatformPartOf, componentsv1alpha1.MyModuleComponentName),
+		k8sm.HasAnnotation(annotations.PlatformType, cfg.PlatformName),
+		k8sm.HasAnnotation(annotations.PlatformVersion, cfg.Release().Version.String()),
 	))
 }
 
 func (ft *foundationTests) testOwnerReferences(t *testing.T) {
 	g := NewWithT(t)
 
-	g.Eventually(k.Get(ft.workloadDeploy)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(
-		jq.Match(`.metadata.ownerReferences[] | select(.kind == "MyModule") | .name == "%s"`,
-			componentsv1alpha1.MyModuleInstanceName),
-	)
+	owner := ft.ensureReadyModule(t)
+	owner.TypeMeta = metav1.TypeMeta{
+		APIVersion: componentsv1alpha1.GroupVersion.String(),
+		Kind:       componentsv1alpha1.MyModuleKind,
+	}
+	workloadDeploy := workloadDeployment()
+	workloadSvc := workloadService()
 
-	g.Eventually(k.Get(ft.workloadService)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(
-		jq.Match(`.metadata.ownerReferences[] | select(.kind == "MyModule") | .name == "%s"`,
-			componentsv1alpha1.MyModuleInstanceName),
+	g.Eventually(t.Context(), k8sm.Get(ft.Client, workloadDeploy)).Should(
+		k8sm.HasOwnerReference(owner),
+	)
+	g.Eventually(t.Context(), k8sm.Get(ft.Client, workloadSvc)).Should(
+		k8sm.HasOwnerReference(owner),
 	)
 }
 
 func (ft *foundationTests) testUpgradeAnnotationAbsentOnFreshInstall(t *testing.T) {
 	g := NewWithT(t)
 
-	g.Eventually(k.Get(ft.ingress)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(And(
-		jq.Match(`.metadata.annotations // {} | has("%s") | not`, mymodule.AnnotationManagedVersion),
-		jq.Match(`.metadata.annotations // {} | has("%s") | not`, mymodule.AnnotationUpgradedFrom),
+	_ = ft.ensureReadyModule(t)
+	ingress := testIngress(support.IntegrationTestNamespace())
+
+	g.Eventually(t.Context(), k8sm.Get(ft.Client, ingress)).Should(And(
+		jq.Matchf(`.metadata.annotations // {} | has("%s") | not`, mymodule.AnnotationManagedVersion),
+		jq.Matchf(`.metadata.annotations // {} | has("%s") | not`, mymodule.AnnotationUpgradedFrom),
 	))
 }
 
 func (ft *foundationTests) testUpgradeAnnotatesIngress(t *testing.T) {
 	g := NewWithT(t)
 
-	g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(ft.module), ft.module)).To(Succeed())
+	module := ft.ensureReadyModule(t)
 
-	patch := client.MergeFrom(ft.module.DeepCopy())
-	ft.module.Status.Release.Version = ofVersion.OperatorVersion{Version: semver.MustParse("0.0.0-0")}
-	g.Expect(k8sClient.Status().Patch(ctx, ft.module, patch)).To(Succeed())
+	patch := client.MergeFrom(module.DeepCopy())
+	module.Status.Release.Version = ofVersion.OperatorVersion{Version: semver.MustParse("0.0.0-0")}
+	g.Expect(ft.Client.Status().Patch(t.Context(), module, patch)).To(Succeed())
 
-	g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(ft.module), ft.module)).To(Succeed())
+	g.Eventually(t.Context(), k8sm.Lookup(ft.Client, module)).Should(Succeed())
 
-	annPatch := client.MergeFrom(ft.module.DeepCopy())
-	resources.SetAnnotation(ft.module, "test-trigger", time.Now().String())
-	g.Expect(k8sClient.Patch(ctx, ft.module, annPatch)).To(Succeed())
+	annPatch := client.MergeFrom(module.DeepCopy())
+	resources.SetAnnotation(module, "test-trigger", time.Now().String())
+	g.Expect(ft.Client.Patch(t.Context(), module, annPatch)).To(Succeed())
 
-	g.Eventually(k.Get(ft.ingress)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(And(
-		jq.Match(`.metadata.annotations."%s" != ""`, mymodule.AnnotationManagedVersion),
-		jq.Match(`.metadata.annotations."%s" == "0.0.0-0"`, mymodule.AnnotationUpgradedFrom),
+	ingress := testIngress(support.IntegrationTestNamespace())
+	g.Eventually(t.Context(), k8sm.Get(ft.Client, ingress)).Should(And(
+		jq.Matchf(`.metadata.annotations."%s" != ""`, mymodule.AnnotationManagedVersion),
+		jq.Matchf(`.metadata.annotations."%s" == "0.0.0-0"`, mymodule.AnnotationUpgradedFrom),
 	))
 }
 
 func (ft *foundationTests) testUpgradeFaultInjection(t *testing.T) {
 	g := NewWithT(t)
 
-	g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(ft.module), ft.module)).To(Succeed())
-	versionBefore := ft.module.Status.Release.Version.String()
+	module := ft.ensureReadyModule(t)
+	versionBefore := module.Status.Release.Version.String()
 
-	g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(ft.module), ft.module)).To(Succeed())
+	statusPatch := client.MergeFrom(module.DeepCopy())
+	module.Status.Release.Version = ofVersion.OperatorVersion{Version: semver.MustParse("0.0.0-0")}
+	g.Expect(ft.Client.Status().Patch(t.Context(), module, statusPatch)).To(Succeed())
 
-	statusPatch := client.MergeFrom(ft.module.DeepCopy())
-	ft.module.Status.Release.Version = ofVersion.OperatorVersion{Version: semver.MustParse("0.0.0-0")}
-	g.Expect(k8sClient.Status().Patch(ctx, ft.module, statusPatch)).To(Succeed())
+	ingress := testIngress(support.IntegrationTestNamespace())
+	g.Eventually(t.Context(), k8sm.Lookup(ft.Client, ingress)).Should(Succeed())
 
-	g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(ft.ingress), ft.ingress)).To(Succeed())
+	ingressPatch := client.MergeFrom(ingress.DeepCopy())
+	resources.SetAnnotation(ingress, mymodule.AnnotationInjectUpgradeFault, "true")
+	g.Expect(ft.Client.Patch(t.Context(), ingress, ingressPatch)).To(Succeed())
 
-	ingressPatch := client.MergeFrom(ft.ingress.DeepCopy())
-	resources.SetAnnotation(ft.ingress, mymodule.AnnotationInjectUpgradeFault, "true")
-	g.Expect(k8sClient.Patch(ctx, ft.ingress, ingressPatch)).To(Succeed())
-
-	g.Consistently(k.Get(ft.module)).WithContext(ctx).WithTimeout(10 * time.Second).WithPolling(interval).Should(
+	g.Consistently(t.Context(), k8sm.Get(ft.Client, module)).WithTimeout(10 * time.Second).Should(
 		jq.Match(`.status.release.version == "0.0.0-0"`),
 	)
 
-	g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(ft.ingress), ft.ingress)).To(Succeed())
+	g.Eventually(t.Context(), k8sm.Lookup(ft.Client, ingress)).Should(Succeed())
 
-	cleanPatch := client.MergeFrom(ft.ingress.DeepCopy())
-	ann := ft.ingress.GetAnnotations()
+	cleanPatch := client.MergeFrom(ingress.DeepCopy())
+	ann := ingress.GetAnnotations()
 	delete(ann, mymodule.AnnotationInjectUpgradeFault)
-	ft.ingress.SetAnnotations(ann)
-	g.Expect(k8sClient.Patch(ctx, ft.ingress, cleanPatch)).To(Succeed())
+	ingress.SetAnnotations(ann)
+	g.Expect(ft.Client.Patch(t.Context(), ingress, cleanPatch)).To(Succeed())
 
-	g.Eventually(k.Get(ft.module)).WithContext(ctx).WithTimeout(timeout).WithPolling(interval).Should(
-		jq.Match(`.status.release.version == "%s"`, versionBefore),
+	g.Eventually(t.Context(), k8sm.Get(ft.Client, module)).Should(
+		jq.Matchf(`.status.release.version == "%s"`, versionBefore),
 	)
 }

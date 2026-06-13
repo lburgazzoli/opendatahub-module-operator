@@ -1,5 +1,6 @@
 package module
 
 const (
-	Name = "mymodule"
+	Name               = "mymodule"
+	OperatorConfigName = "opendatahub-mymodule-config"
 )

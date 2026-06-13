@@ -31,6 +31,9 @@ const (
 
 	// MyModuleKind is the Kubernetes kind string.
 	MyModuleKind = "MyModule"
+
+	MyModuleResource = "mymodules"
+	MyModuleCRDName  = MyModuleResource + "." + GroupName
 )
 
 type Platform string

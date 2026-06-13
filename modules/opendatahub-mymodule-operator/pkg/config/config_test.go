@@ -91,7 +91,9 @@ func TestLoadFromFS_Defaults(t *testing.T) {
 	}))
 
 	g.Expect(cfg.Controller.Zap).To(MatchAllFields(Fields{
-		"Level": Equal(config.DefaultZapLevel),
+		"Level":   Equal(config.DefaultZapLevel),
+		"DevMode": Equal(config.DefaultZapDevMode),
+		"Encoder": Equal(config.DefaultZapEncoder),
 	}))
 
 	g.Expect(cfg.Controller.Pprof).To(MatchAllFields(Fields{
@@ -411,7 +413,9 @@ func TestLoadFromFS_DottedFlatFiles(t *testing.T) {
 	g.Expect(err).NotTo(HaveOccurred())
 
 	g.Expect(cfg.Controller.Zap).To(MatchAllFields(Fields{
-		"Level": Equal("warn"),
+		"Level":   Equal("warn"),
+		"DevMode": Equal(config.DefaultZapDevMode),
+		"Encoder": Equal(config.DefaultZapEncoder),
 	}))
 	g.Expect(cfg.Controller.Pprof).To(MatchFields(IgnoreExtras, Fields{
 		"Enabled": BeTrue(),
