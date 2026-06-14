@@ -4,14 +4,16 @@ go 1.26.4
 
 require (
 	github.com/blang/semver/v4 v4.0.0
+	github.com/go-logr/logr v1.4.3
 	github.com/invopop/jsonschema v0.14.0
-	github.com/lburgazzoli/gomega-matchers v0.4.1-0.20260219145423-4061a5fb8799
+	github.com/lburgazzoli/gomega-matchers v0.4.1-0.20260611124452-80c59826d05c
 	github.com/onsi/gomega v1.41.0
-	github.com/opendatahub-io/odh-platform-utilities v0.0.0-20260528075406-6d9164111905
-	github.com/opendatahub-io/odh-platform-utilities/framework v0.0.0-00010101000000-000000000000
+	github.com/opendatahub-io/odh-platform-utilities v0.0.0-20260614174411-e66fc336d3cf
+	github.com/opendatahub-io/odh-platform-utilities/framework v0.0.0-20260614174411-e66fc336d3cf
 	github.com/operator-framework/api v0.42.0
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/viper v1.21.0
+	go.uber.org/zap v1.27.1
 	k8s.io/api v0.36.1
 	k8s.io/apiextensions-apiserver v0.36.1
 	k8s.io/apimachinery v0.36.1
@@ -39,7 +41,6 @@ require (
 	github.com/fsnotify/fsnotify v1.9.0 // indirect
 	github.com/fxamacker/cbor/v2 v2.9.1 // indirect
 	github.com/go-errors/errors v1.5.1 // indirect
-	github.com/go-logr/logr v1.4.3 // indirect
 	github.com/go-logr/zapr v1.3.0 // indirect
 	github.com/go-openapi/jsonpointer v0.22.4 // indirect
 	github.com/go-openapi/jsonreference v0.21.4 // indirect
@@ -97,7 +98,6 @@ require (
 	github.com/x448/float16 v0.8.4 // indirect
 	github.com/xlab/treeprint v1.2.0 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
-	go.uber.org/zap v1.27.1 // indirect
 	go.yaml.in/yaml/v2 v2.4.4 // indirect
 	go.yaml.in/yaml/v3 v3.0.4 // indirect
 	go.yaml.in/yaml/v4 v4.0.0-rc.2 // indirect
@@ -126,12 +126,10 @@ require (
 	sigs.k8s.io/structured-merge-diff/v6 v6.4.0 // indirect
 )
 
-replace github.com/opendatahub-io/odh-platform-utilities => ../../../odh-platform-utilities
+replace github.com/opendatahub-io/odh-platform-utilities => github.com/lburgazzoli/opendatahub-platform-utilities v0.0.0-20260614174411-e66fc336d3cf
 
-replace github.com/opendatahub-io/odh-platform-utilities/framework => ../../../odh-platform-utilities/framework
+replace github.com/opendatahub-io/odh-platform-utilities/framework => github.com/lburgazzoli/opendatahub-platform-utilities/framework v0.0.0-20260614174411-e66fc336d3cf
 
 replace github.com/opendatahub-io/opendatahub-operator/v2 => github.com/lburgazzoli/opendatahub-operator/v2 v2.0.0-20260522211029-67d95fa3b5a1
 
 replace github.com/opendatahub-io/operator-actions-framework => github.com/lburgazzoli/opendatahub-operator/operator-actions-framework v0.0.0-20260606070426-37227c168d1b
-
-replace github.com/lburgazzoli/gomega-matchers => ../../../../gomega-matchers
