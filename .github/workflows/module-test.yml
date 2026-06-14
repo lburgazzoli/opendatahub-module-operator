@@ -38,6 +38,7 @@ jobs:
         uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6.3.0
         with:
           go-version-file: ${{ env.MODULE_PATH }}/go.mod
+          cache-dependency-path: ${{ env.MODULE_PATH }}/go.sum
 
       - name: Setup picoshift
         if: ${{ inputs.run_integration_tests || inputs.run_e2e_tests }}

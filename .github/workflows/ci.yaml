@@ -7,11 +7,42 @@ on:
 permissions: {}
 
 jobs:
-  lint:
+  define-matrix:
     permissions:
       contents: read
-    name: Aggregate lint
+    name: Define module matrix
     runs-on: ubuntu-latest
+    outputs:
+      modules: ${{ steps.modules.outputs.modules }}
+    steps:
+      - name: Emit module matrix
+        id: modules
+        run: |
+          echo 'modules={"module":[
+            {"module_name":"opendatahub-datasciencepipelines-operator"},
+            {"module_name":"opendatahub-feast-operator"},
+            {"module_name":"opendatahub-mlflow-operator"},
+            {"module_name":"opendatahub-modelregistry-operator"},
+            {"module_name":"opendatahub-mymodule-operator"},
+            {"module_name":"opendatahub-ogx-operator"},
+            {"module_name":"opendatahub-ray-operator"},
+            {"module_name":"opendatahub-spark-operator"},
+            {"module_name":"opendatahub-trainer-operator"},
+            {"module_name":"opendatahub-trustyai-operator"},
+            {"module_name":"opendatahub-workbenches-operator"}
+          ]}' >> "$GITHUB_OUTPUT"
+
+  lint:
+    needs: define-matrix
+    permissions:
+      contents: read
+    name: lint ${{ matrix.module.module_name }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.define-matrix.outputs.modules) }}
+    env:
+      MODULE_PATH: modules/${{ matrix.module.module_name }}
     steps:
       - name: Clone the code
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -21,16 +52,24 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6.3.0
         with:
-          go-version-file: modules/opendatahub-mymodule-operator/go.mod
+          go-version-file: ${{ env.MODULE_PATH }}/go.mod
+          cache-dependency-path: ${{ env.MODULE_PATH }}/go.sum
 
-      - name: Run aggregate module lint
-        run: make lint-modules
+      - name: Run module lint
+        working-directory: ${{ env.MODULE_PATH }}
+        run: make lint
 
   unit:
+    needs: define-matrix
     permissions:
       contents: read
-    name: Aggregate unit tests
+    name: unit ${{ matrix.module.module_name }}
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.define-matrix.outputs.modules) }}
+    env:
+      MODULE_PATH: modules/${{ matrix.module.module_name }}
     steps:
       - name: Clone the code
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -40,31 +79,22 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6.3.0
         with:
-          go-version-file: modules/opendatahub-mymodule-operator/go.mod
+          go-version-file: ${{ env.MODULE_PATH }}/go.mod
+          cache-dependency-path: ${{ env.MODULE_PATH }}/go.sum
 
-      - name: Run aggregate module tests
-        run: make test-modules
+      - name: Run module unit tests
+        working-directory: ${{ env.MODULE_PATH }}
+        run: make test
 
   module-tests:
     name: ${{ matrix.module.module_name }}
     needs:
+      - define-matrix
       - lint
       - unit
     strategy:
       fail-fast: false
-      matrix:
-        module:
-          - module_name: opendatahub-datasciencepipelines-operator
-          - module_name: opendatahub-feast-operator
-          - module_name: opendatahub-mlflow-operator
-          - module_name: opendatahub-modelregistry-operator
-          - module_name: opendatahub-mymodule-operator
-          - module_name: opendatahub-ogx-operator
-          - module_name: opendatahub-ray-operator
-          - module_name: opendatahub-spark-operator
-          - module_name: opendatahub-trainer-operator
-          - module_name: opendatahub-trustyai-operator
-          - module_name: opendatahub-workbenches-operator
+      matrix: ${{ fromJson(needs.define-matrix.outputs.modules) }}
     uses: ./.github/workflows/module-test.yml
     permissions:
       contents: read
