@@ -18,19 +18,9 @@ jobs:
       - name: Emit module matrix
         id: modules
         run: |
-          echo 'modules={"module":[
-            {"module_name":"opendatahub-datasciencepipelines-operator"},
-            {"module_name":"opendatahub-feast-operator"},
-            {"module_name":"opendatahub-mlflow-operator"},
-            {"module_name":"opendatahub-modelregistry-operator"},
-            {"module_name":"opendatahub-mymodule-operator"},
-            {"module_name":"opendatahub-ogx-operator"},
-            {"module_name":"opendatahub-ray-operator"},
-            {"module_name":"opendatahub-spark-operator"},
-            {"module_name":"opendatahub-trainer-operator"},
-            {"module_name":"opendatahub-trustyai-operator"},
-            {"module_name":"opendatahub-workbenches-operator"}
-          ]}' >> "$GITHUB_OUTPUT"
+          cat <<'EOF' >> "$GITHUB_OUTPUT"
+          modules={"module":[{"module_name":"opendatahub-datasciencepipelines-operator"},{"module_name":"opendatahub-feast-operator"},{"module_name":"opendatahub-mlflow-operator"},{"module_name":"opendatahub-modelregistry-operator"},{"module_name":"opendatahub-mymodule-operator"},{"module_name":"opendatahub-ogx-operator"},{"module_name":"opendatahub-ray-operator"},{"module_name":"opendatahub-spark-operator"},{"module_name":"opendatahub-trainer-operator"},{"module_name":"opendatahub-trustyai-operator"},{"module_name":"opendatahub-workbenches-operator"}]}
+          EOF
 
   lint:
     needs: define-matrix
