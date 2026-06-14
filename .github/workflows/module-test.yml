@@ -30,7 +30,7 @@ jobs:
     name: ${{ inputs.module_name }}
     runs-on: ubuntu-latest
     env:
-      KUBECONFIG: ${{ runner.temp }}/kubeconfig
+      KUBECONFIG: ${{ github.workspace }}/.tmp/${{ inputs.module_name }}-kubeconfig
       ODH_PLATFORM_TYPE: OpenDataHub
       PICOSHIFT_CLUSTER_NAME: ocp-sim
     steps:
