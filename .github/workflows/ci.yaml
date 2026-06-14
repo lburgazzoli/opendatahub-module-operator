@@ -1,0 +1,74 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions: {}
+
+jobs:
+  lint:
+    permissions:
+      contents: read
+    name: Aggregate lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Clone the code
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Setup Go
+        uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6.3.0
+        with:
+          go-version-file: modules/opendatahub-mymodule-operator/go.mod
+
+      - name: Run aggregate module lint
+        run: make lint-modules
+
+  unit:
+    permissions:
+      contents: read
+    name: Aggregate unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Clone the code
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Setup Go
+        uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6.3.0
+        with:
+          go-version-file: modules/opendatahub-mymodule-operator/go.mod
+
+      - name: Run aggregate module tests
+        run: make test-modules
+
+  module-tests:
+    name: ${{ matrix.module.module_name }}
+    needs:
+      - lint
+      - unit
+    strategy:
+      fail-fast: false
+      matrix:
+        module:
+          - module_name: opendatahub-datasciencepipelines-operator
+          - module_name: opendatahub-feast-operator
+          - module_name: opendatahub-mlflow-operator
+          - module_name: opendatahub-modelregistry-operator
+          - module_name: opendatahub-mymodule-operator
+          - module_name: opendatahub-ogx-operator
+          - module_name: opendatahub-ray-operator
+          - module_name: opendatahub-spark-operator
+          - module_name: opendatahub-trainer-operator
+          - module_name: opendatahub-trustyai-operator
+          - module_name: opendatahub-workbenches-operator
+    uses: ./.github/workflows/module-test.yml
+    permissions:
+      contents: read
+    secrets: inherit
+    with:
+      module_name: ${{ matrix.module.module_name }}
+      run_integration_tests: true

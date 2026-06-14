@@ -12,6 +12,7 @@ GIT_BRANCH ?= $(shell git rev-parse --abbrev-ref HEAD 2>/dev/null || echo unknow
 GIT_REPO ?= $(shell git remote get-url origin 2>/dev/null || echo unknown)
 
 MODULE_DIRS ?= \
+	modules/opendatahub-datasciencepipelines-operator \
 	modules/opendatahub-feast-operator \
 	modules/opendatahub-mlflow-operator \
 	modules/opendatahub-modelregistry-operator \
@@ -19,6 +20,7 @@ MODULE_DIRS ?= \
 	modules/opendatahub-ogx-operator \
 	modules/opendatahub-ray-operator \
 	modules/opendatahub-spark-operator \
+	modules/opendatahub-trainer-operator \
 	modules/opendatahub-trustyai-operator \
 	modules/opendatahub-workbenches-operator
 

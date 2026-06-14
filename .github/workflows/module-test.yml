@@ -6,12 +6,6 @@ on:
       module_name:
         required: true
         type: string
-      module_path:
-        required: true
-        type: string
-      image_name:
-        required: true
-        type: string
       run_integration_tests:
         required: false
         type: boolean
@@ -31,6 +25,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       KUBECONFIG: ${{ github.workspace }}/.tmp/${{ inputs.module_name }}-kubeconfig
+      MODULE_PATH: modules/${{ inputs.module_name }}
       ODH_PLATFORM_TYPE: OpenDataHub
       PICOSHIFT_CLUSTER_NAME: ocp-sim
     steps:
@@ -42,7 +37,7 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6.3.0
         with:
-          go-version-file: ${{ inputs.module_path }}/go.mod
+          go-version-file: ${{ env.MODULE_PATH }}/go.mod
 
       - name: Setup picoshift
         if: ${{ inputs.run_integration_tests || inputs.run_e2e_tests }}
@@ -52,13 +47,13 @@ jobs:
           kubeconfig_path: ${{ env.KUBECONFIG }}
 
       - name: Run unit tests
-        working-directory: ${{ inputs.module_path }}
+        working-directory: ${{ env.MODULE_PATH }}
         run: |
           make test
 
       - name: Run integration tests
         if: ${{ inputs.run_integration_tests }}
-        working-directory: ${{ inputs.module_path }}
+        working-directory: ${{ env.MODULE_PATH }}
         run: |
           make test-integration
 
@@ -73,20 +68,20 @@ jobs:
 
       - name: Build and push image
         if: ${{ inputs.run_e2e_tests }}
-        working-directory: ${{ inputs.module_path }}
+        working-directory: ${{ env.MODULE_PATH }}
         run: |
           make container-build IMG=${{ steps.img.outputs.img }}
           make container-push IMG=${{ steps.img.outputs.img }}
 
       - name: Generate Helm chart
         if: ${{ inputs.run_e2e_tests }}
-        working-directory: ${{ inputs.module_path }}
+        working-directory: ${{ env.MODULE_PATH }}
         run: |
           make helm
 
       - name: Run e2e tests
         if: ${{ inputs.run_e2e_tests }}
-        working-directory: ${{ inputs.module_path }}
+        working-directory: ${{ env.MODULE_PATH }}
         run: |
           make test-e2e IMG=${{ steps.img.outputs.img }}
 
