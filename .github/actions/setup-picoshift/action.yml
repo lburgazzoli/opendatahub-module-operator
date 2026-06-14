@@ -18,12 +18,12 @@ runs:
   using: composite
   steps:
     - name: Setup Python
-      uses: actions/setup-python@v5
+      uses: actions/setup-python@v6
       with:
         python-version: "3.x"
 
     - name: Setup kubectl
-      uses: azure/setup-kubectl@v4
+      uses: azure/setup-kubectl@v5
 
     - name: Install Podman
       shell: bash
@@ -48,6 +48,7 @@ runs:
     - name: Create picoshift cluster
       shell: bash
       run: |
+        mkdir -p "${HOME}/.kube"
         mkdir -p "$(dirname "${{ inputs.kubeconfig_path }}")"
         python3 --version
         kubectl version --client
