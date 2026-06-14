@@ -53,7 +53,7 @@ runs:
         python3 --version
         kubectl version --client
         podman --version
-        picoshift create --name "${{ inputs.cluster_name }}"
+        env -u KUBECONFIG picoshift create --name "${{ inputs.cluster_name }}"
         cp "${HOME}/.kube/config" "${{ inputs.kubeconfig_path }}"
         chmod 600 "${{ inputs.kubeconfig_path }}"
         KUBECONFIG="${{ inputs.kubeconfig_path }}" kubectl cluster-info

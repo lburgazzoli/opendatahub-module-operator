@@ -89,11 +89,11 @@ jobs:
       - name: Collect picoshift diagnostics
         if: ${{ failure() && (inputs.run_integration_tests || inputs.run_e2e_tests) }}
         run: |
-          picoshift status || true
-          picoshift logs || true
+          env -u KUBECONFIG picoshift status || true
+          env -u KUBECONFIG picoshift logs || true
           kubectl get pods -A || true
 
       - name: Delete picoshift cluster
         if: ${{ always() && (inputs.run_integration_tests || inputs.run_e2e_tests) }}
         run: |
-          picoshift delete --name "${PICOSHIFT_CLUSTER_NAME}" || true
+          env -u KUBECONFIG picoshift delete --name "${PICOSHIFT_CLUSTER_NAME}" || true

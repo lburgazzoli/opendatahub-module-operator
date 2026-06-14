@@ -15,12 +15,29 @@ jobs:
     outputs:
       modules: ${{ steps.modules.outputs.modules }}
     steps:
+      - name: Clone the code
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
       - name: Emit module matrix
         id: modules
         run: |
-          cat <<'EOF' >> "$GITHUB_OUTPUT"
-          modules={"module":[{"module_name":"opendatahub-datasciencepipelines-operator"},{"module_name":"opendatahub-feast-operator"},{"module_name":"opendatahub-mlflow-operator"},{"module_name":"opendatahub-modelregistry-operator"},{"module_name":"opendatahub-mymodule-operator"},{"module_name":"opendatahub-ogx-operator"},{"module_name":"opendatahub-ray-operator"},{"module_name":"opendatahub-spark-operator"},{"module_name":"opendatahub-trainer-operator"},{"module_name":"opendatahub-trustyai-operator"},{"module_name":"opendatahub-workbenches-operator"}]}
-          EOF
+          python3 - <<'PY'
+          import json
+          import os
+
+          modules = []
+          with open(".github/module-matrix.yaml", encoding="utf-8") as handle:
+              for raw_line in handle:
+                  line = raw_line.strip()
+                  if line.startswith("- "):
+                      modules.append({"module_name": line[2:].strip()})
+
+          output = json.dumps({"module": modules}, separators=(",", ":"))
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as handle:
+              handle.write(f"modules={output}\n")
+          PY
 
   lint:
     needs: define-matrix
