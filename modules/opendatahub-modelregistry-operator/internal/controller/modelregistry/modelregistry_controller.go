@@ -120,7 +120,9 @@ func NewReconciler(
 		WithAction(fwreleases.NewAction()).
 		WithAction(configureDependencies).
 		WithAction(template.NewAction()).
-		WithAction(kustomize.NewAction()).
+		WithAction(kustomize.NewAction(
+			kustomize.WithNamespaceFn(moduleconfig.ApplicationsNamespaceGetter(cfg)),
+		)).
 		WithAction(deploy.NewAction(
 			deploy.WithCache(),
 			deploy.WithApplyOrder(),

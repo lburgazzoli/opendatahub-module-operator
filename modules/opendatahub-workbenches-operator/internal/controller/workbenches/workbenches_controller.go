@@ -156,6 +156,7 @@ func NewReconciler(
 		WithAction(m.setKustomizedParams).
 		WithAction(kustomize.NewAction(
 			kustomize.WithCache(false),
+			kustomize.WithNamespaceFn(moduleconfig.ApplicationsNamespaceGetter(cfg)),
 		)).
 		WithAction(deploy.NewAction(
 			deploy.WithCache(),

@@ -124,7 +124,9 @@ func NewReconciler(
 		WithAction(m.upgradeIfNeeded).
 		WithAction(argoWorkflowsControllersOptions).
 		WithAction(fwreleases.NewAction()).
-		WithAction(kustomize.NewAction()).
+		WithAction(kustomize.NewAction(
+			kustomize.WithNamespaceFn(moduleconfig.ApplicationsNamespaceGetter(cfg)),
+		)).
 		WithAction(deploy.NewAction(
 			deploy.WithCache(),
 			deploy.WithApplyOrder(),
