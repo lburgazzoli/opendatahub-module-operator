@@ -3,9 +3,17 @@ name: Module Test Workflow
 on:
   workflow_call:
     inputs:
+      job_name:
+        required: false
+        type: string
+        default: ""
       module_name:
         required: true
         type: string
+      run_unit_tests:
+        required: false
+        type: boolean
+        default: false
       run_integration_tests:
         required: false
         type: boolean
@@ -21,7 +29,7 @@ jobs:
   test-module:
     permissions:
       contents: read
-    name: ${{ inputs.module_name }}
+    name: ${{ inputs.job_name || inputs.module_name }}
     runs-on: ubuntu-latest
     env:
       KUBECONFIG: ${{ github.workspace }}/.tmp/${{ inputs.module_name }}-kubeconfig
@@ -48,6 +56,7 @@ jobs:
           kubeconfig_path: ${{ env.KUBECONFIG }}
 
       - name: Run unit tests
+        if: ${{ inputs.run_unit_tests }}
         working-directory: ${{ env.MODULE_PATH }}
         run: |
           make test
@@ -70,9 +79,11 @@ jobs:
       - name: Build and push image
         if: ${{ inputs.run_e2e_tests }}
         working-directory: ${{ env.MODULE_PATH }}
+        env:
+          CONTAINER_TOOL: podman --cgroup-manager cgroupfs
         run: |
-          make container-build IMG=${{ steps.img.outputs.img }}
-          make container-push IMG=${{ steps.img.outputs.img }}
+          make container-build CONTAINER_TOOL="${CONTAINER_TOOL}" IMG=${{ steps.img.outputs.img }}
+          make container-push CONTAINER_TOOL="${CONTAINER_TOOL}" IMG=${{ steps.img.outputs.img }}
 
       - name: Generate Helm chart
         if: ${{ inputs.run_e2e_tests }}

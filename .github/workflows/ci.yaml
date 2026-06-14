@@ -93,8 +93,8 @@ jobs:
         working-directory: ${{ env.MODULE_PATH }}
         run: make test
 
-  module-tests:
-    name: ${{ matrix.module.module_name }}
+  module-integration:
+    name: integration ${{ matrix.module.module_name }}
     needs:
       - define-matrix
       - lint
@@ -107,6 +107,25 @@ jobs:
       contents: read
     secrets: inherit
     with:
+      job_name: integration ${{ matrix.module.module_name }}
       module_name: ${{ matrix.module.module_name }}
+      run_unit_tests: false
       run_integration_tests: true
+
+  module-e2e:
+    name: e2e ${{ matrix.module.module_name }}
+    needs:
+      - define-matrix
+      - module-integration
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.define-matrix.outputs.modules) }}
+    uses: ./.github/workflows/module-test.yml
+    permissions:
+      contents: read
+    secrets: inherit
+    with:
+      job_name: e2e ${{ matrix.module.module_name }}
+      module_name: ${{ matrix.module.module_name }}
+      run_unit_tests: false
       run_e2e_tests: true
