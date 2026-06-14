@@ -66,7 +66,8 @@ jobs:
         id: img
         if: ${{ inputs.run_e2e_tests }}
         run: |
-          IMG="ttl.sh/${{ inputs.image_name }}-${GITHUB_SHA::7}:1h"
+          IMAGE_ID="$(uuidgen | tr '[:upper:]' '[:lower:]')"
+          IMG="ttl.sh/${IMAGE_ID}:1h"
           echo "img=${IMG}" >> "$GITHUB_OUTPUT"
           echo "Using image: ${IMG}"
 
