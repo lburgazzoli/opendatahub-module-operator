@@ -1,0 +1,58 @@
+name: Setup picoshift
+description: Install picoshift prerequisites and create a cluster
+
+inputs:
+  cluster_name:
+    description: Picoshift cluster name
+    required: false
+    default: ocp-sim
+  kubeconfig_path:
+    description: Destination path for the workflow kubeconfig
+    required: true
+  picoshift_version:
+    description: Pinned picoshift release version
+    required: false
+    default: v2026.06.11
+
+runs:
+  using: composite
+  steps:
+    - name: Setup Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.x"
+
+    - name: Setup kubectl
+      uses: azure/setup-kubectl@v4
+
+    - name: Install Podman
+      shell: bash
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y podman
+
+    - name: Install picoshift
+      shell: bash
+      run: |
+        mkdir -p "${RUNNER_TEMP}/bin"
+        curl -fsSL -o "${RUNNER_TEMP}/bin/picoshift" "https://github.com/jctanner/picoshift/releases/download/${{ inputs.picoshift_version }}/picoshift-linux-amd64"
+        curl -fsSL -o "${RUNNER_TEMP}/bin/kind-real" "https://github.com/jctanner/picoshift/releases/download/${{ inputs.picoshift_version }}/kind-linux-amd64"
+        cat > "${RUNNER_TEMP}/bin/kind" <<'EOF'
+        #!/usr/bin/env bash
+        export KIND_EXPERIMENTAL_PROVIDER=podman
+        exec "$(dirname "$0")/kind-real" "$@"
+        EOF
+        chmod +x "${RUNNER_TEMP}/bin/picoshift" "${RUNNER_TEMP}/bin/kind" "${RUNNER_TEMP}/bin/kind-real"
+        echo "${RUNNER_TEMP}/bin" >> "${GITHUB_PATH}"
+
+    - name: Create picoshift cluster
+      shell: bash
+      run: |
+        mkdir -p "$(dirname "${{ inputs.kubeconfig_path }}")"
+        python3 --version
+        kubectl version --client
+        podman --version
+        picoshift create --name "${{ inputs.cluster_name }}"
+        cp "${HOME}/.kube/config" "${{ inputs.kubeconfig_path }}"
+        chmod 600 "${{ inputs.kubeconfig_path }}"
+        KUBECONFIG="${{ inputs.kubeconfig_path }}" kubectl cluster-info

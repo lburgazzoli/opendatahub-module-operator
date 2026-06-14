@@ -30,8 +30,9 @@ jobs:
     name: ${{ inputs.module_name }}
     runs-on: ubuntu-latest
     env:
-      KUBECONFIG: /tmp/kubeconfig
+      KUBECONFIG: ${{ runner.temp }}/kubeconfig
       ODH_PLATFORM_TYPE: OpenDataHub
+      PICOSHIFT_CLUSTER_NAME: ocp-sim
     steps:
       - name: Clone the code
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -43,17 +44,12 @@ jobs:
         with:
           go-version-file: ${{ inputs.module_path }}/go.mod
 
-      - name: Write OpenShift kubeconfig
+      - name: Setup picoshift
         if: ${{ inputs.run_integration_tests || inputs.run_e2e_tests }}
-        env:
-          OPENSHIFT_KUBECONFIG: ${{ secrets.KUBECONFIG }}
-        run: |
-          test -n "${OPENSHIFT_KUBECONFIG}" || {
-            echo "Missing KUBECONFIG secret"
-            exit 1
-          }
-          printf '%s\n' "${OPENSHIFT_KUBECONFIG}" > "${KUBECONFIG}"
-          chmod 600 "${KUBECONFIG}"
+        uses: ./.github/actions/setup-picoshift
+        with:
+          cluster_name: ${{ env.PICOSHIFT_CLUSTER_NAME }}
+          kubeconfig_path: ${{ env.KUBECONFIG }}
 
       - name: Run unit tests
         working-directory: ${{ inputs.module_path }}
@@ -92,3 +88,15 @@ jobs:
         working-directory: ${{ inputs.module_path }}
         run: |
           make test-e2e IMG=${{ steps.img.outputs.img }}
+
+      - name: Collect picoshift diagnostics
+        if: ${{ failure() && (inputs.run_integration_tests || inputs.run_e2e_tests) }}
+        run: |
+          picoshift status || true
+          picoshift logs || true
+          kubectl get pods -A || true
+
+      - name: Delete picoshift cluster
+        if: ${{ always() && (inputs.run_integration_tests || inputs.run_e2e_tests) }}
+        run: |
+          picoshift delete --name "${PICOSHIFT_CLUSTER_NAME}" || true
