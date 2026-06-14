@@ -132,7 +132,9 @@ func NewReconciler(
 		//   gc
 		WithAction(m.initialize).
 		WithAction(m.upgradeIfNeeded).
-		WithAction(kustomize.NewAction()).
+		WithAction(kustomize.NewAction(
+			kustomize.WithNamespaceFn(moduleconfig.ApplicationsNamespaceGetter(cfg)),
+		)).
 		WithAction(deploy.NewAction(
 			deploy.WithCache(),
 			deploy.WithApplyOrder(),
