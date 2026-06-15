@@ -97,6 +97,36 @@ jobs:
         run: |
           make test-e2e IMG=${{ steps.img.outputs.img }}
 
+      - name: Dump namespace resources on failure
+        if: ${{ failure() && (inputs.run_integration_tests || inputs.run_e2e_tests) }}
+        run: |
+          for ns in $(kubectl get ns -o jsonpath='{.items[*].metadata.name}'); do
+            case "${ns}" in
+              kube-system|kube-public|kube-node-lease|openshift*|default)
+                continue
+                ;;
+            esac
+
+            echo "===== namespace: ${ns} ====="
+            kubectl get all,configmap,secret,serviceaccount,role,rolebinding,pvc -n "${ns}" || true
+            echo "===== workloads (wide): ${ns} ====="
+            kubectl get deployment,replicaset,pod -n "${ns}" -o wide || true
+            for kind in deployment replicaset pod; do
+              for name in $(kubectl get "${kind}" -n "${ns}" -o name 2>/dev/null); do
+                echo "===== describe ${name} ====="
+                kubectl describe -n "${ns}" "${name}" || true
+              done
+            done
+            for pod in $(kubectl get pod -n "${ns}" -o name 2>/dev/null); do
+              echo "===== logs ${pod} ====="
+              kubectl logs -n "${ns}" "${pod}" --all-containers=true --tail=200 || true
+              echo "===== previous logs ${pod} ====="
+              kubectl logs -n "${ns}" "${pod}" --all-containers=true --previous --tail=200 || true
+            done
+            echo "===== events: ${ns} ====="
+            kubectl get events -n "${ns}" --sort-by=.lastTimestamp || true
+          done
+
       - name: Delete picoshift cluster
         if: ${{ always() && (inputs.run_integration_tests || inputs.run_e2e_tests) }}
         run: |

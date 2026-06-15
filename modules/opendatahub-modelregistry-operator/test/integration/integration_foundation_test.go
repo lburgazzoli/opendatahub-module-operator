@@ -61,6 +61,11 @@ func (ft *foundationTests) ensureReadyModule(t *testing.T) *componentsv1alpha1.M
 	g.Eventually(t.Context(), k8sm.NotFound(ft.Client, module)).Should(BeTrue())
 
 	t.Cleanup(func() {
+		if t.Failed() {
+			t.Logf("[FailureDump] preserving %s for post-test inspection", module.GetName())
+			return
+		}
+
 		_ = ft.Client.Delete(t.Context(), module)
 	})
 	t.Cleanup(func() {
