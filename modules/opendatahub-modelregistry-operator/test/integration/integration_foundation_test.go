@@ -10,7 +10,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	klabels "k8s.io/apimachinery/pkg/labels"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/lburgazzoli/gomega-matchers/pkg/matchers/jq"
@@ -334,19 +333,6 @@ func (ft *foundationTests) lookupObjectSnapshot(t *testing.T, object client.Obje
 	}
 
 	return support.SnapshotObject(object), nil
-}
-
-func selectorForDeployment(deployment *appsv1.Deployment) (klabels.Selector, error) {
-	if deployment == nil || deployment.Spec.Selector == nil {
-		return nil, nil
-	}
-
-	selector, err := metav1.LabelSelectorAsSelector(deployment.Spec.Selector)
-	if err != nil {
-		return nil, err
-	}
-
-	return selector, nil
 }
 
 func (ft *foundationTests) snapshotNamespaceResources(t *testing.T, namespace string) any {
