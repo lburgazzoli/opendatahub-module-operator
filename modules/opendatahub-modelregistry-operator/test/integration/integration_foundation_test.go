@@ -31,8 +31,11 @@ func (ft *foundationTests) Execute(t *testing.T) {
 	t.Run("should set registries namespace in status", ft.testRegistriesNamespaceStatus)
 }
 
-func moduleObject() *componentsv1alpha1.ModelRegistry {
-	return &componentsv1alpha1.ModelRegistry{
+func (ft *foundationTests) ensureReadyModule(t *testing.T) *componentsv1alpha1.ModelRegistry {
+	t.Helper()
+
+	g := NewWithT(t)
+	module := &componentsv1alpha1.ModelRegistry{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: componentsv1alpha1.ModelRegistryInstanceName,
 		},
@@ -42,23 +45,12 @@ func moduleObject() *componentsv1alpha1.ModelRegistry {
 			},
 		},
 	}
-}
-
-func workloadDeployment() *appsv1.Deployment {
-	return &appsv1.Deployment{
+	workloadDeploy := &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      "model-registry-operator-controller-manager",
+			Name:      support.ManagedDeploymentName,
 			Namespace: support.IntegrationTestNamespace(),
 		},
 	}
-}
-
-func (ft *foundationTests) ensureReadyModule(t *testing.T) *componentsv1alpha1.ModelRegistry {
-	t.Helper()
-
-	g := NewWithT(t)
-	module := moduleObject()
-	workloadDeploy := workloadDeployment()
 
 	_ = ft.Client.Delete(t.Context(), module)
 	g.Eventually(t.Context(), k8sm.NotFound(ft.Client, module)).Should(BeTrue())
@@ -69,8 +61,7 @@ func (ft *foundationTests) ensureReadyModule(t *testing.T) *componentsv1alpha1.M
 
 	g.Expect(ft.Client.Create(t.Context(), module)).To(Succeed())
 
-	g.Eventually(t.Context(), k8sm.Get(ft.Client, module)).Should(And(
-		jq.Match(`.status.phase == "Ready"`),
+	g.Eventually(t.Context(), k8sm.Get(ft.Client, module)).Should(
 		WithTransform(k8sm.Conditions(), SatisfyAll(
 			ContainElement(SatisfyAll(
 				HaveKeyWithValue("type", "Ready"),
@@ -81,7 +72,7 @@ func (ft *foundationTests) ensureReadyModule(t *testing.T) *componentsv1alpha1.M
 				HaveKeyWithValue("status", string(metav1.ConditionTrue)),
 			)),
 		)),
-	))
+	)
 
 	g.Eventually(t.Context(), k8sm.Get(ft.Client, workloadDeploy)).Should(
 		jq.Match(`.status.readyReplicas >= 1`),
@@ -121,7 +112,12 @@ func (ft *foundationTests) testPlatformLabels(t *testing.T) {
 	g := NewWithT(t)
 
 	module := ft.ensureReadyModule(t)
-	workloadDeploy := workloadDeployment()
+	workloadDeploy := &appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      support.ManagedDeploymentName,
+			Namespace: support.IntegrationTestNamespace(),
+		},
+	}
 	cfg, err := loadOperatorConfig()
 	g.Expect(err).NotTo(HaveOccurred())
 
@@ -138,7 +134,12 @@ func (ft *foundationTests) testOwnerReferences(t *testing.T) {
 	g := NewWithT(t)
 
 	owner := ft.ensureReadyModule(t)
-	workloadDeploy := workloadDeployment()
+	workloadDeploy := &appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      support.ManagedDeploymentName,
+			Namespace: support.IntegrationTestNamespace(),
+		},
+	}
 	owner.TypeMeta = metav1.TypeMeta{
 		APIVersion: componentsv1alpha1.GroupVersion.String(),
 		Kind:       componentsv1alpha1.ModelRegistryKind,

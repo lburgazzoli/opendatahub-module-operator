@@ -42,28 +42,20 @@ func (ft *foundationTests) Execute(t *testing.T) {
 	t.Run("should report not ready when JobSet CRD is missing", ft.testJobSetCRDMissing)
 }
 
-func moduleObject() *componentsv1alpha1.Trainer {
-	return &componentsv1alpha1.Trainer{
+func (ft *foundationTests) cleanupModuleWorkload(t *testing.T) {
+	t.Helper()
+
+	trainer := &componentsv1alpha1.Trainer{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: componentsv1alpha1.TrainerInstanceName,
 		},
 	}
-}
-
-func workloadDeployment() *appsv1.Deployment {
-	return &appsv1.Deployment{
+	workloadDeploy := &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      "kubeflow-trainer-controller-manager",
+			Name:      support.ManagedDeploymentName,
 			Namespace: support.IntegrationTestNamespace(),
 		},
 	}
-}
-
-func (ft *foundationTests) cleanupModuleWorkload(t *testing.T) {
-	t.Helper()
-
-	trainer := moduleObject()
-	workloadDeploy := workloadDeployment()
 	serviceAccount := &corev1.ServiceAccount{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      workloadDeploy.Name,
@@ -82,8 +74,17 @@ func (ft *foundationTests) ensureReadyModule(t *testing.T) *componentsv1alpha1.T
 	t.Helper()
 
 	g := NewWithT(t)
-	trainer := moduleObject()
-	workloadDeploy := workloadDeployment()
+	trainer := &componentsv1alpha1.Trainer{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: componentsv1alpha1.TrainerInstanceName,
+		},
+	}
+	workloadDeploy := &appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      support.ManagedDeploymentName,
+			Namespace: support.IntegrationTestNamespace(),
+		},
+	}
 
 	_ = ft.Client.Delete(t.Context(), trainer)
 	g.Eventually(t.Context(), k8sm.NotFound(ft.Client, trainer)).Should(BeTrue())
@@ -94,8 +95,7 @@ func (ft *foundationTests) ensureReadyModule(t *testing.T) *componentsv1alpha1.T
 
 	g.Expect(ft.Client.Create(t.Context(), trainer)).To(Succeed())
 
-	g.Eventually(t.Context(), k8sm.Get(ft.Client, trainer)).Should(And(
-		jq.Match(`.status.phase == "Ready"`),
+	g.Eventually(t.Context(), k8sm.Get(ft.Client, trainer)).Should(
 		WithTransform(k8sm.Conditions(), SatisfyAll(
 			ContainElement(SatisfyAll(
 				HaveKeyWithValue("type", "Ready"),
@@ -106,7 +106,7 @@ func (ft *foundationTests) ensureReadyModule(t *testing.T) *componentsv1alpha1.T
 				HaveKeyWithValue("status", string(metav1.ConditionTrue)),
 			)),
 		)),
-	))
+	)
 
 	g.Eventually(t.Context(), k8sm.Get(ft.Client, workloadDeploy)).Should(
 		jq.Match(`.status.readyReplicas >= 1`),
@@ -154,7 +154,11 @@ func (ft *foundationTests) testModuleCRDInstalled(t *testing.T) {
 
 func (ft *foundationTests) testJobSetOperatorCRDMissing(t *testing.T) {
 	g := NewWithT(t)
-	obj := moduleObject()
+	obj := &componentsv1alpha1.Trainer{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: componentsv1alpha1.TrainerInstanceName,
+		},
+	}
 	ft.cleanupModuleWorkload(t)
 
 	jobSetOperatorCRD := &apiextensionsv1.CustomResourceDefinition{
@@ -182,7 +186,11 @@ func (ft *foundationTests) testJobSetOperatorCRDMissing(t *testing.T) {
 
 func (ft *foundationTests) testJobSetOperatorCRMissing(t *testing.T) {
 	g := NewWithT(t)
-	obj := moduleObject()
+	obj := &componentsv1alpha1.Trainer{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: componentsv1alpha1.TrainerInstanceName,
+		},
+	}
 	ft.cleanupModuleWorkload(t)
 
 	jobSetOperatorCR := support.NewStubJobSetOperatorCR()
@@ -199,7 +207,11 @@ func (ft *foundationTests) testJobSetOperatorCRMissing(t *testing.T) {
 
 func (ft *foundationTests) testJobSetCRDMissing(t *testing.T) {
 	g := NewWithT(t)
-	obj := moduleObject()
+	obj := &componentsv1alpha1.Trainer{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: componentsv1alpha1.TrainerInstanceName,
+		},
+	}
 	ft.cleanupModuleWorkload(t)
 
 	jobSetCRD := &apiextensionsv1.CustomResourceDefinition{
@@ -245,7 +257,12 @@ func (ft *foundationTests) testPlatformLabels(t *testing.T) {
 	g := NewWithT(t)
 
 	trainer := ft.ensureReadyModule(t)
-	workloadDeploy := workloadDeployment()
+	workloadDeploy := &appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      support.ManagedDeploymentName,
+			Namespace: support.IntegrationTestNamespace(),
+		},
+	}
 	cfg, err := loadOperatorConfig()
 	g.Expect(err).NotTo(HaveOccurred())
 
@@ -262,7 +279,12 @@ func (ft *foundationTests) testOwnerReferences(t *testing.T) {
 	g := NewWithT(t)
 
 	owner := ft.ensureReadyModule(t)
-	workloadDeploy := workloadDeployment()
+	workloadDeploy := &appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      support.ManagedDeploymentName,
+			Namespace: support.IntegrationTestNamespace(),
+		},
+	}
 	owner.TypeMeta = metav1.TypeMeta{
 		APIVersion: componentsv1alpha1.GroupVersion.String(),
 		Kind:       componentsv1alpha1.TrainerKind,

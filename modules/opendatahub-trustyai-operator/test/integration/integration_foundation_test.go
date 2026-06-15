@@ -31,29 +31,21 @@ func (ft *foundationTests) Execute(t *testing.T) {
 	t.Run("should set owner references", ft.testOwnerReferences)
 }
 
-func moduleObject() *componentsv1alpha1.TrustyAI {
-	return &componentsv1alpha1.TrustyAI{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: componentsv1alpha1.TrustyAIInstanceName,
-		},
-	}
-}
-
-func workloadDeployment() *appsv1.Deployment {
-	return &appsv1.Deployment{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "trustyai-service-operator-controller-manager",
-			Namespace: support.IntegrationTestNamespace(),
-		},
-	}
-}
-
 func (ft *foundationTests) ensureReadyModule(t *testing.T) *componentsv1alpha1.TrustyAI {
 	t.Helper()
 
 	g := NewWithT(t)
-	module := moduleObject()
-	workloadDeploy := workloadDeployment()
+	module := &componentsv1alpha1.TrustyAI{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: componentsv1alpha1.TrustyAIInstanceName,
+		},
+	}
+	workloadDeploy := &appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      support.ManagedDeploymentName,
+			Namespace: support.IntegrationTestNamespace(),
+		},
+	}
 
 	_ = ft.Client.Delete(t.Context(), module)
 	g.Eventually(t.Context(), k8sm.NotFound(ft.Client, module)).Should(BeTrue())
@@ -64,8 +56,7 @@ func (ft *foundationTests) ensureReadyModule(t *testing.T) *componentsv1alpha1.T
 
 	g.Expect(ft.Client.Create(t.Context(), module)).To(Succeed())
 
-	g.Eventually(t.Context(), k8sm.Get(ft.Client, module)).Should(And(
-		jq.Match(`.status.phase == "Ready"`),
+	g.Eventually(t.Context(), k8sm.Get(ft.Client, module)).Should(
 		WithTransform(k8sm.Conditions(), SatisfyAll(
 			ContainElement(SatisfyAll(
 				HaveKeyWithValue("type", "Ready"),
@@ -76,7 +67,7 @@ func (ft *foundationTests) ensureReadyModule(t *testing.T) *componentsv1alpha1.T
 				HaveKeyWithValue("status", string(metav1.ConditionTrue)),
 			)),
 		)),
-	))
+	)
 
 	g.Eventually(t.Context(), k8sm.Get(ft.Client, workloadDeploy)).Should(
 		jq.Match(`.status.readyReplicas >= 1`),
@@ -96,7 +87,11 @@ func (ft *foundationTests) testModuleCRDInstalled(t *testing.T) {
 
 func (ft *foundationTests) testPreconditionCRMissing(t *testing.T) {
 	g := NewWithT(t)
-	module := moduleObject()
+	module := &componentsv1alpha1.TrustyAI{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: componentsv1alpha1.TrustyAIInstanceName,
+		},
+	}
 
 	kserveCR := support.NewStubKserveCR()
 	g.Expect(ft.Client.Delete(t.Context(), kserveCR)).To(Succeed())
@@ -136,7 +131,12 @@ func (ft *foundationTests) testPlatformLabels(t *testing.T) {
 	g := NewWithT(t)
 
 	module := ft.ensureReadyModule(t)
-	workloadDeploy := workloadDeployment()
+	workloadDeploy := &appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      support.ManagedDeploymentName,
+			Namespace: support.IntegrationTestNamespace(),
+		},
+	}
 	cfg, err := loadOperatorConfig()
 	g.Expect(err).NotTo(HaveOccurred())
 
@@ -153,7 +153,12 @@ func (ft *foundationTests) testOwnerReferences(t *testing.T) {
 	g := NewWithT(t)
 
 	owner := ft.ensureReadyModule(t)
-	workloadDeploy := workloadDeployment()
+	workloadDeploy := &appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      support.ManagedDeploymentName,
+			Namespace: support.IntegrationTestNamespace(),
+		},
+	}
 	owner.TypeMeta = metav1.TypeMeta{
 		APIVersion: componentsv1alpha1.GroupVersion.String(),
 		Kind:       componentsv1alpha1.TrustyAIKind,

@@ -53,7 +53,6 @@ const (
 	testManagedByLabel = "testing.opendatahub.io/managed-by"
 	testManagedByValue = "dsp-integration"
 
-	workloadDeploymentName = "data-science-pipelines-operator-controller-manager"
 	workloadConfigMapName  = "data-science-pipelines-operator-dspo-config"
 	workloadServiceMonName = "data-science-pipelines-operator-service-monitor"
 )

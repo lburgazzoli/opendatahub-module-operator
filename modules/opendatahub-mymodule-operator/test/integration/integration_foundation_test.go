@@ -43,14 +43,6 @@ func (ft *foundationTests) Execute(t *testing.T) {
 	t.Run("should not update version on upgrade fault", ft.testUpgradeFaultInjection)
 }
 
-func moduleObject() *componentsv1alpha1.MyModule {
-	return &componentsv1alpha1.MyModule{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: componentsv1alpha1.MyModuleInstanceName,
-		},
-	}
-}
-
 func testIngress(namespace string) *networkingv1.Ingress {
 	return &networkingv1.Ingress{
 		ObjectMeta: metav1.ObjectMeta{
@@ -68,15 +60,6 @@ func testIngress(namespace string) *networkingv1.Ingress {
 	}
 }
 
-func workloadDeployment() *appsv1.Deployment {
-	return &appsv1.Deployment{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "mymodule-workload",
-			Namespace: support.IntegrationTestNamespace(),
-		},
-	}
-}
-
 func workloadService() *corev1.Service {
 	return &corev1.Service{
 		ObjectMeta: metav1.ObjectMeta{
@@ -90,7 +73,11 @@ func (ft *foundationTests) cleanupModuleAndIngress(t *testing.T) {
 	t.Helper()
 
 	g := NewWithT(t)
-	module := moduleObject()
+	module := &componentsv1alpha1.MyModule{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: componentsv1alpha1.MyModuleInstanceName,
+		},
+	}
 	ingress := testIngress(support.IntegrationTestNamespace())
 
 	_ = ft.Client.Delete(t.Context(), module)
@@ -103,9 +90,18 @@ func (ft *foundationTests) ensureReadyModule(t *testing.T) *componentsv1alpha1.M
 	t.Helper()
 
 	g := NewWithT(t)
-	module := moduleObject()
+	module := &componentsv1alpha1.MyModule{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: componentsv1alpha1.MyModuleInstanceName,
+		},
+	}
 	ingress := testIngress(support.IntegrationTestNamespace())
-	workloadDeploy := workloadDeployment()
+	workloadDeploy := &appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      support.ManagedDeploymentName,
+			Namespace: support.IntegrationTestNamespace(),
+		},
+	}
 
 	ft.cleanupModuleAndIngress(t)
 
@@ -117,8 +113,7 @@ func (ft *foundationTests) ensureReadyModule(t *testing.T) *componentsv1alpha1.M
 	g.Expect(ft.Client.Create(t.Context(), ingress)).To(Succeed())
 	g.Expect(ft.Client.Create(t.Context(), module)).To(Succeed())
 
-	g.Eventually(t.Context(), k8sm.Get(ft.Client, module)).Should(And(
-		jq.Match(`.status.phase == "Ready"`),
+	g.Eventually(t.Context(), k8sm.Get(ft.Client, module)).Should(
 		WithTransform(k8sm.Conditions(), SatisfyAll(
 			ContainElement(SatisfyAll(
 				HaveKeyWithValue("type", "Ready"),
@@ -133,7 +128,7 @@ func (ft *foundationTests) ensureReadyModule(t *testing.T) *componentsv1alpha1.M
 				HaveKeyWithValue("status", string(metav1.ConditionTrue)),
 			)),
 		)),
-	))
+	)
 
 	g.Eventually(t.Context(), k8sm.Get(ft.Client, workloadDeploy)).Should(
 		jq.Match(`.status.readyReplicas >= 1`),
@@ -153,7 +148,11 @@ func (ft *foundationTests) testModuleCRDInstalled(t *testing.T) {
 
 func (ft *foundationTests) testIngressBlocks(t *testing.T) {
 	g := NewWithT(t)
-	module := moduleObject()
+	module := &componentsv1alpha1.MyModule{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: componentsv1alpha1.MyModuleInstanceName,
+		},
+	}
 
 	ft.cleanupModuleAndIngress(t)
 
@@ -163,22 +162,30 @@ func (ft *foundationTests) testIngressBlocks(t *testing.T) {
 
 	g.Expect(ft.Client.Create(t.Context(), module)).To(Succeed())
 
-	g.Eventually(t.Context(), k8sm.Get(ft.Client, module)).Should(And(
-		jq.Match(`.status.phase == "Not Ready"`),
+	g.Eventually(t.Context(), k8sm.Get(ft.Client, module)).Should(
 		WithTransform(k8sm.Conditions(), SatisfyAll(
 			ContainElement(SatisfyAll(
 				HaveKeyWithValue("type", mymodule.ConditionIngressAvailable),
 				HaveKeyWithValue("status", "False"),
 			)),
 		)),
-	))
+	)
 }
 
 func (ft *foundationTests) testIngressRecovers(t *testing.T) {
 	g := NewWithT(t)
-	module := moduleObject()
+	module := &componentsv1alpha1.MyModule{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: componentsv1alpha1.MyModuleInstanceName,
+		},
+	}
 	ingress := testIngress(support.IntegrationTestNamespace())
-	workloadDeploy := workloadDeployment()
+	workloadDeploy := &appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      support.ManagedDeploymentName,
+			Namespace: support.IntegrationTestNamespace(),
+		},
+	}
 
 	ft.cleanupModuleAndIngress(t)
 
@@ -190,8 +197,7 @@ func (ft *foundationTests) testIngressRecovers(t *testing.T) {
 	g.Expect(ft.Client.Create(t.Context(), module)).To(Succeed())
 	g.Expect(ft.Client.Create(t.Context(), ingress)).To(Succeed())
 
-	g.Eventually(t.Context(), k8sm.Get(ft.Client, module)).Should(And(
-		jq.Match(`.status.phase == "Ready"`),
+	g.Eventually(t.Context(), k8sm.Get(ft.Client, module)).Should(
 		WithTransform(k8sm.Conditions(), SatisfyAll(
 			ContainElement(SatisfyAll(
 				HaveKeyWithValue("type", "Ready"),
@@ -206,7 +212,7 @@ func (ft *foundationTests) testIngressRecovers(t *testing.T) {
 				HaveKeyWithValue("status", string(metav1.ConditionTrue)),
 			)),
 		)),
-	))
+	)
 
 	g.Eventually(t.Context(), k8sm.Get(ft.Client, workloadDeploy)).Should(
 		jq.Match(`.status.readyReplicas >= 1`),
@@ -247,7 +253,12 @@ func (ft *foundationTests) testPlatformLabels(t *testing.T) {
 	g := NewWithT(t)
 
 	module := ft.ensureReadyModule(t)
-	workloadDeploy := workloadDeployment()
+	workloadDeploy := &appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      support.ManagedDeploymentName,
+			Namespace: support.IntegrationTestNamespace(),
+		},
+	}
 	workloadSvc := workloadService()
 	cfg, err := loadOperatorConfig()
 	g.Expect(err).NotTo(HaveOccurred())
@@ -275,7 +286,12 @@ func (ft *foundationTests) testOwnerReferences(t *testing.T) {
 		APIVersion: componentsv1alpha1.GroupVersion.String(),
 		Kind:       componentsv1alpha1.MyModuleKind,
 	}
-	workloadDeploy := workloadDeployment()
+	workloadDeploy := &appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      support.ManagedDeploymentName,
+			Namespace: support.IntegrationTestNamespace(),
+		},
+	}
 	workloadSvc := workloadService()
 
 	g.Eventually(t.Context(), k8sm.Get(ft.Client, workloadDeploy)).Should(

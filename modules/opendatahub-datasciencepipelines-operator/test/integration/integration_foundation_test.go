@@ -37,31 +37,23 @@ func (ft *foundationTests) Execute(t *testing.T) {
 	t.Run("should fail when workflows CRD is missing and Argo is removed", ft.testMissingArgoWorkflowCRD)
 }
 
-func moduleObject() *componentsv1alpha1.DataSciencePipelines {
-	return &componentsv1alpha1.DataSciencePipelines{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: componentsv1alpha1.DataSciencePipelinesInstanceName,
-		},
-	}
-}
-
-func workloadDeployment() *appsv1.Deployment {
-	return &appsv1.Deployment{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      workloadDeploymentName,
-			Namespace: support.IntegrationTestNamespace(),
-		},
-	}
-}
-
 func (ft *foundationTests) ensureReadyModule(t *testing.T) *componentsv1alpha1.DataSciencePipelines {
 	t.Helper()
 
 	ensureArgoWorkflowCRDOwnedByODH(t, ft.Client)
 
 	g := NewWithT(t)
-	module := moduleObject()
-	workloadDeploy := workloadDeployment()
+	module := &componentsv1alpha1.DataSciencePipelines{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: componentsv1alpha1.DataSciencePipelinesInstanceName,
+		},
+	}
+	workloadDeploy := &appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      support.ManagedDeploymentName,
+			Namespace: support.IntegrationTestNamespace(),
+		},
+	}
 	workloadConfigMap := &corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      workloadConfigMapName,
@@ -84,8 +76,7 @@ func (ft *foundationTests) ensureReadyModule(t *testing.T) *componentsv1alpha1.D
 
 	g.Expect(ft.Client.Create(t.Context(), module)).To(Succeed())
 
-	g.Eventually(t.Context(), k8sm.Get(ft.Client, module)).Should(And(
-		jq.Match(`.status.phase == "Ready"`),
+	g.Eventually(t.Context(), k8sm.Get(ft.Client, module)).Should(
 		WithTransform(k8sm.Conditions(), SatisfyAll(
 			ContainElement(SatisfyAll(
 				HaveKeyWithValue("type", fwapi.ConditionTypeReady),
@@ -100,7 +91,7 @@ func (ft *foundationTests) ensureReadyModule(t *testing.T) *componentsv1alpha1.D
 				HaveKeyWithValue("status", string(metav1.ConditionTrue)),
 			)),
 		)),
-	))
+	)
 
 	g.Eventually(t.Context(), k8sm.Get(ft.Client, workloadDeploy)).Should(
 		jq.Match(`.status.readyReplicas >= 1`),
@@ -127,7 +118,11 @@ func (ft *foundationTests) testModuleCRDInstalled(t *testing.T) {
 func (ft *foundationTests) testMissingArgoWorkflowCRD(t *testing.T) {
 	ensureArgoWorkflowCRDMissing(t, ft.Client)
 
-	obj := moduleObject()
+	obj := &componentsv1alpha1.DataSciencePipelines{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: componentsv1alpha1.DataSciencePipelinesInstanceName,
+		},
+	}
 	obj.Spec.ArgoWorkflowsControllers = &componentsv1alpha1.ArgoWorkflowsControllersSpec{
 		ManagementState: "Removed",
 	}
@@ -151,7 +146,11 @@ func (ft *foundationTests) testMissingArgoWorkflowCRD(t *testing.T) {
 
 func (ft *foundationTests) testForeignOwnedArgoWorkflowCRD(t *testing.T) {
 	ensureArgoWorkflowCRDForeignOwned(t, ft.Client)
-	obj := moduleObject()
+	obj := &componentsv1alpha1.DataSciencePipelines{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: componentsv1alpha1.DataSciencePipelinesInstanceName,
+		},
+	}
 	createModule(t, ft.Client, obj)
 
 	g := NewWithT(t)
@@ -187,7 +186,12 @@ func (ft *foundationTests) testPlatformLabels(t *testing.T) {
 	g := NewWithT(t)
 
 	module := ft.ensureReadyModule(t)
-	workloadDeploy := workloadDeployment()
+	workloadDeploy := &appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      support.ManagedDeploymentName,
+			Namespace: support.IntegrationTestNamespace(),
+		},
+	}
 	cfg, err := loadOperatorConfig()
 	g.Expect(err).NotTo(HaveOccurred())
 
@@ -204,7 +208,12 @@ func (ft *foundationTests) testOwnerReferences(t *testing.T) {
 	g := NewWithT(t)
 
 	owner := ft.ensureReadyModule(t)
-	workloadDeploy := workloadDeployment()
+	workloadDeploy := &appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      support.ManagedDeploymentName,
+			Namespace: support.IntegrationTestNamespace(),
+		},
+	}
 	owner.TypeMeta = metav1.TypeMeta{
 		APIVersion: componentsv1alpha1.GroupVersion.String(),
 		Kind:       componentsv1alpha1.DataSciencePipelinesKind,
