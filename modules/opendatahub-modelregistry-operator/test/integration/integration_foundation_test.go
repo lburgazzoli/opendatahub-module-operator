@@ -61,7 +61,11 @@ func (ft *foundationTests) ensureReadyModule(t *testing.T) *componentsv1alpha1.M
 
 	g.Expect(ft.Client.Create(t.Context(), module)).To(Succeed())
 
-	g.Eventually(t.Context(), k8sm.Get(ft.Client, module)).Should(
+	g.Eventually(t.Context(), support.WrapGetEventually(
+		t,
+		"ensureReadyModule/modelregistry",
+		k8sm.Get(ft.Client, module),
+	)).Should(
 		WithTransform(k8sm.Conditions(), SatisfyAll(
 			ContainElement(SatisfyAll(
 				HaveKeyWithValue("type", "Ready"),
@@ -74,7 +78,11 @@ func (ft *foundationTests) ensureReadyModule(t *testing.T) *componentsv1alpha1.M
 		)),
 	)
 
-	g.Eventually(t.Context(), k8sm.Get(ft.Client, workloadDeploy)).Should(
+	g.Eventually(t.Context(), support.WrapGetEventually(
+		t,
+		"ensureReadyModule/deployment",
+		k8sm.Get(ft.Client, workloadDeploy),
+	)).Should(
 		jq.Match(`.status.readyReplicas >= 1`),
 	)
 
@@ -101,7 +109,11 @@ func (ft *foundationTests) testReleaseStatus(t *testing.T) {
 	cfg, err := loadOperatorConfig()
 	g.Expect(err).NotTo(HaveOccurred())
 
-	g.Eventually(t.Context(), k8sm.Get(ft.Client, module)).Should(And(
+	g.Eventually(t.Context(), support.WrapGetEventually(
+		t,
+		"testReleaseStatus/modelregistry",
+		k8sm.Get(ft.Client, module),
+	)).Should(And(
 		jq.Matchf(`.status.release.version == "%s"`, cfg.Release().Version.String()),
 		jq.Matchf(`.status.release.name == "%s"`,
 			cfg.PlatformName),
@@ -121,7 +133,11 @@ func (ft *foundationTests) testPlatformLabels(t *testing.T) {
 	cfg, err := loadOperatorConfig()
 	g.Expect(err).NotTo(HaveOccurred())
 
-	g.Eventually(t.Context(), k8sm.Get(ft.Client, workloadDeploy)).Should(And(
+	g.Eventually(t.Context(), support.WrapGetEventually(
+		t,
+		"testPlatformLabels/deployment",
+		k8sm.Get(ft.Client, workloadDeploy),
+	)).Should(And(
 		k8sm.HasLabel(labels.PlatformPartOf, componentsv1alpha1.ModelRegistryComponentName),
 		k8sm.HasAnnotation(annotations.InstanceName, module.GetName()),
 		k8sm.HasAnnotation(annotations.InstanceUID, string(module.GetUID())),
@@ -145,7 +161,11 @@ func (ft *foundationTests) testOwnerReferences(t *testing.T) {
 		Kind:       componentsv1alpha1.ModelRegistryKind,
 	}
 
-	g.Eventually(t.Context(), k8sm.Get(ft.Client, workloadDeploy)).Should(
+	g.Eventually(t.Context(), support.WrapGetEventually(
+		t,
+		"testOwnerReferences/deployment",
+		k8sm.Get(ft.Client, workloadDeploy),
+	)).Should(
 		k8sm.HasOwnerReference(owner),
 	)
 }
@@ -155,7 +175,11 @@ func (ft *foundationTests) testRegistriesNamespaceStatus(t *testing.T) {
 
 	module := ft.ensureReadyModule(t)
 
-	g.Eventually(t.Context(), k8sm.Get(ft.Client, module)).Should(
+	g.Eventually(t.Context(), support.WrapGetEventually(
+		t,
+		"testRegistriesNamespaceStatus/modelregistry",
+		k8sm.Get(ft.Client, module),
+	)).Should(
 		jq.Match(`.status.registriesNamespace != ""`),
 	)
 }
