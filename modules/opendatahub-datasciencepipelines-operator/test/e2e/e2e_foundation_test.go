@@ -10,13 +10,13 @@ import (
 
 	"github.com/lburgazzoli/gomega-matchers/pkg/matchers/jq"
 	k8sm "github.com/lburgazzoli/gomega-matchers/pkg/matchers/k8s"
+	"github.com/lburgazzoli/gomega-matchers/pkg/matchers/k8s/condition"
 
 	componentsv1alpha1 "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-datasciencepipelines-operator/api/components/v1alpha1"
 	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-datasciencepipelines-operator/pkg/config"
 	modulemeta "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-datasciencepipelines-operator/pkg/module"
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-datasciencepipelines-operator/test/support"
 	common "github.com/opendatahub-io/odh-platform-utilities/api/common"
-	fwapi "github.com/opendatahub-io/odh-platform-utilities/framework/api"
 	"github.com/opendatahub-io/odh-platform-utilities/pkg/metadata/annotations"
 	"github.com/opendatahub-io/odh-platform-utilities/pkg/metadata/labels"
 	promv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
@@ -82,19 +82,10 @@ func (ft *foundationTests) ensureReadyModule(t *testing.T) *componentsv1alpha1.D
 
 	g.Eventually(t.Context(), k8sm.Get(ft.Client, module)).Should(And(
 		jq.Match(`.status.phase == "Ready"`),
-		WithTransform(k8sm.Conditions(), SatisfyAll(
-			ContainElement(SatisfyAll(
-				HaveKeyWithValue("type", fwapi.ConditionTypeReady),
-				HaveKeyWithValue("status", string(metav1.ConditionTrue)),
-			)),
-			ContainElement(SatisfyAll(
-				HaveKeyWithValue("type", modulemeta.ConditionArgoWorkflowAvailable),
-				HaveKeyWithValue("status", string(metav1.ConditionTrue)),
-			)),
-			ContainElement(SatisfyAll(
-				HaveKeyWithValue("type", common.ConditionTypeProvisioningSucceeded),
-				HaveKeyWithValue("status", string(metav1.ConditionTrue)),
-			)),
+		WithTransform(k8sm.ConditionsOf[metav1.Condition](), SatisfyAll(
+			ContainElement(condition.Is(common.ConditionTypeReady, metav1.ConditionTrue)),
+			ContainElement(condition.Is(modulemeta.ConditionArgoWorkflowAvailable, metav1.ConditionTrue)),
+			ContainElement(condition.Is(common.ConditionTypeProvisioningSucceeded, metav1.ConditionTrue)),
 		)),
 	))
 
@@ -147,11 +138,10 @@ func (ft *foundationTests) testMissingArgoWorkflowCRD(t *testing.T) {
 
 	g := NewWithT(t)
 	g.Eventually(t.Context(), k8sm.Get(ft.Client, obj)).Should(
-		WithTransform(k8sm.Conditions(), SatisfyAll(
+		WithTransform(k8sm.ConditionsOf[metav1.Condition](), SatisfyAll(
 			ContainElement(SatisfyAll(
-				HaveKeyWithValue("type", modulemeta.ConditionArgoWorkflowAvailable),
-				HaveKeyWithValue("status", "False"),
-				HaveKeyWithValue("reason", modulemeta.DataSciencePipelinesArgoWorkflowsCRDMissingReason),
+				condition.Is(modulemeta.ConditionArgoWorkflowAvailable, metav1.ConditionFalse),
+				condition.HasReason(modulemeta.DataSciencePipelinesArgoWorkflowsCRDMissingReason),
 			)),
 		)),
 	)
@@ -166,11 +156,10 @@ func (ft *foundationTests) testForeignOwnedArgoWorkflowCRD(t *testing.T) {
 
 	g := NewWithT(t)
 	g.Eventually(t.Context(), k8sm.Get(ft.Client, obj)).Should(
-		WithTransform(k8sm.Conditions(), SatisfyAll(
+		WithTransform(k8sm.ConditionsOf[metav1.Condition](), SatisfyAll(
 			ContainElement(SatisfyAll(
-				HaveKeyWithValue("type", modulemeta.ConditionArgoWorkflowAvailable),
-				HaveKeyWithValue("status", "False"),
-				HaveKeyWithValue("reason", modulemeta.DataSciencePipelinesDoesntOwnArgoCRDReason),
+				condition.Is(modulemeta.ConditionArgoWorkflowAvailable, metav1.ConditionFalse),
+				condition.HasReason(modulemeta.DataSciencePipelinesDoesntOwnArgoCRDReason),
 			)),
 		)),
 	)

@@ -6,7 +6,7 @@ require (
 	github.com/blang/semver/v4 v4.0.0
 	github.com/go-logr/logr v1.4.3
 	github.com/invopop/jsonschema v0.14.0
-	github.com/lburgazzoli/gomega-matchers v0.4.1-0.20260611124452-80c59826d05c
+	github.com/lburgazzoli/gomega-matchers v0.4.1-0.20260615083735-1af7a46bf167
 	github.com/onsi/gomega v1.41.0
 	github.com/opendatahub-io/odh-platform-utilities v0.0.0-20260614174411-e66fc336d3cf
 	github.com/opendatahub-io/odh-platform-utilities/framework v0.0.0-20260614174411-e66fc336d3cf

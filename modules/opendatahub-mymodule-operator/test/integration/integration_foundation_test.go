@@ -10,11 +10,13 @@ import (
 
 	"github.com/lburgazzoli/gomega-matchers/pkg/matchers/jq"
 	k8sm "github.com/lburgazzoli/gomega-matchers/pkg/matchers/k8s"
+	"github.com/lburgazzoli/gomega-matchers/pkg/matchers/k8s/condition"
 
 	componentsv1alpha1 "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-mymodule-operator/api/components/v1alpha1"
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-mymodule-operator/internal/controller/mymodule"
 	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-mymodule-operator/pkg/config"
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-mymodule-operator/test/support"
+	common "github.com/opendatahub-io/odh-platform-utilities/api/common"
 	"github.com/opendatahub-io/odh-platform-utilities/framework/resources"
 	"github.com/opendatahub-io/odh-platform-utilities/pkg/metadata/annotations"
 	"github.com/opendatahub-io/odh-platform-utilities/pkg/metadata/labels"
@@ -114,19 +116,10 @@ func (ft *foundationTests) ensureReadyModule(t *testing.T) *componentsv1alpha1.M
 	g.Expect(ft.Client.Create(t.Context(), module)).To(Succeed())
 
 	g.Eventually(t.Context(), k8sm.Get(ft.Client, module)).Should(
-		WithTransform(k8sm.Conditions(), SatisfyAll(
-			ContainElement(SatisfyAll(
-				HaveKeyWithValue("type", "Ready"),
-				HaveKeyWithValue("status", string(metav1.ConditionTrue)),
-			)),
-			ContainElement(SatisfyAll(
-				HaveKeyWithValue("type", mymodule.ConditionIngressAvailable),
-				HaveKeyWithValue("status", string(metav1.ConditionTrue)),
-			)),
-			ContainElement(SatisfyAll(
-				HaveKeyWithValue("type", "ProvisioningSucceeded"),
-				HaveKeyWithValue("status", string(metav1.ConditionTrue)),
-			)),
+		WithTransform(k8sm.ConditionsOf[metav1.Condition](), SatisfyAll(
+			ContainElement(condition.Is(common.ConditionTypeReady, metav1.ConditionTrue)),
+			ContainElement(condition.Is(mymodule.ConditionIngressAvailable, metav1.ConditionTrue)),
+			ContainElement(condition.Is(common.ConditionTypeProvisioningSucceeded, metav1.ConditionTrue)),
 		)),
 	)
 
@@ -163,11 +156,8 @@ func (ft *foundationTests) testIngressBlocks(t *testing.T) {
 	g.Expect(ft.Client.Create(t.Context(), module)).To(Succeed())
 
 	g.Eventually(t.Context(), k8sm.Get(ft.Client, module)).Should(
-		WithTransform(k8sm.Conditions(), SatisfyAll(
-			ContainElement(SatisfyAll(
-				HaveKeyWithValue("type", mymodule.ConditionIngressAvailable),
-				HaveKeyWithValue("status", "False"),
-			)),
+		WithTransform(k8sm.ConditionsOf[metav1.Condition](), SatisfyAll(
+			ContainElement(condition.Is(mymodule.ConditionIngressAvailable, metav1.ConditionFalse)),
 		)),
 	)
 }
@@ -198,19 +188,10 @@ func (ft *foundationTests) testIngressRecovers(t *testing.T) {
 	g.Expect(ft.Client.Create(t.Context(), ingress)).To(Succeed())
 
 	g.Eventually(t.Context(), k8sm.Get(ft.Client, module)).Should(
-		WithTransform(k8sm.Conditions(), SatisfyAll(
-			ContainElement(SatisfyAll(
-				HaveKeyWithValue("type", "Ready"),
-				HaveKeyWithValue("status", string(metav1.ConditionTrue)),
-			)),
-			ContainElement(SatisfyAll(
-				HaveKeyWithValue("type", mymodule.ConditionIngressAvailable),
-				HaveKeyWithValue("status", string(metav1.ConditionTrue)),
-			)),
-			ContainElement(SatisfyAll(
-				HaveKeyWithValue("type", "ProvisioningSucceeded"),
-				HaveKeyWithValue("status", string(metav1.ConditionTrue)),
-			)),
+		WithTransform(k8sm.ConditionsOf[metav1.Condition](), SatisfyAll(
+			ContainElement(condition.Is(common.ConditionTypeReady, metav1.ConditionTrue)),
+			ContainElement(condition.Is(mymodule.ConditionIngressAvailable, metav1.ConditionTrue)),
+			ContainElement(condition.Is(common.ConditionTypeProvisioningSucceeded, metav1.ConditionTrue)),
 		)),
 	)
 
