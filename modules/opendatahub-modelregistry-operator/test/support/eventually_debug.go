@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"testing"
 
+	appsv1 "k8s.io/api/apps/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -114,6 +115,16 @@ func WrapGetEventually[T client.Object](
 	})
 }
 
+func WrapDeploymentStatusEventually(
+	t *testing.T,
+	label string,
+	poll ContextPollFunc[*appsv1.Deployment],
+) ContextPollFunc[*appsv1.Deployment] {
+	t.Helper()
+
+	return WrapEventually(t, label, poll, SnapshotDeploymentStatus)
+}
+
 func SnapshotObject(object client.Object) any {
 	if object == nil {
 		return nil
@@ -132,6 +143,27 @@ func SnapshotObject(object client.Object) any {
 		"name":      object.GetName(),
 		"namespace": object.GetNamespace(),
 		"object":    json.RawMessage(raw),
+	}
+}
+
+func SnapshotDeploymentStatus(deployment *appsv1.Deployment) any {
+	if deployment == nil {
+		return nil
+	}
+
+	raw, err := json.Marshal(deployment.Status)
+	if err != nil {
+		return map[string]any{
+			"name":      deployment.GetName(),
+			"namespace": deployment.GetNamespace(),
+			"error":     fmt.Sprintf("marshal deployment status: %v", err),
+		}
+	}
+
+	return map[string]any{
+		"name":      deployment.GetName(),
+		"namespace": deployment.GetNamespace(),
+		"status":    json.RawMessage(raw),
 	}
 }
 

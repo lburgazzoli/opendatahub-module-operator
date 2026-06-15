@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	. "github.com/onsi/gomega"
+	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -86,4 +87,25 @@ func TestSnapshotObjectIncludesIdentityAndPayload(t *testing.T) {
 	g.Expect(snapshot).To(HaveKeyWithValue("name", "example"))
 	g.Expect(snapshot).To(HaveKeyWithValue("namespace", "test-ns"))
 	g.Expect(snapshot).To(HaveKey("object"))
+}
+
+func TestSnapshotDeploymentStatusIncludesIdentityAndStatus(t *testing.T) {
+	g := NewWithT(t)
+
+	deployment := &appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "example",
+			Namespace: "test-ns",
+		},
+		Status: appsv1.DeploymentStatus{
+			Replicas:      1,
+			ReadyReplicas: 0,
+		},
+	}
+
+	snapshot, ok := SnapshotDeploymentStatus(deployment).(map[string]any)
+	g.Expect(ok).To(BeTrue())
+	g.Expect(snapshot).To(HaveKeyWithValue("name", "example"))
+	g.Expect(snapshot).To(HaveKeyWithValue("namespace", "test-ns"))
+	g.Expect(snapshot).To(HaveKey("status"))
 }
