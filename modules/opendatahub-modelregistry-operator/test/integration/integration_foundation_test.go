@@ -1,6 +1,8 @@
 package integration
 
 import (
+	"encoding/json"
+	"fmt"
 	"testing"
 
 	. "github.com/onsi/gomega"
@@ -8,6 +10,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	klabels "k8s.io/apimachinery/pkg/labels"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/lburgazzoli/gomega-matchers/pkg/matchers/jq"
@@ -18,7 +21,7 @@ import (
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-modelregistry-operator/test/support"
 	common "github.com/opendatahub-io/odh-platform-utilities/api/common"
 	"github.com/opendatahub-io/odh-platform-utilities/pkg/metadata/annotations"
-	"github.com/opendatahub-io/odh-platform-utilities/pkg/metadata/labels"
+	mdlabels "github.com/opendatahub-io/odh-platform-utilities/pkg/metadata/labels"
 )
 
 type foundationTests struct {
@@ -60,6 +63,13 @@ func (ft *foundationTests) ensureReadyModule(t *testing.T) *componentsv1alpha1.M
 
 	t.Cleanup(func() {
 		_ = ft.Client.Delete(t.Context(), module)
+	})
+	t.Cleanup(func() {
+		if !t.Failed() {
+			return
+		}
+
+		ft.dumpEnsureReadyModuleResources(t, module, workloadDeploy)
 	})
 
 	g.Expect(ft.Client.Create(t.Context(), module)).To(Succeed())
@@ -135,7 +145,7 @@ func (ft *foundationTests) testPlatformLabels(t *testing.T) {
 		"testPlatformLabels/deployment",
 		k8sm.Get(ft.Client, workloadDeploy),
 	)).Should(And(
-		k8sm.HasLabel(labels.PlatformPartOf, componentsv1alpha1.ModelRegistryComponentName),
+		k8sm.HasLabel(mdlabels.PlatformPartOf, componentsv1alpha1.ModelRegistryComponentName),
 		k8sm.HasAnnotation(annotations.InstanceName, module.GetName()),
 		k8sm.HasAnnotation(annotations.InstanceUID, string(module.GetUID())),
 		k8sm.HasAnnotation(annotations.PlatformType, cfg.PlatformName),
@@ -268,4 +278,154 @@ func snapshotContainerStatuses(statuses []corev1.ContainerStatus) []any {
 	}
 
 	return snapshots
+}
+
+func (ft *foundationTests) dumpEnsureReadyModuleResources(
+	t *testing.T,
+	module *componentsv1alpha1.ModelRegistry,
+	deployment *appsv1.Deployment,
+) {
+	t.Helper()
+
+	t.Logf(
+		"[FailureDump] ensureReadyModule resources value=%s",
+		stringifyFailureDumpValue(ft.snapshotEnsureReadyModuleResources(t, module, deployment)),
+	)
+}
+
+func (ft *foundationTests) snapshotEnsureReadyModuleResources(
+	t *testing.T,
+	module *componentsv1alpha1.ModelRegistry,
+	deployment *appsv1.Deployment,
+) any {
+	t.Helper()
+
+	snapshot := map[string]any{}
+
+	moduleSnapshot, moduleErr := ft.lookupObjectSnapshot(t, module)
+	snapshot["module"] = moduleSnapshot
+	if moduleErr != nil {
+		snapshot["moduleError"] = moduleErr.Error()
+	}
+
+	deploymentSnapshot, deploymentErr := ft.lookupObjectSnapshot(t, deployment)
+	snapshot["deployment"] = deploymentSnapshot
+	if deploymentErr != nil {
+		snapshot["deploymentError"] = deploymentErr.Error()
+	}
+	snapshot["namespaceResources"] = ft.snapshotNamespaceResources(t, support.IntegrationTestNamespace())
+
+	return snapshot
+}
+
+func (ft *foundationTests) lookupObjectSnapshot(t *testing.T, object client.Object) (any, error) {
+	t.Helper()
+
+	if object == nil {
+		return nil, nil
+	}
+
+	key := client.ObjectKeyFromObject(object)
+	if err := ft.Client.Get(t.Context(), key, object); err != nil {
+		return map[string]any{
+			"name":      key.Name,
+			"namespace": key.Namespace,
+		}, err
+	}
+
+	return support.SnapshotObject(object), nil
+}
+
+func selectorForDeployment(deployment *appsv1.Deployment) (klabels.Selector, error) {
+	if deployment == nil || deployment.Spec.Selector == nil {
+		return nil, nil
+	}
+
+	selector, err := metav1.LabelSelectorAsSelector(deployment.Spec.Selector)
+	if err != nil {
+		return nil, err
+	}
+
+	return selector, nil
+}
+
+func (ft *foundationTests) snapshotNamespaceResources(t *testing.T, namespace string) any {
+	t.Helper()
+
+	return map[string]any{
+		"deployments":     ft.mustListObjectSnapshots(t, namespace, &appsv1.DeploymentList{}),
+		"replicaSets":     ft.mustListObjectSnapshots(t, namespace, &appsv1.ReplicaSetList{}),
+		"pods":            ft.mustListPodSnapshots(t, namespace),
+		"services":        ft.mustListObjectSnapshots(t, namespace, &corev1.ServiceList{}),
+		"serviceAccounts": ft.mustListObjectSnapshots(t, namespace, &corev1.ServiceAccountList{}),
+		"configMaps":      ft.mustListObjectSnapshots(t, namespace, &corev1.ConfigMapList{}),
+	}
+}
+
+func (ft *foundationTests) mustListObjectSnapshots(t *testing.T, namespace string, list client.ObjectList) any {
+	t.Helper()
+
+	if err := ft.Client.List(t.Context(), list, client.InNamespace(namespace)); err != nil {
+		return map[string]any{"error": err.Error()}
+	}
+
+	switch typed := list.(type) {
+	case *appsv1.DeploymentList:
+		items := make([]any, 0, len(typed.Items))
+		for i := range typed.Items {
+			items = append(items, support.SnapshotObject(&typed.Items[i]))
+		}
+		return items
+	case *appsv1.ReplicaSetList:
+		items := make([]any, 0, len(typed.Items))
+		for i := range typed.Items {
+			items = append(items, support.SnapshotObject(&typed.Items[i]))
+		}
+		return items
+	case *corev1.ServiceList:
+		items := make([]any, 0, len(typed.Items))
+		for i := range typed.Items {
+			items = append(items, support.SnapshotObject(&typed.Items[i]))
+		}
+		return items
+	case *corev1.ServiceAccountList:
+		items := make([]any, 0, len(typed.Items))
+		for i := range typed.Items {
+			items = append(items, support.SnapshotObject(&typed.Items[i]))
+		}
+		return items
+	case *corev1.ConfigMapList:
+		items := make([]any, 0, len(typed.Items))
+		for i := range typed.Items {
+			items = append(items, support.SnapshotObject(&typed.Items[i]))
+		}
+		return items
+	default:
+		return map[string]any{"error": fmt.Sprintf("unsupported list type %T", list)}
+	}
+}
+
+func (ft *foundationTests) mustListPodSnapshots(t *testing.T, namespace string) any {
+	t.Helper()
+
+	podList := &corev1.PodList{}
+	if err := ft.Client.List(t.Context(), podList, client.InNamespace(namespace)); err != nil {
+		return map[string]any{"error": err.Error()}
+	}
+
+	items := make([]any, 0, len(podList.Items))
+	for i := range podList.Items {
+		items = append(items, snapshotPod(&podList.Items[i]))
+	}
+
+	return items
+}
+
+func stringifyFailureDumpValue(value any) string {
+	data, err := json.Marshal(value)
+	if err != nil {
+		return fmt.Sprintf("%+v", value)
+	}
+
+	return string(data)
 }
