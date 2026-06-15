@@ -6,6 +6,7 @@ import (
 	. "github.com/onsi/gomega"
 	appsv1 "k8s.io/api/apps/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -74,7 +75,7 @@ func (ft *foundationTests) ensureReadyModule(t *testing.T) *componentsv1alpha1.M
 		)),
 	)
 
-	g.Eventually(t.Context(), support.WrapDeploymentStatusEventually(
+	g.Eventually(t.Context(), ft.wrapDeploymentDebugEventually(
 		t,
 		"ensureReadyModule/deployment",
 		k8sm.Get(ft.Client, workloadDeploy),
@@ -129,7 +130,7 @@ func (ft *foundationTests) testPlatformLabels(t *testing.T) {
 	cfg, err := loadOperatorConfig()
 	g.Expect(err).NotTo(HaveOccurred())
 
-	g.Eventually(t.Context(), support.WrapDeploymentStatusEventually(
+	g.Eventually(t.Context(), ft.wrapDeploymentDebugEventually(
 		t,
 		"testPlatformLabels/deployment",
 		k8sm.Get(ft.Client, workloadDeploy),
@@ -157,7 +158,7 @@ func (ft *foundationTests) testOwnerReferences(t *testing.T) {
 		Kind:       componentsv1alpha1.ModelRegistryKind,
 	}
 
-	g.Eventually(t.Context(), support.WrapDeploymentStatusEventually(
+	g.Eventually(t.Context(), ft.wrapDeploymentDebugEventually(
 		t,
 		"testOwnerReferences/deployment",
 		k8sm.Get(ft.Client, workloadDeploy),
@@ -178,4 +179,93 @@ func (ft *foundationTests) testRegistriesNamespaceStatus(t *testing.T) {
 	)).Should(
 		jq.Match(`.status.registriesNamespace != ""`),
 	)
+}
+
+func (ft *foundationTests) wrapDeploymentDebugEventually(
+	t *testing.T,
+	label string,
+	poll support.ContextPollFunc[*appsv1.Deployment],
+) support.ContextPollFunc[*appsv1.Deployment] {
+	t.Helper()
+
+	return support.WrapEventually(t, label, poll, func(deployment *appsv1.Deployment) any {
+		return ft.snapshotDeploymentWithPods(t, deployment)
+	})
+}
+
+func (ft *foundationTests) snapshotDeploymentWithPods(t *testing.T, deployment *appsv1.Deployment) any {
+	t.Helper()
+
+	snapshot := map[string]any{
+		"name":      deployment.GetName(),
+		"namespace": deployment.GetNamespace(),
+		"status":    deployment.Status,
+	}
+
+	if deployment == nil {
+		return snapshot
+	}
+
+	if deployment.Spec.Selector == nil {
+		snapshot["podsError"] = "deployment selector is nil"
+		return snapshot
+	}
+
+	selector, err := metav1.LabelSelectorAsSelector(deployment.Spec.Selector)
+	if err != nil {
+		snapshot["podsError"] = err.Error()
+		return snapshot
+	}
+
+	podList := &corev1.PodList{}
+	if err := ft.Client.List(
+		t.Context(),
+		podList,
+		client.InNamespace(deployment.GetNamespace()),
+		client.MatchingLabelsSelector{Selector: selector},
+	); err != nil {
+		snapshot["podsError"] = err.Error()
+		return snapshot
+	}
+
+	pods := make([]any, 0, len(podList.Items))
+	for i := range podList.Items {
+		pods = append(pods, snapshotPod(&podList.Items[i]))
+	}
+
+	snapshot["pods"] = pods
+
+	return snapshot
+}
+
+func snapshotPod(pod *corev1.Pod) any {
+	if pod == nil {
+		return nil
+	}
+
+	return map[string]any{
+		"name":                  pod.GetName(),
+		"phase":                 pod.Status.Phase,
+		"podIP":                 pod.Status.PodIP,
+		"deletionTimestamp":     pod.GetDeletionTimestamp(),
+		"conditions":            pod.Status.Conditions,
+		"initContainerStatuses": snapshotContainerStatuses(pod.Status.InitContainerStatuses),
+		"containerStatuses":     snapshotContainerStatuses(pod.Status.ContainerStatuses),
+	}
+}
+
+func snapshotContainerStatuses(statuses []corev1.ContainerStatus) []any {
+	snapshots := make([]any, 0, len(statuses))
+	for _, status := range statuses {
+		snapshots = append(snapshots, map[string]any{
+			"name":         status.Name,
+			"ready":        status.Ready,
+			"restartCount": status.RestartCount,
+			"started":      status.Started,
+			"state":        status.State,
+			"lastState":    status.LastTerminationState,
+		})
+	}
+
+	return snapshots
 }
