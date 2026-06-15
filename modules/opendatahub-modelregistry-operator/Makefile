@@ -70,7 +70,7 @@ test-integration-run: ## Run integration tests only (cluster must be prepared).
 	INTEGRATION_TEST_NAMESPACE="$(INTEGRATION_TEST_NAMESPACE)" go test -ldflags "$(LDFLAGS)" ./test/integration/ -tags=integration -v -timeout 5m -failfast
 
 .PHONY: test-integration-setup
-test-integration-setup: manifests generate ## Prepare the cluster for integration tests.
+test-integration-setup: manifests generate get-manifests ## Prepare the cluster for integration tests.
 	$(MAKE) cleanup-integration
 	$(MAKE) install
 
