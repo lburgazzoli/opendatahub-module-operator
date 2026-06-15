@@ -5,8 +5,8 @@ import (
 
 	. "github.com/onsi/gomega"
 	appsv1 "k8s.io/api/apps/v1"
-	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	corev1 "k8s.io/api/core/v1"
+	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -196,14 +196,14 @@ func (ft *foundationTests) wrapDeploymentDebugEventually(
 func (ft *foundationTests) snapshotDeploymentWithPods(t *testing.T, deployment *appsv1.Deployment) any {
 	t.Helper()
 
+	if deployment == nil {
+		return nil
+	}
+
 	snapshot := map[string]any{
 		"name":      deployment.GetName(),
 		"namespace": deployment.GetNamespace(),
 		"status":    deployment.Status,
-	}
-
-	if deployment == nil {
-		return snapshot
 	}
 
 	if deployment.Spec.Selector == nil {
