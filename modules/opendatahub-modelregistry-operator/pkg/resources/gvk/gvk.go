@@ -25,6 +25,7 @@ var (
 	Deployment                     = fwgvk.Deployment
 	ServiceAccount                 = fwgvk.ServiceAccount
 	ConfigMap                      = fwgvk.ConfigMap
+	ClusterRole                    = fwgvk.ClusterRole
 	ClusterRoleBinding             = fwgvk.ClusterRoleBinding
 	RoleBinding                    = fwgvk.RoleBinding
 	MutatingWebhookConfiguration   = fwgvk.MutatingWebhookConfiguration

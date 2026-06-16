@@ -33,7 +33,6 @@ import (
 	"github.com/opendatahub-io/odh-platform-utilities/framework/controller/actions/deploy"
 	"github.com/opendatahub-io/odh-platform-utilities/framework/controller/actions/gc"
 	"github.com/opendatahub-io/odh-platform-utilities/framework/controller/actions/render/kustomize"
-	"github.com/opendatahub-io/odh-platform-utilities/framework/controller/actions/render/template"
 	"github.com/opendatahub-io/odh-platform-utilities/framework/controller/actions/status/deployments"
 	fwreleases "github.com/opendatahub-io/odh-platform-utilities/framework/controller/actions/status/releases"
 	"github.com/opendatahub-io/odh-platform-utilities/framework/controller/handlers"
@@ -69,6 +68,7 @@ const appLabelPrefix = "app.opendatahub.io"
 
 // Permissions required by the deployed model-registry-operator ClusterRole
 // +kubebuilder:rbac:groups=config.openshift.io,resources=ingresses,verbs=get;list;watch
+// +kubebuilder:rbac:groups=config.openshift.io,resources=apiservers,verbs=get;list;watch
 // +kubebuilder:rbac:groups=gateway.networking.k8s.io,resources=httproutes,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=gateway.networking.k8s.io,resources=referencegrants,verbs=get;list;watch;create
 // +kubebuilder:rbac:groups=migration.k8s.io,resources=storageversionmigrations,verbs=get;list;watch;create;update;patch;delete
@@ -118,11 +118,10 @@ func NewReconciler(
 		WithAction(m.upgradeIfNeeded).
 		WithAction(m.customizeManifests).
 		WithAction(fwreleases.NewAction()).
-		WithAction(configureDependencies).
-		WithAction(template.NewAction()).
 		WithAction(kustomize.NewAction(
 			kustomize.WithNamespaceFn(moduleconfig.ApplicationsNamespaceGetter(cfg)),
 		)).
+		WithAction(m.configureDependencies).
 		WithAction(deploy.NewAction(
 			deploy.WithCache(),
 			deploy.WithApplyOrder(),
@@ -133,7 +132,7 @@ func NewReconciler(
 			deployments.InNamespaceFn(moduleconfig.ApplicationsNamespaceGetter(cfg)),
 		)).
 		WithAction(m.reportStatus).
-		WithAction(updateStatus).
+		WithAction(m.updateStatus).
 		WithAction(gc.NewAction(moduleconfig.ApplicationsNamespaceGetter(cfg))).
 		WithConditions(
 			deployments.DefaultConditionType,

@@ -22,11 +22,19 @@ import (
 	"fmt"
 
 	corev1 "k8s.io/api/core/v1"
+	rbacv1 "k8s.io/api/rbac/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	componentApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-modelregistry-operator/api/components/v1alpha1"
+	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-modelregistry-operator/pkg/resources/gvk"
+	fwdeploy "github.com/opendatahub-io/odh-platform-utilities/framework/controller/actions/deploy"
 	odhtypes "github.com/opendatahub-io/odh-platform-utilities/framework/controller/types"
 	fwparams "github.com/opendatahub-io/odh-platform-utilities/framework/utils/params"
+)
+
+const (
+	openShiftAPIServerReaderRoleName        = "model-registry-operator-apiserver-reader"
+	openShiftAPIServerReaderRoleBindingName = "model-registry-operator-apiserver-reader-binding"
 )
 
 // customizeManifests computes kustomize variables (gateway, namespace) and writes them to params.env.
@@ -74,28 +82,67 @@ func (m *Module) computeKustomizeVariables(mr *componentApi.ModelRegistry) (map[
 	}, nil
 }
 
-// configureDependencies ensures the registries namespace exists.
-func configureDependencies(_ context.Context, rr *odhtypes.ReconciliationRequest) error {
+// configureDependencies ensures the registries namespace exists and adds
+// supplemental OpenShift RBAC for the upstream controller.
+func (m *Module) configureDependencies(_ context.Context, rr *odhtypes.ReconciliationRequest) error {
 	mr, ok := rr.Instance.(*componentApi.ModelRegistry)
 	if !ok {
 		return fmt.Errorf("resource instance %v is not a ModelRegistry", rr.Instance)
+	}
+
+	subject, err := upstreamControllerSubject(rr)
+	if err != nil {
+		return fmt.Errorf("failed to resolve upstream controller service account: %w", err)
 	}
 
 	if err := rr.AddResources(
 		&corev1.Namespace{
 			ObjectMeta: metav1.ObjectMeta{
 				Name: mr.Spec.RegistriesNamespace,
+				Annotations: map[string]string{
+					fwdeploy.DefaultManagedByAnnotation: "false",
+				},
+			},
+		},
+		// Temporary: grant the rendered upstream controller access to
+		// config.openshift.io/apiservers until the fetched upstream RBAC carries
+		// this permission directly.
+		&rbacv1.ClusterRole{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: openShiftAPIServerReaderRoleName,
+			},
+			Rules: []rbacv1.PolicyRule{{
+				APIGroups: []string{"config.openshift.io"},
+				Resources: []string{"apiservers"},
+				Verbs:     []string{"get", "list", "watch"},
+			}},
+		},
+		&rbacv1.ClusterRoleBinding{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: openShiftAPIServerReaderRoleBindingName,
+			},
+			RoleRef: rbacv1.RoleRef{
+				APIGroup: gvk.ClusterRole.Group,
+				Kind:     gvk.ClusterRole.Kind,
+				Name:     openShiftAPIServerReaderRoleName,
+			},
+			Subjects: []rbacv1.Subject{
+				subject,
 			},
 		},
 	); err != nil {
-		return fmt.Errorf("failed to add namespace %s to manifests: %w", mr.Spec.RegistriesNamespace, err)
+		return fmt.Errorf(
+			"failed to add namespace and OpenShift RBAC dependencies for %s: %w",
+			mr.Spec.RegistriesNamespace,
+			err,
+		)
 	}
 
 	return nil
 }
 
 // updateStatus copies the registries namespace from spec to status.
-func updateStatus(_ context.Context, rr *odhtypes.ReconciliationRequest) error {
+func (m *Module) updateStatus(_ context.Context, rr *odhtypes.ReconciliationRequest) error {
 	mr, ok := rr.Instance.(*componentApi.ModelRegistry)
 	if !ok {
 		return errors.New("instance is not of type *ModelRegistry")

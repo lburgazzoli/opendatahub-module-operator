@@ -10,18 +10,9 @@ on:
       module_name:
         required: true
         type: string
-      run_unit_tests:
-        required: false
-        type: boolean
-        default: false
-      run_integration_tests:
-        required: false
-        type: boolean
-        default: false
-      run_e2e_tests:
-        required: false
-        type: boolean
-        default: false
+      test_type:
+        required: true
+        type: string
 
 permissions: {}
 
@@ -49,27 +40,27 @@ jobs:
           cache-dependency-path: ${{ env.MODULE_PATH }}/go.sum
 
       - name: Setup picoshift
-        if: ${{ inputs.run_integration_tests || inputs.run_e2e_tests }}
+        if: ${{ inputs.test_type == 'integration' || inputs.test_type == 'e2e' }}
         uses: ./.github/actions/setup-picoshift
         with:
           cluster_name: ${{ env.PICOSHIFT_CLUSTER_NAME }}
           kubeconfig_path: ${{ env.KUBECONFIG }}
 
       - name: Run unit tests
-        if: ${{ inputs.run_unit_tests }}
+        if: ${{ inputs.test_type == 'unit' }}
         working-directory: ${{ env.MODULE_PATH }}
         run: |
           make test
 
       - name: Run integration tests
-        if: ${{ inputs.run_integration_tests }}
+        if: ${{ inputs.test_type == 'integration' }}
         working-directory: ${{ env.MODULE_PATH }}
         run: |
           make test-integration
 
       - name: Compute image reference
         id: img
-        if: ${{ inputs.run_e2e_tests }}
+        if: ${{ inputs.test_type == 'e2e' }}
         run: |
           IMAGE_ID="$(uuidgen | tr '[:upper:]' '[:lower:]')"
           IMG="ttl.sh/${IMAGE_ID}:1h"
@@ -77,7 +68,7 @@ jobs:
           echo "Using image: ${IMG}"
 
       - name: Build and push image
-        if: ${{ inputs.run_e2e_tests }}
+        if: ${{ inputs.test_type == 'e2e' }}
         working-directory: ${{ env.MODULE_PATH }}
         env:
           CONTAINER_TOOL: podman --cgroup-manager cgroupfs
@@ -86,19 +77,19 @@ jobs:
           make container-push CONTAINER_TOOL="${CONTAINER_TOOL}" IMG=${{ steps.img.outputs.img }}
 
       - name: Generate Helm chart
-        if: ${{ inputs.run_e2e_tests }}
+        if: ${{ inputs.test_type == 'e2e' }}
         working-directory: ${{ env.MODULE_PATH }}
         run: |
           make helm
 
       - name: Run e2e tests
-        if: ${{ inputs.run_e2e_tests }}
+        if: ${{ inputs.test_type == 'e2e' }}
         working-directory: ${{ env.MODULE_PATH }}
         run: |
           make test-e2e IMG=${{ steps.img.outputs.img }}
 
       - name: Dump namespace resources on failure
-        if: ${{ failure() && (inputs.run_integration_tests || inputs.run_e2e_tests) }}
+        if: ${{ failure() && (inputs.test_type == 'integration' || inputs.test_type == 'e2e') }}
         run: |
           for ns in $(kubectl get ns -o jsonpath='{.items[*].metadata.name}'); do
             case "${ns}" in
@@ -128,6 +119,6 @@ jobs:
           done
 
       - name: Delete picoshift cluster
-        if: ${{ always() && (inputs.run_integration_tests || inputs.run_e2e_tests) }}
+        if: ${{ always() && (inputs.test_type == 'integration' || inputs.test_type == 'e2e') }}
         run: |
           env -u KUBECONFIG picoshift delete --name "${PICOSHIFT_CLUSTER_NAME}" || true

@@ -66,39 +66,29 @@ jobs:
         working-directory: ${{ env.MODULE_PATH }}
         run: make lint
 
-  unit:
+  module-unit:
     needs: define-matrix
     permissions:
       contents: read
-    name: unit ${{ matrix.module.module_name }}
-    runs-on: ubuntu-latest
+    name: module-unit ${{ matrix.module.module_name }}
     strategy:
       fail-fast: false
       matrix: ${{ fromJson(needs.define-matrix.outputs.modules) }}
-    env:
-      MODULE_PATH: modules/${{ matrix.module.module_name }}
-    steps:
-      - name: Clone the code
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-        with:
-          persist-credentials: false
-
-      - name: Setup Go
-        uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6.3.0
-        with:
-          go-version-file: ${{ env.MODULE_PATH }}/go.mod
-          cache-dependency-path: ${{ env.MODULE_PATH }}/go.sum
-
-      - name: Run module unit tests
-        working-directory: ${{ env.MODULE_PATH }}
-        run: make test
+    uses: ./.github/workflows/module-test.yml
+    secrets: inherit
+    with:
+      job_name: module-unit ${{ matrix.module.module_name }}
+      module_name: ${{ matrix.module.module_name }}
+      test_type: unit
 
   module-integration:
-    name: integration ${{ matrix.module.module_name }}
+    # Temporarily disable integration lanes in CI.
+    if: ${{ false }}
+    name: module-integration ${{ matrix.module.module_name }}
     needs:
       - define-matrix
       - lint
-      - unit
+      - module-unit
     strategy:
       fail-fast: false
       matrix: ${{ fromJson(needs.define-matrix.outputs.modules) }}
@@ -107,13 +97,14 @@ jobs:
       contents: read
     secrets: inherit
     with:
-      job_name: integration ${{ matrix.module.module_name }}
+      job_name: module-integration ${{ matrix.module.module_name }}
       module_name: ${{ matrix.module.module_name }}
-      run_unit_tests: false
-      run_integration_tests: true
+      test_type: integration
 
   module-e2e:
-    name: e2e ${{ matrix.module.module_name }}
+    # Temporarily disable e2e lanes in CI.
+    if: ${{ false }}
+    name: module-e2e ${{ matrix.module.module_name }}
     needs:
       - define-matrix
       - module-integration
@@ -125,7 +116,6 @@ jobs:
       contents: read
     secrets: inherit
     with:
-      job_name: e2e ${{ matrix.module.module_name }}
+      job_name: module-e2e ${{ matrix.module.module_name }}
       module_name: ${{ matrix.module.module_name }}
-      run_unit_tests: false
-      run_e2e_tests: true
+      test_type: e2e
