@@ -67,7 +67,7 @@ test: manifests generate fmt vet ## Run unit tests.
 
 .PHONY: test-integration-run
 test-integration-run: ## Run integration tests only (cluster must be prepared).
-	INTEGRATION_TEST_NAMESPACE="$(INTEGRATION_TEST_NAMESPACE)" go test -ldflags "$(LDFLAGS)" ./test/integration/ -tags=integration -v -timeout 5m -failfast
+	INTEGRATION_TEST_NAMESPACE="$(INTEGRATION_TEST_NAMESPACE)" TEST_PLATFORM_TYPE="$(TEST_PLATFORM_TYPE)" TEST_PLATFORM_VERSION="$(TEST_PLATFORM_VERSION)" go test -ldflags "$(LDFLAGS)" ./test/integration/ -tags=integration -v -timeout 5m -failfast
 
 .PHONY: test-integration-setup
 test-integration-setup: manifests generate get-manifests ## Prepare the cluster for integration tests.
@@ -86,7 +86,9 @@ test-e2e-setup: ## Prepare the cluster for e2e tests.
 	@:
 
 .PHONY: test-e2e
-test-e2e: test-e2e-cleanup test-e2e-setup deploy-helm test-e2e-run ## Run e2e tests (clean, prepare, deploy, then run).
+test-e2e: test-e2e-cleanup test-e2e-setup ## Run e2e tests (clean, prepare, deploy, then run).
+	$(MAKE) deploy-helm HELM_EXTRA_ARGS="$(HELM_EXTRA_ARGS) --set-string config.platform-type=$(TEST_PLATFORM_TYPE) --set-string config.platform-version=$(TEST_PLATFORM_VERSION)"
+	$(MAKE) test-e2e-run
 
 .PHONY: test-integration-cleanup
 test-integration-cleanup: ## Clean up integration test resources from the cluster.
@@ -165,6 +167,8 @@ HELM_RELEASE   ?= opendatahub-modelregistry-operator
 OPERATOR_NAMESPACE ?= $(HELM_NAMESPACE)
 INTEGRATION_TEST_NAMESPACE ?= integration-test
 HELM_EXTRA_ARGS ?=
+TEST_PLATFORM_TYPE ?= OpenDataHub
+TEST_PLATFORM_VERSION ?= 0.1.0
 
 .PHONY: helm
 helm: manifests generate ## Generate Helm chart from kustomize output.

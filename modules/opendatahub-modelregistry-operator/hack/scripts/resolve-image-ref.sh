@@ -41,43 +41,11 @@ if [[ "${image_ref}" == *.svc:*/* || "${image_ref}" == *.svc/* ]]; then
     exit 0
 fi
 
-image_name="${image_ref%%@*}"
-last_segment="${image_name##*/}"
-repo_name="${image_name}"
-if [[ "${last_segment}" == *:* ]]; then
-    repo_name="${image_name%:*}"
-fi
-
-resolve_repo_digest() {
-    local ref="$1"
-    local repo="$2"
-    local digest_ref=""
-    local candidate=""
-
-    while IFS= read -r candidate; do
-        [[ -z "${candidate}" ]] && continue
-        if [[ "${candidate}" == "${repo}@"* ]]; then
-            digest_ref="${candidate}"
-            break
-        fi
-        if [[ -z "${digest_ref}" ]]; then
-            digest_ref="${candidate}"
-        fi
-    done < <("${container_tool}" image inspect "${ref}" --format '{{range .RepoDigests}}{{println .}}{{end}}' 2>/dev/null || true)
-
-    printf '%s\n' "${digest_ref}"
-}
-
-digest_ref="$(resolve_repo_digest "${image_ref}" "${repo_name}")"
-if [[ -z "${digest_ref}" ]]; then
-    log "digest not available locally for ${image_ref}, pulling to resolve"
-    "${container_tool}" pull "${image_ref}" >/dev/null
-    digest_ref="$(resolve_repo_digest "${image_ref}" "${repo_name}")"
-fi
-
-if [[ -n "${digest_ref}" ]]; then
-    printf '%s\n' "${digest_ref}"
-else
-    log "falling back to tag reference for ${image_ref}"
+if [[ "${image_ref}" == ttl.sh/* ]]; then
+    log "leaving ttl.sh image reference unchanged: ${image_ref}"
     printf '%s\n' "${image_ref}"
+    exit 0
 fi
+
+
+printf '%s\n' "${image_ref}"

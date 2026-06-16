@@ -17,13 +17,11 @@ limitations under the License.
 package trustyai
 
 import (
-	"context"
 	"fmt"
 
 	fwtypes "github.com/opendatahub-io/odh-platform-utilities/framework/controller/types"
 	fwparams "github.com/opendatahub-io/odh-platform-utilities/framework/utils/params"
 	odhcluster "github.com/opendatahub-io/odh-platform-utilities/pkg/cluster"
-	ofVersion "github.com/operator-framework/api/pkg/lib/version"
 
 	componentApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-trustyai-operator/api/components/v1alpha1"
 	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-trustyai-operator/pkg/config"
@@ -68,67 +66,41 @@ type Module struct {
 
 // NewModule creates a Module with one-shot computed state.
 func NewModule(cfg *moduleconfig.Config) (*Module, error) {
-	platform := componentApi.Platform(cfg.PlatformName)
-	overlay := overlayODH
-	if platform == componentApi.Platform(odhcluster.SelfManagedRhoai) || platform == componentApi.Platform(odhcluster.ManagedRhoai) {
+	var overlay string
+	switch odhcluster.Platform(cfg.PlatformName) {
+	case odhcluster.SelfManagedRhoai:
 		overlay = overlayRhoai
-	}
-
-	mi := fwtypes.ManifestInfo{
-		Path:       cfg.ManifestsPath,
-		ContextDir: componentName,
-		SourcePath: overlay,
-	}
-
-	mcpMI := fwtypes.ManifestInfo{
-		Path:       cfg.ManifestsPath,
-		ContextDir: componentName,
-		SourcePath: overlayMCP,
-	}
-
-	// Apply image params once at startup (equivalent to Init in the monolith).
-	if err := fwparams.Apply(
-		mi.String(),
-		"params.env",
-		fwparams.Replacement(fwparams.FromEnv(imageParamMap)),
-	); err != nil {
-		return nil, fmt.Errorf("failed to update images on path %s: %w", mi, err)
+	case odhcluster.ManagedRhoai:
+		overlay = overlayRhoai
+	default:
+		overlay = overlayODH
 	}
 
 	return &Module{
-		cfg:             cfg,
-		manifestInfo:    mi,
-		mcpManifestInfo: mcpMI,
+		cfg: cfg,
+		manifestInfo: fwtypes.ManifestInfo{
+			Path:       cfg.ManifestsPath,
+			ContextDir: componentName,
+			SourcePath: overlay,
+		},
+		mcpManifestInfo: fwtypes.ManifestInfo{
+			Path:       cfg.ManifestsPath,
+			ContextDir: componentName,
+			SourcePath: overlayMCP,
+		},
 	}, nil
 }
 
-// initialize selects the manifest overlay based on MCPGuardrailsMode.
-func (m *Module) initialize(_ context.Context, rr *fwtypes.ReconciliationRequest) error {
-	tai, ok := rr.Instance.(*componentApi.TrustyAI)
-	if !ok {
-		return fmt.Errorf("instance is not a TrustyAI")
+// Init applies image parameter substitutions once at process startup.
+func (m *Module) Init() error {
+	if err := fwparams.Apply(
+		m.manifestInfo.String(),
+		"params.env",
+		fwparams.Replacement(fwparams.FromEnv(imageParamMap)),
+	); err != nil {
+		return fmt.Errorf("failed to update images on path %s: %w", m.manifestInfo, err)
 	}
-
-	if tai.Spec.MCPGuardrailsMode {
-		rr.Manifests = append(rr.Manifests, m.mcpManifestInfo)
-	} else {
-		rr.Manifests = append(rr.Manifests, m.manifestInfo)
-	}
-
 	return nil
 }
 
-// reportStatus populates the release status and config values.
-func (m *Module) reportStatus(_ context.Context, rr *fwtypes.ReconciliationRequest) error {
-	obj, ok := rr.Instance.(*componentApi.TrustyAI)
-	if !ok {
-		return fmt.Errorf("instance is not a TrustyAI")
-	}
 
-	obj.Status.Release = componentApi.Release{
-		Name:    componentApi.Platform(rr.Release.Name),
-		Version: ofVersion.OperatorVersion{Version: rr.Release.Version},
-	}
-
-	return nil
-}

@@ -1,6 +1,7 @@
 package integration
 
 import (
+	"context"
 	"testing"
 
 	. "github.com/onsi/gomega"
@@ -42,7 +43,7 @@ func (ft *foundationTests) Execute(t *testing.T) {
 	t.Run("should report not ready when JobSet CRD is missing", ft.testJobSetCRDMissing)
 }
 
-func (ft *foundationTests) cleanupModuleWorkload(t *testing.T) {
+func (ft *foundationTests) cleanupModuleWorkload(t *testing.T, ctx context.Context) {
 	t.Helper()
 
 	trainer := &componentsv1alpha1.Trainer{
@@ -63,11 +64,11 @@ func (ft *foundationTests) cleanupModuleWorkload(t *testing.T) {
 		},
 	}
 
-	_ = ft.Client.Delete(t.Context(), trainer)
+	_ = ft.Client.Delete(ctx, trainer)
 	g := NewWithT(t)
-	g.Eventually(t.Context(), k8sm.NotFound(ft.Client, trainer)).Should(BeTrue())
-	g.Eventually(t.Context(), k8sm.NotFound(ft.Client, workloadDeploy)).Should(BeTrue())
-	g.Eventually(t.Context(), k8sm.NotFound(ft.Client, serviceAccount)).Should(BeTrue())
+	g.Eventually(ctx, k8sm.NotFound(ft.Client, trainer)).Should(BeTrue())
+	g.Eventually(ctx, k8sm.NotFound(ft.Client, workloadDeploy)).Should(BeTrue())
+	g.Eventually(ctx, k8sm.NotFound(ft.Client, serviceAccount)).Should(BeTrue())
 }
 
 func (ft *foundationTests) ensureReadyModule(t *testing.T) *componentsv1alpha1.Trainer {
@@ -97,8 +98,8 @@ func (ft *foundationTests) ensureReadyModule(t *testing.T) *componentsv1alpha1.T
 
 	g.Eventually(t.Context(), k8sm.Get(ft.Client, trainer)).Should(
 		WithTransform(k8sm.ConditionsOf[metav1.Condition](), SatisfyAll(
-			ContainElement(condition.Is(common.ConditionTypeReady, metav1.ConditionTrue)),
-			ContainElement(condition.Is(common.ConditionTypeProvisioningSucceeded, metav1.ConditionTrue)),
+			ContainElement(condition.Is(string(common.ConditionTypeReady), metav1.ConditionTrue)),
+			ContainElement(condition.Is(string(common.ConditionTypeProvisioningSucceeded), metav1.ConditionTrue)),
 		)),
 	)
 
@@ -124,8 +125,8 @@ func (ft *foundationTests) expectDependenciesUnavailable(
 				condition.HasReason(modulemeta.PreConditionFailedReason),
 				condition.HasMessage(expectedMessage),
 			)),
-			ContainElement(condition.Is(common.ConditionTypeReady, metav1.ConditionFalse)),
-			ContainElement(condition.Is(common.ConditionTypeProvisioningSucceeded, metav1.ConditionFalse)),
+			ContainElement(condition.Is(string(common.ConditionTypeReady), metav1.ConditionFalse)),
+			ContainElement(condition.Is(string(common.ConditionTypeProvisioningSucceeded), metav1.ConditionFalse)),
 		)),
 	)
 }
@@ -146,25 +147,25 @@ func (ft *foundationTests) testJobSetOperatorCRDMissing(t *testing.T) {
 			Name: componentsv1alpha1.TrainerInstanceName,
 		},
 	}
-	ft.cleanupModuleWorkload(t)
+	ft.cleanupModuleWorkload(t, t.Context())
 
 	jobSetOperatorCRD := &apiextensionsv1.CustomResourceDefinition{
 		ObjectMeta: metav1.ObjectMeta{Name: jobSetOperatorCRDName},
 	}
-	g.Expect(ft.Client.Delete(t.Context(), jobSetOperatorCRD)).To(Succeed())
+	g.Expect(support.EnsureStubCRD(
+		t.Context(), ft.Client,
+		jobSetOperatorCRDName, "operator.openshift.io", "v1", "JobSetOperator", "jobsetoperators",
+	)).To(Succeed())
+	g.Eventually(t.Context(), k8sm.Delete(ft.Client, jobSetOperatorCRD)).Should(Succeed())
 	g.Eventually(t.Context(), k8sm.NotFound(ft.Client, jobSetOperatorCRD)).Should(BeTrue())
 	t.Cleanup(func() {
-		_, _ = support.EnsureStubCRDIfMissing(
-			t.Context(),
-			ft.Client,
-			jobSetOperatorCRDName,
-			"operator.openshift.io",
-			"v1",
-			"JobSetOperator",
-			"jobsetoperators",
+		ctx := context.Background()
+		_ = support.EnsureStubCRD(
+			ctx, ft.Client,
+			jobSetOperatorCRDName, "operator.openshift.io", "v1", "JobSetOperator", "jobsetoperators",
 		)
-		_, _ = support.EnsureStubJobSetOperatorCRIfMissing(t.Context(), ft.Client)
-		ft.cleanupModuleWorkload(t)
+		_ = support.EnsureStubJobSetOperatorCR(ctx, ft.Client)
+		ft.cleanupModuleWorkload(t, ctx)
 	})
 
 	g.Expect(ft.Client.Create(t.Context(), obj)).To(Succeed())
@@ -178,14 +179,21 @@ func (ft *foundationTests) testJobSetOperatorCRMissing(t *testing.T) {
 			Name: componentsv1alpha1.TrainerInstanceName,
 		},
 	}
-	ft.cleanupModuleWorkload(t)
+	ft.cleanupModuleWorkload(t, t.Context())
 
+	// Ensure the CRD and CR both exist, then delete the CR to test the missing-CR path.
+	g.Expect(support.EnsureStubCRD(
+		t.Context(), ft.Client,
+		jobSetOperatorCRDName, "operator.openshift.io", "v1", "JobSetOperator", "jobsetoperators",
+	)).To(Succeed())
+	g.Expect(support.EnsureStubJobSetOperatorCR(t.Context(), ft.Client)).To(Succeed())
 	jobSetOperatorCR := support.NewStubJobSetOperatorCR()
-	g.Expect(ft.Client.Delete(t.Context(), jobSetOperatorCR)).To(Succeed())
+	g.Eventually(t.Context(), k8sm.Delete(ft.Client, jobSetOperatorCR)).Should(Succeed())
 	g.Eventually(t.Context(), k8sm.NotFound(ft.Client, jobSetOperatorCR)).Should(BeTrue())
 	t.Cleanup(func() {
-		_, _ = support.EnsureStubJobSetOperatorCRIfMissing(t.Context(), ft.Client)
-		ft.cleanupModuleWorkload(t)
+		ctx := context.Background()
+		_ = support.EnsureStubJobSetOperatorCR(ctx, ft.Client)
+		ft.cleanupModuleWorkload(t, ctx)
 	})
 
 	g.Expect(ft.Client.Create(t.Context(), obj)).To(Succeed())
@@ -199,24 +207,24 @@ func (ft *foundationTests) testJobSetCRDMissing(t *testing.T) {
 			Name: componentsv1alpha1.TrainerInstanceName,
 		},
 	}
-	ft.cleanupModuleWorkload(t)
+	ft.cleanupModuleWorkload(t, t.Context())
 
 	jobSetCRD := &apiextensionsv1.CustomResourceDefinition{
 		ObjectMeta: metav1.ObjectMeta{Name: jobSetCRDName},
 	}
-	g.Expect(ft.Client.Delete(t.Context(), jobSetCRD)).To(Succeed())
+	g.Expect(support.EnsureStubCRD(
+		t.Context(), ft.Client,
+		jobSetCRDName, "jobset.x-k8s.io", "v1alpha2", "JobSet", "jobsets",
+	)).To(Succeed())
+	g.Eventually(t.Context(), k8sm.Delete(ft.Client, jobSetCRD)).Should(Succeed())
 	g.Eventually(t.Context(), k8sm.NotFound(ft.Client, jobSetCRD)).Should(BeTrue())
 	t.Cleanup(func() {
-		_, _ = support.EnsureStubCRDIfMissing(
-			t.Context(),
-			ft.Client,
-			jobSetCRDName,
-			"jobset.x-k8s.io",
-			"v1alpha2",
-			"JobSet",
-			"jobsets",
+		ctx := context.Background()
+		_ = support.EnsureStubCRD(
+			ctx, ft.Client,
+			jobSetCRDName, "jobset.x-k8s.io", "v1alpha2", "JobSet", "jobsets",
 		)
-		ft.cleanupModuleWorkload(t)
+		ft.cleanupModuleWorkload(t, ctx)
 	})
 
 	g.Expect(ft.Client.Create(t.Context(), obj)).To(Succeed())

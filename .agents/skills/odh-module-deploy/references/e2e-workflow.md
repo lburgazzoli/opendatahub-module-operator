@@ -60,6 +60,22 @@ If you are validating against a non-CRC OpenShift cluster, replace
 `deploy-crc` with `deploy-helm IMG="${IMG}"` and make sure `IMG` is already a
 cluster-reachable image reference.
 
+When using `deploy-helm` (instead of `deploy-crc`), always pass the platform
+config flags that `make test-e2e` sets automatically, otherwise the operator
+ConfigMap will have empty defaults and tests like `testOperatorConfigMap` and
+`testReleaseStatus` will fail:
+
+```bash
+make deploy-helm IMG="${IMG}" \
+  HELM_EXTRA_ARGS="--set-string config.platform-name=OpenDataHub --set-string config.platform-version=<version>"
+```
+
+Check the module's `Makefile` `test-e2e` target for the exact flag names and
+default values. **The right `config.platform-version` depends on which tests
+you are running** — tests that exercise upgrade paths expect a specific
+version sequence (e.g. deploy at version N-1, then upgrade to N). Use the
+version the test expects at the deploy step, not an arbitrary value.
+
 On the **first** cluster verify pass, keep tool timeouts short so obvious
 problems fail quickly. If `deploy-helm` or `test-e2e-run` stops making progress,
 check operator logs immediately instead of waiting indefinitely for the outer

@@ -30,6 +30,7 @@ import (
 	componentApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-feast-operator/api/components/v1alpha1"
 	odhtypes "github.com/opendatahub-io/odh-platform-utilities/framework/controller/types"
 	fwparams "github.com/opendatahub-io/odh-platform-utilities/framework/utils/params"
+	ofVersion "github.com/operator-framework/api/pkg/lib/version"
 )
 
 const (
@@ -42,16 +43,23 @@ const (
 	selectorLabelValue = "feast-operator"
 )
 
-// setKustomizedParams merges runtime values from the FeastOperator CR into params.env
+// initialize appends the pre-resolved manifest info to the pipeline.
+// Feast does not require namespace substitution in params.env.
+func (m *Module) initialize(_ context.Context, rr *odhtypes.ReconciliationRequest) error {
+	rr.Manifests = append(rr.Manifests, m.manifestInfo)
+	return nil
+}
+
+// customizeManifests merges runtime values from the FeastOperator CR into params.env
 // before kustomize renders the manifests. Writes OIDC_ISSUER_URL (empty when OIDC not in use).
-func (m *Module) setKustomizedParams(_ context.Context, rr *odhtypes.ReconciliationRequest) error {
+func (m *Module) customizeManifests(_ context.Context, rr *odhtypes.ReconciliationRequest) error {
 	feast, ok := rr.Instance.(*componentApi.FeastOperator)
 	if !ok {
 		return errors.New("instance is not a FeastOperator")
 	}
 
 	if len(rr.Manifests) == 0 {
-		return errors.New("no manifests initialized before setKustomizedParams")
+		return errors.New("no manifests initialized before customizeManifests")
 	}
 
 	issuerURL := ""
@@ -120,6 +128,21 @@ func (m *Module) migrateDeploymentSelector(ctx context.Context, rr *odhtypes.Rec
 
 	log.Info("Deleted Feast operator Deployment, it will be recreated with the correct selector",
 		"deployment", deploymentName, "namespace", m.cfg.ApplicationsNamespace)
+
+	return nil
+}
+
+// reportStatus populates the release status and config values.
+func (m *Module) reportStatus(_ context.Context, rr *odhtypes.ReconciliationRequest) error {
+	obj, ok := rr.Instance.(*componentApi.FeastOperator)
+	if !ok {
+		return fmt.Errorf("instance is not a FeastOperator")
+	}
+
+	obj.Status.Release = componentApi.Release{
+		Name:    componentApi.Platform(rr.Release.Name),
+		Version: ofVersion.OperatorVersion{Version: rr.Release.Version},
+	}
 
 	return nil
 }

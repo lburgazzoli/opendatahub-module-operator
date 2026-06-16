@@ -1,2 +1,12 @@
 modules:
+  - opendatahub-datasciencepipelines-operator
+  - opendatahub-feast-operator
+  - opendatahub-mlflow-operator
   - opendatahub-modelregistry-operator
+  - opendatahub-mymodule-operator
+  - opendatahub-ogx-operator
+  - opendatahub-ray-operator
+  - opendatahub-spark-operator
+  - opendatahub-trainer-operator
+  - opendatahub-trustyai-operator
+  - opendatahub-workbenches-operator

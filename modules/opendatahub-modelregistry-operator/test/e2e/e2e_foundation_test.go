@@ -26,6 +26,7 @@ import (
 	"github.com/opendatahub-io/odh-platform-utilities/pkg/metadata/labels"
 )
 
+
 type foundationTests struct {
 	Client        client.Client
 	gatewayDomain string
@@ -41,8 +42,53 @@ func (ft *foundationTests) Execute(t *testing.T) {
 	t.Run("should set registries namespace in status", ft.testRegistriesNamespaceStatus)
 }
 
-func (ft *foundationTests) moduleObject() *componentsv1alpha1.ModelRegistry {
-	return &componentsv1alpha1.ModelRegistry{
+func (ft *foundationTests) setOperatorPlatformVersion(t *testing.T, platformVersion string) *corev1.ConfigMap {
+	t.Helper()
+
+	g := NewWithT(t)
+	operatorCfgMap := &corev1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      modulemeta.OperatorConfigName,
+			Namespace: support.OperatorNamespace(),
+		},
+	}
+	g.Eventually(t.Context(), k8sm.Lookup(ft.Client, operatorCfgMap)).Should(Succeed())
+
+	patch := client.MergeFrom(operatorCfgMap.DeepCopy())
+	if operatorCfgMap.Data == nil {
+		operatorCfgMap.Data = map[string]string{}
+	}
+	operatorCfgMap.Data[moduleconfig.KeyPlatformVersion] = platformVersion
+	g.Expect(ft.Client.Patch(t.Context(), operatorCfgMap, patch)).To(Succeed())
+
+	pods := &corev1.PodList{}
+	g.Expect(ft.Client.List(t.Context(), pods,
+		client.InNamespace(support.OperatorNamespace()),
+		client.MatchingLabels{"app.kubernetes.io/name": "opendatahub-modelregistry-operator"},
+	)).To(Succeed())
+	for i := range pods.Items {
+		g.Expect(ft.Client.Delete(t.Context(), &pods.Items[i])).To(Succeed())
+	}
+
+	operatorDeploy := &appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "opendatahub-modelregistry-operator",
+			Namespace: support.OperatorNamespace(),
+		},
+	}
+	g.Eventually(t.Context(), k8sm.Get(ft.Client, operatorDeploy)).Should(
+		jq.Match(`.status.readyReplicas >= 1`),
+	)
+	g.Expect(ft.Client.Get(t.Context(), client.ObjectKeyFromObject(operatorCfgMap), operatorCfgMap)).To(Succeed())
+
+	return operatorCfgMap
+}
+
+func (ft *foundationTests) ensureReadyModule(t *testing.T) *componentsv1alpha1.ModelRegistry {
+	t.Helper()
+
+	g := NewWithT(t)
+	module := &componentsv1alpha1.ModelRegistry{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: componentsv1alpha1.ModelRegistryInstanceName,
 		},
@@ -52,23 +98,12 @@ func (ft *foundationTests) moduleObject() *componentsv1alpha1.ModelRegistry {
 			},
 		},
 	}
-}
-
-func workloadDeployment() *appsv1.Deployment {
-	return &appsv1.Deployment{
+	workloadDeploy := &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      "model-registry-operator-controller-manager",
+			Name:      support.ManagedDeploymentName,
 			Namespace: support.OperatorNamespace(),
 		},
 	}
-}
-
-func (ft *foundationTests) ensureReadyModule(t *testing.T) *componentsv1alpha1.ModelRegistry {
-	t.Helper()
-
-	g := NewWithT(t)
-	module := ft.moduleObject()
-	workloadDeploy := workloadDeployment()
 
 	_ = ft.Client.Delete(t.Context(), module)
 	g.Eventually(t.Context(), k8sm.NotFound(ft.Client, module)).Should(BeTrue())
@@ -79,13 +114,12 @@ func (ft *foundationTests) ensureReadyModule(t *testing.T) *componentsv1alpha1.M
 
 	g.Expect(ft.Client.Create(t.Context(), module)).To(Succeed())
 
-	g.Eventually(t.Context(), k8sm.Get(ft.Client, module)).Should(And(
-		jq.Match(`.status.phase == "Ready"`),
+	g.Eventually(t.Context(), k8sm.Get(ft.Client, module)).Should(
 		WithTransform(k8sm.ConditionsOf[metav1.Condition](), SatisfyAll(
-			ContainElement(condition.Is(common.ConditionTypeReady, metav1.ConditionTrue)),
-			ContainElement(condition.Is(common.ConditionTypeProvisioningSucceeded, metav1.ConditionTrue)),
+			ContainElement(condition.Is(string(common.ConditionTypeReady), metav1.ConditionTrue)),
+			ContainElement(condition.Is(string(common.ConditionTypeProvisioningSucceeded), metav1.ConditionTrue)),
 		)),
-	))
+	)
 
 	g.Eventually(t.Context(), k8sm.Get(ft.Client, workloadDeploy)).Should(
 		jq.Match(`.status.readyReplicas >= 1`),
@@ -164,7 +198,12 @@ func (ft *foundationTests) testPlatformLabels(t *testing.T) {
 			Namespace: support.OperatorNamespace(),
 		},
 	}
-	workloadDeploy := workloadDeployment()
+	workloadDeploy := &appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      support.ManagedDeploymentName,
+			Namespace: support.OperatorNamespace(),
+		},
+	}
 
 	g.Eventually(t.Context(), k8sm.Lookup(ft.Client, operatorCfg)).Should(Succeed())
 
@@ -181,7 +220,12 @@ func (ft *foundationTests) testOwnerReferences(t *testing.T) {
 	g := NewWithT(t)
 
 	owner := ft.ensureReadyModule(t)
-	workloadDeploy := workloadDeployment()
+	workloadDeploy := &appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      support.ManagedDeploymentName,
+			Namespace: support.OperatorNamespace(),
+		},
+	}
 	owner.TypeMeta = metav1.TypeMeta{
 		APIVersion: componentsv1alpha1.GroupVersion.String(),
 		Kind:       componentsv1alpha1.ModelRegistryKind,

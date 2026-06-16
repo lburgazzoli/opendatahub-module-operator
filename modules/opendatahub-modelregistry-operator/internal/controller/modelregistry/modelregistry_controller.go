@@ -91,7 +91,11 @@ func NewReconciler(
 		return err
 	}
 
-	r, err := reconciler.ReconcilerFor(mgr, &componentApi.ModelRegistry{}).
+	if err := m.Init(); err != nil {
+		return err
+	}
+
+	_, err = reconciler.ReconcilerFor(mgr, &componentApi.ModelRegistry{}).
 		Owns(&corev1.ConfigMap{}).
 		Owns(&corev1.Secret{}).
 		Owns(&rbacv1.Role{}).
@@ -113,6 +117,12 @@ func NewReconciler(
 				handlers.ToNamed(componentApi.ModelRegistryInstanceName)),
 			reconciler.WithPredicates(
 				labelpred.ForLabel(appLabelPrefix+"/"+LegacyComponentName, "true")),
+		).
+		WithReconcilerOpts(
+			reconciler.WithRelease(fwapi.Release{
+				Name:    fwapi.Platform(rel.Name),
+				Version: rel.Version.Version,
+			}),
 		).
 		WithAction(m.initialize).
 		WithAction(m.upgradeIfNeeded).
@@ -141,11 +151,6 @@ func NewReconciler(
 
 	if err != nil {
 		return err
-	}
-
-	r.Release = fwapi.Release{
-		Name:    fwapi.Platform(rel.Name),
-		Version: rel.Version.Version,
 	}
 
 	return nil

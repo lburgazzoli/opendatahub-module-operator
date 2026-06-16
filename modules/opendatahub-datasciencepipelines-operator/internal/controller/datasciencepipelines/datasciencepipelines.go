@@ -22,13 +22,14 @@ import (
 	"path"
 	"strconv"
 
+	"sigs.k8s.io/controller-runtime/pkg/client"
+
 	componentApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-datasciencepipelines-operator/api/components/v1alpha1"
 	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-datasciencepipelines-operator/pkg/config"
 	fwerrors "github.com/opendatahub-io/odh-platform-utilities/framework/controller/actions/errors"
 	fwtypes "github.com/opendatahub-io/odh-platform-utilities/framework/controller/types"
 	fwparams "github.com/opendatahub-io/odh-platform-utilities/framework/utils/params"
 	odhcluster "github.com/opendatahub-io/odh-platform-utilities/pkg/cluster"
-	ofVersion "github.com/operator-framework/api/pkg/lib/version"
 )
 
 const (
@@ -80,73 +81,47 @@ type Module struct {
 }
 
 func NewModule(cfg *moduleconfig.Config) (*Module, error) {
-	overlay := overlayODH
-	platform := componentApi.Platform(cfg.PlatformName)
-	if platform == componentApi.Platform(odhcluster.SelfManagedRhoai) || platform == componentApi.Platform(odhcluster.ManagedRhoai) {
+	var overlay string
+
+	switch odhcluster.Platform(cfg.PlatformName) {
+	case odhcluster.SelfManagedRhoai:
 		overlay = overlayRhoai
-	}
-
-	mi := fwtypes.ManifestInfo{
-		Path:       cfg.ManifestsPath,
-		ContextDir: componentName,
-		SourcePath: overlay,
-	}
-
-	if err := fwparams.Apply(
-		paramsPath(cfg.ManifestsPath),
-		"params.env",
-		fwparams.Replacement(fwparams.FromEnv(imageParamMap)),
-		fwparams.Values(map[string]string{
-			platformVersionParamsKey: cfg.PlatformVersion,
-		}),
-	); err != nil {
-		return nil, fmt.Errorf("failed to update images on path %s: %w", paramsPath(cfg.ManifestsPath), err)
+	case odhcluster.ManagedRhoai:
+		overlay = overlayRhoai
+	default:
+		overlay = overlayODH
 	}
 
 	return &Module{
-		cfg:          cfg,
-		manifestInfo: mi,
+		cfg: cfg,
+		manifestInfo: fwtypes.ManifestInfo{
+			Path:       cfg.ManifestsPath,
+			ContextDir: componentName,
+			SourcePath: overlay,
+		},
 	}, nil
 }
 
-func paramsPath(basePath string) string {
-	return path.Join(basePath, componentName, "base")
-}
-
-func (m *Module) initialize(_ context.Context, rr *fwtypes.ReconciliationRequest) error {
-	rr.Manifests = append(rr.Manifests, m.manifestInfo)
-	return nil
-}
-
-func (m *Module) applyBaseParams(ctx context.Context, rr *fwtypes.ReconciliationRequest) error {
-	info, err := odhcluster.DetectClusterInfo(ctx, rr.Client)
+func (m *Module) Init(ctx context.Context, reader client.Reader) error {
+	info, err := odhcluster.DetectClusterInfo(ctx, reader)
 	if err != nil {
 		return fmt.Errorf("detecting cluster info: %w", err)
 	}
 
+	pp := path.Join(m.cfg.ManifestsPath, componentName, "base")
+
 	if err := fwparams.Apply(
-		paramsPath(m.cfg.ManifestsPath),
+		pp,
 		"params.env",
+		fwparams.Replacement(
+			fwparams.FromEnv(imageParamMap),
+		),
 		fwparams.Values(map[string]string{
 			platformVersionParamsKey: m.cfg.PlatformVersion,
 			fipsEnabledParamsKey:     strconv.FormatBool(info.FipsEnabled),
 		}),
 	); err != nil {
-		return fmt.Errorf("failed to update params on path %s: %w", paramsPath(m.cfg.ManifestsPath), err)
-	}
-
-	return nil
-}
-
-func (m *Module) reportStatus(_ context.Context, rr *fwtypes.ReconciliationRequest) error {
-	obj, ok := rr.Instance.(*componentApi.DataSciencePipelines)
-	if !ok {
-		return fmt.Errorf("instance is not a DataSciencePipelines")
-	}
-
-	obj.Status.Release = componentApi.Release{
-		Name:    componentApi.Platform(rr.Release.Name),
-		Version: ofVersion.OperatorVersion{Version: rr.Release.Version},
+		return fmt.Errorf("failed to update params on path %s: %w", pp, err)
 	}
 
 	return nil

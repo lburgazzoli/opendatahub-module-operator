@@ -39,16 +39,14 @@ import (
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-trustyai-operator/test/support"
 )
 
-const testPlatformName = "OpenDataHub"
-
 func loadOperatorConfig() (*moduleconfig.Config, error) {
 	moduleCfg, err := moduleconfig.LoadFromFS(nil)
 	if err != nil {
 		return nil, fmt.Errorf("loading operator config: %w", err)
 	}
 
-	moduleCfg.PlatformName = testPlatformName
-	moduleCfg.PlatformVersion = moduleconfig.DefaultPlatformVersion
+	moduleCfg.PlatformName = support.PlatformName()
+	moduleCfg.PlatformVersion = support.PlatformVersion()
 	moduleCfg.ApplicationsNamespace = support.IntegrationTestNamespace()
 	moduleCfg.ManifestsPath = support.MustProjectFile("config", "manifests")
 

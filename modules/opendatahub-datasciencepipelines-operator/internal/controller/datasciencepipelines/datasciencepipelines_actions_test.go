@@ -236,7 +236,8 @@ func TestCheckPreConditions(t *testing.T) {
 				Conditions: conditions.NewManager(tt.instance, string(fwapi.ConditionTypeReady)),
 			}
 
-			err := checkPreConditions(ctx, &rr)
+			m := &Module{}
+			err := m.checkPreConditions(ctx, &rr)
 			if tt.expectedError != nil {
 				g.Expect(err).To(Equal(tt.expectedError))
 			} else {
@@ -279,7 +280,8 @@ func TestCheckPreConditionsWrongInstanceType(t *testing.T) {
 		Conditions: conditions.NewManager(wrongInstance, string(fwapi.ConditionTypeReady)),
 	}
 
-	err := checkPreConditions(context.Background(), &rr)
+	m := &Module{}
+	err := m.checkPreConditions(context.Background(), &rr)
 	g.Expect(err).To(HaveOccurred())
 	g.Expect(err.Error()).To(ContainSubstring("is not a DataSciencePipelines"))
 }
@@ -327,7 +329,8 @@ func TestArgoWorkflowsControllersOptions(t *testing.T) {
 				ManifestsBasePath: root,
 			}
 
-			err := argoWorkflowsControllersOptions(context.Background(), &rr)
+			m := &Module{}
+			err := m.argoWorkflowsControllersOptions(context.Background(), &rr)
 			if tt.expectedError {
 				g.Expect(err).To(HaveOccurred())
 				return

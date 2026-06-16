@@ -27,9 +27,11 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
+	componentApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-mlflow-operator/api/components/v1alpha1"
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-mlflow-operator/pkg/resources/gvk"
 	fwtypes "github.com/opendatahub-io/odh-platform-utilities/framework/controller/types"
 	fwparams "github.com/opendatahub-io/odh-platform-utilities/framework/utils/params"
+	ofVersion "github.com/operator-framework/api/pkg/lib/version"
 )
 
 // errGatewayDomainEmpty is returned when GatewayConfig exists but Status.Domain is not yet set.
@@ -54,6 +56,60 @@ func getGatewayDomain(ctx context.Context, reader client.Reader) (string, error)
 	}
 
 	return domain, nil
+}
+
+// initialize appends the pre-resolved manifest info to the pipeline.
+func (m *Module) initialize(_ context.Context, rr *fwtypes.ReconciliationRequest) error {
+	rr.Manifests = append(rr.Manifests, m.manifestInfo)
+	return nil
+}
+
+// customizeManifests writes runtime-computed variables (mlflow-url, section-title)
+// to base/params.env before kustomize renders the manifests. The gateway domain is
+// read live from GatewayConfig.Status.Domain.
+//
+// TODO(module-team): validate error-handling behavior for your deployment. Currently,
+// if GatewayConfig is absent or domain is not yet set, the params are skipped and
+// mlflow-url / section-title will not be rendered. The ConsoleLink will be broken
+// until GatewayConfig is available.
+func (m *Module) customizeManifests(ctx context.Context, rr *fwtypes.ReconciliationRequest) error {
+	consoleLinkDomain, err := getGatewayDomain(ctx, rr.Client)
+	if err != nil {
+		switch {
+		case meta.IsNoMatchError(err):
+			// GatewayConfig CRD not installed — gateway service not deployed.
+			// TODO(module-team): decide whether to requeue instead of silently skipping.
+			return nil
+		case k8serr.IsNotFound(err):
+			// GatewayConfig CR does not exist yet — may appear later.
+			// TODO(module-team): decide whether to requeue instead of silently skipping.
+			return nil
+		case err == errGatewayDomainEmpty:
+			// GatewayConfig exists but Status.Domain is not populated yet.
+			// TODO(module-team): decide whether to requeue instead of silently skipping.
+			return nil
+		default:
+			return fmt.Errorf("error getting gateway domain: %w", err)
+		}
+	}
+
+	extraParams := map[string]string{
+		"mlflow-url":    fmt.Sprintf("https://%s/", consoleLinkDomain),
+		"section-title": m.consoleSectionTitle,
+	}
+
+	// The monolith writes params to base/, not to the overlay path.
+	paramsPath := path.Join(m.cfg.ManifestsPath, componentName, paramsSubDir)
+
+	if err := fwparams.Apply(
+		paramsPath,
+		"params.env",
+		fwparams.Values(extraParams),
+	); err != nil {
+		return fmt.Errorf("failed to update params.env from %s: %w", paramsPath, err)
+	}
+
+	return nil
 }
 
 // fixDeploymentNamespace amends the rendered mlflow-operator Deployment in rr.Resources
@@ -103,49 +159,16 @@ func (m *Module) fixDeploymentNamespace(_ context.Context, rr *fwtypes.Reconcili
 	return nil
 }
 
-// setKustomizedParams writes runtime-computed variables (mlflow-url, section-title)
-// to base/params.env before kustomize renders the manifests. The gateway domain is
-// read live from GatewayConfig.Status.Domain.
-//
-// TODO(module-team): validate error-handling behavior for your deployment. Currently,
-// if GatewayConfig is absent or domain is not yet set, the params are skipped and
-// mlflow-url / section-title will not be rendered. The ConsoleLink will be broken
-// until GatewayConfig is available.
-func (m *Module) setKustomizedParams(ctx context.Context, rr *fwtypes.ReconciliationRequest) error {
-	consoleLinkDomain, err := getGatewayDomain(ctx, rr.Client)
-	if err != nil {
-		switch {
-		case meta.IsNoMatchError(err):
-			// GatewayConfig CRD not installed — gateway service not deployed.
-			// TODO(module-team): decide whether to requeue instead of silently skipping.
-			return nil
-		case k8serr.IsNotFound(err):
-			// GatewayConfig CR does not exist yet — may appear later.
-			// TODO(module-team): decide whether to requeue instead of silently skipping.
-			return nil
-		case err == errGatewayDomainEmpty:
-			// GatewayConfig exists but Status.Domain is not populated yet.
-			// TODO(module-team): decide whether to requeue instead of silently skipping.
-			return nil
-		default:
-			return fmt.Errorf("error getting gateway domain: %w", err)
-		}
+// reportStatus populates the release status and config values.
+func (m *Module) reportStatus(_ context.Context, rr *fwtypes.ReconciliationRequest) error {
+	obj, ok := rr.Instance.(*componentApi.MLflowOperator)
+	if !ok {
+		return fmt.Errorf("instance is not a MLflowOperator")
 	}
 
-	extraParams := map[string]string{
-		"mlflow-url":    fmt.Sprintf("https://%s/", consoleLinkDomain),
-		"section-title": m.consoleSectionTitle,
-	}
-
-	// The monolith writes params to base/, not to the overlay path.
-	paramsPath := path.Join(m.cfg.ManifestsPath, componentName, paramsSubDir)
-
-	if err := fwparams.Apply(
-		paramsPath,
-		"params.env",
-		fwparams.Values(extraParams),
-	); err != nil {
-		return fmt.Errorf("failed to update params.env from %s: %w", paramsPath, err)
+	obj.Status.Release = componentApi.Release{
+		Name:    componentApi.Platform(rr.Release.Name),
+		Version: ofVersion.OperatorVersion{Version: rr.Release.Version},
 	}
 
 	return nil

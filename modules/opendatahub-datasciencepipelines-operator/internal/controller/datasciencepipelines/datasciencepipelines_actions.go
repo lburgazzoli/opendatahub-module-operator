@@ -20,6 +20,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"path"
 
 	componentApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-datasciencepipelines-operator/api/components/v1alpha1"
 	module "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-datasciencepipelines-operator/pkg/module"
@@ -29,10 +30,16 @@ import (
 	fwtypes "github.com/opendatahub-io/odh-platform-utilities/framework/controller/types"
 	fwparams "github.com/opendatahub-io/odh-platform-utilities/framework/utils/params"
 	operatorv1 "github.com/openshift/api/operator/v1"
+	ofVersion "github.com/operator-framework/api/pkg/lib/version"
 	k8serr "k8s.io/apimachinery/pkg/api/errors"
 )
 
-func checkPreConditions(ctx context.Context, rr *fwtypes.ReconciliationRequest) error {
+func (m *Module) initialize(_ context.Context, rr *fwtypes.ReconciliationRequest) error {
+	rr.Manifests = append(rr.Manifests, m.manifestInfo)
+	return nil
+}
+
+func (m *Module) checkPreConditions(ctx context.Context, rr *fwtypes.ReconciliationRequest) error {
 	dsp, ok := rr.Instance.(*componentApi.DataSciencePipelines)
 	if !ok {
 		return fmt.Errorf("resource instance %T is not a DataSciencePipelines", rr.Instance)
@@ -95,7 +102,7 @@ func checkPreConditions(ctx context.Context, rr *fwtypes.ReconciliationRequest) 
 	return nil
 }
 
-func argoWorkflowsControllersOptions(_ context.Context, rr *fwtypes.ReconciliationRequest) error {
+func (m *Module) argoWorkflowsControllersOptions(_ context.Context, rr *fwtypes.ReconciliationRequest) error {
 	dsp, ok := rr.Instance.(*componentApi.DataSciencePipelines)
 	if !ok {
 		return fmt.Errorf("resource instance %T is not a DataSciencePipelines", rr.Instance)
@@ -113,16 +120,30 @@ func argoWorkflowsControllersOptions(_ context.Context, rr *fwtypes.Reconciliati
 		return fmt.Errorf("failed to marshal spec.argoWorkflowsControllers: %w", err)
 	}
 
-	extraParams := map[string]string{
-		argoWorkflowsControllersParamsKey: string(awfSpecJSON),
-	}
+	pp := path.Join(m.cfg.ManifestsPath, componentName, "base")
 
 	if err := fwparams.Apply(
-		paramsPath(rr.ManifestsBasePath),
+		pp,
 		"params.env",
-		fwparams.Values(extraParams),
+		fwparams.Values(map[string]string{
+			argoWorkflowsControllersParamsKey: string(awfSpecJSON),
+		}),
 	); err != nil {
-		return fmt.Errorf("failed to update params.env: %w", err)
+		return fmt.Errorf("failed to update params.env on path %s:: %w", pp, err)
+	}
+
+	return nil
+}
+
+func (m *Module) reportStatus(_ context.Context, rr *fwtypes.ReconciliationRequest) error {
+	obj, ok := rr.Instance.(*componentApi.DataSciencePipelines)
+	if !ok {
+		return fmt.Errorf("instance is not a DataSciencePipelines")
+	}
+
+	obj.Status.Release = componentApi.Release{
+		Name:    componentApi.Platform(rr.Release.Name),
+		Version: ofVersion.OperatorVersion{Version: rr.Release.Version},
 	}
 
 	return nil

@@ -59,8 +59,8 @@ func (ft *foundationTests) ensureReadyModule(t *testing.T) *componentsv1alpha1.M
 
 	g.Eventually(t.Context(), k8sm.Get(ft.Client, module)).Should(
 		WithTransform(k8sm.ConditionsOf[metav1.Condition](), SatisfyAll(
-			ContainElement(condition.Is(common.ConditionTypeReady, metav1.ConditionTrue)),
-			ContainElement(condition.Is(common.ConditionTypeProvisioningSucceeded, metav1.ConditionTrue)),
+			ContainElement(condition.Is(string(common.ConditionTypeReady), metav1.ConditionTrue)),
+			ContainElement(condition.Is(string(common.ConditionTypeProvisioningSucceeded), metav1.ConditionTrue)),
 		)),
 	)
 

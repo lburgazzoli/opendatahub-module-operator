@@ -43,7 +43,7 @@ type Module struct {
 	webhookClient client.Client
 }
 
-// NewModule creates a Module, pre-computes manifest paths, and applies image parameter substitutions.
+// NewModule creates a Module and pre-computes manifest paths.
 func NewModule(cfg *moduleconfig.Config) (*Module, error) {
 	platform := componentApi.Platform(cfg.PlatformName)
 
@@ -52,45 +52,48 @@ func NewModule(cfg *moduleconfig.Config) (*Module, error) {
 		imgSourcePath = notebookImagesManifestSourcePath[componentApi.Platform(odhcluster.OpenDataHub)]
 	}
 
-	manifests := []fwtypes.ManifestInfo{
-		notebookControllerManifestInfo(cfg.ManifestsPath, notebookControllerManifestSourcePath),
-		kfNotebookControllerManifestInfo(cfg.ManifestsPath, kfNotebookControllerManifestSourcePath),
-		notebookImagesManifestInfo(cfg.ManifestsPath, imgSourcePath),
-	}
+	return &Module{
+		cfg: cfg,
+		manifestInfos: []fwtypes.ManifestInfo{
+			notebookControllerManifestInfo(cfg.ManifestsPath, notebookControllerManifestSourcePath),
+			kfNotebookControllerManifestInfo(cfg.ManifestsPath, kfNotebookControllerManifestSourcePath),
+			notebookImagesManifestInfo(cfg.ManifestsPath, imgSourcePath),
+		},
+	}, nil
+}
 
-	// Apply image parameters once at startup — these are constant for the process lifetime.
+// Init applies image parameter substitutions once at process startup.
+func (m *Module) Init() error {
 	if err := fwparams.Apply(
-		manifests[0].String(),
+		m.manifestInfos[0].String(),
 		"params.env",
 		fwparams.Replacement(fwparams.FromEnv(map[string]string{
 			"odh-notebook-controller-image": "RELATED_IMAGE_ODH_NOTEBOOK_CONTROLLER_IMAGE",
 			"kube-rbac-proxy":               "RELATED_IMAGE_ODH_KUBE_RBAC_PROXY_IMAGE",
 		})),
 	); err != nil {
-		return nil, fmt.Errorf("updating notebook-controller image params: %w", err)
+		return fmt.Errorf("updating notebook-controller image params: %w", err)
 	}
 
 	if err := fwparams.Apply(
-		manifests[1].String(),
+		m.manifestInfos[1].String(),
 		"params.env",
 		fwparams.Replacement(fwparams.FromEnv(map[string]string{
 			"odh-kf-notebook-controller-image": "RELATED_IMAGE_ODH_KF_NOTEBOOK_CONTROLLER_IMAGE",
 		})),
 	); err != nil {
-		return nil, fmt.Errorf("updating kf-notebook-controller image params: %w", err)
+		return fmt.Errorf("updating kf-notebook-controller image params: %w", err)
 	}
 
-	nbImgParamsPath := notebookImagesManifestInfo(cfg.ManifestsPath, notebookImagesParamsPath[platform])
+	platform := componentApi.Platform(m.cfg.PlatformName)
+	nbImgParamsPath := notebookImagesManifestInfo(m.cfg.ManifestsPath, notebookImagesParamsPath[platform])
 	if err := fwparams.Apply(
 		nbImgParamsPath.String(),
 		"params-latest.env",
 		fwparams.Replacement(fwparams.FromEnv(notebookImageParamMap)),
 	); err != nil {
-		return nil, fmt.Errorf("updating notebook image params: %w", err)
+		return fmt.Errorf("updating notebook image params: %w", err)
 	}
 
-	return &Module{
-		cfg:           cfg,
-		manifestInfos: manifests,
-	}, nil
+	return nil
 }

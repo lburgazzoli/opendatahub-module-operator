@@ -39,7 +39,7 @@ jobs:
               handle.write(f"modules={output}\n")
           PY
 
-  lint:
+  module-lint:
     needs: define-matrix
     permissions:
       contents: read
@@ -67,7 +67,9 @@ jobs:
         run: make lint
 
   module-unit:
-    needs: define-matrix
+    needs:
+      - define-matrix
+      - module-lint
     permissions:
       contents: read
     name: module-unit ${{ matrix.module.module_name }}
@@ -87,7 +89,6 @@ jobs:
     name: module-integration ${{ matrix.module.module_name }}
     needs:
       - define-matrix
-      - lint
       - module-unit
     strategy:
       fail-fast: false

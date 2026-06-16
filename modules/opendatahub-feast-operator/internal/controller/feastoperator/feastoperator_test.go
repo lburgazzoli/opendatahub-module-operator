@@ -139,7 +139,7 @@ func TestReportStatus(t *testing.T) {
 	g.Expect(string(obj.Status.Release.Name)).To(Equal(string(cluster.OpenDataHub)))
 }
 
-func TestSetKustomizedParamsNoOIDC(t *testing.T) {
+func TestCustomizeManifestsNoOIDC(t *testing.T) {
 	g := NewWithT(t)
 
 	m := newTestModule(t)
@@ -149,10 +149,10 @@ func TestSetKustomizedParamsNoOIDC(t *testing.T) {
 	g.Expect(m.initialize(context.Background(), rr)).To(Succeed())
 
 	// Should succeed and write empty OIDC_ISSUER_URL
-	g.Expect(m.setKustomizedParams(context.Background(), rr)).To(Succeed())
+	g.Expect(m.customizeManifests(context.Background(), rr)).To(Succeed())
 }
 
-func TestSetKustomizedParamsWithOIDC(t *testing.T) {
+func TestCustomizeManifestsWithOIDC(t *testing.T) {
 	g := NewWithT(t)
 
 	m := newTestModule(t)
@@ -161,10 +161,10 @@ func TestSetKustomizedParamsWithOIDC(t *testing.T) {
 	rr := newTestRR(obj)
 	g.Expect(m.initialize(context.Background(), rr)).To(Succeed())
 
-	g.Expect(m.setKustomizedParams(context.Background(), rr)).To(Succeed())
+	g.Expect(m.customizeManifests(context.Background(), rr)).To(Succeed())
 }
 
-func TestSetKustomizedParamsInvalidOIDC(t *testing.T) {
+func TestCustomizeManifestsInvalidOIDC(t *testing.T) {
 	g := NewWithT(t)
 
 	m := newTestModule(t)
@@ -173,7 +173,7 @@ func TestSetKustomizedParamsInvalidOIDC(t *testing.T) {
 	rr := newTestRR(obj)
 	g.Expect(m.initialize(context.Background(), rr)).To(Succeed())
 
-	err := m.setKustomizedParams(context.Background(), rr)
+	err := m.customizeManifests(context.Background(), rr)
 	g.Expect(err).To(HaveOccurred())
 	g.Expect(err.Error()).To(ContainSubstring("invalid OIDC issuer URL"))
 }

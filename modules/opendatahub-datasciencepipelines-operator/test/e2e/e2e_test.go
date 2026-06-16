@@ -19,6 +19,7 @@ limitations under the License.
 package e2e
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"testing"
@@ -90,16 +91,15 @@ func TestDataSciencePipelines(t *testing.T) {
 
 func manageArgoWorkflowCRD(t *testing.T, cli client.Client) {
 	t.Helper()
-	ctx := t.Context()
 
-	state, err := support.CaptureWorkflowCRDState(ctx, cli, dspcontroller.ArgoWorkflowCRD)
+	state, err := support.CaptureWorkflowCRDState(t.Context(), cli, dspcontroller.ArgoWorkflowCRD)
 	if err != nil {
 		t.Fatalf("capturing workflows CRD state: %v", err)
 	}
 
 	t.Cleanup(func() {
 		if err := support.RestoreWorkflowCRDState(
-			ctx,
+			context.Background(),
 			cli,
 			dspcontroller.ArgoWorkflowCRD,
 			state,
@@ -285,26 +285,25 @@ func setOperatorReplicas(t *testing.T, cli client.Client, key client.ObjectKey, 
 
 func createModule(t *testing.T, cli client.Client, module *componentsv1alpha1.DataSciencePipelines) {
 	t.Helper()
-	ctx := t.Context()
 
 	if module.Annotations == nil {
 		module.Annotations = map[string]string{}
 	}
 	module.Annotations["testing.opendatahub.io/reconcile-at"] = time.Now().UTC().Format(time.RFC3339Nano)
 
-	_ = cli.Delete(ctx, module)
-	NewWithT(t).Eventually(ctx, k8sm.NotFound(cli, module)).Should(BeTrue())
+	_ = cli.Delete(t.Context(), module)
+	NewWithT(t).Eventually(t.Context(), k8sm.NotFound(cli, module)).Should(BeTrue())
 	module.SetResourceVersion("")
 	module.SetUID("")
 
 	t.Cleanup(func() {
-		_ = cli.Delete(ctx, module)
+		_ = cli.Delete(context.Background(), module)
 	})
 
 	current := &componentsv1alpha1.DataSciencePipelines{}
-	err := cli.Get(ctx, client.ObjectKeyFromObject(module), current)
+	err := cli.Get(t.Context(), client.ObjectKeyFromObject(module), current)
 	if k8serr.IsNotFound(err) {
-		if err := cli.Create(ctx, module); err != nil {
+		if err := cli.Create(t.Context(), module); err != nil {
 			t.Fatalf("creating module: %v", err)
 		}
 
@@ -316,7 +315,7 @@ func createModule(t *testing.T, cli client.Client, module *componentsv1alpha1.Da
 
 	current.Spec = module.Spec
 	current.Annotations = module.Annotations
-	if err := cli.Update(ctx, current); err != nil {
+	if err := cli.Update(t.Context(), current); err != nil {
 		t.Fatalf("updating module: %v", err)
 	}
 }

@@ -32,6 +32,7 @@ import (
 	fwtypes "github.com/opendatahub-io/odh-platform-utilities/framework/controller/types"
 	pkgresources "github.com/opendatahub-io/odh-platform-utilities/framework/resources"
 	odhcluster "github.com/opendatahub-io/odh-platform-utilities/pkg/cluster"
+	ofVersion "github.com/operator-framework/api/pkg/lib/version"
 )
 
 // checkPreConditions verifies that:
@@ -68,6 +69,22 @@ func (m *Module) checkPreConditions(ctx context.Context, rr *fwtypes.Reconciliat
 	return nil
 }
 
+// initialize selects the manifest overlay based on MCPGuardrailsMode.
+func (m *Module) initialize(_ context.Context, rr *fwtypes.ReconciliationRequest) error {
+	tai, ok := rr.Instance.(*componentApi.TrustyAI)
+	if !ok {
+		return fmt.Errorf("instance is not a TrustyAI")
+	}
+
+	if tai.Spec.MCPGuardrailsMode {
+		rr.Manifests = append(rr.Manifests, m.mcpManifestInfo)
+	} else {
+		rr.Manifests = append(rr.Manifests, m.manifestInfo)
+	}
+
+	return nil
+}
+
 // createConfigMap creates the trustyai-dsc-config ConfigMap with eval permission settings.
 // This mirrors the monolith's createConfigMap action (trustyai_controller_actions.go:64).
 func (m *Module) createConfigMap(_ context.Context, rr *fwtypes.ReconciliationRequest) error {
@@ -95,4 +112,19 @@ func (m *Module) createConfigMap(_ context.Context, rr *fwtypes.ReconciliationRe
 	}
 
 	return rr.AddResources(configMap)
+}
+
+// reportStatus populates the release status and config values.
+func (m *Module) reportStatus(_ context.Context, rr *fwtypes.ReconciliationRequest) error {
+	obj, ok := rr.Instance.(*componentApi.TrustyAI)
+	if !ok {
+		return fmt.Errorf("instance is not a TrustyAI")
+	}
+
+	obj.Status.Release = componentApi.Release{
+		Name:    componentApi.Platform(rr.Release.Name),
+		Version: ofVersion.OperatorVersion{Version: rr.Release.Version},
+	}
+
+	return nil
 }

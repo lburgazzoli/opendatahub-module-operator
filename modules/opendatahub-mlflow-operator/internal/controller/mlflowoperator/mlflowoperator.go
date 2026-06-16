@@ -17,14 +17,12 @@ limitations under the License.
 package mlflowoperator
 
 import (
-	"context"
 	"fmt"
 	"path"
 
 	fwtypes "github.com/opendatahub-io/odh-platform-utilities/framework/controller/types"
 	fwparams "github.com/opendatahub-io/odh-platform-utilities/framework/utils/params"
 	odhcluster "github.com/opendatahub-io/odh-platform-utilities/pkg/cluster"
-	ofVersion "github.com/operator-framework/api/pkg/lib/version"
 
 	componentApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-mlflow-operator/api/components/v1alpha1"
 	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-mlflow-operator/pkg/config"
@@ -65,52 +63,38 @@ func consoleSectionTitleFor(platform componentApi.Platform) string {
 
 // NewModule creates a Module with one-shot computed state.
 func NewModule(cfg *moduleconfig.Config) (*Module, error) {
-	platform := componentApi.Platform(cfg.PlatformName)
-	overlay := overlayODH
-	if platform == componentApi.Platform(odhcluster.SelfManagedRhoai) || platform == componentApi.Platform(odhcluster.ManagedRhoai) {
+	var overlay string
+	switch odhcluster.Platform(cfg.PlatformName) {
+	case odhcluster.SelfManagedRhoai:
 		overlay = overlayRhoai
+	case odhcluster.ManagedRhoai:
+		overlay = overlayRhoai
+	default:
+		overlay = overlayODH
 	}
 
-	mi := fwtypes.ManifestInfo{
-		Path:       cfg.ManifestsPath,
-		ContextDir: componentName,
-		SourcePath: overlay,
-	}
+	return &Module{
+		cfg: cfg,
+		manifestInfo: fwtypes.ManifestInfo{
+			Path:       cfg.ManifestsPath,
+			ContextDir: componentName,
+			SourcePath: overlay,
+		},
+		consoleSectionTitle: consoleSectionTitleFor(componentApi.Platform(cfg.PlatformName)),
+	}, nil
+}
 
-	// Apply image params to base/ (not the overlay) — matches the monolith's paramsPath.
-	baseParamsPath := path.Join(cfg.ManifestsPath, componentName, paramsSubDir)
+// Init applies image parameters to base/ from environment — called once at startup.
+func (m *Module) Init() error {
+	baseParamsPath := path.Join(m.cfg.ManifestsPath, componentName, paramsSubDir)
 	if err := fwparams.Apply(
 		baseParamsPath,
 		"params.env",
 		fwparams.Replacement(fwparams.FromEnv(imageParamMap)),
 	); err != nil {
-		return nil, fmt.Errorf("failed to update images on path %s: %w", baseParamsPath, err)
+		return fmt.Errorf("failed to update images on path %s: %w", baseParamsPath, err)
 	}
-
-	return &Module{
-		cfg:                 cfg,
-		manifestInfo:        mi,
-		consoleSectionTitle: consoleSectionTitleFor(platform),
-	}, nil
-}
-
-// initialize appends the pre-resolved manifest info to the pipeline.
-func (m *Module) initialize(_ context.Context, rr *fwtypes.ReconciliationRequest) error {
-	rr.Manifests = append(rr.Manifests, m.manifestInfo)
 	return nil
 }
 
-// reportStatus populates the release status and config values.
-func (m *Module) reportStatus(_ context.Context, rr *fwtypes.ReconciliationRequest) error {
-	obj, ok := rr.Instance.(*componentApi.MLflowOperator)
-	if !ok {
-		return fmt.Errorf("instance is not a MLflowOperator")
-	}
 
-	obj.Status.Release = componentApi.Release{
-		Name:    componentApi.Platform(rr.Release.Name),
-		Version: ofVersion.OperatorVersion{Version: rr.Release.Version},
-	}
-
-	return nil
-}

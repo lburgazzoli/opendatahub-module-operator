@@ -26,6 +26,7 @@ import (
 	"github.com/opendatahub-io/odh-platform-utilities/pkg/metadata/labels"
 )
 
+
 type foundationTests struct {
 	Client client.Client
 }
@@ -40,29 +41,63 @@ func (ft *foundationTests) Execute(t *testing.T) {
 	t.Run("should set owner references", ft.testOwnerReferences)
 }
 
-func moduleObject() *componentsv1alpha1.TrustyAI {
-	return &componentsv1alpha1.TrustyAI{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: componentsv1alpha1.TrustyAIInstanceName,
-		},
-	}
-}
+func (ft *foundationTests) setOperatorPlatformVersion(t *testing.T, platformVersion string) *corev1.ConfigMap {
+	t.Helper()
 
-func workloadDeployment() *appsv1.Deployment {
-	return &appsv1.Deployment{
+	g := NewWithT(t)
+	operatorCfgMap := &corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      "trustyai-service-operator-controller-manager",
+			Name:      modulemeta.OperatorConfigName,
 			Namespace: support.OperatorNamespace(),
 		},
 	}
+	g.Eventually(t.Context(), k8sm.Lookup(ft.Client, operatorCfgMap)).Should(Succeed())
+
+	patch := client.MergeFrom(operatorCfgMap.DeepCopy())
+	if operatorCfgMap.Data == nil {
+		operatorCfgMap.Data = map[string]string{}
+	}
+	operatorCfgMap.Data[moduleconfig.KeyPlatformVersion] = platformVersion
+	g.Expect(ft.Client.Patch(t.Context(), operatorCfgMap, patch)).To(Succeed())
+
+	pods := &corev1.PodList{}
+	g.Expect(ft.Client.List(t.Context(), pods,
+		client.InNamespace(support.OperatorNamespace()),
+		client.MatchingLabels{"app.kubernetes.io/name": "opendatahub-trustyai-operator"},
+	)).To(Succeed())
+	for i := range pods.Items {
+		g.Expect(ft.Client.Delete(t.Context(), &pods.Items[i])).To(Succeed())
+	}
+
+	operatorDeploy := &appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "opendatahub-trustyai-operator",
+			Namespace: support.OperatorNamespace(),
+		},
+	}
+	g.Eventually(t.Context(), k8sm.Get(ft.Client, operatorDeploy)).Should(
+		jq.Match(`.status.readyReplicas >= 1`),
+	)
+	g.Expect(ft.Client.Get(t.Context(), client.ObjectKeyFromObject(operatorCfgMap), operatorCfgMap)).To(Succeed())
+
+	return operatorCfgMap
 }
 
 func (ft *foundationTests) ensureReadyModule(t *testing.T) *componentsv1alpha1.TrustyAI {
 	t.Helper()
 
 	g := NewWithT(t)
-	module := moduleObject()
-	workloadDeploy := workloadDeployment()
+	module := &componentsv1alpha1.TrustyAI{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: componentsv1alpha1.TrustyAIInstanceName,
+		},
+	}
+	workloadDeploy := &appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      support.ManagedDeploymentName,
+			Namespace: support.OperatorNamespace(),
+		},
+	}
 
 	_ = ft.Client.Delete(t.Context(), module)
 	g.Eventually(t.Context(), k8sm.NotFound(ft.Client, module)).Should(BeTrue())
@@ -73,13 +108,12 @@ func (ft *foundationTests) ensureReadyModule(t *testing.T) *componentsv1alpha1.T
 
 	g.Expect(ft.Client.Create(t.Context(), module)).To(Succeed())
 
-	g.Eventually(t.Context(), k8sm.Get(ft.Client, module)).Should(And(
-		jq.Match(`.status.phase == "Ready"`),
+	g.Eventually(t.Context(), k8sm.Get(ft.Client, module)).Should(
 		WithTransform(k8sm.ConditionsOf[metav1.Condition](), SatisfyAll(
-			ContainElement(condition.Is(common.ConditionTypeReady, metav1.ConditionTrue)),
-			ContainElement(condition.Is(common.ConditionTypeProvisioningSucceeded, metav1.ConditionTrue)),
+			ContainElement(condition.Is(string(common.ConditionTypeReady), metav1.ConditionTrue)),
+			ContainElement(condition.Is(string(common.ConditionTypeProvisioningSucceeded), metav1.ConditionTrue)),
 		)),
-	))
+	)
 
 	g.Eventually(t.Context(), k8sm.Get(ft.Client, workloadDeploy)).Should(
 		jq.Match(`.status.readyReplicas >= 1`),
@@ -120,7 +154,11 @@ func (ft *foundationTests) testPreconditionCRMissing(t *testing.T) {
 	}
 
 	g := NewWithT(t)
-	module := moduleObject()
+	module := &componentsv1alpha1.TrustyAI{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: componentsv1alpha1.TrustyAIInstanceName,
+		},
+	}
 
 	kserveCR := support.NewStubKserveCR()
 	g.Expect(ft.Client.Delete(t.Context(), kserveCR)).To(Succeed())
@@ -136,7 +174,7 @@ func (ft *foundationTests) testPreconditionCRMissing(t *testing.T) {
 
 	g.Eventually(t.Context(), k8sm.Get(ft.Client, module)).Should(
 		WithTransform(k8sm.ConditionsOf[metav1.Condition](), ContainElement(
-			condition.Is(common.ConditionTypeProvisioningSucceeded, metav1.ConditionFalse),
+			condition.Is(string(common.ConditionTypeProvisioningSucceeded), metav1.ConditionFalse),
 		)),
 	)
 }
@@ -185,7 +223,12 @@ func (ft *foundationTests) testPlatformLabels(t *testing.T) {
 			Namespace: support.OperatorNamespace(),
 		},
 	}
-	workloadDeploy := workloadDeployment()
+	workloadDeploy := &appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      support.ManagedDeploymentName,
+			Namespace: support.OperatorNamespace(),
+		},
+	}
 
 	g.Eventually(t.Context(), k8sm.Lookup(ft.Client, operatorCfg)).Should(Succeed())
 
@@ -202,7 +245,12 @@ func (ft *foundationTests) testOwnerReferences(t *testing.T) {
 	g := NewWithT(t)
 
 	owner := ft.ensureReadyModule(t)
-	workloadDeploy := workloadDeployment()
+	workloadDeploy := &appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      support.ManagedDeploymentName,
+			Namespace: support.OperatorNamespace(),
+		},
+	}
 	owner.TypeMeta = metav1.TypeMeta{
 		APIVersion: componentsv1alpha1.GroupVersion.String(),
 		Kind:       componentsv1alpha1.TrustyAIKind,

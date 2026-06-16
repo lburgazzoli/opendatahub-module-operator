@@ -47,8 +47,6 @@ import (
 )
 
 const (
-	testPlatformName = "OpenDataHub"
-
 	labelTrue          = "true"
 	testManagedByLabel = "testing.opendatahub.io/managed-by"
 	testManagedByValue = "dsp-integration"
@@ -63,8 +61,8 @@ func loadOperatorConfig() (*moduleconfig.Config, error) {
 		return nil, fmt.Errorf("loading operator config: %w", err)
 	}
 
-	moduleCfg.PlatformName = testPlatformName
-	moduleCfg.PlatformVersion = moduleconfig.DefaultPlatformVersion
+	moduleCfg.PlatformName = support.PlatformName()
+	moduleCfg.PlatformVersion = support.PlatformVersion()
 	moduleCfg.ApplicationsNamespace = support.IntegrationTestNamespace()
 	moduleCfg.ManifestsPath = support.MustProjectFile("config", "manifests")
 
@@ -177,16 +175,15 @@ func TestDataSciencePipelines(t *testing.T) {
 
 func manageArgoWorkflowCRD(t *testing.T, cli client.Client) {
 	t.Helper()
-	ctx := t.Context()
 
-	state, err := support.CaptureWorkflowCRDState(ctx, cli, dspcontroller.ArgoWorkflowCRD)
+	state, err := support.CaptureWorkflowCRDState(t.Context(), cli, dspcontroller.ArgoWorkflowCRD)
 	if err != nil {
 		t.Fatalf("capturing workflows CRD state: %v", err)
 	}
 
 	t.Cleanup(func() {
 		if err := support.RestoreWorkflowCRDState(
-			ctx,
+			context.Background(),
 			cli,
 			dspcontroller.ArgoWorkflowCRD,
 			state,
@@ -308,18 +305,17 @@ func updateWorkflowCRDEventually(
 
 func createModule(t *testing.T, cli client.Client, module *componentsv1alpha1.DataSciencePipelines) {
 	t.Helper()
-	ctx := t.Context()
 
-	_ = cli.Delete(ctx, module)
-	NewWithT(t).Eventually(ctx, k8sm.NotFound(cli, module)).Should(BeTrue())
+	_ = cli.Delete(t.Context(), module)
+	NewWithT(t).Eventually(t.Context(), k8sm.NotFound(cli, module)).Should(BeTrue())
 	module.SetResourceVersion("")
 	module.SetUID("")
 
 	t.Cleanup(func() {
-		_ = cli.Delete(ctx, module)
+		_ = cli.Delete(context.Background(), module)
 	})
 
-	if err := cli.Create(ctx, module); err != nil {
+	if err := cli.Create(t.Context(), module); err != nil {
 		t.Fatalf("creating module: %v", err)
 	}
 }

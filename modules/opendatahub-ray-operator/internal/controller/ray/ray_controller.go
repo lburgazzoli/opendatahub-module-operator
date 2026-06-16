@@ -95,7 +95,11 @@ func NewReconciler(
 		return err
 	}
 
-	r, err := reconciler.ReconcilerFor(mgr, &componentApi.Ray{}).
+	if err := m.Init(); err != nil {
+		return err
+	}
+
+	_, err = reconciler.ReconcilerFor(mgr, &componentApi.Ray{}).
 		Owns(&corev1.ConfigMap{}).
 		Owns(&corev1.Secret{}).
 		Owns(&rbacv1.ClusterRoleBinding{}).
@@ -148,11 +152,6 @@ func NewReconciler(
 
 	if err != nil {
 		return err
-	}
-
-	r.Release = fwapi.Release{
-		Name:    fwapi.Platform(rel.Name),
-		Version: rel.Version.Version,
 	}
 
 	return nil

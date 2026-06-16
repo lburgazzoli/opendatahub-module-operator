@@ -17,13 +17,11 @@ limitations under the License.
 package modelregistry
 
 import (
-	"context"
 	"fmt"
 	"path"
 
 	odhtypes "github.com/opendatahub-io/odh-platform-utilities/framework/controller/types"
 	fwparams "github.com/opendatahub-io/odh-platform-utilities/framework/utils/params"
-	ofVersion "github.com/operator-framework/api/pkg/lib/version"
 
 	componentApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-modelregistry-operator/api/components/v1alpha1"
 	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-modelregistry-operator/pkg/config"
@@ -69,55 +67,31 @@ type Module struct {
 
 // NewModule creates a Module with one-shot computed state.
 func NewModule(cfg *moduleconfig.Config) (*Module, error) {
-	mi := odhtypes.ManifestInfo{
-		Path:       cfg.ManifestsPath,
-		ContextDir: componentName,
-		SourcePath: baseManifestsSourcePath,
-	}
+	return &Module{
+		cfg: cfg,
+		manifestInfo: odhtypes.ManifestInfo{
+			Path:       cfg.ManifestsPath,
+			ContextDir: componentName,
+			SourcePath: baseManifestsSourcePath,
+		},
+		extraManifest: odhtypes.ManifestInfo{
+			Path:       cfg.ManifestsPath,
+			ContextDir: componentName,
+			SourcePath: path.Join(baseManifestsSourcePath, "extras"),
+		},
+	}, nil
+}
 
-	extraMi := odhtypes.ManifestInfo{
-		Path:       cfg.ManifestsPath,
-		ContextDir: componentName,
-		SourcePath: path.Join(baseManifestsSourcePath, "extras"),
-	}
-
-	// Apply image and cert parameters once at startup (equivalent to Init in the monolith).
+// Init applies image and cert parameter substitutions once at process startup.
+func (m *Module) Init() error {
 	if err := fwparams.Apply(
-		mi.String(),
+		m.manifestInfo.String(),
 		"params.env",
 		fwparams.Replacement(fwparams.FromEnv(imageParamMap)),
 		fwparams.Values(extraParamMap),
 	); err != nil {
-		return nil, fmt.Errorf("failed to update images on path %s: %w", mi, err)
-	}
-
-	return &Module{
-		cfg:           cfg,
-		manifestInfo:  mi,
-		extraManifest: extraMi,
-	}, nil
-}
-
-// initialize sets the per-reconcile manifest list.
-func (m *Module) initialize(_ context.Context, rr *odhtypes.ReconciliationRequest) error {
-	rr.Manifests = []odhtypes.ManifestInfo{
-		m.manifestInfo,
-		m.extraManifest,
+		return fmt.Errorf("failed to update images on path %s: %w", m.manifestInfo, err)
 	}
 	return nil
 }
 
-// reportStatus populates the release status and platform.
-func (m *Module) reportStatus(_ context.Context, rr *odhtypes.ReconciliationRequest) error {
-	obj, ok := rr.Instance.(*componentApi.ModelRegistry)
-	if !ok {
-		return fmt.Errorf("instance is not a ModelRegistry")
-	}
-
-	obj.Status.Release = componentApi.Release{
-		Name:    componentApi.Platform(rr.Release.Name),
-		Version: ofVersion.OperatorVersion{Version: rr.Release.Version},
-	}
-
-	return nil
-}

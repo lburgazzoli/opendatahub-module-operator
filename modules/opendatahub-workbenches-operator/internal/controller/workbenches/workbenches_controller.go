@@ -100,9 +100,14 @@ func NewReconciler(
 	if err != nil {
 		return err
 	}
+
+	if err := m.Init(); err != nil {
+		return err
+	}
+
 	m.apiReader = mgr.GetAPIReader()
 
-	r, err := reconciler.ReconcilerFor(mgr, &componentApi.Workbenches{}).
+	_, err = reconciler.ReconcilerFor(mgr, &componentApi.Workbenches{}).
 		Owns(&corev1.ConfigMap{}).
 		Owns(&corev1.Secret{}).
 		Owns(&rbacv1.ClusterRoleBinding{}).
@@ -147,13 +152,13 @@ func NewReconciler(
 		).
 		WithAction(m.initialize).
 		WithAction(m.upgradeIfNeeded).
+		WithAction(m.customizeManifests).
 		WithAction(fwreleases.NewAction(
 			fwreleases.WithMetadataFilePath(func(rr *fwtypes.ReconciliationRequest) string {
 				return path.Join(rr.ManifestsBasePath, ComponentName, kfNotebookControllerPath, fwreleases.ComponentMetadataFilename)
 			}),
 		)).
 		WithAction(m.configureDependencies).
-		WithAction(m.setKustomizedParams).
 		WithAction(kustomize.NewAction(
 			kustomize.WithCache(false),
 			kustomize.WithNamespaceFn(moduleconfig.ApplicationsNamespaceGetter(cfg)),
@@ -177,11 +182,6 @@ func NewReconciler(
 
 	if err != nil {
 		return err
-	}
-
-	r.Release = fwapi.Release{
-		Name:    fwapi.Platform(rel.Name),
-		Version: rel.Version.Version,
 	}
 
 	if cfg.Controller.Webhook.Enabled {

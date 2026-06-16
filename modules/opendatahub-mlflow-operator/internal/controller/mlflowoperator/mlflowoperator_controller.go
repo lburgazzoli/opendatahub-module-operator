@@ -80,7 +80,11 @@ func NewReconciler(
 		return err
 	}
 
-	r, err := reconciler.ReconcilerFor(mgr, &componentApi.MLflowOperator{}).
+	if err := m.Init(); err != nil {
+		return err
+	}
+
+	_, err = reconciler.ReconcilerFor(mgr, &componentApi.MLflowOperator{}).
 		Owns(&corev1.ConfigMap{}).
 		Owns(&rbacv1.ClusterRole{}).
 		Owns(&rbacv1.ClusterRoleBinding{}).
@@ -114,7 +118,7 @@ func NewReconciler(
 		).
 		WithAction(m.initialize).
 		WithAction(m.upgradeIfNeeded).
-		WithAction(m.setKustomizedParams).
+		WithAction(m.customizeManifests).
 		WithAction(fwreleases.NewAction()).
 		WithAction(kustomize.NewAction(
 			kustomize.WithNamespaceFn(moduleconfig.ApplicationsNamespaceGetter(cfg)),
@@ -137,11 +141,6 @@ func NewReconciler(
 
 	if err != nil {
 		return err
-	}
-
-	r.Release = fwapi.Release{
-		Name:    fwapi.Platform(rel.Name),
-		Version: rel.Version.Version,
 	}
 
 	return nil

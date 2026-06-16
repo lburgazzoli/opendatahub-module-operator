@@ -31,7 +31,6 @@ import (
 
 	componentApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-trainer-operator/api/components/v1alpha1"
 	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-trainer-operator/pkg/config"
-	module "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-trainer-operator/pkg/module"
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-trainer-operator/pkg/resources/gvk"
 	fwapi "github.com/opendatahub-io/odh-platform-utilities/framework/api"
 	"github.com/opendatahub-io/odh-platform-utilities/framework/controller/actions/deploy"
@@ -39,14 +38,12 @@ import (
 	"github.com/opendatahub-io/odh-platform-utilities/framework/controller/actions/render/kustomize"
 	"github.com/opendatahub-io/odh-platform-utilities/framework/controller/actions/status/deployments"
 	fwreleases "github.com/opendatahub-io/odh-platform-utilities/framework/controller/actions/status/releases"
-	fwconditions "github.com/opendatahub-io/odh-platform-utilities/framework/controller/conditions"
 	"github.com/opendatahub-io/odh-platform-utilities/framework/controller/handlers"
 	"github.com/opendatahub-io/odh-platform-utilities/framework/controller/predicates"
 	dependentpred "github.com/opendatahub-io/odh-platform-utilities/framework/controller/predicates/dependent"
 	labelpred "github.com/opendatahub-io/odh-platform-utilities/framework/controller/predicates/label"
 	resourcepred "github.com/opendatahub-io/odh-platform-utilities/framework/controller/predicates/resources"
 	"github.com/opendatahub-io/odh-platform-utilities/framework/controller/reconciler"
-	fwtypes "github.com/opendatahub-io/odh-platform-utilities/framework/controller/types"
 )
 
 const appLabelPrefix = "app.opendatahub.io"
@@ -89,6 +86,10 @@ func NewReconciler(
 	}
 	m.apiReader = mgr.GetAPIReader()
 
+	if err := m.Init(); err != nil {
+		return err
+	}
+
 	_, err = reconciler.ReconcilerFor(mgr, &componentApi.Trainer{}).
 		Owns(&corev1.ConfigMap{}).
 		Owns(&corev1.Secret{}).
@@ -127,57 +128,8 @@ func NewReconciler(
 				Name:    fwapi.Platform(rel.Name),
 				Version: rel.Version.Version,
 			}),
-			reconciler.WithPreApplyFn(func(
-				ctx context.Context,
-				rr *fwtypes.ReconciliationRequest,
-			) bool {
-				result, err := m.checkPreConditions(ctx, rr)
-				if err != nil {
-					rr.Conditions.MarkUnknown(
-						module.ConditionDependenciesAvailable,
-						fwconditions.WithObservedGeneration(rr.Instance.GetGeneration()),
-						fwconditions.WithReason(module.PreConditionFailedReason),
-						fwconditions.WithMessage("%s", err.Error()),
-					)
-					return true
-				}
-				if !result.Pass {
-					rr.Conditions.MarkFalse(
-						module.ConditionDependenciesAvailable,
-						fwconditions.WithObservedGeneration(rr.Instance.GetGeneration()),
-						fwconditions.WithReason(module.PreConditionFailedReason),
-						fwconditions.WithMessage("%s", result.Message),
-					)
-					return true
-				}
-
-				result, err = m.checkJobSetCRD(ctx, rr)
-				if err != nil {
-					rr.Conditions.MarkUnknown(
-						module.ConditionDependenciesAvailable,
-						fwconditions.WithObservedGeneration(rr.Instance.GetGeneration()),
-						fwconditions.WithReason(module.PreConditionFailedReason),
-						fwconditions.WithMessage("%s", err.Error()),
-					)
-					return true
-				}
-				if !result.Pass {
-					rr.Conditions.MarkFalse(
-						module.ConditionDependenciesAvailable,
-						fwconditions.WithObservedGeneration(rr.Instance.GetGeneration()),
-						fwconditions.WithReason(module.PreConditionFailedReason),
-						fwconditions.WithMessage("%s", result.Message),
-					)
-					return true
-				}
-
-				rr.Conditions.MarkTrue(
-					module.ConditionDependenciesAvailable,
-					fwconditions.WithObservedGeneration(rr.Instance.GetGeneration()),
-				)
-				return false
-			}),
 		).
+		WithAction(m.ensureDependenciesAvailable).
 		WithAction(m.initialize).
 		WithAction(m.upgradeIfNeeded).
 		WithAction(fwreleases.NewAction()).
@@ -197,6 +149,7 @@ func NewReconciler(
 		WithAction(gc.NewAction(moduleconfig.ApplicationsNamespaceGetter(cfg))).
 		WithConditions(conditionTypes...).
 		Build(ctx)
+
 	if err != nil {
 		return err
 	}

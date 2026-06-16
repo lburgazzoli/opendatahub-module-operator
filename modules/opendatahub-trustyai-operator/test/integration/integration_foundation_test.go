@@ -1,6 +1,7 @@
 package integration
 
 import (
+	"context"
 	"testing"
 
 	. "github.com/onsi/gomega"
@@ -53,15 +54,15 @@ func (ft *foundationTests) ensureReadyModule(t *testing.T) *componentsv1alpha1.T
 	g.Eventually(t.Context(), k8sm.NotFound(ft.Client, module)).Should(BeTrue())
 
 	t.Cleanup(func() {
-		_ = ft.Client.Delete(t.Context(), module)
+		_ = ft.Client.Delete(context.Background(), module)
 	})
 
 	g.Expect(ft.Client.Create(t.Context(), module)).To(Succeed())
 
 	g.Eventually(t.Context(), k8sm.Get(ft.Client, module)).Should(
 		WithTransform(k8sm.ConditionsOf[metav1.Condition](), SatisfyAll(
-			ContainElement(condition.Is(common.ConditionTypeReady, metav1.ConditionTrue)),
-			ContainElement(condition.Is(common.ConditionTypeProvisioningSucceeded, metav1.ConditionTrue)),
+			ContainElement(condition.Is(string(common.ConditionTypeReady), metav1.ConditionTrue)),
+			ContainElement(condition.Is(string(common.ConditionTypeProvisioningSucceeded), metav1.ConditionTrue)),
 		)),
 	)
 
@@ -89,21 +90,23 @@ func (ft *foundationTests) testPreconditionCRMissing(t *testing.T) {
 		},
 	}
 
+	g.Expect(support.EnsureStubKserveCR(t.Context(), ft.Client)).To(Succeed())
 	kserveCR := support.NewStubKserveCR()
-	g.Expect(ft.Client.Delete(t.Context(), kserveCR)).To(Succeed())
+	g.Eventually(t.Context(), k8sm.Delete(ft.Client, kserveCR)).Should(Succeed())
 	g.Eventually(t.Context(), k8sm.NotFound(ft.Client, kserveCR)).Should(BeTrue())
 	t.Cleanup(func() {
-		_, _ = support.EnsureStubKserveCRIfMissing(t.Context(), ft.Client)
-		_ = ft.Client.Delete(t.Context(), module)
+		ctx := context.Background()
+		_ = support.EnsureStubKserveCR(ctx, ft.Client)
+		_ = ft.Client.Delete(ctx, module)
 		g := NewWithT(t)
-		g.Eventually(t.Context(), k8sm.NotFound(ft.Client, module)).Should(BeTrue())
+		g.Eventually(ctx, k8sm.NotFound(ft.Client, module)).Should(BeTrue())
 	})
 
 	g.Expect(ft.Client.Create(t.Context(), module)).To(Succeed())
 
 	g.Eventually(t.Context(), k8sm.Get(ft.Client, module)).Should(
 		WithTransform(k8sm.ConditionsOf[metav1.Condition](), ContainElement(
-			condition.Is(common.ConditionTypeProvisioningSucceeded, metav1.ConditionFalse),
+			condition.Is(string(common.ConditionTypeProvisioningSucceeded), metav1.ConditionFalse),
 		)),
 	)
 }

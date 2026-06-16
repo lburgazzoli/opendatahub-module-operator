@@ -3,11 +3,13 @@ data:
   {{- with .Values.imagePullSecret }}
   imagePullSecret: {{ . }}
   {{- end }}
+  platform-name: {{ default "OpenDataHub" (index .Values.config "platform-name") | quote }}
+  platform-version: {{ default "unknown" (index .Values.config "platform-version") | quote }}
   {{- range $key, $val := .Values.config }}
+  {{- if and (ne $key "platform-name") (ne $key "platform-version") }}
   {{ $key }}: {{ $val | quote }}
   {{- end }}
-  platform-name: OpenDataHub
-  platform-version: unknown
+  {{- end }}
 kind: ConfigMap
 metadata:
   labels:

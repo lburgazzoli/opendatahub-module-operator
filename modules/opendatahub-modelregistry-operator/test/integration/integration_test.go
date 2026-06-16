@@ -40,8 +40,6 @@ import (
 )
 
 const (
-	testPlatformName = "OpenDataHub"
-
 	// testGatewayDomain is a placeholder domain used in integration tests;
 	// customizeManifests requires a non-empty domain to write params.env.
 	testGatewayDomain = "apps-crc.testing"
@@ -53,8 +51,8 @@ func loadOperatorConfig() (*moduleconfig.Config, error) {
 		return nil, fmt.Errorf("loading operator config: %w", err)
 	}
 
-	moduleCfg.PlatformName = testPlatformName
-	moduleCfg.PlatformVersion = moduleconfig.DefaultPlatformVersion
+	moduleCfg.PlatformName = support.PlatformName()
+	moduleCfg.PlatformVersion = support.PlatformVersion()
 	moduleCfg.ApplicationsNamespace = support.IntegrationTestNamespace()
 	moduleCfg.ManifestsPath = support.MustProjectFile("config", "manifests")
 

@@ -1,7 +1,0 @@
-apiVersion: components.platform.opendatahub.io/v1alpha1
-kind: MyModule
-metadata:
-  labels:
-    app.kubernetes.io/name: opendatahub-mymodule-operator
-  name: default-mymodule
-spec: {}

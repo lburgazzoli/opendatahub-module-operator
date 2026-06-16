@@ -37,6 +37,24 @@ func (m *Module) initialize(_ context.Context, rr *fwtypes.ReconciliationRequest
 	return nil
 }
 
+// customizeManifests writes gateway URL, section title, and mlflow-enabled into params.env.
+func (m *Module) customizeManifests(ctx context.Context, rr *fwtypes.ReconciliationRequest) error {
+	extraParamsMap, err := ComputeKustomizeVariable(ctx, rr.Client, localapi.Platform(rr.Release.Name))
+	if err != nil {
+		return fmt.Errorf("computing kustomize variables: %w", err)
+	}
+
+	paramsPath := path.Join(rr.ManifestsBasePath, notebookControllerContextDir, notebookControllerManifestSourcePath)
+	if err := fwparams.Apply(
+		paramsPath,
+		"params.env",
+		fwparams.Values(extraParamsMap),
+	); err != nil {
+		return fmt.Errorf("applying params.env from %s: %w", paramsPath, err)
+	}
+	return nil
+}
+
 // configureDependencies creates the workbench namespace with the owned-namespace label.
 func (m *Module) configureDependencies(_ context.Context, rr *fwtypes.ReconciliationRequest) error {
 	workbench, ok := rr.Instance.(*localapi.Workbenches)
@@ -80,23 +98,5 @@ func (m *Module) reportStatus(_ context.Context, rr *fwtypes.ReconciliationReque
 		Version: ofVersion.OperatorVersion{Version: rr.Release.Version},
 	}
 
-	return nil
-}
-
-// setKustomizedParams writes gateway URL, section title, and mlflow-enabled into params.env.
-func (m *Module) setKustomizedParams(ctx context.Context, rr *fwtypes.ReconciliationRequest) error {
-	extraParamsMap, err := ComputeKustomizeVariable(ctx, rr.Client, localapi.Platform(rr.Release.Name))
-	if err != nil {
-		return fmt.Errorf("computing kustomize variables: %w", err)
-	}
-
-	paramsPath := path.Join(rr.ManifestsBasePath, notebookControllerContextDir, notebookControllerManifestSourcePath)
-	if err := fwparams.Apply(
-		paramsPath,
-		"params.env",
-		fwparams.Values(extraParamsMap),
-	); err != nil {
-		return fmt.Errorf("applying params.env from %s: %w", paramsPath, err)
-	}
 	return nil
 }

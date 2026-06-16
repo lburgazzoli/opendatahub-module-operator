@@ -23,6 +23,7 @@ import (
 	rbacv1 "k8s.io/api/rbac/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 
+	componentApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-modelregistry-operator/api/components/v1alpha1"
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-modelregistry-operator/pkg/resources/gvk"
 	odhtypes "github.com/opendatahub-io/odh-platform-utilities/framework/controller/types"
 )
@@ -74,4 +75,24 @@ func upstreamControllerSubject(rr *odhtypes.ReconciliationRequest) (rbacv1.Subje
 	}
 
 	return rbacv1.Subject{}, errors.New("no rendered deployment or service account found")
+}
+
+// computeKustomizeVariables returns the gateway and routing kustomize variables from the CR spec.
+func (m *Module) computeKustomizeVariables(mr *componentApi.ModelRegistry) (map[string]string, error) {
+	var domain string
+	if mr.Spec.Gateway != nil {
+		domain = mr.Spec.Gateway.Domain
+	}
+
+	if domain == "" {
+		return nil, errors.New(
+			"gateway domain is missing for ModelRegistry; set spec.gateway.domain to the cluster ingress domain")
+	}
+
+	return map[string]string{
+		"GATEWAY_DOMAIN":      domain,
+		"GATEWAY_NAME":        defaultGatewayName,
+		"GATEWAY_NAMESPACE":   gatewayNamespace,
+		"HTTPROUTE_NAMESPACE": m.cfg.ApplicationsNamespace,
+	}, nil
 }

@@ -531,21 +531,47 @@ func replaceWebhookNamespace(raw string) string {
 func injectConfigMapValues(raw string) string {
 	lines := strings.Split(raw, "\n")
 	var result []string
+	i := 0
 
-	for _, line := range lines {
-		result = append(result, line)
+	for i < len(lines) {
+		line := lines[i]
 		trimmed := strings.TrimSpace(line)
 		if trimmed == yamlFieldData {
 			indent := line[:len(line)-len(strings.TrimLeft(line, " "))]
+			result = append(result, line)
 			result = append(result,
 				indent+"  {{- with .Values.imagePullSecret }}",
 				indent+"  imagePullSecret: {{ . }}",
 				indent+"  {{- end }}",
+				indent+`  platform-name: {{ default "OpenDataHub" (index .Values.config "platform-type") | quote }}`,
+				indent+`  platform-version: {{ default "unknown" (index .Values.config "platform-version") | quote }}`,
 				indent+"  {{- range $key, $val := .Values.config }}",
+				indent+`  {{- if and (ne $key "platform-type") (ne $key "platform-version") }}`,
 				indent+"  {{ $key }}: {{ $val | quote }}",
 				indent+"  {{- end }}",
+				indent+"  {{- end }}",
 			)
+
+			i++
+			dataIndent := len(indent) + 2
+			for i < len(lines) {
+				next := lines[i]
+				if strings.TrimSpace(next) == "" {
+					i++
+					continue
+				}
+				nextIndent := len(next) - len(strings.TrimLeft(next, " "))
+				if nextIndent >= dataIndent {
+					i++
+					continue
+				}
+				break
+			}
+			continue
 		}
+
+		result = append(result, line)
+		i++
 	}
 
 	return strings.Join(result, "\n")

@@ -17,12 +17,10 @@ limitations under the License.
 package ray
 
 import (
-	"context"
 	"fmt"
 
 	fwtypes "github.com/opendatahub-io/odh-platform-utilities/framework/controller/types"
 	fwparams "github.com/opendatahub-io/odh-platform-utilities/framework/utils/params"
-	ofVersion "github.com/operator-framework/api/pkg/lib/version"
 
 	componentApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-ray-operator/api/components/v1alpha1"
 	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-ray-operator/pkg/config"
@@ -51,54 +49,24 @@ type Module struct {
 
 // NewModule creates a Module with one-shot computed state.
 func NewModule(cfg *moduleconfig.Config) (*Module, error) {
-	mi := fwtypes.ManifestInfo{
-		Path:       cfg.ManifestsPath,
-		ContextDir: componentName,
-		SourcePath: overlayOpenShift,
-	}
-
-	// Apply image parameters once at startup (equivalent to Init in the
-	// monolith's componentHandler).
-	if err := fwparams.Apply(
-		mi.String(),
-		"params.env",
-		fwparams.Replacement(fwparams.FromEnv(imageParamMap)),
-	); err != nil {
-		return nil, fmt.Errorf("failed to update images on path %s: %w", mi, err)
-	}
-
 	return &Module{
-		cfg:          cfg,
-		manifestInfo: mi,
+		cfg: cfg,
+		manifestInfo: fwtypes.ManifestInfo{
+			Path:       cfg.ManifestsPath,
+			ContextDir: componentName,
+			SourcePath: overlayOpenShift,
+		},
 	}, nil
 }
 
-// initialize appends manifests and applies image/namespace parameters.
-func (m *Module) initialize(_ context.Context, rr *fwtypes.ReconciliationRequest) error {
-	rr.Manifests = append(rr.Manifests, m.manifestInfo)
-
+// Init applies image parameters from environment — called once at startup.
+func (m *Module) Init() error {
 	if err := fwparams.Apply(
 		m.manifestInfo.String(),
 		"params.env",
-		fwparams.Values(map[string]string{"namespace": m.cfg.ApplicationsNamespace}),
+		fwparams.Replacement(fwparams.FromEnv(imageParamMap)),
 	); err != nil {
-		return fmt.Errorf("failed to update params.env: %w", err)
+		return fmt.Errorf("failed to update images on path %s: %w", m.manifestInfo, err)
 	}
-
-	return nil
-}
-
-// reportStatus populates the release status with platform version and name.
-func (m *Module) reportStatus(_ context.Context, rr *fwtypes.ReconciliationRequest) error {
-	obj, ok := rr.Instance.(*componentApi.Ray)
-	if !ok {
-		return fmt.Errorf("instance is not a Ray")
-	}
-
-	obj.Status.Release = componentApi.Release{
-		Name:    componentApi.Platform(rr.Release.Name),
-		Version: ofVersion.OperatorVersion{Version: rr.Release.Version},
-	}
-
 	return nil
 }

@@ -24,6 +24,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	ofVersion "github.com/operator-framework/api/pkg/lib/version"
 
 	componentApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-modelregistry-operator/api/components/v1alpha1"
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-modelregistry-operator/pkg/resources/gvk"
@@ -36,6 +37,15 @@ const (
 	openShiftAPIServerReaderRoleName        = "model-registry-operator-apiserver-reader"
 	openShiftAPIServerReaderRoleBindingName = "model-registry-operator-apiserver-reader-binding"
 )
+
+// initialize sets the per-reconcile manifest list.
+func (m *Module) initialize(_ context.Context, rr *odhtypes.ReconciliationRequest) error {
+	rr.Manifests = []odhtypes.ManifestInfo{
+		m.manifestInfo,
+		m.extraManifest,
+	}
+	return nil
+}
 
 // customizeManifests computes kustomize variables (gateway, namespace) and writes them to params.env.
 func (m *Module) customizeManifests(_ context.Context, rr *odhtypes.ReconciliationRequest) error {
@@ -60,26 +70,6 @@ func (m *Module) customizeManifests(_ context.Context, rr *odhtypes.Reconciliati
 	}
 
 	return nil
-}
-
-// computeKustomizeVariables returns the gateway and routing kustomize variables from the CR spec.
-func (m *Module) computeKustomizeVariables(mr *componentApi.ModelRegistry) (map[string]string, error) {
-	var domain string
-	if mr.Spec.Gateway != nil {
-		domain = mr.Spec.Gateway.Domain
-	}
-
-	if domain == "" {
-		return nil, errors.New(
-			"gateway domain is missing for ModelRegistry; set spec.gateway.domain to the cluster ingress domain")
-	}
-
-	return map[string]string{
-		"GATEWAY_DOMAIN":      domain,
-		"GATEWAY_NAME":        defaultGatewayName,
-		"GATEWAY_NAMESPACE":   gatewayNamespace,
-		"HTTPROUTE_NAMESPACE": m.cfg.ApplicationsNamespace,
-	}, nil
 }
 
 // configureDependencies ensures the registries namespace exists and adds
@@ -149,6 +139,21 @@ func (m *Module) updateStatus(_ context.Context, rr *odhtypes.ReconciliationRequ
 	}
 
 	mr.Status.RegistriesNamespace = mr.Spec.RegistriesNamespace
+
+	return nil
+}
+
+// reportStatus populates the release status and platform.
+func (m *Module) reportStatus(_ context.Context, rr *odhtypes.ReconciliationRequest) error {
+	obj, ok := rr.Instance.(*componentApi.ModelRegistry)
+	if !ok {
+		return fmt.Errorf("instance is not a ModelRegistry")
+	}
+
+	obj.Status.Release = componentApi.Release{
+		Name:    componentApi.Platform(rr.Release.Name),
+		Version: ofVersion.OperatorVersion{Version: rr.Release.Version},
+	}
 
 	return nil
 }

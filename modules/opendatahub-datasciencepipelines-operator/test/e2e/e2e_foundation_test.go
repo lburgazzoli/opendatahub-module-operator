@@ -42,23 +42,6 @@ func (ft *foundationTests) Execute(t *testing.T) {
 	t.Run("should set owner references", ft.testOwnerReferences)
 }
 
-func moduleObject() *componentsv1alpha1.DataSciencePipelines {
-	return &componentsv1alpha1.DataSciencePipelines{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: componentsv1alpha1.DataSciencePipelinesInstanceName,
-		},
-	}
-}
-
-func workloadDeployment() *appsv1.Deployment {
-	return &appsv1.Deployment{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      workloadDeploymentName,
-			Namespace: support.OperatorNamespace(),
-		},
-	}
-}
-
 func (ft *foundationTests) ensureReadyModule(t *testing.T) *componentsv1alpha1.DataSciencePipelines {
 	t.Helper()
 
@@ -67,8 +50,17 @@ func (ft *foundationTests) ensureReadyModule(t *testing.T) *componentsv1alpha1.D
 	})
 
 	g := NewWithT(t)
-	module := moduleObject()
-	workloadDeploy := workloadDeployment()
+	module := &componentsv1alpha1.DataSciencePipelines{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: componentsv1alpha1.DataSciencePipelinesInstanceName,
+		},
+	}
+	workloadDeploy := &appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      support.ManagedDeploymentName,
+			Namespace: support.OperatorNamespace(),
+		},
+	}
 	workloadServiceMon := &promv1.ServiceMonitor{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      workloadServiceMonName,
@@ -80,14 +72,13 @@ func (ft *foundationTests) ensureReadyModule(t *testing.T) *componentsv1alpha1.D
 		createModule(t, ft.Client, module)
 	})
 
-	g.Eventually(t.Context(), k8sm.Get(ft.Client, module)).Should(And(
-		jq.Match(`.status.phase == "Ready"`),
+	g.Eventually(t.Context(), k8sm.Get(ft.Client, module)).Should(
 		WithTransform(k8sm.ConditionsOf[metav1.Condition](), SatisfyAll(
-			ContainElement(condition.Is(common.ConditionTypeReady, metav1.ConditionTrue)),
+			ContainElement(condition.Is(string(common.ConditionTypeReady), metav1.ConditionTrue)),
 			ContainElement(condition.Is(modulemeta.ConditionArgoWorkflowAvailable, metav1.ConditionTrue)),
-			ContainElement(condition.Is(common.ConditionTypeProvisioningSucceeded, metav1.ConditionTrue)),
+			ContainElement(condition.Is(string(common.ConditionTypeProvisioningSucceeded), metav1.ConditionTrue)),
 		)),
-	))
+	)
 
 	g.Eventually(t.Context(), k8sm.Get(ft.Client, workloadDeploy)).Should(
 		jq.Match(`.status.readyReplicas >= 1`),
@@ -126,7 +117,11 @@ func (ft *foundationTests) testOperatorConfigMap(t *testing.T) {
 }
 
 func (ft *foundationTests) testMissingArgoWorkflowCRD(t *testing.T) {
-	obj := moduleObject()
+	obj := &componentsv1alpha1.DataSciencePipelines{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: componentsv1alpha1.DataSciencePipelinesInstanceName,
+		},
+	}
 	withStoppedOperator(t, ft.Client, func() {
 		ensureArgoWorkflowCRDMissing(t, ft.Client)
 
@@ -148,7 +143,11 @@ func (ft *foundationTests) testMissingArgoWorkflowCRD(t *testing.T) {
 }
 
 func (ft *foundationTests) testForeignOwnedArgoWorkflowCRD(t *testing.T) {
-	obj := moduleObject()
+	obj := &componentsv1alpha1.DataSciencePipelines{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: componentsv1alpha1.DataSciencePipelinesInstanceName,
+		},
+	}
 	withStoppedOperator(t, ft.Client, func() {
 		ensureArgoWorkflowCRDForeignOwned(t, ft.Client)
 		createModule(t, ft.Client, obj)
@@ -209,7 +208,12 @@ func (ft *foundationTests) testPlatformLabels(t *testing.T) {
 			Namespace: support.OperatorNamespace(),
 		},
 	}
-	workloadDeploy := workloadDeployment()
+	workloadDeploy := &appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      support.ManagedDeploymentName,
+			Namespace: support.OperatorNamespace(),
+		},
+	}
 
 	g.Eventually(t.Context(), k8sm.Lookup(ft.Client, operatorCfg)).Should(Succeed())
 
@@ -226,7 +230,12 @@ func (ft *foundationTests) testOwnerReferences(t *testing.T) {
 	g := NewWithT(t)
 
 	owner := ft.ensureReadyModule(t)
-	workloadDeploy := workloadDeployment()
+	workloadDeploy := &appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      support.ManagedDeploymentName,
+			Namespace: support.OperatorNamespace(),
+		},
+	}
 	owner.TypeMeta = metav1.TypeMeta{
 		APIVersion: componentsv1alpha1.GroupVersion.String(),
 		Kind:       componentsv1alpha1.DataSciencePipelinesKind,

@@ -78,7 +78,11 @@ func NewReconciler(
 		return err
 	}
 
-	r, err := reconciler.ReconcilerFor(mgr, &componentApi.FeastOperator{}).
+	if err := m.Init(); err != nil {
+		return err
+	}
+
+	_, err = reconciler.ReconcilerFor(mgr, &componentApi.FeastOperator{}).
 		Owns(&corev1.ConfigMap{}).
 		Owns(&rbacv1.RoleBinding{}).
 		Owns(&rbacv1.Role{}).
@@ -96,9 +100,15 @@ func NewReconciler(
 			reconciler.WithPredicates(
 				labelpred.ForLabel(appLabelPrefix+"/"+componentName, "true")),
 		).
+		WithReconcilerOpts(
+			reconciler.WithRelease(fwapi.Release{
+				Name:    fwapi.Platform(rel.Name),
+				Version: rel.Version.Version,
+			}),
+		).
 		WithAction(m.initialize).
 		WithAction(m.upgradeIfNeeded).
-		WithAction(m.setKustomizedParams).
+		WithAction(m.customizeManifests).
 		WithAction(fwreleases.NewAction()).
 		WithAction(kustomize.NewAction(
 			kustomize.WithNamespaceFn(moduleconfig.ApplicationsNamespaceGetter(cfg)),
@@ -122,11 +132,6 @@ func NewReconciler(
 
 	if err != nil {
 		return err
-	}
-
-	r.Release = fwapi.Release{
-		Name:    fwapi.Platform(rel.Name),
-		Version: rel.Version.Version,
 	}
 
 	return nil

@@ -287,7 +287,7 @@ func TestReportStatus(t *testing.T) {
 	g.Expect(string(obj.Status.Release.Name)).To(Equal("OpenDataHub"))
 }
 
-func TestSetKustomizedParamsIgnoresMissingGatewayConfigAPI(t *testing.T) {
+func TestCustomizeManifestsIgnoresMissingGatewayConfigAPI(t *testing.T) {
 	g := NewWithT(t)
 
 	m := newTestModule(t)
@@ -303,5 +303,5 @@ func TestSetKustomizedParamsIgnoresMissingGatewayConfigAPI(t *testing.T) {
 			},
 		},
 	}
-	g.Expect(m.setKustomizedParams(context.Background(), rr)).To(Succeed())
+	g.Expect(m.customizeManifests(context.Background(), rr)).To(Succeed())
 }
