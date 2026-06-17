@@ -80,4 +80,3 @@ func (m *Module) Init() error {
 	}
 	return nil
 }
-

@@ -21,10 +21,10 @@ import (
 	"errors"
 	"fmt"
 
+	ofVersion "github.com/operator-framework/api/pkg/lib/version"
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	ofVersion "github.com/operator-framework/api/pkg/lib/version"
 
 	componentApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-modelregistry-operator/api/components/v1alpha1"
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-modelregistry-operator/pkg/resources/gvk"
