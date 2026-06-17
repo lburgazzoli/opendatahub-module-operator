@@ -100,8 +100,8 @@ module and update for `$KIND` / `$COMPONENT`:
 
 | Script | Namespace default | Deletes |
 |--------|-------------------|---------|
-| `cleanup-integration.sh` | `$MODULE_NAME-integration` | Module CRs (cluster-scoped), waits for CR deletion, workload + RBAC in test namespace, `part-of=$COMPONENT` ClusterRoles/Bindings, integration test RBAC, module CRD |
-| `cleanup-e2e.sh` | `$MODULE_NAME-system` | Module CRs, waits for CR deletion, Helm release uninstall, operator namespace, leftover cluster RBAC, module CRD |
+| `cleanup-integration.sh` | `opendatahub-{name}-integration` | Module CRs (cluster-scoped), waits for CR deletion, workload + RBAC in test namespace, `part-of=$COMPONENT` ClusterRoles/Bindings, integration test RBAC, module CRD |
+| `cleanup-e2e.sh` | `opendatahub-{name}-system` | Module CRs, waits for CR deletion, Helm release uninstall, operator namespace, leftover cluster RBAC, module CRD |
 
 Use `--ignore-not-found` on all `kubectl delete` calls so cleanup is idempotent.
 Delete the module CRs **before** any CRD removal path and wait for them to
