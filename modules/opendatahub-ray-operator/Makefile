@@ -2,7 +2,7 @@
 -include local.mk
 
 # Image URL to use all building/pushing image targets
-IMG ?= ttl.sh/opendatahub-ray-operator-$(shell git rev-parse --short HEAD 2>/dev/null || echo dev):1h
+IMG ?= ttl.sh/$(shell uuidgen | tr '[:upper:]' '[:lower:]'):1h
 # YEAR defines the year value used for substituting the YEAR placeholder in the boilerplate header.
 YEAR ?= $(shell date +%Y)
 
@@ -26,8 +26,6 @@ GOLANGCI_LINT  = go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$
 HELM           = go run helm.sh/helm/v4/cmd/helm@$(HELM_VERSION)
 
 KUBECTL ?= kubectl
-
-MODULE_NAME ?= $(notdir $(CURDIR))
 
 .PHONY: all
 all: build
@@ -86,9 +84,8 @@ test-e2e-setup: ## Prepare the cluster for e2e tests.
 	@:
 
 .PHONY: test-e2e
-test-e2e: test-e2e-cleanup test-e2e-setup ## Run e2e tests (clean, prepare, deploy, then run).
-	$(MAKE) deploy-helm HELM_EXTRA_ARGS="$(HELM_EXTRA_ARGS) --set-string config.platform-version=$(TEST_PLATFORM_VERSION)"
-	$(MAKE) test-e2e-run
+test-e2e: HELM_EXTRA_ARGS += --set-string config.platform-version=$(TEST_PLATFORM_VERSION)
+test-e2e: test-e2e-cleanup test-e2e-setup deploy-helm test-e2e-run ## Run e2e tests (clean, prepare, deploy, then run).
 
 .PHONY: test-integration-cleanup
 test-integration-cleanup: ## Clean up integration test resources from the cluster.
@@ -165,7 +162,7 @@ container-push: ## Push container image with the manager.
 HELM_NAMESPACE ?= opendatahub-ray-system
 HELM_RELEASE   ?= opendatahub-ray-operator
 OPERATOR_NAMESPACE ?= $(HELM_NAMESPACE)
-INTEGRATION_TEST_NAMESPACE ?= integration-test
+INTEGRATION_TEST_NAMESPACE ?= opendatahub-ray-integration
 HELM_EXTRA_ARGS ?=
 TEST_PLATFORM_TYPE    ?=
 TEST_PLATFORM_VERSION ?= 0.1.0
@@ -193,18 +190,6 @@ deploy-helm: ## Deploy controller via Helm chart.
 			--namespace $(HELM_NAMESPACE) --create-namespace \
 			--set-string image.fullRef="$$resolved_img" \
 			--wait --timeout 5m $(HELM_EXTRA_ARGS)
-
-.PHONY: push-openshift-image
-push-openshift-image: ## Push a built image to the OpenShift internal registry and print the pullspec.
-	@bash ./hack/scripts/push-openshift-image.sh "$(IMG)" "$(HELM_NAMESPACE)" "$(MODULE_NAME)"
-
-.PHONY: deploy-openshift
-deploy-openshift: ## Build locally, push to OpenShift internal registry, and deploy via Helm.
-	$(MAKE) container-build
-	@img="$$(bash ./hack/scripts/push-openshift-image.sh "$(IMG)" "$(HELM_NAMESPACE)" "$(MODULE_NAME)")"; \
-		echo "Using image: $$img"; \
-		$(MAKE) helm; \
-		$(MAKE) deploy-helm IMG="$$img"
 
 .PHONY: undeploy-helm
 undeploy-helm: ## Undeploy controller installed via Helm.

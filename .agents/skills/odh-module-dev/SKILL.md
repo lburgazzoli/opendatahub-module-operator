@@ -58,17 +58,22 @@ Full pipeline rules, builder setup, and file organization:
 
 ## Manager Wrapper
 
-The `ctrl.Manager` is wrapped by `odhmanager.New()`:
+The `ctrl.Manager` is wrapped by `modulemanager.New(ctx, cfg, moduleCfg)` which:
 
-```go
-mgr := odhmanager.New(ctrlMgr, odhmanager.WithManifestsBasePath(cfg.ManifestsPath))
-```
+1. Creates the controller-runtime manager
+2. Calls `module.Init(ctx, reader)` once at startup to apply image params and detect
+   cluster info (FIPS state, cluster version, etc.)
+3. Registers the reconciler and wires `rr.ManifestsBasePath` from `cfg.ManifestsPath`
 
-This wrapper provides `rr.ManifestsBasePath` to the action pipeline. Without
-it, `initialize` produces paths like `mymodule/overlays/odh` (no base) and
-kustomize fails with `lstat /mymodule: no such file or directory`.
+**`Init` vs `initialize`:** `Init(ctx, reader)` runs once at startup and writes image
+params + cluster-derived values to `params.env`. The per-reconcile `initialize` action
+only appends manifest info to `rr.Manifests`. Never call `fwparams.Apply` inside
+`initialize` -- it runs on every reconcile and the params file has already been written.
 
-Integration tests must use the same wrapper pattern.
+Without `modulemanager.New`, `initialize` produces paths like `component/overlays/odh`
+with no base prefix and kustomize fails with `lstat /component: no such file or directory`.
+
+Integration tests must use the same `modulemanager.New` wrapper.
 
 ## Config Loading
 

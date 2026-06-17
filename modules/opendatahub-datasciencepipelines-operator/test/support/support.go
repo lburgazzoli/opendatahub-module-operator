@@ -4,7 +4,7 @@ import "os"
 
 const (
 	DefaultOperatorNamespace        = "opendatahub-datasciencepipelines-system"
-	DefaultIntegrationTestNamespace = "integration-test"
+	DefaultIntegrationTestNamespace = "opendatahub-datasciencepipelines-integration"
 	DefaultPlatformName             = "OpenDataHub"
 	DefaultPlatformVersion          = "0.1.0"
 )

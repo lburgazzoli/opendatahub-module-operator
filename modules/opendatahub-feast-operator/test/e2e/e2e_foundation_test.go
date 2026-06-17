@@ -26,7 +26,6 @@ import (
 	"github.com/opendatahub-io/odh-platform-utilities/pkg/metadata/labels"
 )
 
-
 type foundationTests struct {
 	Client client.Client
 }

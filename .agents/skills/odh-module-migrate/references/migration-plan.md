@@ -4,8 +4,7 @@
 
 | What | Path |
 |------|------|
-| Example module operator | `modules/opendatahub-mymodule-operator/` |
-| Completed ray module | `modules/opendatahub-ray-operator/` |
+| Template module (copy this) | `modules/opendatahub-ray-operator/` |
 | Component controllers | `/home/luca/work/dev/openshift-ai/opendatahub-operator/internal/controller/components/` |
 | Component API types | `/home/luca/work/dev/openshift-ai/opendatahub-operator/api/components/v1alpha1/` |
 | Upgrade logic | `/home/luca/work/dev/openshift-ai/opendatahub-operator/pkg/upgrade/` |
@@ -68,37 +67,36 @@ methods from the other files but contains no business logic itself.
 
 ## Design Principle: Minimize Dynamic Computation
 
-Manifest paths, platform overlays, and image parameters are often fixed for
-the lifetime of the process. Compute them once in `NewModule()` and store on
-the Module struct — do NOT recompute them on every reconcile.
+Manifest paths and platform overlays are computed once in `NewModule()` (pure
+constructor) and stored on the Module struct. Image parameters and cluster-derived
+values (FIPS, etc.) are applied once in `Init(ctx, reader)` at startup.
+Do NOT recompute any of these on every reconcile.
 
-Pattern from the example implementation:
 ```go
+// NewModule: pure constructor, computes overlay from platform name
 func NewModule(cfg *moduleconfig.Config) (*Module, error) {
-    // Computed once, stored on struct
-    mi := odhtypes.ManifestInfo{
-        Path:       cfg.ManifestsPath,
-        ContextDir: componentName,
-        SourcePath: overlayODH,
+    var overlay string
+    switch odhcluster.Platform(cfg.PlatformName) {
+    case odhcluster.SelfManagedRhoai, odhcluster.ManagedRhoai:
+        overlay = overlayRhoai
+    default:
+        overlay = overlayODH
     }
-    if platform == SelfManagedRhoai {
-        mi.SourcePath = overlayRhoai
-    }
-    return &Module{manifestInfo: mi, ...}, nil
+    return &Module{cfg: cfg, manifestInfo: fwtypes.ManifestInfo{
+        Path: cfg.ManifestsPath, ContextDir: componentName, SourcePath: overlay,
+    }}, nil
 }
-```
 
-The `initialize()` action just appends the pre-computed value:
-```go
-func (m *Module) initialize(_ context.Context, rr *odhtypes.ReconciliationRequest) error {
+// initialize: per-reconcile, only appends pre-computed value
+func (m *Module) initialize(_ context.Context, rr *fwtypes.ReconciliationRequest) error {
     rr.Manifests = append(rr.Manifests, m.manifestInfo)
     return nil
 }
 ```
 
-Apply this to all components: image parameters, kustomize variables, OIDC
-URLs, gateway domains — anything that comes from config or build-time info
-should be computed once in `NewModule()`, not re-derived on every reconcile.
+Apply this to all components: kustomize variables, OIDC URLs, gateway domains —
+anything derivable from config at startup belongs in `NewModule` or `Init`, not
+in `initialize`.
 
 ## Design Principle: CRD Checks over Operator Checks
 
@@ -208,8 +206,8 @@ For each simple component, the work is:
 
 ## Execution Notes
 
-- Start each module by copying the example `modules/opendatahub-mymodule-operator/` structure
-- Replace `mymodule` naming with the component name throughout
+- Start each module by copying `modules/opendatahub-ray-operator/` as the template
+- Replace `ray` naming with the component name throughout
 - The chartgen command is the only code reused from this repo — copy the
   structure, then retarget it to the module-local `pkg/resources/gvk/gvk.go`
 - Never import `github.com/opendatahub-io/opendatahub-operator/v2/pkg/cluster/gvk`

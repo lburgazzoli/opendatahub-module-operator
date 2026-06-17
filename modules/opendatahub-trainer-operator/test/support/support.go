@@ -4,7 +4,7 @@ import "os"
 
 const (
 	DefaultOperatorNamespace        = "opendatahub-trainer-system"
-	DefaultIntegrationTestNamespace = "integration-test"
+	DefaultIntegrationTestNamespace = "opendatahub-trainer-integration"
 	DefaultPlatformName             = "OpenDataHub"
 	DefaultPlatformVersion          = "0.1.0"
 )

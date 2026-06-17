@@ -42,7 +42,7 @@ For each module, copy only the relevant migrations:
 Each module uses the pattern from the reference implementation:
 
 ```go
-func (m *Module) upgrade(ctx context.Context, prev componentApi.ModuleStatus, rr *odhtypes.ReconciliationRequest) error {
+func (m *Module) upgrade(ctx context.Context, prev componentApi.ModuleStatus, rr *fwtypes.ReconciliationRequest) error {
     // Version-gated migrations
     // Direct API calls to amend existing resources before new manifests apply
     return nil

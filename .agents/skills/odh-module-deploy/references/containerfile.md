@@ -26,7 +26,8 @@ COPY --from=builder /workspace/config/manifests/ /manifests/
 ## Init Container with emptyDir
 
 The manager Deployment uses an init container to copy manifests to a writable
-volume, because `odhdeploy.ApplyParams` writes to `params.env` in-place:
+volume, because `fwparams.Apply` (called by `module.Init`) writes to `params.env`
+in-place at operator startup:
 
 ```yaml
 initContainers:

@@ -4,7 +4,7 @@ import "os"
 
 const (
 	DefaultOperatorNamespace        = "opendatahub-modelregistry-system"
-	DefaultIntegrationTestNamespace = "integration-test"
+	DefaultIntegrationTestNamespace = "opendatahub-modelregistry-integration"
 	DefaultPlatformName             = "OpenDataHub"
 	DefaultPlatformVersion          = "0.1.0"
 )

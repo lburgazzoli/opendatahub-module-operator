@@ -5,13 +5,16 @@
 ### Required tests for every module
 
 ```go
-TestNewModule                // version parsing, manifest info, image params applied
-TestNewModuleInvalidVersion  // bad semver -> error
-TestInitialize               // manifest appended, correct overlay/contextDir
-TestUpgradeIfNeededFreshInstall   // status version zero -> no upgrade
-TestUpgradeIfNeededSameVersion    // same version -> no upgrade
-TestReportStatus             // version, platform, sources populated
+TestNewModule                        // manifest info fields (Path/ContextDir/SourcePath) + config stored; default overlay
+TestNewModuleSelectsRhoaiOverlay     // RHOAI platform name -> rhoai overlay selected
+TestInitialize                       // manifest appended to rr.Manifests, correct path/contextDir/overlay
+TestUpgradeIfNeededFreshInstall      // status version zero -> no upgrade
+TestUpgradeIfNeededSameVersion       // same version -> no upgrade
+TestReportStatus                     // version, platform, sources populated
 ```
+
+`Init(ctx, reader)` requires a live cluster reader (`DetectClusterInfo`) and is **not**
+unit-tested. Cover it through integration tests.
 
 ### If the module has upgrade logic
 
@@ -57,24 +60,52 @@ Use **stdlib `testing.T` + Gomega**. See ray module
 
 ```go
 func TestMain(m *testing.M) {
-    // 1. Create context
-    // 2. Get kubeconfig
-    // 3. Create direct client
-    // 4. Ensure test namespace
-    // 5. Install CRDs (create-or-update, NOT create-only)
-    // 6. Clean up leftovers from previous runs (see Pre-test cleanup)
-    // 7. Set viper namespace + cluster namespace
-    // 8. Read operator ConfigMap for expected values
-    // 9. Create module config
-    // 10. Create manager with cache + client options
-    // 11. Wrap with odhmanager
-    // 12. Register reconciler
-    // 13. Start manager in goroutine
-    // 14. Wait for cache sync -- FAIL if not synced
-    // 15. Create RBAC
-    // 16. Run tests
+    os.Exit(runTestMain(m))
+}
+
+func runTestMain(m *testing.M) int {
+    ctx, cancel := context.WithCancel(context.Background())
+    defer cancel()
+
+    // 1. Load Gomega config (EventuallyTimeout, polling intervals)
+    gomegaCfg, _ := support.LoadGomegaConfig()
+    SetDefaultEventuallyTimeout(gomegaCfg.EventuallyTimeout)
+    SetDefaultEventuallyPollingInterval(gomegaCfg.EventuallyPollingInterval)
+
+    // 2. Build config and module config from support helpers
+    moduleCfg, _ := loadOperatorConfig()
+    moduleCfg.ApplicationsNamespace = support.IntegrationTestNamespace()
+    // ... disable metrics/leader election/pprof for test
+
+    // 3. Create direct client; ensure test namespace; pre-clean leftovers
+    cli, _ := support.NewClient()
+    support.EnsureNamespace(ctx, cli, moduleCfg.ApplicationsNamespace)
+    _ = cli.DeleteAllOf(ctx, &componentsv1alpha1.MyModule{})
+    _ = cli.DeleteAllOf(ctx, &appsv1.Deployment{}, client.InNamespace(moduleCfg.ApplicationsNamespace))
+    // ... delete other workload types
+
+    // 4. Gate: fail fast if module CRD is not pre-installed
+    if err := cli.Get(ctx, client.ObjectKeyFromObject(moduleCRD), moduleCRD); err != nil {
+        fmt.Fprintf(os.Stderr, "Expected CRD %s to be installed: %v\n", crdName, err)
+        return 1
+    }
+
+    // 5. Create manager (calls module.Init internally, registers reconciler)
+    mgr, _ := modulemanager.New(ctx, cfg, moduleCfg)
+    go mgr.Start(ctx)
+
+    // 6. Wait for cache sync
+    if !mgr.GetCache().WaitForCacheSync(ctx) {
+        fmt.Fprintf(os.Stderr, "Failed to sync manager cache\n")
+        return 1
+    }
+
+    return m.Run()
 }
 ```
+
+CRDs must be installed from `make test-integration-setup` **before** running tests.
+Tests fail fast (not install) if the module CRD is missing. Do not install CRDs from Go test code.
 
 ### Required tests for every module
 
@@ -107,7 +138,7 @@ cases for:
 
 - **Pre-test cleanup**: `make test-integration` / `make test-e2e` must run
   `cleanup-integration` / `cleanup-e2e` first (see testing-ops.md)
-- **CRD install path**: integration CRDs come from `make prepare-integration` /
+- **CRD install path**: integration CRDs come from `make test-integration-setup` /
   `make test-integration`, not from Go test code
 - **Cleanup in TestMain**: `DeleteAllOf` for the module CR type + workload
   Deployments/Services in the test namespace, plus `Eventually` / `Consistently`
@@ -137,7 +168,7 @@ func TestMain(m *testing.M) {
 ```
 
 Assumes the operator is already deployed. For manual step-by-step deploy, use
-`test-e2e-run` after `cleanup-e2e` and `deploy-crc` / `deploy-helm`. Composite
+`test-e2e-run` after `cleanup-e2e` and `deploy-helm`. Composite
 `make test-e2e` runs cleanup, deploy, and tests in one target.
 
 ```go
@@ -188,8 +219,7 @@ Tailor to what the module actually does. Examples:
 - A module with webhooks: verify webhook-injected labels
 - A module with preconditions: test blocking and recovery
 
-Do NOT copy upgrade/fault-injection tests from the mymodule template
-unless the module actually has upgrade logic.
+Do NOT add upgrade/fault-injection tests unless the module actually has upgrade logic.
 
 ## Workload Resource Names
 

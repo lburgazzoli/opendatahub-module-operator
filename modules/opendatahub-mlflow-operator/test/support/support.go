@@ -4,7 +4,7 @@ import "os"
 
 const (
 	DefaultOperatorNamespace        = "opendatahub-mlflow-system"
-	DefaultIntegrationTestNamespace = "integration-test"
+	DefaultIntegrationTestNamespace = "opendatahub-mlflow-integration"
 	DefaultPlatformName             = "OpenDataHub"
 	DefaultPlatformVersion          = "0.1.0"
 )

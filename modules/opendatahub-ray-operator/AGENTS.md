@@ -50,18 +50,12 @@ make test-integration-cleanup   # clean up
 
 **E2E tests** — requires a cluster with the operator image published:
 ```sh
-# build and push the image, then run:
-IMG="localhost/opendatahub-ray-operator:e2e-$(uuidgen | tr '[:upper:]' '[:lower:]')"
+IMG="ttl.sh/$(uuidgen | tr '[:upper:]' '[:lower:]'):1h"
 make container-build IMG="$IMG"
-OCP_IMG="$(make push-openshift-image IMG="$IMG")"
+make container-push IMG="$IMG"
+make helm
 make test-e2e-cleanup
-make deploy-helm IMG="$OCP_IMG"
-make test-e2e-run
-make test-e2e-cleanup
-
-# or use deploy-openshift which builds, pushes, and deploys:
-make test-e2e-cleanup
-make deploy-openshift
+make deploy-helm IMG="$IMG"
 make test-e2e-run
 make test-e2e-cleanup
 ```
@@ -85,4 +79,3 @@ The operator reads configuration from a mounted ConfigMap:
 | `make fmt` | Run golangci-lint formatters |
 | `make manifests generate` | Regenerate CRDs, RBAC, DeepCopy |
 | `make helm` | Generate Helm chart |
-| `make deploy-openshift` | Build, push to OpenShift registry, deploy |

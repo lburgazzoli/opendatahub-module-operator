@@ -5,9 +5,9 @@ example module. Never use `ODH_OPERATOR_`. Never embed the component name
 (e.g. `ODH_RAY_OPERATOR_*`). `pkg/config.EnvPrefix` and `ConfigPathEnvVar`
 must match deployment env vars and `make run`.
 
-Copy from the example module
-`modules/opendatahub-mymodule-operator/pkg/config/config.go` and
-`modules/opendatahub-mymodule-operator/config/manager/manager.yaml`.
+Copy from the ray module template
+`modules/opendatahub-ray-operator/pkg/config/config.go` and
+`modules/opendatahub-ray-operator/config/manager/manager.yaml`.
 
 These files must stay in sync:
 

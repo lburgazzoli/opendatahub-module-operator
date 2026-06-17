@@ -22,8 +22,9 @@ modelsasservice — none of these have component-specific webhooks.
 
 ## Module Webhook Pattern
 
-Each module registers webhooks in `NewReconciler()` (see example
-implementation in `modules/opendatahub-mymodule-operator/internal/controller/mymodule/mymodule_webhook.go`):
+Each module registers webhooks in `NewReconciler()` (see
+`modules/opendatahub-ray-operator/internal/controller/ray/ray_webhook.go` for
+the pattern):
 
 ```go
 if cfg.WebhooksEnabled {

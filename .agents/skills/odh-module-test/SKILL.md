@@ -19,8 +19,7 @@ allowed-tools:
 
 ## OpenShift Assumptions
 
-Integration and e2e tests target **OpenShift** (CRC, ROSA, shared dev
-cluster). OpenShift APIs (SCC, Route, etc.) are available natively -- no
+Integration and e2e tests target **OpenShift** (ROSA, shared dev cluster). OpenShift APIs (SCC, Route, etc.) are available natively -- no
 synthetic CRDs needed. Use an OpenShift kubeconfig (`oc login` or existing
 context).
 
@@ -64,11 +63,11 @@ Run these from the **module directory** (`modules/$name/`), not the repo root.
 | Target | What it does |
 |---|---|
 | `make test` | Unit tests (compilation, vet) |
-| `make test-integration` | `prepare-integration` + `test-integration-run` |
+| `make test-integration` | `test-integration-setup` + `test-integration-run` |
+| `make test-integration-setup` | `cleanup-integration` + CRD install |
 | `make test-integration-run` | Run integration tests only (cluster must be prepared) |
 | `make test-e2e` | `cleanup-e2e` + `deploy-helm` + `test-e2e-run` |
 | `make test-e2e-run` | Run e2e tests only (operator must be deployed) |
-| `make prepare-integration` | `cleanup-integration` + CRD install |
 | `make cleanup-integration` | Remove integration test leftovers from cluster |
 | `make cleanup-e2e` | Uninstall operator and remove e2e leftovers |
 

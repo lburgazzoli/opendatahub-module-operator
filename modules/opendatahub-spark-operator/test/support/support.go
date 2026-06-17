@@ -4,7 +4,7 @@ import "os"
 
 const (
 	DefaultOperatorNamespace        = "opendatahub-spark-system"
-	DefaultIntegrationTestNamespace = "integration-test"
+	DefaultIntegrationTestNamespace = "opendatahub-spark-integration"
 	DefaultPlatformName             = "OpenDataHub"
 	DefaultPlatformVersion          = "0.1.0"
 )

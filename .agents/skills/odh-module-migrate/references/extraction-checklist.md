@@ -34,8 +34,8 @@ inputs for porting.
 
 ## From `${component}.go` (the handler)
 
-- [ ] **Init()**: what it does at startup (usually `odhdeploy.ApplyParams` with imageParamMap)
-- [ ] **initialize()**: what it does per-reconcile (usually appends manifests + applies namespace params)
+- [ ] **Init()**: what it does at startup (calls `odhcluster.DetectClusterInfo`, then `fwparams.Apply` with imageParamMap and cluster-derived values)
+- [ ] **initialize()**: what it does per-reconcile (appends manifest info to `rr.Manifests`; no params apply here)
 - [ ] **Custom actions**: any action functions (setKustomizedParams, checkPreConditions, etc.)
 
 ## Dependency-check rewrite rule

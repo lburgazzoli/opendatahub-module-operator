@@ -9,9 +9,10 @@ extra safety (or if the policy is overridden), use a unique tag per build.
 Use a fresh short-lived tag per run to avoid stale image cache issues:
 
 ```sh
-cd modules/opendatahub-mymodule-operator
-IMG=ttl.sh/opendatahub-mymodule-operator-$(uuidgen):1h \
-  make container-build container-push deploy-helm
+IMG="ttl.sh/$(uuidgen | tr '[:upper:]' '[:lower:]'):1h"
+make container-build IMG="$IMG"
+make container-push IMG="$IMG"
+make deploy-helm IMG="$IMG"
 ```
 
 This ephemeral `ttl.sh` flow is the preferred default for e2e verification.

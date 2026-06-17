@@ -76,8 +76,6 @@ reconciler.ReconcilerFor(mgr, &componentApi.Ray{}).
     // --- Conditions: IDENTICAL ---
     WithConditions(status.ConditionDeploymentsAvailable).
     Build(ctx)
-
-r.Release = rel  // MODULE ADDITION: set release from config
 ```
 
 ### Rules
@@ -91,8 +89,7 @@ r.Release = rel  // MODULE ADDITION: set release from config
    `m.reportStatus` after `deployments.NewAction()`
 5. **Kustomize labels**: copy exactly from monolith
 6. **GC**: use `gc.InNamespace(cfg.ApplicationsNamespace)` (not bare `gc.NewAction()`)
-7. **r.Release**: always set after Build
-8. **RBAC markers**: must match every Owns + Watches resource type
+7. **RBAC markers**: must match every Owns + Watches resource type
 
 ## GVK Package Rule
 
@@ -184,28 +181,60 @@ If the module exposes `/metrics`, keep the protected-metrics markers:
 | `ray_webhook.go` | Webhook registration + handlers | Admission logic |
 | `ray_test.go` | Unit tests | All test functions |
 
-## NewModule — One-Shot Setup
+## NewModule — Pure Constructor
 
-Equivalent to the monolith's `Init(platform, cfg)`:
+`NewModule` is a pure constructor: selects the overlay via a `switch` and builds
+the struct. No I/O, no params.
+
 ```go
 func NewModule(cfg *moduleconfig.Config) (*Module, error) {
-    // 1. Parse versions
-    v, err := componentApi.NewSemVer(version.Version)
-    pv, _ := componentApi.NewSemVer(cfg.PlatformVersion)
-
-    // 2. Compute manifest info ONCE
-    mi := odhtypes.ManifestInfo{
-        Path:       cfg.ManifestsPath,
-        ContextDir: componentName,
-        SourcePath: "openshift",  // from monolith's manifestPath()
+    var overlay string
+    switch odhcluster.Platform(cfg.PlatformName) {
+    case odhcluster.SelfManagedRhoai, odhcluster.ManagedRhoai:
+        overlay = overlayRhoai
+    default:
+        overlay = overlayODH
     }
 
-    // 3. Apply image params ONCE (from monolith's Init)
-    if err := odhdeploy.ApplyParams(mi.String(), "params.env", imageParamMap); err != nil {
-        return nil, fmt.Errorf("failed to update images: %w", err)
+    return &Module{
+        cfg: cfg,
+        manifestInfo: fwtypes.ManifestInfo{
+            Path:       cfg.ManifestsPath,
+            ContextDir: componentName,
+            SourcePath: overlay,
+        },
+    }, nil
+}
+```
+
+## Init — Startup Lifecycle
+
+`Init(ctx, reader)` is called once at operator startup by `modulemanager.New`.
+It detects cluster state and writes image params + cluster-derived values to
+`params.env`. Do **not** call `fwparams.Apply` in `NewModule` or `initialize`.
+
+```go
+func (m *Module) Init(ctx context.Context, reader client.Reader) error {
+    info, err := odhcluster.DetectClusterInfo(ctx, reader)
+    if err != nil {
+        return fmt.Errorf("detecting cluster info: %w", err)
     }
 
-    return &Module{cfg: cfg, version: v, platformVersion: pv, manifestInfo: mi}, nil
+    pp := path.Join(m.cfg.ManifestsPath, componentName, "base")
+
+    if err := fwparams.Apply(
+        pp,
+        "params.env",
+        fwparams.Replacement(fwparams.FromEnv(imageParamMap)),
+        fwparams.Values(map[string]string{
+            platformVersionParamsKey: m.cfg.PlatformVersion,
+            // add component-specific cluster-derived values here
+        }),
+    ); err != nil {
+        return fmt.Errorf("failed to update params on path %s: %w", pp, err)
+    }
+
+    return nil
 }
 ```
 
@@ -239,16 +268,12 @@ See the **odh-module-deploy** skill's
 
 ## initialize — Per-Reconcile
 
-Equivalent to the monolith's `initialize` action:
-```go
-func (m *Module) initialize(_ context.Context, rr *odhtypes.ReconciliationRequest) error {
-    rr.Manifests = append(rr.Manifests, m.manifestInfo)
+Appends manifest info to the reconciliation request. Params are already written
+by `Init` at startup — do not call `fwparams.Apply` here.
 
-    // Apply namespace params (imageParamMap is nil — images were set once in NewModule)
-    if err := odhdeploy.ApplyParams(m.manifestInfo.String(), "params.env", nil,
-        map[string]string{"namespace": m.cfg.ApplicationsNamespace}); err != nil {
-        return fmt.Errorf("failed to update params.env: %w", err)
-    }
+```go
+func (m *Module) initialize(_ context.Context, rr *fwtypes.ReconciliationRequest) error {
+    rr.Manifests = append(rr.Manifests, m.manifestInfo)
     return nil
 }
 ```

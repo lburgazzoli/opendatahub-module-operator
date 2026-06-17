@@ -37,7 +37,6 @@ Do NOT delete `// +kubebuilder:scaffold:*` comments.
 
 ## Current Modules
 
-`opendatahub-mymodule-operator` (example),
 `opendatahub-ray-operator`,
 `opendatahub-spark-operator`,
 `opendatahub-feast-operator`,
@@ -55,7 +54,7 @@ Unit tests (`make test`) are always parallel-safe — no cluster access.
 Integration/e2e tests share a cluster and can conflict on non-core CRDs.
 
 **Parallel-safe** (no shared non-core CRD writes — can all run together):
-`mymodule`, `spark`, `feast`, `ogx`, `trainer`, `modelregistry`
+`spark`, `feast`, `ogx`, `trainer`, `modelregistry`
 
 **Sequential** (shared writable non-core CRDs — must run one at a time):
 `datasciencepipelines`, `ray`, `trustyai`, `mlflow`, `workbenches`

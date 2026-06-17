@@ -3,7 +3,7 @@
 ## Adding a Custom Action
 
 ```go
-func myAction(ctx context.Context, rr *odhtypes.ReconciliationRequest) error {
+func myAction(ctx context.Context, rr *fwtypes.ReconciliationRequest) error {
     module := rr.Instance.(*componentApi.MyModule)
     // modify module.Status, rr.Resources, etc.
     return nil
@@ -17,19 +17,9 @@ receive the shared `ReconciliationRequest` state bag and can read/write
 ## Adding a New Module Kind
 
 For a **split module** under `modules/`, use
-[odh-module-migrate](../../odh-module-migrate/SKILL.md) -- do not
-hand-scaffold from mymodule.
-
-To extend the **example module** only (`modules/opendatahub-mymodule-operator/`):
-
-1. `kubebuilder create api --group components --version v1alpha1 --kind NewModule --namespaced=false`
-2. Replace types with PlatformObject contract (embed `common.Status` +
-   `common.ComponentReleaseStatus`)
-3. Add CEL singleton validation marker
-4. Create `internal/controller/newmodule/` (controller, actions, support)
-5. Pass `*moduleconfig.Config` to `NewReconciler(ctx, mgr, cfg)`
-6. Register in `cmd/operator/operator.go`
-7. `make manifests generate build test`
+[odh-module-migrate](../../odh-module-migrate/SKILL.md) and copy from
+`modules/opendatahub-ray-operator/` as the canonical template. The example
+`opendatahub-mymodule-operator` template no longer exists.
 
 ## Build Metadata
 

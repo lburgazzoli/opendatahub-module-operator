@@ -2,7 +2,7 @@
 
 ## OpenShift Assumptions
 
-Integration and e2e tests are run against **OpenShift** (CRC, ROSA, shared dev
+Integration and e2e tests are run against **OpenShift** (ROSA, shared dev
 cluster). Assume:
 
 - **Kubeconfig** points at OpenShift (`oc login` or existing context).
@@ -12,9 +12,6 @@ cluster). Assume:
 - **Platform overlay** in tests matches the cluster: use `rhoai` or `odh` from
   `config/manager/configmap.yaml` based on the OpenShift environment under test.
 - **SCC workloads** reconcile normally because OpenShift provides the required APIs.
-- **Image pull**: on CRC, prefer the OpenShift internal registry via
-  `make deploy-crc`. On other OpenShift clusters, use a cluster-reachable image
-  reference with `make deploy-helm`.
 
 Use `oc` or `kubectl` interchangeably in cleanup scripts; prefer whatever is
 in the user's PATH.
@@ -29,7 +26,7 @@ or misleading failures. Every module must ship cleanup and run it **before**
 `go test` for integration/e2e.
 
 When you are working on `modules/$MODULE_NAME/`, run `make cleanup-*`,
-`make test-integration*`, `make deploy-crc` / `make deploy-helm`, and
+`make test-integration*`, `make deploy-helm`, and
 `make test-e2e*` from that
 module directory (or set your tool `working_directory` there). The repo root
 defines targets with the same names for `opendatahub-module-operator`, so
@@ -49,8 +46,8 @@ cleanup-integration: ## Clean up integration test resources from the cluster.
 cleanup-e2e: ## Clean up e2e test resources and uninstall operator from the cluster.
 	./hack/scripts/cleanup-e2e.sh
 
-.PHONY: prepare-integration
-prepare-integration: manifests generate ## Clean cluster state and install CRDs for integration tests.
+.PHONY: test-integration-setup
+test-integration-setup: manifests generate ## Clean cluster state and install CRDs for integration tests.
 	$(MAKE) cleanup-integration
 	$(MAKE) install
 ```
@@ -64,7 +61,7 @@ test-integration-run: ## Run integration tests only (cluster must be prepared).
 	go test ./test/integration/ -tags=integration -v -timeout 5m -failfast
 
 .PHONY: test-integration
-test-integration: prepare-integration test-integration-run ## ...
+test-integration: test-integration-setup test-integration-run ## ...
 
 .PHONY: test-e2e-run
 test-e2e-run: ## Run e2e tests only (operator must already be deployed).
@@ -74,17 +71,9 @@ test-e2e-run: ## Run e2e tests only (operator must already be deployed).
 test-e2e: cleanup-e2e deploy-helm test-e2e-run ## ...
 ```
 
-Modules should also expose `deploy-crc` for local CRC verification. That target
-should push the current `IMG` through the module-local `push-crc-image.sh`
-helper, resolve the internal registry pullspec, and then run the Helm deploy.
-
-After manual `deploy-crc` or `deploy-helm`, use **`make test-e2e-run`** -- not
+After `deploy-helm`, use **`make test-e2e-run`** -- not
 `make test-e2e` (which re-runs cleanup and deploy). See
 [e2e-workflow.md](../../odh-module-deploy/references/e2e-workflow.md).
-
-Best practice for e2e runs on CRC: keep `IMG` as a local/dev tag and let
-`deploy-crc` move it into the internal registry. For non-CRC clusters, use a
-cluster-reachable image and avoid reusing stale tags.
 
 Integration CRDs must be installed by `make`, not by Go test code. `TestMain`
 should fail fast if the expected module CRD is missing.
@@ -111,7 +100,7 @@ module and update for `$KIND` / `$COMPONENT`:
 
 | Script | Namespace default | Deletes |
 |--------|-------------------|---------|
-| `cleanup-integration.sh` | `integration-test` | Module CRs (cluster-scoped), waits for CR deletion, workload + RBAC in test namespace, `part-of=$COMPONENT` ClusterRoles/Bindings, integration test RBAC, module CRD |
+| `cleanup-integration.sh` | `$MODULE_NAME-integration` | Module CRs (cluster-scoped), waits for CR deletion, workload + RBAC in test namespace, `part-of=$COMPONENT` ClusterRoles/Bindings, integration test RBAC, module CRD |
 | `cleanup-e2e.sh` | `$MODULE_NAME-system` | Module CRs, waits for CR deletion, Helm release uninstall, operator namespace, leftover cluster RBAC, module CRD |
 
 Use `--ignore-not-found` on all `kubectl delete` calls so cleanup is idempotent.
@@ -222,7 +211,7 @@ a missing operator fails in ~90s, not after the full package timeout.
    from the repo root acts on `opendatahub-module-operator` -- run them from
    `modules/$MODULE_NAME/` instead
 5. **Missing integration CRD prep**: `test-integration-run` or raw `go test`
-   without prior `make prepare-integration` / `make test-integration` fails
+   without prior `make test-integration-setup` / `make test-integration` fails
    the CRD presence check
 6. **Unused struct fields**: remove `workloadService` etc. from test structs
    if no test asserts on them

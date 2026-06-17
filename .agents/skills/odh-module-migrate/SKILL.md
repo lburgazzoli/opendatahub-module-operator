@@ -22,7 +22,7 @@ Split a monolith `ComponentHandler` into a standalone module under
 `modules/$MODULE_NAME/`. Follow the checklist in order; read reference docs
 only when a step points to them.
 
-**Test cluster:** OpenShift (CRC, ROSA, dev). See the **odh-module-test** skill.
+**Test cluster:** OpenShift (ROSA, shared dev cluster). See the **odh-module-test** skill.
 When validating a module, run integration/e2e/deploy Make targets from
 `modules/$MODULE_NAME/` (or set your tool `working_directory` there). Running
 the same target names from the repo root acts on `opendatahub-module-operator`
@@ -60,7 +60,7 @@ instead of the module under test.
 **Cross-skill references** (invoke these skills for detailed guidance):
 - **odh-manifest-audit** — Step 5b: Owns + operand RBAC from kustomize
 - **odh-module-test** — Step 7: unit, integration, e2e, timeouts
-- **odh-module-deploy** — Step 10: IMG, helm, CRC-first deploy, test targets
+- **odh-module-deploy** — Step 10: IMG, helm, deploy, test targets
 
 ## Checklist
 
@@ -206,8 +206,8 @@ Per the **odh-module-test** skill:
   module CRs and wait for them to disappear before deleting the module CRD
 - Integration CRDs must be installed from `make`, not from Go test code; the
   tests should fail fast if the expected module CRD is missing
-- Makefile: `prepare-integration`, `test-integration-run`, `test-e2e-run`, and
-  composite targets (`test-integration` → prepare + run; `test-e2e` → cleanup
+- Makefile: `test-integration-setup`, `test-integration-run`, `test-e2e-run`, and
+  composite targets (`test-integration` → setup + run; `test-e2e` → cleanup
   + deploy + run)
 - Execute those integration/e2e targets from `modules/$MODULE_NAME/`, not the
   repo root
@@ -248,17 +248,10 @@ make container-prep         # host: manifests generate get-manifests
 make container-build IMG="${IMG}"        # binary compiled inside image
 make helm
 make cleanup-e2e
-make deploy-crc IMG="${IMG}"             # CRC-first: push to internal registry + helm deploy
+make deploy-helm IMG="${IMG}"
 make test-e2e-run
 make cleanup-e2e
 ```
-
-On CRC, prefer `deploy-crc` as the default local verification path. It uses the
-module-local registry helper scripts and deploys Helm with an internal registry
-pullspec that the cluster can resolve reliably.
-
-For non-CRC OpenShift clusters, keep using a cluster-reachable `IMG` and
-`make deploy-helm IMG="${IMG}"`.
 
 For the **first** integration/e2e verification pass, prefer short timeouts to
 surface setup bugs quickly. If deploy/test output stalls, stop waiting and check

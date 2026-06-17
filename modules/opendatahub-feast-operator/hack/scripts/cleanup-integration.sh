@@ -4,7 +4,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 
-NAMESPACE="${1:-integration-test}"
+NAMESPACE="${1:-opendatahub-feast-integration}"
 CR_RESOURCE="feastoperators.components.platform.opendatahub.io"
 
 echo "Cleaning up integration test resources..."

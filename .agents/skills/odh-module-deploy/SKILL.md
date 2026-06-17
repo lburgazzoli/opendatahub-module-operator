@@ -2,7 +2,7 @@
 name: odh-module-deploy
 description: >
   Build, package, and deploy ODH Module Operators. Covers Containerfile
-  conventions, Helm chart generation, CRC-first deploy workflow, and image
+  conventions, Helm chart generation, deploy workflow, and image
   management. Use when building images, generating charts, or deploying to
   OpenShift.
 user-invocable: true
