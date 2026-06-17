@@ -26,7 +26,6 @@ import (
 	"github.com/opendatahub-io/odh-platform-utilities/pkg/metadata/labels"
 )
 
-
 type foundationTests struct {
 	Client        client.Client
 	gatewayDomain string
@@ -40,48 +39,6 @@ func (ft *foundationTests) Execute(t *testing.T) {
 	t.Run("should set platform labels and annotations", ft.testPlatformLabels)
 	t.Run("should set owner references", ft.testOwnerReferences)
 	t.Run("should set registries namespace in status", ft.testRegistriesNamespaceStatus)
-}
-
-func (ft *foundationTests) setOperatorPlatformVersion(t *testing.T, platformVersion string) *corev1.ConfigMap {
-	t.Helper()
-
-	g := NewWithT(t)
-	operatorCfgMap := &corev1.ConfigMap{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      modulemeta.OperatorConfigName,
-			Namespace: support.OperatorNamespace(),
-		},
-	}
-	g.Eventually(t.Context(), k8sm.Lookup(ft.Client, operatorCfgMap)).Should(Succeed())
-
-	patch := client.MergeFrom(operatorCfgMap.DeepCopy())
-	if operatorCfgMap.Data == nil {
-		operatorCfgMap.Data = map[string]string{}
-	}
-	operatorCfgMap.Data[moduleconfig.KeyPlatformVersion] = platformVersion
-	g.Expect(ft.Client.Patch(t.Context(), operatorCfgMap, patch)).To(Succeed())
-
-	pods := &corev1.PodList{}
-	g.Expect(ft.Client.List(t.Context(), pods,
-		client.InNamespace(support.OperatorNamespace()),
-		client.MatchingLabels{"app.kubernetes.io/name": "opendatahub-modelregistry-operator"},
-	)).To(Succeed())
-	for i := range pods.Items {
-		g.Expect(ft.Client.Delete(t.Context(), &pods.Items[i])).To(Succeed())
-	}
-
-	operatorDeploy := &appsv1.Deployment{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "opendatahub-modelregistry-operator",
-			Namespace: support.OperatorNamespace(),
-		},
-	}
-	g.Eventually(t.Context(), k8sm.Get(ft.Client, operatorDeploy)).Should(
-		jq.Match(`.status.readyReplicas >= 1`),
-	)
-	g.Expect(ft.Client.Get(t.Context(), client.ObjectKeyFromObject(operatorCfgMap), operatorCfgMap)).To(Succeed())
-
-	return operatorCfgMap
 }
 
 func (ft *foundationTests) ensureReadyModule(t *testing.T) *componentsv1alpha1.ModelRegistry {

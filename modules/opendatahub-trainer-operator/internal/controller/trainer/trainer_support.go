@@ -49,14 +49,6 @@ type preconditionResult struct {
 	Message string
 }
 
-func manifestPath(basePath string) types.ManifestInfo {
-	return types.ManifestInfo{
-		Path:       basePath,
-		ContextDir: componentName,
-		SourcePath: "rhoai",
-	}
-}
-
 func (m *Module) singletonReader(rr *types.ReconciliationRequest) client.Reader {
 	if m.apiReader != nil {
 		return m.apiReader
