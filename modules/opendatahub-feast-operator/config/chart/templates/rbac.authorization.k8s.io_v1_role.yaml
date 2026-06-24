@@ -3,7 +3,7 @@ kind: Role
 metadata:
   labels:
     app.kubernetes.io/name: opendatahub-feast-operator
-  name: opendatahub-feast-leader-election-role
+  name: odh-feast-leader-election-role
   namespace: {{ .Release.Namespace }}
 rules:
 - apiGroups:

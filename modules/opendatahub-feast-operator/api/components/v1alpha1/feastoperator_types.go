@@ -18,7 +18,6 @@ package v1alpha1
 
 import (
 	common "github.com/opendatahub-io/odh-platform-utilities/api/common"
-	ofVersion "github.com/operator-framework/api/pkg/lib/version"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -29,14 +28,6 @@ const (
 	FeastOperatorResource      = "feastoperators"
 	FeastOperatorCRDName       = FeastOperatorResource + "." + GroupName
 )
-
-type Platform string
-
-// Release reports the operator version and platform.
-type Release struct {
-	Name    Platform                  `json:"name,omitempty"`
-	Version ofVersion.OperatorVersion `json:"version,omitempty"`
-}
 
 // Compile-time interface assertion.
 var _ common.PlatformObject = (*FeastOperator)(nil)
@@ -64,9 +55,6 @@ type GatewayOIDCSpec struct {
 type FeastOperatorStatus struct {
 	common.Status                 `json:",inline"`
 	common.ComponentReleaseStatus `json:",inline"`
-
-	// Release reports the operator version and platform.
-	Release Release `json:"release,omitempty"`
 }
 
 // +kubebuilder:object:root=true
@@ -75,7 +63,7 @@ type FeastOperatorStatus struct {
 // +kubebuilder:validation:XValidation:rule="self.metadata.name == 'default-feastoperator'",message="FeastOperator name must be default-feastoperator"
 // +kubebuilder:printcolumn:name="Ready",type=string,JSONPath=`.status.conditions[?(@.type=="Ready")].status`,description="Ready"
 // +kubebuilder:printcolumn:name="Reason",type=string,JSONPath=`.status.conditions[?(@.type=="Ready")].reason`,description="Reason"
-// +kubebuilder:printcolumn:name="Version",type=string,JSONPath=`.status.release.version`,description="Module Version"
+// +kubebuilder:printcolumn:name="Version",type=string,JSONPath=`.status.releases[?(@.name=="platform")].version`,description="Module Version"
 
 // FeastOperator is the Schema for the feastoperators API.
 type FeastOperator struct {

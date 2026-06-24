@@ -3,12 +3,12 @@ kind: RoleBinding
 metadata:
   labels:
     app.kubernetes.io/name: opendatahub-feast-operator
-  name: opendatahub-feast-leader-election-rolebinding
+  name: odh-feast-leader-election-rolebinding
   namespace: {{ .Release.Namespace }}
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: Role
-  name: opendatahub-feast-leader-election-role
+  name: odh-feast-leader-election-role
 subjects:
 - kind: ServiceAccount
   name: {{ default (include "chart.fullname" .) .Values.serviceAccount.name }}

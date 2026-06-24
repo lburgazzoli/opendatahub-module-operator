@@ -3,7 +3,7 @@ kind: Deployment
 metadata:
   labels:
     app.kubernetes.io/name: opendatahub-feast-operator
-  name: opendatahub-feast-operator
+  name: odh-feast-operator
   namespace: {{ .Release.Namespace }}
 spec:
   replicas: {{ .Values.replicas }}
@@ -101,5 +101,5 @@ spec:
       - emptyDir: {}
         name: manifests
       - configMap:
-          name: opendatahub-feast-config
+          name: odh-feast-config
         name: config

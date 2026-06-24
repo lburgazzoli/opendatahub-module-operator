@@ -62,7 +62,7 @@ func TestFeastOperator(t *testing.T) {
 	// let subsequent tests hang waiting for resources that won't appear.
 	operatorDeploy := &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      "opendatahub-feast-operator",
+			Name:      "odh-feast-operator",
 			Namespace: support.OperatorNamespace(),
 		},
 	}

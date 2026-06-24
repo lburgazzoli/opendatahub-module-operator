@@ -28,9 +28,9 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
 	componentApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-feast-operator/api/components/v1alpha1"
+	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-feast-operator/pkg/releases"
 	odhtypes "github.com/opendatahub-io/odh-platform-utilities/framework/controller/types"
 	fwparams "github.com/opendatahub-io/odh-platform-utilities/framework/utils/params"
-	ofVersion "github.com/operator-framework/api/pkg/lib/version"
 )
 
 const (
@@ -123,7 +123,10 @@ func (m *Module) migrateDeploymentSelector(ctx context.Context, rr *odhtypes.Rec
 		if k8serr.IsNotFound(err) {
 			return nil
 		}
-		return fmt.Errorf("failed to delete Deployment %s/%s with stale selector: %w", m.cfg.ApplicationsNamespace, deploymentName, err)
+		return fmt.Errorf(
+			"failed to delete Deployment %s/%s with stale selector: %w",
+			m.cfg.ApplicationsNamespace, deploymentName, err,
+		)
 	}
 
 	log.Info("Deleted Feast operator Deployment, it will be recreated with the correct selector",
@@ -132,17 +135,14 @@ func (m *Module) migrateDeploymentSelector(ctx context.Context, rr *odhtypes.Rec
 	return nil
 }
 
-// reportStatus populates the release status and config values.
+// reportStatus writes the platform version handshake entry into status.releases.
 func (m *Module) reportStatus(_ context.Context, rr *odhtypes.ReconciliationRequest) error {
 	obj, ok := rr.Instance.(*componentApi.FeastOperator)
 	if !ok {
 		return fmt.Errorf("instance is not a FeastOperator")
 	}
 
-	obj.Status.Release = componentApi.Release{
-		Name:    componentApi.Platform(rr.Release.Name),
-		Version: ofVersion.OperatorVersion{Version: rr.Release.Version},
-	}
+	releases.Upsert(obj.GetReleaseStatus(), m.cfg.Release())
 
 	return nil
 }

@@ -23,7 +23,7 @@ spec:
       name: Reason
       type: string
     - description: Module Version
-      jsonPath: .status.release.version
+      jsonPath: .status.releases[?(@.name=="platform")].version
       name: Version
       type: string
     name: v1alpha1
@@ -143,14 +143,6 @@ spec:
               phase:
                 description: Phase is the top-level lifecycle phase of the module.
                 type: string
-              release:
-                description: Release reports the operator version and platform.
-                properties:
-                  name:
-                    type: string
-                  version:
-                    type: string
-                type: object
               releases:
                 description: Releases is the list of deployed component releases.
                 items:

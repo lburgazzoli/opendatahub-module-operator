@@ -3,7 +3,7 @@ kind: Service
 metadata:
   labels:
     app.kubernetes.io/name: opendatahub-feast-operator
-  name: opendatahub-feast-metrics-service
+  name: odh-feast-metrics-service
   namespace: {{ .Release.Namespace }}
 spec:
   ports:

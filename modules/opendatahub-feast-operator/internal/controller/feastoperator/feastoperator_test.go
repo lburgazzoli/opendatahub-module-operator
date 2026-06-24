@@ -21,23 +21,20 @@ import (
 	"testing"
 
 	. "github.com/onsi/gomega"
+	common "github.com/opendatahub-io/odh-platform-utilities/api/common"
+	fwapi "github.com/opendatahub-io/odh-platform-utilities/framework/api"
+	odhtypes "github.com/opendatahub-io/odh-platform-utilities/framework/controller/types"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-
-	"github.com/blang/semver/v4"
-	ofVersion "github.com/operator-framework/api/pkg/lib/version"
 
 	componentApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-feast-operator/api/components/v1alpha1"
 	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-feast-operator/pkg/config"
-	actionapi "github.com/opendatahub-io/odh-platform-utilities/framework/api"
-	odhtypes "github.com/opendatahub-io/odh-platform-utilities/framework/controller/types"
-	"github.com/opendatahub-io/odh-platform-utilities/pkg/cluster"
+	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-feast-operator/pkg/releases"
 )
 
 func newTestModule(t *testing.T) *Module {
 	t.Helper()
 
 	cfg := &moduleconfig.Config{
-		PlatformName:          string(cluster.OpenDataHub),
 		PlatformVersion:       "1.0.0",
 		ManifestsPath:         "/manifests",
 		ApplicationsNamespace: "test-ns",
@@ -49,18 +46,20 @@ func newTestModule(t *testing.T) *Module {
 	return m
 }
 
-func newTestRR(obj *componentApi.FeastOperator) *odhtypes.ReconciliationRequest {
-	rel := (&moduleconfig.Config{
-		PlatformName:    string(cluster.OpenDataHub),
-		PlatformVersion: "1.0.0",
-	}).Release()
+func newTestRR(t *testing.T, obj *componentApi.FeastOperator) *odhtypes.ReconciliationRequest {
+	t.Helper()
+
+	rel := (&moduleconfig.Config{PlatformVersion: "1.0.0"}).Release()
+
+	v, err := releases.ParseVersion(rel.Version)
+	NewWithT(t).Expect(err).NotTo(HaveOccurred())
 
 	return &odhtypes.ReconciliationRequest{
 		Instance:          obj,
 		ManifestsBasePath: "/manifests",
-		Release: actionapi.Release{
-			Name:    actionapi.Platform(rel.Name),
-			Version: rel.Version.Version,
+		Release: fwapi.Release{
+			Name:    fwapi.Platform(rel.Name),
+			Version: v,
 		},
 	}
 }
@@ -77,7 +76,6 @@ func TestNewModule(t *testing.T) {
 	g := NewWithT(t)
 
 	cfg := &moduleconfig.Config{
-		PlatformName:    string(cluster.OpenDataHub),
 		PlatformVersion: "1.0.0",
 		ManifestsPath:   "/manifests",
 	}
@@ -85,7 +83,6 @@ func TestNewModule(t *testing.T) {
 	m, err := NewModule(cfg)
 	g.Expect(err).NotTo(HaveOccurred())
 	g.Expect(m.cfg).To(Equal(cfg))
-	g.Expect(m.manifestInfo.Path).To(Equal(cfg.ManifestsPath))
 	g.Expect(m.manifestInfo.ContextDir).To(Equal(componentName))
 	g.Expect(m.manifestInfo.SourcePath).To(Equal(overlayODH))
 }
@@ -95,7 +92,7 @@ func TestInitialize(t *testing.T) {
 
 	m := newTestModule(t)
 	obj := newTestFeastOperator()
-	rr := newTestRR(obj)
+	rr := newTestRR(t, obj)
 
 	g.Expect(m.initialize(context.Background(), rr)).To(Succeed())
 	g.Expect(rr.Manifests).To(HaveLen(1))
@@ -109,7 +106,7 @@ func TestUpgradeIfNeededNoVersion(t *testing.T) {
 
 	m := newTestModule(t)
 	obj := newTestFeastOperator()
-	rr := newTestRR(obj)
+	rr := newTestRR(t, obj)
 
 	g.Expect(m.upgradeIfNeeded(context.Background(), rr)).To(Succeed())
 }
@@ -119,8 +116,11 @@ func TestUpgradeIfNeededSameVersion(t *testing.T) {
 
 	m := newTestModule(t)
 	obj := newTestFeastOperator()
-	obj.Status.Release.Version = ofVersion.OperatorVersion{Version: semver.MustParse("1.0.0")}
-	rr := newTestRR(obj)
+
+	obj.Status.Releases = []common.ComponentRelease{
+		{Name: releases.Platform, Version: "1.0.0"},
+	}
+	rr := newTestRR(t, obj)
 
 	g.Expect(m.upgradeIfNeeded(context.Background(), rr)).To(Succeed())
 }
@@ -130,13 +130,14 @@ func TestReportStatus(t *testing.T) {
 
 	m := newTestModule(t)
 	obj := newTestFeastOperator()
-	rr := newTestRR(obj)
+	rr := newTestRR(t, obj)
 
 	g.Expect(m.initialize(context.Background(), rr)).To(Succeed())
 	g.Expect(m.reportStatus(context.Background(), rr)).To(Succeed())
 
-	g.Expect(obj.Status.Release.Version.String()).To(Equal("1.0.0"))
-	g.Expect(string(obj.Status.Release.Name)).To(Equal(string(cluster.OpenDataHub)))
+	g.Expect(obj.Status.Releases).To(ContainElement(
+		common.ComponentRelease{Name: releases.Platform, Version: "1.0.0"},
+	))
 }
 
 func TestCustomizeManifestsNoOIDC(t *testing.T) {
@@ -145,7 +146,7 @@ func TestCustomizeManifestsNoOIDC(t *testing.T) {
 	m := newTestModule(t)
 	obj := newTestFeastOperator()
 	// No OIDC set on the CR
-	rr := newTestRR(obj)
+	rr := newTestRR(t, obj)
 	g.Expect(m.initialize(context.Background(), rr)).To(Succeed())
 
 	// Should succeed and write empty OIDC_ISSUER_URL
@@ -158,7 +159,7 @@ func TestCustomizeManifestsWithOIDC(t *testing.T) {
 	m := newTestModule(t)
 	obj := newTestFeastOperator()
 	obj.Spec.OIDC = &componentApi.GatewayOIDCSpec{IssuerURL: "https://issuer.example.com"}
-	rr := newTestRR(obj)
+	rr := newTestRR(t, obj)
 	g.Expect(m.initialize(context.Background(), rr)).To(Succeed())
 
 	g.Expect(m.customizeManifests(context.Background(), rr)).To(Succeed())
@@ -170,7 +171,7 @@ func TestCustomizeManifestsInvalidOIDC(t *testing.T) {
 	m := newTestModule(t)
 	obj := newTestFeastOperator()
 	obj.Spec.OIDC = &componentApi.GatewayOIDCSpec{IssuerURL: "not-a-url"}
-	rr := newTestRR(obj)
+	rr := newTestRR(t, obj)
 	g.Expect(m.initialize(context.Background(), rr)).To(Succeed())
 
 	err := m.customizeManifests(context.Background(), rr)
