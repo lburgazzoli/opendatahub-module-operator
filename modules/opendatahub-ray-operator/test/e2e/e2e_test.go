@@ -60,7 +60,7 @@ func TestRay(t *testing.T) {
 
 	operatorDeploy := &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      "opendatahub-ray-operator",
+			Name:      "odh-ray-operator",
 			Namespace: support.OperatorNamespace(),
 		},
 	}

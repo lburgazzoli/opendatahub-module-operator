@@ -2,7 +2,7 @@ package module
 
 const (
 	Name               = "ray"
-	OperatorConfigName = "opendatahub-ray-config"
+	OperatorConfigName = "odh-ray-config"
 
 	CodeFlarePresentMessage = "" +
 		"Failed upgrade: CodeFlare component is present in the cluster. " +

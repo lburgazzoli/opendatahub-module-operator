@@ -91,10 +91,9 @@ func (ft *foundationTests) testReleaseStatus(t *testing.T) {
 	cfg, err := loadOperatorConfig()
 	g.Expect(err).NotTo(HaveOccurred())
 
-	g.Eventually(t.Context(), k8sm.Get(ft.Client, module)).Should(And(
-		jq.Matchf(`.status.release.version == "%s"`, cfg.Release().Version.String()),
-		jq.Matchf(`.status.release.name == "%s"`, cfg.PlatformName),
-	))
+	g.Eventually(t.Context(), k8sm.Get(ft.Client, module)).Should(
+		jq.Matchf(`.status.releases[] | select(.name == "platform") | .version == "%s"`, cfg.Release().Version),
+	)
 }
 
 func (ft *foundationTests) testPlatformLabels(t *testing.T) {
@@ -114,8 +113,7 @@ func (ft *foundationTests) testPlatformLabels(t *testing.T) {
 		k8sm.HasLabel(labels.PlatformPartOf, componentsv1alpha1.RayComponentName),
 		k8sm.HasAnnotation(annotations.InstanceName, module.GetName()),
 		k8sm.HasAnnotation(annotations.InstanceUID, string(module.GetUID())),
-		k8sm.HasAnnotation(annotations.PlatformType, cfg.PlatformName),
-		k8sm.HasAnnotation(annotations.PlatformVersion, cfg.Release().Version.String()),
+		k8sm.HasAnnotation(annotations.PlatformVersion, cfg.Release().Version),
 	))
 }
 

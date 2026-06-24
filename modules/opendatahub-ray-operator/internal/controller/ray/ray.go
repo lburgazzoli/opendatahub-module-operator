@@ -19,11 +19,13 @@ package ray
 import (
 	"fmt"
 
+	fwapi "github.com/opendatahub-io/odh-platform-utilities/framework/api"
 	fwtypes "github.com/opendatahub-io/odh-platform-utilities/framework/controller/types"
 	fwparams "github.com/opendatahub-io/odh-platform-utilities/framework/utils/params"
 
 	componentApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-ray-operator/api/components/v1alpha1"
 	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-ray-operator/pkg/config"
+	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-ray-operator/pkg/releases"
 )
 
 const (
@@ -44,6 +46,7 @@ var imageParamMap = map[string]string{
 // Module holds process-lifetime state for the ray controller.
 type Module struct {
 	cfg          *moduleconfig.Config
+	release      fwapi.Release
 	manifestInfo fwtypes.ManifestInfo
 }
 
@@ -59,7 +62,8 @@ func NewModule(cfg *moduleconfig.Config) (*Module, error) {
 	}, nil
 }
 
-// Init applies image parameters from environment — called once at startup.
+// Init applies image parameters from environment and parses the platform
+// release version — called once at startup.
 func (m *Module) Init() error {
 	if err := fwparams.Apply(
 		m.manifestInfo.String(),
@@ -68,5 +72,18 @@ func (m *Module) Init() error {
 	); err != nil {
 		return fmt.Errorf("failed to update images on path %s: %w", m.manifestInfo, err)
 	}
+
+	rel := m.cfg.Release()
+
+	v, err := releases.ParseVersion(rel.Version)
+	if err != nil {
+		return fmt.Errorf("parsing platform version %q: %w", rel.Version, err)
+	}
+
+	m.release = fwapi.Release{
+		Name:    fwapi.Platform(rel.Name),
+		Version: v,
+	}
+
 	return nil
 }

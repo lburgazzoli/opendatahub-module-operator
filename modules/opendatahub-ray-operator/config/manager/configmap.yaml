@@ -6,5 +6,4 @@ metadata:
   labels:
     app.kubernetes.io/name: opendatahub-ray-operator
 data:
-  platform-name: "OpenDataHub"
-  platform-version: "unknown"
+  platformVersion: ""

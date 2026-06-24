@@ -20,9 +20,8 @@ import (
 	"context"
 	"fmt"
 
-	ofVersion "github.com/operator-framework/api/pkg/lib/version"
-
 	componentApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-ray-operator/api/components/v1alpha1"
+	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-ray-operator/pkg/releases"
 	fwtypes "github.com/opendatahub-io/odh-platform-utilities/framework/controller/types"
 	fwparams "github.com/opendatahub-io/odh-platform-utilities/framework/utils/params"
 )
@@ -42,17 +41,14 @@ func (m *Module) initialize(_ context.Context, rr *fwtypes.ReconciliationRequest
 	return nil
 }
 
-// reportStatus populates the release status with platform version and name.
-func (m *Module) reportStatus(_ context.Context, rr *fwtypes.ReconciliationRequest) error {
+// reportStatus writes the platform version handshake entry into status.releases.
+func (m *Module) reportStatus(ctx context.Context, rr *fwtypes.ReconciliationRequest) error {
 	obj, ok := rr.Instance.(*componentApi.Ray)
 	if !ok {
 		return fmt.Errorf("instance is not a Ray")
 	}
 
-	obj.Status.Release = componentApi.Release{
-		Name:    componentApi.Platform(rr.Release.Name),
-		Version: ofVersion.OperatorVersion{Version: rr.Release.Version},
-	}
+	releases.Upsert(obj.GetReleaseStatus(), m.cfg.Release())
 
 	return nil
 }

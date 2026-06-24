@@ -3,7 +3,7 @@ kind: Service
 metadata:
   labels:
     app.kubernetes.io/name: opendatahub-ray-operator
-  name: opendatahub-ray-metrics-service
+  name: odh-ray-metrics-service
   namespace: {{ .Release.Namespace }}
 spec:
   ports:

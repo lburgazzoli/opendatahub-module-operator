@@ -1,6 +1,6 @@
-namespace: opendatahub-ray-system
+namespace: odh-ray-system
 
-namePrefix: opendatahub-ray-
+namePrefix: odh-ray-
 
 resources:
 - ../crd

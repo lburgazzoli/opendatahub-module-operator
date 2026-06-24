@@ -1,6 +1,5 @@
 config:
-  platform-name: OpenDataHub
-  platform-version: unknown
+  platformVersion: ""
 image:
   repository: ttl.sh/opendatahub-ray-operator
   tag: latest

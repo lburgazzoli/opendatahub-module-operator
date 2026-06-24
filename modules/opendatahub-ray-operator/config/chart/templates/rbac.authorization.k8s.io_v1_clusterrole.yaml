@@ -3,7 +3,7 @@ kind: ClusterRole
 metadata:
   labels:
     app.kubernetes.io/name: opendatahub-ray-operator
-  name: opendatahub-ray-components-ray-admin-role
+  name: odh-ray-components-ray-admin-role
 rules:
 - apiGroups:
   - components.platform.opendatahub.io
@@ -23,7 +23,7 @@ kind: ClusterRole
 metadata:
   labels:
     app.kubernetes.io/name: opendatahub-ray-operator
-  name: opendatahub-ray-components-ray-editor-role
+  name: odh-ray-components-ray-editor-role
 rules:
 - apiGroups:
   - components.platform.opendatahub.io
@@ -49,7 +49,7 @@ kind: ClusterRole
 metadata:
   labels:
     app.kubernetes.io/name: opendatahub-ray-operator
-  name: opendatahub-ray-components-ray-viewer-role
+  name: odh-ray-components-ray-viewer-role
 rules:
 - apiGroups:
   - components.platform.opendatahub.io
@@ -69,7 +69,7 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: opendatahub-ray-manager-role
+  name: odh-ray-manager-role
 rules:
 - apiGroups:
   - ""
@@ -387,7 +387,7 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: opendatahub-ray-metrics-auth-role
+  name: odh-ray-metrics-auth-role
 rules:
 - apiGroups:
   - authentication.k8s.io
@@ -405,7 +405,7 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: opendatahub-ray-metrics-reader
+  name: odh-ray-metrics-reader
 rules:
 - nonResourceURLs:
   - /metrics
