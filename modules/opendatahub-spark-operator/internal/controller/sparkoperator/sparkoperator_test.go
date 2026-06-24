@@ -102,14 +102,13 @@ func TestInitialize(t *testing.T) {
 	g.Expect(rr.Manifests[0].SourcePath).To(Equal(overlayODH))
 }
 
-func TestUpgradeIfNeededFreshInstall(t *testing.T) {
+func TestUpgradeIfNeededNoVersion(t *testing.T) {
 	g := NewWithT(t)
 
 	m := newTestModule(t)
 	obj := newTestSparkOperator()
 	rr := newTestRR(obj)
 
-	// Fresh install: status version is zero, upgrade skipped.
 	g.Expect(m.upgradeIfNeeded(context.Background(), rr)).To(Succeed())
 }
 

@@ -120,7 +120,7 @@ func (m *Module) argoWorkflowsControllersOptions(_ context.Context, rr *fwtypes.
 		return fmt.Errorf("failed to marshal spec.argoWorkflowsControllers: %w", err)
 	}
 
-	pp := path.Join(m.cfg.ManifestsPath, componentName, "base")
+	pp := path.Join(rr.ManifestsBasePath, componentName, "base")
 
 	if err := fwparams.Apply(
 		pp,

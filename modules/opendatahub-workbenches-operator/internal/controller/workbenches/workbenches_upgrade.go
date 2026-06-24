@@ -44,10 +44,6 @@ func (m *Module) upgradeIfNeeded(ctx context.Context, rr *fwtypes.Reconciliation
 
 	prev := obj.Status.Release
 
-	if prev.Version.String() == "" || prev.Version.String() == "0.0.0" {
-		return nil
-	}
-
 	if !rr.Release.Version.GT(prev.Version.Version) {
 		return nil
 	}

@@ -26,6 +26,7 @@ import (
 	fwtypes "github.com/opendatahub-io/odh-platform-utilities/framework/controller/types"
 	ofVersion "github.com/operator-framework/api/pkg/lib/version"
 	corev1 "k8s.io/api/core/v1"
+	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
@@ -55,6 +56,7 @@ func seedTestAPIReader(t *testing.T, m *Module, objs ...client.Object) {
 	scheme := runtime.NewScheme()
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
 	utilruntime.Must(corev1.AddToScheme(scheme))
+	utilruntime.Must(apiextensionsv1.AddToScheme(scheme))
 	utilruntime.Must(componentApi.AddToScheme(scheme))
 	m.apiReader = fake.NewClientBuilder().
 		WithScheme(scheme).
@@ -101,15 +103,27 @@ func TestInitialize(t *testing.T) {
 	g.Expect(rr.Manifests[2].ContextDir).To(Equal(notebookContextDir))
 }
 
-func TestUpgradeIfNeededFreshInstall(t *testing.T) {
+func TestUpgradeIfNeededNoVersion(t *testing.T) {
 	g := NewWithT(t)
+
+	scheme := runtime.NewScheme()
+	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
+	utilruntime.Must(corev1.AddToScheme(scheme))
+	utilruntime.Must(componentApi.AddToScheme(scheme))
+	fakeClient := fake.NewClientBuilder().WithScheme(scheme).Build()
 
 	m := newTestModule(t)
 	obj := newTestWorkbenches()
 	rr := newTestRR(obj)
+	rr.Client = fakeClient
 	seedTestAPIReader(t, m, obj.DeepCopy())
 
 	g.Expect(m.upgradeIfNeeded(context.Background(), rr)).To(Succeed())
+
+	events := &corev1.EventList{}
+	g.Expect(fakeClient.List(context.Background(), events)).To(Succeed())
+	g.Expect(events.Items).To(HaveLen(1))
+	g.Expect(events.Items[0].Reason).To(Equal(upgradeEventReasonStarted))
 }
 
 func TestUpgradeIfNeededSameVersion(t *testing.T) {

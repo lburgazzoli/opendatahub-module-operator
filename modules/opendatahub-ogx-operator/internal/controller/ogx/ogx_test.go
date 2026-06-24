@@ -104,7 +104,7 @@ func TestInitialize(t *testing.T) {
 	g.Expect(rr.Manifests[0].SourcePath).To(Equal(overlayODH))
 }
 
-func TestUpgradeIfNeededFreshInstall(t *testing.T) {
+func TestUpgradeIfNeededNoVersion(t *testing.T) {
 	g := NewWithT(t)
 
 	m := newTestModule(t)

@@ -175,7 +175,7 @@ func TestConfigureDependenciesAddsNamespaceAndOpenShiftRBAC(t *testing.T) {
 	}))
 }
 
-func TestUpgradeIfNeededFreshInstall(t *testing.T) {
+func TestUpgradeIfNeededNoVersion(t *testing.T) {
 	g := NewWithT(t)
 
 	m := newTestModule(t)
