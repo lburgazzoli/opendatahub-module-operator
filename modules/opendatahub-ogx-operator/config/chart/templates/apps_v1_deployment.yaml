@@ -3,7 +3,7 @@ kind: Deployment
 metadata:
   labels:
     app.kubernetes.io/name: opendatahub-ogx-operator
-  name: opendatahub-ogx-operator
+  name: odh-ogx-operator
   namespace: {{ .Release.Namespace }}
 spec:
   replicas: {{ .Values.replicas }}
@@ -101,5 +101,5 @@ spec:
       - emptyDir: {}
         name: manifests
       - configMap:
-          name: opendatahub-ogx-config
+          name: odh-ogx-config
         name: config

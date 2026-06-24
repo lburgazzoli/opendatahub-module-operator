@@ -3,7 +3,7 @@ kind: ClusterRole
 metadata:
   labels:
     app.kubernetes.io/name: opendatahub-ogx-operator
-  name: opendatahub-ogx-components-ogx-admin-role
+  name: odh-ogx-components-ogx-admin-role
 rules:
 - apiGroups:
   - components.platform.opendatahub.io
@@ -23,7 +23,7 @@ kind: ClusterRole
 metadata:
   labels:
     app.kubernetes.io/name: opendatahub-ogx-operator
-  name: opendatahub-ogx-components-ogx-editor-role
+  name: odh-ogx-components-ogx-editor-role
 rules:
 - apiGroups:
   - components.platform.opendatahub.io
@@ -49,7 +49,7 @@ kind: ClusterRole
 metadata:
   labels:
     app.kubernetes.io/name: opendatahub-ogx-operator
-  name: opendatahub-ogx-components-ogx-viewer-role
+  name: odh-ogx-components-ogx-viewer-role
 rules:
 - apiGroups:
   - components.platform.opendatahub.io
@@ -69,7 +69,7 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: opendatahub-ogx-manager-role
+  name: odh-ogx-manager-role
 rules:
 - nonResourceURLs:
   - /metrics
@@ -277,7 +277,7 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: opendatahub-ogx-metrics-auth-role
+  name: odh-ogx-metrics-auth-role
 rules:
 - apiGroups:
   - authentication.k8s.io
@@ -295,7 +295,7 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: opendatahub-ogx-metrics-reader
+  name: odh-ogx-metrics-reader
 rules:
 - nonResourceURLs:
   - /metrics

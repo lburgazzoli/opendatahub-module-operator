@@ -19,12 +19,13 @@ package ogx
 import (
 	"fmt"
 
+	fwapi "github.com/opendatahub-io/odh-platform-utilities/framework/api"
 	odhtypes "github.com/opendatahub-io/odh-platform-utilities/framework/controller/types"
 	fwparams "github.com/opendatahub-io/odh-platform-utilities/framework/utils/params"
-	odhcluster "github.com/opendatahub-io/odh-platform-utilities/pkg/cluster"
 
 	componentApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-ogx-operator/api/components/v1alpha1"
 	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-ogx-operator/pkg/config"
+	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-ogx-operator/pkg/releases"
 )
 
 const (
@@ -43,20 +44,15 @@ var imageParamMap = map[string]string{
 // Module holds process-lifetime state for the ogx controller.
 type Module struct {
 	cfg          *moduleconfig.Config
+	release      fwapi.Release
 	manifestInfo odhtypes.ManifestInfo
 }
 
 // NewModule creates a Module with one-shot computed state.
 func NewModule(cfg *moduleconfig.Config) (*Module, error) {
-	var overlay string
-	switch odhcluster.Platform(cfg.PlatformName) {
-	case odhcluster.SelfManagedRhoai:
-		overlay = overlayRhoai
-	case odhcluster.ManagedRhoai:
-		overlay = overlayRhoai
-	default:
-		overlay = overlayODH
-	}
+	// Default to the ODH overlay; platform-specific overlays are determined
+	// at deployment time via image parameters rather than runtime config.
+	overlay := overlayODH
 
 	return &Module{
 		cfg: cfg,
@@ -68,8 +64,9 @@ func NewModule(cfg *moduleconfig.Config) (*Module, error) {
 	}, nil
 }
 
-// Init applies image parameter substitutions to the manifest directory.
-// It must be called once after NewModule, before the reconciler starts.
+// Init applies image parameter substitutions from environment variables into
+// the manifest path. Must be called once after NewModule, before the reconciler
+// starts processing requests.
 func (m *Module) Init() error {
 	if err := fwparams.Apply(
 		m.manifestInfo.String(),
@@ -78,5 +75,18 @@ func (m *Module) Init() error {
 	); err != nil {
 		return fmt.Errorf("failed to update images on path %s: %w", m.manifestInfo, err)
 	}
+
+	rel := m.cfg.Release()
+
+	v, err := releases.ParseVersion(rel.Version)
+	if err != nil {
+		return fmt.Errorf("parsing platform version %q: %w", rel.Version, err)
+	}
+
+	m.release = fwapi.Release{
+		Name:    fwapi.Platform(rel.Name),
+		Version: v,
+	}
+
 	return nil
 }

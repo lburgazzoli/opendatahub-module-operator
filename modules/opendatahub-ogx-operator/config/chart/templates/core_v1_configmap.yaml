@@ -3,10 +3,9 @@ data:
   {{- with .Values.imagePullSecret }}
   imagePullSecret: {{ . }}
   {{- end }}
-  platform-name: {{ default "OpenDataHub" (index .Values.config "platform-name") | quote }}
-  platform-version: {{ default "unknown" (index .Values.config "platform-version") | quote }}
+  platformVersion: {{ default "" (index .Values.config "platformVersion") | quote }}
   {{- range $key, $val := .Values.config }}
-  {{- if and (ne $key "platform-name") (ne $key "platform-version") }}
+  {{- if ne $key "platformVersion" }}
   {{ $key }}: {{ $val | quote }}
   {{- end }}
   {{- end }}
@@ -14,5 +13,5 @@ kind: ConfigMap
 metadata:
   labels:
     app.kubernetes.io/name: opendatahub-ogx-operator
-  name: opendatahub-ogx-config
+  name: odh-ogx-config
   namespace: {{ .Release.Namespace }}

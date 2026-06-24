@@ -60,7 +60,7 @@ func TestOGX(t *testing.T) {
 
 	operatorDeploy := &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      "opendatahub-ogx-operator",
+			Name:      "odh-ogx-operator",
 			Namespace: support.OperatorNamespace(),
 		},
 	}

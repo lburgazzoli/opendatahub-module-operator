@@ -21,8 +21,8 @@ import (
 	"fmt"
 
 	componentApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-ogx-operator/api/components/v1alpha1"
+	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-ogx-operator/pkg/releases"
 	odhtypes "github.com/opendatahub-io/odh-platform-utilities/framework/controller/types"
-	ofVersion "github.com/operator-framework/api/pkg/lib/version"
 )
 
 // initialize appends the pre-resolved manifest info to the pipeline.
@@ -31,17 +31,14 @@ func (m *Module) initialize(_ context.Context, rr *odhtypes.ReconciliationReques
 	return nil
 }
 
-// reportStatus populates the release status and config values.
+// reportStatus writes the platform version handshake entry into status.releases.
 func (m *Module) reportStatus(_ context.Context, rr *odhtypes.ReconciliationRequest) error {
 	obj, ok := rr.Instance.(*componentApi.OGX)
 	if !ok {
 		return fmt.Errorf("instance is not an OGX")
 	}
 
-	obj.Status.Release = componentApi.Release{
-		Name:    componentApi.Platform(rr.Release.Name),
-		Version: ofVersion.OperatorVersion{Version: rr.Release.Version},
-	}
+	releases.Upsert(obj.GetReleaseStatus(), m.cfg.Release())
 
 	return nil
 }

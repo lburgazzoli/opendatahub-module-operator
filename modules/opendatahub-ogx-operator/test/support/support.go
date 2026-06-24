@@ -3,9 +3,8 @@ package support
 import "os"
 
 const (
-	DefaultOperatorNamespace        = "opendatahub-ogx-system"
-	DefaultIntegrationTestNamespace = "opendatahub-ogx-integration"
-	DefaultPlatformName             = "OpenDataHub"
+	DefaultOperatorNamespace        = "odh-ogx-system"
+	DefaultIntegrationTestNamespace = "odh-ogx-integration"
 	DefaultPlatformVersion          = "0.1.0"
 )
 
@@ -30,18 +29,9 @@ func HelmNamespace() string {
 	return OperatorNamespace()
 }
 
-func PlatformName() string {
-	if v := os.Getenv("TEST_PLATFORM_TYPE"); v != "" {
-		return v
-	}
-
-	return DefaultPlatformName
-}
-
 func PlatformVersion() string {
 	if v := os.Getenv("TEST_PLATFORM_VERSION"); v != "" {
 		return v
 	}
-
 	return DefaultPlatformVersion
 }

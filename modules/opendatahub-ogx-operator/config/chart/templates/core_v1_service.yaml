@@ -3,7 +3,7 @@ kind: Service
 metadata:
   labels:
     app.kubernetes.io/name: opendatahub-ogx-operator
-  name: opendatahub-ogx-metrics-service
+  name: odh-ogx-metrics-service
   namespace: {{ .Release.Namespace }}
 spec:
   ports:

@@ -119,8 +119,7 @@ func DefaultValues() Values {
 		},
 		LeaderElect: true,
 		Config: map[string]string{
-			"platform-name":    "OpenDataHub",
-			"platform-version": "unknown",
+			"platformVersion": "",
 		},
 	}
 }

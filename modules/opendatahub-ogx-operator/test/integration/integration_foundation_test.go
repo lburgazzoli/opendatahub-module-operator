@@ -1,6 +1,7 @@
 package integration
 
 import (
+	"fmt"
 	"testing"
 
 	. "github.com/onsi/gomega"
@@ -14,6 +15,7 @@ import (
 	"github.com/lburgazzoli/gomega-matchers/pkg/matchers/k8s/condition"
 
 	componentsv1alpha1 "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-ogx-operator/api/components/v1alpha1"
+	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-ogx-operator/pkg/releases"
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-ogx-operator/test/support"
 	common "github.com/opendatahub-io/odh-platform-utilities/api/common"
 	"github.com/opendatahub-io/odh-platform-utilities/pkg/metadata/annotations"
@@ -91,11 +93,9 @@ func (ft *foundationTests) testReleaseStatus(t *testing.T) {
 	cfg, err := loadOperatorConfig()
 	g.Expect(err).NotTo(HaveOccurred())
 
-	g.Eventually(t.Context(), k8sm.Get(ft.Client, module)).Should(And(
-		jq.Matchf(`.status.release.version == "%s"`, cfg.Release().Version.String()),
-		jq.Matchf(`.status.release.name == "%s"`,
-			cfg.PlatformName),
-	))
+	expr := fmt.Sprintf(`.status.releases[] | select(.name == "%s") | .version == "%s"`,
+		releases.Platform, cfg.Release().Version)
+	g.Eventually(t.Context(), k8sm.Get(ft.Client, module)).Should(jq.Match(expr))
 }
 
 func (ft *foundationTests) testPlatformLabels(t *testing.T) {
@@ -115,8 +115,7 @@ func (ft *foundationTests) testPlatformLabels(t *testing.T) {
 		k8sm.HasLabel(labels.PlatformPartOf, componentsv1alpha1.OGXComponentName),
 		k8sm.HasAnnotation(annotations.InstanceName, module.GetName()),
 		k8sm.HasAnnotation(annotations.InstanceUID, string(module.GetUID())),
-		k8sm.HasAnnotation(annotations.PlatformType, cfg.PlatformName),
-		k8sm.HasAnnotation(annotations.PlatformVersion, cfg.Release().Version.String()),
+		k8sm.HasAnnotation(annotations.PlatformVersion, cfg.Release().Version),
 	))
 }
 

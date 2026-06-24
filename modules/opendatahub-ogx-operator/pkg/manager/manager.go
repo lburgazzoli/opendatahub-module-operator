@@ -132,7 +132,7 @@ func New(
 		odhmanager.WithManifestsBasePath(cfg.ManifestsPath),
 	)
 
-	if err := ogx.NewReconciler(ctx, mgr, cfg, cfg.Release()); err != nil {
+	if err := ogx.NewReconciler(ctx, mgr, cfg); err != nil {
 		return nil, fmt.Errorf("creating ogx reconciler: %w", err)
 	}
 
