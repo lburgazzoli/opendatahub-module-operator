@@ -129,7 +129,7 @@ func (ft *foundationTests) testReleaseStatus(t *testing.T) {
 	g.Expect(err).NotTo(HaveOccurred())
 
 	g.Eventually(t.Context(), k8sm.Get(ft.Client, module)).Should(
-		jq.Matchf(`.status.releases[] | select(.name == "platform") | .version == "%s"`, cfg.Release().Version),
+		jq.Matchf(`.status.releases[] | select(.name == "%s") | .version == "%s"`, releases.Platform, cfg.Release().Version),
 	)
 }
 

@@ -14,6 +14,7 @@ import (
 	"github.com/lburgazzoli/gomega-matchers/pkg/matchers/k8s/condition"
 
 	componentsv1alpha1 "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-ray-operator/api/components/v1alpha1"
+	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-ray-operator/pkg/releases"
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-ray-operator/test/support"
 	common "github.com/opendatahub-io/odh-platform-utilities/api/common"
 	"github.com/opendatahub-io/odh-platform-utilities/pkg/metadata/annotations"
@@ -92,7 +93,7 @@ func (ft *foundationTests) testReleaseStatus(t *testing.T) {
 	g.Expect(err).NotTo(HaveOccurred())
 
 	g.Eventually(t.Context(), k8sm.Get(ft.Client, module)).Should(
-		jq.Matchf(`.status.releases[] | select(.name == "platform") | .version == "%s"`, cfg.Release().Version),
+		jq.Matchf(`.status.releases[] | select(.name == "%s") | .version == "%s"`, releases.Platform, cfg.Release().Version),
 	)
 }
 
