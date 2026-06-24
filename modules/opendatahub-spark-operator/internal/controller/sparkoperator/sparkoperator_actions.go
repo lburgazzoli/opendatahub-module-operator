@@ -20,9 +20,8 @@ import (
 	"context"
 	"fmt"
 
-	ofVersion "github.com/operator-framework/api/pkg/lib/version"
-
 	componentApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-spark-operator/api/components/v1alpha1"
+	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-spark-operator/pkg/releases"
 	odhtypes "github.com/opendatahub-io/odh-platform-utilities/framework/controller/types"
 )
 
@@ -32,17 +31,14 @@ func (m *Module) initialize(_ context.Context, rr *odhtypes.ReconciliationReques
 	return nil
 }
 
-// reportStatus populates the release status with platform version and name.
+// reportStatus writes the platform version handshake entry into status.releases.
 func (m *Module) reportStatus(_ context.Context, rr *odhtypes.ReconciliationRequest) error {
 	obj, ok := rr.Instance.(*componentApi.SparkOperator)
 	if !ok {
 		return fmt.Errorf("instance is not a SparkOperator")
 	}
 
-	obj.Status.Release = componentApi.Release{
-		Name:    componentApi.Platform(rr.Release.Name),
-		Version: ofVersion.OperatorVersion{Version: rr.Release.Version},
-	}
+	releases.Upsert(obj.GetReleaseStatus(), m.cfg.Release())
 
 	return nil
 }

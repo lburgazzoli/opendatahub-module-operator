@@ -1,6 +1,6 @@
-namespace: opendatahub-spark-system
+namespace: odh-spark-system
 
-namePrefix: opendatahub-spark-
+namePrefix: odh-spark-
 
 resources:
 - ../crd

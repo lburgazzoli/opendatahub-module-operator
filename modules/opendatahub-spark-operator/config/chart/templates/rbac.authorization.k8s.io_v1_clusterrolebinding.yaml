@@ -3,11 +3,11 @@ kind: ClusterRoleBinding
 metadata:
   labels:
     app.kubernetes.io/name: opendatahub-spark-operator
-  name: opendatahub-spark-manager-rolebinding
+  name: odh-spark-manager-rolebinding
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
-  name: opendatahub-spark-manager-role
+  name: odh-spark-manager-role
 subjects:
 - kind: ServiceAccount
   name: {{ default (include "chart.fullname" .) .Values.serviceAccount.name }}
@@ -16,11 +16,11 @@ subjects:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
-  name: opendatahub-spark-metrics-auth-rolebinding
+  name: odh-spark-metrics-auth-rolebinding
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
-  name: opendatahub-spark-metrics-auth-role
+  name: odh-spark-metrics-auth-role
 subjects:
 - kind: ServiceAccount
   name: {{ default (include "chart.fullname" .) .Values.serviceAccount.name }}

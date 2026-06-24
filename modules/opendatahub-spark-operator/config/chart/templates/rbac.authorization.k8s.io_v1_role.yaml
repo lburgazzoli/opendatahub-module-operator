@@ -3,7 +3,7 @@ kind: Role
 metadata:
   labels:
     app.kubernetes.io/name: opendatahub-spark-operator
-  name: opendatahub-spark-leader-election-role
+  name: odh-spark-leader-election-role
   namespace: {{ .Release.Namespace }}
 rules:
 - apiGroups:

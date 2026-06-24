@@ -60,7 +60,7 @@ func TestSparkOperator(t *testing.T) {
 
 	operatorDeploy := &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      "opendatahub-spark-operator",
+			Name:      "odh-spark-operator",
 			Namespace: support.OperatorNamespace(),
 		},
 	}

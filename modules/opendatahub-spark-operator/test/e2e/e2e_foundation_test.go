@@ -3,6 +3,7 @@
 package e2e
 
 import (
+	"fmt"
 	"testing"
 	"testing/fstest"
 
@@ -20,6 +21,7 @@ import (
 	componentsv1alpha1 "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-spark-operator/api/components/v1alpha1"
 	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-spark-operator/pkg/config"
 	modulemeta "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-spark-operator/pkg/module"
+	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-spark-operator/pkg/releases"
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-spark-operator/test/support"
 	common "github.com/opendatahub-io/odh-platform-utilities/api/common"
 	"github.com/opendatahub-io/odh-platform-utilities/pkg/metadata/annotations"
@@ -98,8 +100,7 @@ func (ft *foundationTests) testOperatorConfigMap(t *testing.T) {
 	}
 	g.Eventually(t.Context(), k8sm.Get(ft.Client, operatorCfgMap)).Should(
 		WithTransform(k8sm.Data(), SatisfyAll(
-			HaveKeyWithValue(moduleconfig.KeyPlatformName, Not(BeEmpty())),
-			HaveKeyWithValue(moduleconfig.KeyPlatformVersion, Not(BeEmpty())),
+			HaveKey(moduleconfig.KeyPlatformVersion),
 		)),
 	)
 }
@@ -122,9 +123,6 @@ func (ft *foundationTests) testReleaseStatus(t *testing.T) {
 	g.Eventually(t.Context(), k8sm.Lookup(ft.Client, operatorCfg)).Should(Succeed())
 
 	cfg, err := moduleconfig.LoadFromFS(fstest.MapFS{
-		moduleconfig.KeyPlatformName: {
-			Data: []byte(operatorCfg.Data[moduleconfig.KeyPlatformName]),
-		},
 		moduleconfig.KeyPlatformVersion: {
 			Data: []byte(operatorCfg.Data[moduleconfig.KeyPlatformVersion]),
 		},
@@ -132,10 +130,9 @@ func (ft *foundationTests) testReleaseStatus(t *testing.T) {
 	g.Expect(err).NotTo(HaveOccurred())
 	expectedRelease := cfg.Release()
 
-	g.Eventually(t.Context(), k8sm.Get(ft.Client, module)).Should(And(
-		jq.Matchf(`.status.release.version == "%s"`, expectedRelease.Version.String()),
-		jq.Matchf(`.status.release.name == "%s"`, string(expectedRelease.Name)),
-	))
+	expr := fmt.Sprintf(`.status.releases[] | select(.name == "%s") | .version == "%s"`,
+		releases.Platform, expectedRelease.Version)
+	g.Eventually(t.Context(), k8sm.Get(ft.Client, module)).Should(jq.Match(expr))
 }
 
 func (ft *foundationTests) testPlatformLabels(t *testing.T) {
@@ -161,8 +158,6 @@ func (ft *foundationTests) testPlatformLabels(t *testing.T) {
 		k8sm.HasLabel(labels.PlatformPartOf, componentsv1alpha1.SparkOperatorComponentName),
 		k8sm.HasAnnotation(annotations.InstanceName, module.GetName()),
 		k8sm.HasAnnotation(annotations.InstanceUID, string(module.GetUID())),
-		k8sm.HasAnnotation(annotations.PlatformType, operatorCfg.Data[moduleconfig.KeyPlatformName]),
-		k8sm.HasAnnotation(annotations.PlatformVersion, module.Status.Release.Version.String()),
 	))
 }
 

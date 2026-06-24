@@ -3,7 +3,7 @@ kind: Service
 metadata:
   labels:
     app.kubernetes.io/name: opendatahub-spark-operator
-  name: opendatahub-spark-metrics-service
+  name: odh-spark-metrics-service
   namespace: {{ .Release.Namespace }}
 spec:
   ports:

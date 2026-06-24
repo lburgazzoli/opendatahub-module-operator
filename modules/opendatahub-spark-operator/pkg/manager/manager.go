@@ -132,7 +132,7 @@ func New(
 		odhmanager.WithManifestsBasePath(cfg.ManifestsPath),
 	)
 
-	if err := sparkoperator.NewReconciler(ctx, mgr, cfg, cfg.Release()); err != nil {
+	if err := sparkoperator.NewReconciler(ctx, mgr, cfg); err != nil {
 		return nil, fmt.Errorf("creating sparkoperator reconciler: %w", err)
 	}
 

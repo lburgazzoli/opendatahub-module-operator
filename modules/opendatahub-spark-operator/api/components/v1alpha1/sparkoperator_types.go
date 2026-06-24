@@ -18,7 +18,6 @@ package v1alpha1
 
 import (
 	common "github.com/opendatahub-io/odh-platform-utilities/api/common"
-	ofVersion "github.com/operator-framework/api/pkg/lib/version"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -36,14 +35,6 @@ const (
 	SparkOperatorCRDName  = SparkOperatorResource + "." + GroupName
 )
 
-type Platform string
-
-// Release reports the operator version and platform.
-type Release struct {
-	Name    Platform                  `json:"name,omitempty"`
-	Version ofVersion.OperatorVersion `json:"version,omitempty"`
-}
-
 // Compile-time interface assertion.
 var _ common.PlatformObject = (*SparkOperator)(nil)
 
@@ -54,9 +45,6 @@ type SparkOperatorSpec struct{}
 type SparkOperatorStatus struct {
 	common.Status                 `json:",inline"`
 	common.ComponentReleaseStatus `json:",inline"`
-
-	// Release reports the operator version and platform.
-	Release Release `json:"release,omitempty"`
 }
 
 // +kubebuilder:object:root=true
@@ -65,7 +53,7 @@ type SparkOperatorStatus struct {
 // +kubebuilder:validation:XValidation:rule="self.metadata.name == 'default-sparkoperator'",message="SparkOperator name must be default-sparkoperator"
 // +kubebuilder:printcolumn:name="Ready",type=string,JSONPath=`.status.conditions[?(@.type=="Ready")].status`,description="Ready"
 // +kubebuilder:printcolumn:name="Reason",type=string,JSONPath=`.status.conditions[?(@.type=="Ready")].reason`,description="Reason"
-// +kubebuilder:printcolumn:name="Version",type=string,JSONPath=`.status.release.version`,description="Module Version"
+// +kubebuilder:printcolumn:name="Version",type=string,JSONPath=`.status.releases[?(@.name=="platform")].version`,description="Module Version"
 
 // SparkOperator is the Schema for the sparkoperators API.
 type SparkOperator struct {
