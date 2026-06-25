@@ -60,7 +60,7 @@ func TestMLflowOperator(t *testing.T) {
 
 	operatorDeploy := &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      "opendatahub-mlflow-operator",
+			Name:      "odh-mlflow-operator",
 			Namespace: support.OperatorNamespace(),
 		},
 	}

@@ -4,8 +4,8 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 
-NAMESPACE="${1:-opendatahub-mlflow-system}"
-HELM_RELEASE="${2:-opendatahub-mlflow-operator}"
+NAMESPACE="${1:-odh-mlflow-system}"
+HELM_RELEASE="${2:-odh-mlflow-operator}"
 CR_RESOURCE="mlflowoperators.components.platform.opendatahub.io"
 
 echo "Cleaning up e2e test resources..."

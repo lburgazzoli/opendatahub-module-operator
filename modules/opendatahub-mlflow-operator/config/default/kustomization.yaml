@@ -1,6 +1,6 @@
-namespace: opendatahub-mlflow-system
+namespace: odh-mlflow-system
 
-namePrefix: opendatahub-mlflow-
+namePrefix: odh-mlflow-
 
 resources:
 - ../crd

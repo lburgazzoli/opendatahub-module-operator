@@ -20,12 +20,14 @@ import (
 	"fmt"
 	"path"
 
+	fwapi "github.com/opendatahub-io/odh-platform-utilities/framework/api"
 	fwtypes "github.com/opendatahub-io/odh-platform-utilities/framework/controller/types"
 	fwparams "github.com/opendatahub-io/odh-platform-utilities/framework/utils/params"
 	odhcluster "github.com/opendatahub-io/odh-platform-utilities/pkg/cluster"
 
 	componentApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-mlflow-operator/api/components/v1alpha1"
 	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-mlflow-operator/pkg/config"
+	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-mlflow-operator/pkg/releases"
 )
 
 const (
@@ -49,13 +51,14 @@ var imageParamMap = map[string]string{
 // Module holds process-lifetime state for the mlflowoperator controller.
 type Module struct {
 	cfg          *moduleconfig.Config
+	release      fwapi.Release
 	manifestInfo fwtypes.ManifestInfo
 	// consoleSectionTitle is the section-title kustomize variable, computed once from platform.
 	consoleSectionTitle string
 }
 
-func consoleSectionTitleFor(platform componentApi.Platform) string {
-	if platform == componentApi.Platform(odhcluster.SelfManagedRhoai) || platform == componentApi.Platform(odhcluster.ManagedRhoai) {
+func consoleSectionTitleFor(platform odhcluster.Platform) string {
+	if platform == odhcluster.SelfManagedRhoai || platform == odhcluster.ManagedRhoai {
 		return "OpenShift Self Managed Services"
 	}
 	return "OpenShift Open Data Hub"
@@ -63,15 +66,9 @@ func consoleSectionTitleFor(platform componentApi.Platform) string {
 
 // NewModule creates a Module with one-shot computed state.
 func NewModule(cfg *moduleconfig.Config) (*Module, error) {
-	var overlay string
-	switch odhcluster.Platform(cfg.PlatformName) {
-	case odhcluster.SelfManagedRhoai:
-		overlay = overlayRhoai
-	case odhcluster.ManagedRhoai:
-		overlay = overlayRhoai
-	default:
-		overlay = overlayODH
-	}
+	// Default to the ODH overlay; platform-specific overlays are determined
+	// at deployment time via image parameters rather than runtime config.
+	overlay := overlayODH
 
 	return &Module{
 		cfg: cfg,
@@ -80,7 +77,7 @@ func NewModule(cfg *moduleconfig.Config) (*Module, error) {
 			ContextDir: componentName,
 			SourcePath: overlay,
 		},
-		consoleSectionTitle: consoleSectionTitleFor(componentApi.Platform(cfg.PlatformName)),
+		consoleSectionTitle: consoleSectionTitleFor(odhcluster.Platform("")),
 	}, nil
 }
 
@@ -94,5 +91,18 @@ func (m *Module) Init() error {
 	); err != nil {
 		return fmt.Errorf("failed to update images on path %s: %w", baseParamsPath, err)
 	}
+
+	rel := m.cfg.Release()
+
+	v, err := releases.ParseVersion(rel.Version)
+	if err != nil {
+		return fmt.Errorf("parsing platform version %q: %w", rel.Version, err)
+	}
+
+	m.release = fwapi.Release{
+		Name:    fwapi.Platform(rel.Name),
+		Version: v,
+	}
+
 	return nil
 }

@@ -3,7 +3,7 @@ kind: ClusterRole
 metadata:
   labels:
     app.kubernetes.io/name: opendatahub-mlflow-operator
-  name: opendatahub-mlflow-components-mlflowoperator-admin-role
+  name: odh-mlflow-components-mlflowoperator-admin-role
 rules:
 - apiGroups:
   - components.platform.opendatahub.io
@@ -23,7 +23,7 @@ kind: ClusterRole
 metadata:
   labels:
     app.kubernetes.io/name: opendatahub-mlflow-operator
-  name: opendatahub-mlflow-components-mlflowoperator-editor-role
+  name: odh-mlflow-components-mlflowoperator-editor-role
 rules:
 - apiGroups:
   - components.platform.opendatahub.io
@@ -49,7 +49,7 @@ kind: ClusterRole
 metadata:
   labels:
     app.kubernetes.io/name: opendatahub-mlflow-operator
-  name: opendatahub-mlflow-components-mlflowoperator-viewer-role
+  name: odh-mlflow-components-mlflowoperator-viewer-role
 rules:
 - apiGroups:
   - components.platform.opendatahub.io
@@ -69,7 +69,7 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: opendatahub-mlflow-manager-role
+  name: odh-mlflow-manager-role
 rules:
 - nonResourceURLs:
   - /metrics
@@ -303,7 +303,7 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: opendatahub-mlflow-metrics-auth-role
+  name: odh-mlflow-metrics-auth-role
 rules:
 - apiGroups:
   - authentication.k8s.io
@@ -321,7 +321,7 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: opendatahub-mlflow-metrics-reader
+  name: odh-mlflow-metrics-reader
 rules:
 - nonResourceURLs:
   - /metrics

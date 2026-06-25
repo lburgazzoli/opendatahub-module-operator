@@ -138,7 +138,7 @@ func New(
 		odhmanager.WithManifestsBasePath(cfg.ManifestsPath),
 	)
 
-	if err := mlflowoperator.NewReconciler(ctx, mgr, cfg, cfg.Release()); err != nil {
+	if err := mlflowoperator.NewReconciler(ctx, mgr, cfg); err != nil {
 		return nil, fmt.Errorf("creating mlflowoperator reconciler: %w", err)
 	}
 

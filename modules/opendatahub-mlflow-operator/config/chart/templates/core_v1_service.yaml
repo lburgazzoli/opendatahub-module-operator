@@ -3,7 +3,7 @@ kind: Service
 metadata:
   labels:
     app.kubernetes.io/name: opendatahub-mlflow-operator
-  name: opendatahub-mlflow-metrics-service
+  name: odh-mlflow-metrics-service
   namespace: {{ .Release.Namespace }}
 spec:
   ports:

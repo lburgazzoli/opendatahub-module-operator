@@ -3,7 +3,7 @@ kind: Deployment
 metadata:
   labels:
     app.kubernetes.io/name: opendatahub-mlflow-operator
-  name: opendatahub-mlflow-operator
+  name: odh-mlflow-operator
   namespace: {{ .Release.Namespace }}
 spec:
   replicas: {{ .Values.replicas }}
@@ -101,5 +101,5 @@ spec:
       - emptyDir: {}
         name: manifests
       - configMap:
-          name: opendatahub-mlflow-config
+          name: odh-mlflow-config
         name: config
