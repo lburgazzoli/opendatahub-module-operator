@@ -76,7 +76,7 @@ func TestTrustyAI(t *testing.T) {
 
 	operatorDeploy := &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      "opendatahub-trustyai-operator",
+			Name:      "odh-trustyai-operator",
 			Namespace: support.OperatorNamespace(),
 		},
 	}

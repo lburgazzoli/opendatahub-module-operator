@@ -1,6 +1,6 @@
-namespace: opendatahub-trustyai-system
+namespace: odh-trustyai-system
 
-namePrefix: opendatahub-trustyai-
+namePrefix: odh-trustyai-
 
 resources:
 - ../crd

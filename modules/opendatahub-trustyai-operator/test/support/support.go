@@ -3,9 +3,8 @@ package support
 import "os"
 
 const (
-	DefaultOperatorNamespace        = "opendatahub-trustyai-system"
-	DefaultIntegrationTestNamespace = "opendatahub-trustyai-integration"
-	DefaultPlatformName             = "OpenDataHub"
+	DefaultOperatorNamespace        = "odh-trustyai-system"
+	DefaultIntegrationTestNamespace = "odh-trustyai-integration"
 	DefaultPlatformVersion          = "0.1.0"
 )
 
@@ -34,13 +33,6 @@ func IntegrationTestNamespace() string {
 	}
 
 	return DefaultIntegrationTestNamespace
-}
-
-func PlatformName() string {
-	if v := os.Getenv("TEST_PLATFORM_TYPE"); v != "" {
-		return v
-	}
-	return DefaultPlatformName
 }
 
 func PlatformVersion() string {

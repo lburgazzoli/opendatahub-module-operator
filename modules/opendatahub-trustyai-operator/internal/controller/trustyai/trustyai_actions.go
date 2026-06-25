@@ -22,17 +22,17 @@ import (
 	"strconv"
 
 	corev1 "k8s.io/api/core/v1"
-	k8serr "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	componentApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-trustyai-operator/api/components/v1alpha1"
+	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-trustyai-operator/pkg/releases"
 	modulegvk "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-trustyai-operator/pkg/resources/gvk"
 	fwcluster "github.com/opendatahub-io/odh-platform-utilities/framework/cluster"
 	odherrors "github.com/opendatahub-io/odh-platform-utilities/framework/controller/actions/errors"
 	fwtypes "github.com/opendatahub-io/odh-platform-utilities/framework/controller/types"
 	pkgresources "github.com/opendatahub-io/odh-platform-utilities/framework/resources"
 	odhcluster "github.com/opendatahub-io/odh-platform-utilities/pkg/cluster"
-	ofVersion "github.com/operator-framework/api/pkg/lib/version"
+	k8serr "k8s.io/apimachinery/pkg/api/errors"
 )
 
 // checkPreConditions verifies that:
@@ -114,17 +114,14 @@ func (m *Module) createConfigMap(_ context.Context, rr *fwtypes.ReconciliationRe
 	return rr.AddResources(configMap)
 }
 
-// reportStatus populates the release status and config values.
+// reportStatus writes the platform version handshake entry into status.releases.
 func (m *Module) reportStatus(_ context.Context, rr *fwtypes.ReconciliationRequest) error {
 	obj, ok := rr.Instance.(*componentApi.TrustyAI)
 	if !ok {
 		return fmt.Errorf("instance is not a TrustyAI")
 	}
 
-	obj.Status.Release = componentApi.Release{
-		Name:    componentApi.Platform(rr.Release.Name),
-		Version: ofVersion.OperatorVersion{Version: rr.Release.Version},
-	}
+	releases.Upsert(obj.GetReleaseStatus(), m.cfg.Release())
 
 	return nil
 }

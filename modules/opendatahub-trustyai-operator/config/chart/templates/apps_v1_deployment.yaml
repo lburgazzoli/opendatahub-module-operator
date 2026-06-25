@@ -3,7 +3,7 @@ kind: Deployment
 metadata:
   labels:
     app.kubernetes.io/name: opendatahub-trustyai-operator
-  name: opendatahub-trustyai-operator
+  name: odh-trustyai-operator
   namespace: {{ .Release.Namespace }}
 spec:
   replicas: {{ .Values.replicas }}
@@ -101,5 +101,5 @@ spec:
       - emptyDir: {}
         name: manifests
       - configMap:
-          name: opendatahub-trustyai-config
+          name: odh-trustyai-config
         name: config

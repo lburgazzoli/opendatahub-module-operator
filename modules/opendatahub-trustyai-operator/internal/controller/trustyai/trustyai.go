@@ -19,12 +19,13 @@ package trustyai
 import (
 	"fmt"
 
+	fwapi "github.com/opendatahub-io/odh-platform-utilities/framework/api"
 	fwtypes "github.com/opendatahub-io/odh-platform-utilities/framework/controller/types"
 	fwparams "github.com/opendatahub-io/odh-platform-utilities/framework/utils/params"
-	odhcluster "github.com/opendatahub-io/odh-platform-utilities/pkg/cluster"
 
 	componentApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-trustyai-operator/api/components/v1alpha1"
 	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-trustyai-operator/pkg/config"
+	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-trustyai-operator/pkg/releases"
 )
 
 const (
@@ -57,7 +58,8 @@ var imageParamMap = map[string]string{
 
 // Module holds process-lifetime state for the trustyai controller.
 type Module struct {
-	cfg *moduleconfig.Config
+	cfg     *moduleconfig.Config
+	release fwapi.Release
 	// manifestInfo is the standard platform overlay (odh/rhoai).
 	manifestInfo fwtypes.ManifestInfo
 	// mcpManifestInfo is used when MCPGuardrailsMode is enabled.
@@ -66,15 +68,9 @@ type Module struct {
 
 // NewModule creates a Module with one-shot computed state.
 func NewModule(cfg *moduleconfig.Config) (*Module, error) {
-	var overlay string
-	switch odhcluster.Platform(cfg.PlatformName) {
-	case odhcluster.SelfManagedRhoai:
-		overlay = overlayRhoai
-	case odhcluster.ManagedRhoai:
-		overlay = overlayRhoai
-	default:
-		overlay = overlayODH
-	}
+	// Default to the ODH overlay; platform-specific overlays are determined
+	// at deployment time via image parameters rather than runtime config.
+	overlay := overlayODH
 
 	return &Module{
 		cfg: cfg,
@@ -100,5 +96,18 @@ func (m *Module) Init() error {
 	); err != nil {
 		return fmt.Errorf("failed to update images on path %s: %w", m.manifestInfo, err)
 	}
+
+	rel := m.cfg.Release()
+
+	v, err := releases.ParseVersion(rel.Version)
+	if err != nil {
+		return fmt.Errorf("parsing platform version %q: %w", rel.Version, err)
+	}
+
+	m.release = fwapi.Release{
+		Name:    fwapi.Platform(rel.Name),
+		Version: v,
+	}
+
 	return nil
 }

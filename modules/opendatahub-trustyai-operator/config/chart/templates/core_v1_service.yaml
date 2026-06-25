@@ -3,7 +3,7 @@ kind: Service
 metadata:
   labels:
     app.kubernetes.io/name: opendatahub-trustyai-operator
-  name: opendatahub-trustyai-metrics-service
+  name: odh-trustyai-metrics-service
   namespace: {{ .Release.Namespace }}
 spec:
   ports:

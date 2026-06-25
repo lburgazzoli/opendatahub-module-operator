@@ -20,23 +20,21 @@ import (
 	"context"
 	"testing"
 
-	"github.com/blang/semver/v4"
 	. "github.com/onsi/gomega"
+	common "github.com/opendatahub-io/odh-platform-utilities/api/common"
 	fwapi "github.com/opendatahub-io/odh-platform-utilities/framework/api"
-	fwtypes "github.com/opendatahub-io/odh-platform-utilities/framework/controller/types"
-	ofVersion "github.com/operator-framework/api/pkg/lib/version"
+	odhtypes "github.com/opendatahub-io/odh-platform-utilities/framework/controller/types"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	componentApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-trustyai-operator/api/components/v1alpha1"
 	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-trustyai-operator/pkg/config"
-	"github.com/opendatahub-io/odh-platform-utilities/pkg/cluster"
+	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-trustyai-operator/pkg/releases"
 )
 
 func newTestModule(t *testing.T) *Module {
 	t.Helper()
 
 	cfg := &moduleconfig.Config{
-		PlatformName:          string(cluster.OpenDataHub),
 		PlatformVersion:       "1.0.0",
 		ManifestsPath:         "/manifests",
 		ApplicationsNamespace: "test-ns",
@@ -48,18 +46,20 @@ func newTestModule(t *testing.T) *Module {
 	return m
 }
 
-func newTestRR(obj *componentApi.TrustyAI) *fwtypes.ReconciliationRequest {
-	rel := (&moduleconfig.Config{
-		PlatformName:    string(cluster.OpenDataHub),
-		PlatformVersion: "1.0.0",
-	}).Release()
+func newTestRR(t *testing.T, obj *componentApi.TrustyAI) *odhtypes.ReconciliationRequest {
+	t.Helper()
 
-	return &fwtypes.ReconciliationRequest{
+	rel := (&moduleconfig.Config{PlatformVersion: "1.0.0"}).Release()
+
+	v, err := releases.ParseVersion(rel.Version)
+	NewWithT(t).Expect(err).NotTo(HaveOccurred())
+
+	return &odhtypes.ReconciliationRequest{
 		Instance:          obj,
 		ManifestsBasePath: "/manifests",
 		Release: fwapi.Release{
 			Name:    fwapi.Platform(rel.Name),
-			Version: rel.Version.Version,
+			Version: v,
 		},
 	}
 }
@@ -76,7 +76,6 @@ func TestNewModule(t *testing.T) {
 	g := NewWithT(t)
 
 	cfg := &moduleconfig.Config{
-		PlatformName:    string(cluster.OpenDataHub),
 		PlatformVersion: "1.0.0",
 		ManifestsPath:   "/manifests",
 	}
@@ -93,7 +92,7 @@ func TestInitialize(t *testing.T) {
 
 	m := newTestModule(t)
 	obj := newTestTrustyAI()
-	rr := newTestRR(obj)
+	rr := newTestRR(t, obj)
 
 	g.Expect(m.initialize(context.Background(), rr)).To(Succeed())
 	g.Expect(rr.Manifests).To(HaveLen(1))
@@ -107,7 +106,7 @@ func TestUpgradeIfNeededNoVersion(t *testing.T) {
 
 	m := newTestModule(t)
 	obj := newTestTrustyAI()
-	rr := newTestRR(obj)
+	rr := newTestRR(t, obj)
 
 	g.Expect(m.upgradeIfNeeded(context.Background(), rr)).To(Succeed())
 }
@@ -118,8 +117,10 @@ func TestUpgradeIfNeededSameVersion(t *testing.T) {
 	m := newTestModule(t)
 	obj := newTestTrustyAI()
 
-	obj.Status.Release.Version = ofVersion.OperatorVersion{Version: semver.MustParse("1.0.0")}
-	rr := newTestRR(obj)
+	obj.Status.Releases = []common.ComponentRelease{
+		{Name: releases.Platform, Version: "1.0.0"},
+	}
+	rr := newTestRR(t, obj)
 
 	g.Expect(m.upgradeIfNeeded(context.Background(), rr)).To(Succeed())
 }
@@ -129,11 +130,12 @@ func TestReportStatus(t *testing.T) {
 
 	m := newTestModule(t)
 	obj := newTestTrustyAI()
-	rr := newTestRR(obj)
+	rr := newTestRR(t, obj)
 
 	g.Expect(m.initialize(context.Background(), rr)).To(Succeed())
 	g.Expect(m.reportStatus(context.Background(), rr)).To(Succeed())
 
-	g.Expect(obj.Status.Release.Version.String()).To(Equal("1.0.0"))
-	g.Expect(string(obj.Status.Release.Name)).To(Equal(string(cluster.OpenDataHub)))
+	g.Expect(obj.Status.Releases).To(ContainElement(
+		common.ComponentRelease{Name: releases.Platform, Version: "1.0.0"},
+	))
 }

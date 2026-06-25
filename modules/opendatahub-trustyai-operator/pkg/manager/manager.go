@@ -134,7 +134,7 @@ func New(
 		odhmanager.WithManifestsBasePath(cfg.ManifestsPath),
 	)
 
-	if err := trustyai.NewReconciler(ctx, mgr, cfg, cfg.Release()); err != nil {
+	if err := trustyai.NewReconciler(ctx, mgr, cfg); err != nil {
 		return nil, fmt.Errorf("creating trustyai reconciler: %w", err)
 	}
 

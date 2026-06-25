@@ -3,11 +3,11 @@ kind: ClusterRoleBinding
 metadata:
   labels:
     app.kubernetes.io/name: opendatahub-trustyai-operator
-  name: opendatahub-trustyai-manager-rolebinding
+  name: odh-trustyai-manager-rolebinding
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
-  name: opendatahub-trustyai-manager-role
+  name: odh-trustyai-manager-role
 subjects:
 - kind: ServiceAccount
   name: {{ default (include "chart.fullname" .) .Values.serviceAccount.name }}
@@ -16,11 +16,11 @@ subjects:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
-  name: opendatahub-trustyai-metrics-auth-rolebinding
+  name: odh-trustyai-metrics-auth-rolebinding
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
-  name: opendatahub-trustyai-metrics-auth-role
+  name: odh-trustyai-metrics-auth-role
 subjects:
 - kind: ServiceAccount
   name: {{ default (include "chart.fullname" .) .Values.serviceAccount.name }}
