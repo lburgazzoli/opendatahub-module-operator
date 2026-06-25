@@ -1,6 +1,6 @@
-namespace: opendatahub-trainer-system
+namespace: odh-trainer-system
 
-namePrefix: opendatahub-trainer-
+namePrefix: odh-trainer-
 
 resources:
 - ../crd

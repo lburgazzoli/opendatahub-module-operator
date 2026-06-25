@@ -3,7 +3,7 @@ kind: Deployment
 metadata:
   labels:
     app.kubernetes.io/name: opendatahub-trainer-operator
-  name: opendatahub-trainer-operator
+  name: odh-trainer-operator
   namespace: {{ .Release.Namespace }}
 spec:
   replicas: {{ .Values.replicas }}
@@ -101,5 +101,5 @@ spec:
       - emptyDir: {}
         name: manifests
       - configMap:
-          name: opendatahub-trainer-config
+          name: odh-trainer-config
         name: config

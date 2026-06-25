@@ -24,6 +24,7 @@ import (
 
 	componentApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-trainer-operator/api/components/v1alpha1"
 	module "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-trainer-operator/pkg/module"
+	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-trainer-operator/pkg/releases"
 	odherrors "github.com/opendatahub-io/odh-platform-utilities/framework/controller/actions/errors"
 	fwconditions "github.com/opendatahub-io/odh-platform-utilities/framework/controller/conditions"
 	odhtypes "github.com/opendatahub-io/odh-platform-utilities/framework/controller/types"
@@ -78,12 +79,15 @@ func (m *Module) initialize(_ context.Context, rr *odhtypes.ReconciliationReques
 	return nil
 }
 
-// reportStatus populates the release status and config values.
+// reportStatus writes the platform version handshake entry into status.releases
+// and also maintains the legacy Release field for backward compatibility.
 func (m *Module) reportStatus(_ context.Context, rr *odhtypes.ReconciliationRequest) error {
 	obj, ok := rr.Instance.(*componentApi.Trainer)
 	if !ok {
 		return fmt.Errorf("instance is not a Trainer")
 	}
+
+	releases.Upsert(obj.GetReleaseStatus(), m.cfg.Release())
 
 	obj.Status.Release = componentApi.Release{
 		Name:    componentApi.Platform(rr.Release.Name),

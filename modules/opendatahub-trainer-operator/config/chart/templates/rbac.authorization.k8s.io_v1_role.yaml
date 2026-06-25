@@ -3,7 +3,7 @@ kind: Role
 metadata:
   labels:
     app.kubernetes.io/name: opendatahub-trainer-operator
-  name: opendatahub-trainer-leader-election-role
+  name: odh-trainer-leader-election-role
   namespace: {{ .Release.Namespace }}
 rules:
 - apiGroups:

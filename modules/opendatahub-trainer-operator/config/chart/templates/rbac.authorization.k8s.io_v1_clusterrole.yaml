@@ -3,7 +3,7 @@ kind: ClusterRole
 metadata:
   labels:
     app.kubernetes.io/name: opendatahub-trainer-operator
-  name: opendatahub-trainer-components-trainer-admin-role
+  name: odh-trainer-components-trainer-admin-role
 rules:
 - apiGroups:
   - components.platform.opendatahub.io
@@ -23,7 +23,7 @@ kind: ClusterRole
 metadata:
   labels:
     app.kubernetes.io/name: opendatahub-trainer-operator
-  name: opendatahub-trainer-components-trainer-editor-role
+  name: odh-trainer-components-trainer-editor-role
 rules:
 - apiGroups:
   - components.platform.opendatahub.io
@@ -49,7 +49,7 @@ kind: ClusterRole
 metadata:
   labels:
     app.kubernetes.io/name: opendatahub-trainer-operator
-  name: opendatahub-trainer-components-trainer-viewer-role
+  name: odh-trainer-components-trainer-viewer-role
 rules:
 - apiGroups:
   - components.platform.opendatahub.io
@@ -69,7 +69,7 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: opendatahub-trainer-manager-role
+  name: odh-trainer-manager-role
 rules:
 - nonResourceURLs:
   - /metrics
@@ -307,7 +307,7 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: opendatahub-trainer-metrics-auth-role
+  name: odh-trainer-metrics-auth-role
 rules:
 - apiGroups:
   - authentication.k8s.io
@@ -325,7 +325,7 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: opendatahub-trainer-metrics-reader
+  name: odh-trainer-metrics-reader
 rules:
 - nonResourceURLs:
   - /metrics

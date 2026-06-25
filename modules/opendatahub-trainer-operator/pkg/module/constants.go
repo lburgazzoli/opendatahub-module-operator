@@ -2,7 +2,7 @@ package module
 
 const (
 	Name               = "trainer"
-	OperatorConfigName = "opendatahub-trainer-config"
+	OperatorConfigName = "odh-trainer-config"
 
 	ConditionDependenciesAvailable = "DependenciesAvailable"
 	PreConditionFailedReason       = "PreConditionFailed"

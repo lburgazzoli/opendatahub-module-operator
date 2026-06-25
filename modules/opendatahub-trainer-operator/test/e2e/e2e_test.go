@@ -82,7 +82,7 @@ func TestTrainer(t *testing.T) {
 
 	operatorDeploy := &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      "opendatahub-trainer-operator",
+			Name:      "odh-trainer-operator",
 			Namespace: support.OperatorNamespace(),
 		},
 	}

@@ -3,11 +3,11 @@ kind: ClusterRoleBinding
 metadata:
   labels:
     app.kubernetes.io/name: opendatahub-trainer-operator
-  name: opendatahub-trainer-manager-rolebinding
+  name: odh-trainer-manager-rolebinding
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
-  name: opendatahub-trainer-manager-role
+  name: odh-trainer-manager-role
 subjects:
 - kind: ServiceAccount
   name: {{ default (include "chart.fullname" .) .Values.serviceAccount.name }}
@@ -16,11 +16,11 @@ subjects:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
-  name: opendatahub-trainer-metrics-auth-rolebinding
+  name: odh-trainer-metrics-auth-rolebinding
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
-  name: opendatahub-trainer-metrics-auth-role
+  name: odh-trainer-metrics-auth-role
 subjects:
 - kind: ServiceAccount
   name: {{ default (include "chart.fullname" .) .Values.serviceAccount.name }}

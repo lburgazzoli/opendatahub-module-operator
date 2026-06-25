@@ -3,7 +3,7 @@ kind: Service
 metadata:
   labels:
     app.kubernetes.io/name: opendatahub-trainer-operator
-  name: opendatahub-trainer-metrics-service
+  name: odh-trainer-metrics-service
   namespace: {{ .Release.Namespace }}
 spec:
   ports:

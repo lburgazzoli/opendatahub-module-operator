@@ -19,12 +19,14 @@ package trainer
 import (
 	"fmt"
 
-	componentApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-trainer-operator/api/components/v1alpha1"
+	fwapi "github.com/opendatahub-io/odh-platform-utilities/framework/api"
 	odhtypes "github.com/opendatahub-io/odh-platform-utilities/framework/controller/types"
 	fwparams "github.com/opendatahub-io/odh-platform-utilities/framework/utils/params"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
+	componentApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-trainer-operator/api/components/v1alpha1"
 	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-trainer-operator/pkg/config"
+	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-trainer-operator/pkg/releases"
 )
 
 const (
@@ -34,6 +36,7 @@ const (
 // Module holds process-lifetime state for the trainer controller.
 type Module struct {
 	cfg          *moduleconfig.Config
+	release      fwapi.Release
 	manifestInfo odhtypes.ManifestInfo
 	apiReader    client.Reader
 }
@@ -59,5 +62,18 @@ func (m *Module) Init() error {
 	); err != nil {
 		return fmt.Errorf("failed to update images on path %s: %w", m.manifestInfo, err)
 	}
+
+	rel := m.cfg.Release()
+
+	v, err := releases.ParseVersion(rel.Version)
+	if err != nil {
+		return fmt.Errorf("parsing platform version %q: %w", rel.Version, err)
+	}
+
+	m.release = fwapi.Release{
+		Name:    fwapi.Platform(rel.Name),
+		Version: v,
+	}
+
 	return nil
 }

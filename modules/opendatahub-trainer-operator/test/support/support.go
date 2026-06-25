@@ -3,9 +3,8 @@ package support
 import "os"
 
 const (
-	DefaultOperatorNamespace        = "opendatahub-trainer-system"
-	DefaultIntegrationTestNamespace = "opendatahub-trainer-integration"
-	DefaultPlatformName             = "OpenDataHub"
+	DefaultOperatorNamespace        = "odh-trainer-system"
+	DefaultIntegrationTestNamespace = "odh-trainer-integration"
 	DefaultPlatformVersion          = "0.1.0"
 )
 
@@ -34,13 +33,6 @@ func IntegrationTestNamespace() string {
 	}
 
 	return DefaultIntegrationTestNamespace
-}
-
-func PlatformName() string {
-	if v := os.Getenv("TEST_PLATFORM_TYPE"); v != "" {
-		return v
-	}
-	return DefaultPlatformName
 }
 
 func PlatformVersion() string {

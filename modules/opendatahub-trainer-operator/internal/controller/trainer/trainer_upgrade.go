@@ -23,6 +23,7 @@ import (
 	odhtypes "github.com/opendatahub-io/odh-platform-utilities/framework/controller/types"
 
 	componentApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-trainer-operator/api/components/v1alpha1"
+	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-trainer-operator/pkg/releases"
 )
 
 func (m *Module) upgradeIfNeeded(ctx context.Context, rr *odhtypes.ReconciliationRequest) error {
@@ -31,18 +32,25 @@ func (m *Module) upgradeIfNeeded(ctx context.Context, rr *odhtypes.Reconciliatio
 		return fmt.Errorf("instance is not a Trainer")
 	}
 
-	prev := obj.Status.Release
+	prev, _ := releases.Get(obj.GetReleaseStatus(), releases.Platform)
 
-	if !rr.Release.Version.GT(prev.Version.Version) {
+	prevVersion, err := releases.ParseVersion(prev.Version)
+	if err != nil {
+		return fmt.Errorf("parsing previous platform version: %w", err)
+	}
+
+	if !rr.Release.Version.GT(prevVersion) {
 		return nil
 	}
 
-	return m.upgrade(ctx, prev, rr)
+	return m.upgrade(ctx, rr)
 }
 
-func (m *Module) upgrade(_ context.Context, prev componentApi.Release, rr *odhtypes.ReconciliationRequest) error {
-	_ = prev
+// upgrade runs idempotent migrations when the platform version advances.
+// Implement version-gated migrations here.
+func (m *Module) upgrade(_ context.Context, rr *odhtypes.ReconciliationRequest) error {
 	_ = rr
-
+	// Add version-gated migrations here, e.g.:
+	// if rr.Release.Version.GT(semver.MustParse("1.0.0")) { ... }
 	return nil
 }

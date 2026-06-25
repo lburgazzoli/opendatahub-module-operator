@@ -4,8 +4,8 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 
-NAMESPACE="${1:-opendatahub-trainer-system}"
-HELM_RELEASE="${2:-opendatahub-trainer-operator}"
+NAMESPACE="${1:-odh-trainer-system}"
+HELM_RELEASE="${2:-odh-trainer-operator}"
 CR_RESOURCE="trainers.components.platform.opendatahub.io"
 STUB_LABEL="testing.opendatahub.io/stub-resource=trainer"
 

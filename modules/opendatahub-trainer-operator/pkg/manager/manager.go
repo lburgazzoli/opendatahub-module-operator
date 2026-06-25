@@ -140,7 +140,7 @@ func New(
 		odhmanager.WithManifestsBasePath(cfg.ManifestsPath),
 	)
 
-	if err := trainer.NewReconciler(ctx, mgr, cfg, cfg.Release()); err != nil {
+	if err := trainer.NewReconciler(ctx, mgr, cfg); err != nil {
 		return nil, fmt.Errorf("creating trainer reconciler: %w", err)
 	}
 
