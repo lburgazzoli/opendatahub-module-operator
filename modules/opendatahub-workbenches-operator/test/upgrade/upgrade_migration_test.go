@@ -5,10 +5,8 @@ package upgrade
 import (
 	"testing"
 
-	"github.com/blang/semver/v4"
 	. "github.com/onsi/gomega"
 	"github.com/onsi/gomega/gstruct"
-	ofVersion "github.com/operator-framework/api/pkg/lib/version"
 	corev1 "k8s.io/api/core/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	k8serr "k8s.io/apimachinery/pkg/api/errors"
@@ -21,7 +19,9 @@ import (
 	k8sm "github.com/lburgazzoli/gomega-matchers/pkg/matchers/k8s"
 
 	componentsv1alpha1 "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-workbenches-operator/api/components/v1alpha1"
+	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-workbenches-operator/pkg/releases"
 	gvk "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-workbenches-operator/pkg/resources/gvk"
+	common "github.com/opendatahub-io/odh-platform-utilities/api/common"
 	infrav1 "github.com/opendatahub-io/opendatahub-operator/v2/api/infrastructure/v1"
 )
 
@@ -78,13 +78,17 @@ func (mt *migrationTests) testContainerSizeMigration(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{Name: componentsv1alpha1.WorkbenchesInstanceName},
 	}
 	g.Eventually(ctx, k8sm.Lookup(mt.s.directClient, seededModule)).Should(Succeed())
-	seededModule.Status.Release.Version = ofVersion.OperatorVersion{Version: semver.MustParse(appliedUpgradeVersion)}
+	releases.Upsert(seededModule.GetReleaseStatus(), common.ComponentRelease{
+		Name:    releases.Platform,
+		Version: appliedUpgradeVersion,
+	})
 	g.Expect(mt.s.directClient.Status().Update(ctx, seededModule)).To(Succeed())
 	g.Expect(mt.s.directClient.Create(ctx, mt.odhDashboardConfig)).To(Succeed())
 	g.Expect(mt.s.directClient.Create(ctx, mt.notebook)).To(Succeed())
 
 	g.Eventually(ctx, k8sm.Lookup(mt.s.directClient, seededModule)).Should(Succeed())
-	g.Expect(seededModule.Status.Release.Version.String()).To(Equal(appliedUpgradeVersion))
+	prev, _ := releases.Get(seededModule.GetReleaseStatus(), releases.Platform)
+	g.Expect(prev.Version).To(Equal(appliedUpgradeVersion))
 	g.Eventually(ctx, k8sm.Get(mt.s.directClient, mt.odhDashboardConfig)).Should(And(
 		jq.Match(`.metadata.name == "odh-dashboard-config"`),
 		jq.Matchf(`.metadata.namespace == "%s"`, mt.s.operatorNamespace()),

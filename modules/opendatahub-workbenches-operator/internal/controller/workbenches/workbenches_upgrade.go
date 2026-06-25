@@ -28,13 +28,14 @@ import (
 	fwtypes "github.com/opendatahub-io/odh-platform-utilities/framework/controller/types"
 
 	componentApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-workbenches-operator/api/components/v1alpha1"
+	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-workbenches-operator/pkg/releases"
 )
 
 const upgradeEventReasonStarted = "UpgradeStarted"
 
 // upgradeIfNeeded compares the desired platform version from the release with
-// the last applied version recorded in status, and runs idempotent migrations
-// when the version advances.
+// the last applied version recorded in status.releases, and runs idempotent
+// migrations when the version advances.
 func (m *Module) upgradeIfNeeded(ctx context.Context, rr *fwtypes.ReconciliationRequest) error {
 	log := logf.FromContext(ctx)
 	obj, ok := rr.Instance.(*componentApi.Workbenches)
@@ -42,15 +43,20 @@ func (m *Module) upgradeIfNeeded(ctx context.Context, rr *fwtypes.Reconciliation
 		return fmt.Errorf("instance is not a Workbenches")
 	}
 
-	prev := obj.Status.Release
+	prev, _ := releases.Get(obj.GetReleaseStatus(), releases.Platform)
 
-	if !rr.Release.Version.GT(prev.Version.Version) {
+	prevVersion, err := releases.ParseVersion(prev.Version)
+	if err != nil {
+		return fmt.Errorf("parsing previous platform version: %w", err)
+	}
+
+	if !rr.Release.Version.GT(prevVersion) {
 		return nil
 	}
 
 	message := fmt.Sprintf(
 		"Upgrade started: applied %s -> desired %s",
-		prev.Version.String(),
+		prevVersion.String(),
 		rr.Release.Version.String(),
 	)
 	if err := m.recordModuleUpgradeEvent(ctx, rr.Client, obj, upgradeEventReasonStarted, corev1.EventTypeNormal, message); err != nil {
@@ -58,13 +64,13 @@ func (m *Module) upgradeIfNeeded(ctx context.Context, rr *fwtypes.Reconciliation
 	}
 	log.Info("Upgrade triggered", "module", obj.GetName(), "message", message)
 
-	return m.upgrade(ctx, prev, rr)
+	return m.upgrade(ctx, rr)
 }
 
 // upgrade runs idempotent migrations when the platform version advances.
 // It migrates AcceleratorProfile and container-size annotations on Notebooks to HardwareProfile
 // annotations, and creates the corresponding HardwareProfile CRs when they do not yet exist.
-func (m *Module) upgrade(ctx context.Context, _ componentApi.Release, rr *fwtypes.ReconciliationRequest) error {
+func (m *Module) upgrade(ctx context.Context, rr *fwtypes.ReconciliationRequest) error {
 	return m.migrateHardwareProfilesForNotebooks(ctx, rr.Client)
 }
 

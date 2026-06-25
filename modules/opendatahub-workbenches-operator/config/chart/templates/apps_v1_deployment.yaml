@@ -3,7 +3,7 @@ kind: Deployment
 metadata:
   labels:
     app.kubernetes.io/name: opendatahub-workbenches-operator
-  name: opendatahub-workbenches-operator
+  name: odh-workbenches-operator
   namespace: {{ .Release.Namespace }}
 spec:
   replicas: {{ .Values.replicas }}
@@ -111,5 +111,5 @@ spec:
       - emptyDir: {}
         name: manifests
       - configMap:
-          name: opendatahub-workbenches-config
+          name: odh-workbenches-config
         name: config

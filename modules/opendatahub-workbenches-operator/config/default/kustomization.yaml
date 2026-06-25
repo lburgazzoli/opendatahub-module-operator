@@ -1,6 +1,6 @@
-namespace: opendatahub-workbenches-system
+namespace: odh-workbenches-system
 
-namePrefix: opendatahub-workbenches-
+namePrefix: odh-workbenches-
 
 resources:
 - ../crd

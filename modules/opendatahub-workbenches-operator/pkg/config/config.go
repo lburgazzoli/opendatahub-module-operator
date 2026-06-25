@@ -24,21 +24,19 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/blang/semver/v4"
 	"github.com/spf13/viper"
 
+	common "github.com/opendatahub-io/odh-platform-utilities/api/common"
 	fwactions "github.com/opendatahub-io/odh-platform-utilities/framework/controller/actions"
 	fwtypes "github.com/opendatahub-io/odh-platform-utilities/framework/controller/types"
-	ofVersion "github.com/operator-framework/api/pkg/lib/version"
 
-	componentApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-workbenches-operator/api/components/v1alpha1"
+	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-workbenches-operator/pkg/releases"
 )
 
 const (
 	KeyManifestsPath   = "manifests-path"
 	KeyApplicationsNS  = "applications-namespace"
-	KeyPlatformName    = "platform-name"
-	KeyPlatformVersion = "platform-version"
+	KeyPlatformVersion = "platformVersion"
 
 	KeyMetricsBindAddr    = "controller.metrics.bind-address"
 	KeyHealthBindAddr     = "controller.health.bind-address"
@@ -54,8 +52,7 @@ const (
 	KeyPprofBindAddr      = "controller.pprof.bind-address"
 
 	DefaultApplicationsNS  = "opendatahub"
-	DefaultPlatformName    = "unknown"
-	DefaultPlatformVersion = "unknown"
+	DefaultPlatformVersion = ""
 
 	DefaultMetricsBindAddr    = ":8080"
 	DefaultHealthBindAddr     = ":8081"
@@ -74,7 +71,7 @@ const (
 	ConfigPathEnvVar = "ODH_MODULE_OPERATOR_CONFIGURATION_PATH"
 
 	// EnvPrefix is the prefix for environment variables that override
-	// configuration values (e.g. ODH_MODULE_OPERATOR_PLATFORM_NAME).
+	// configuration values (e.g. ODH_MODULE_OPERATOR_PLATFORMVERSION).
 	EnvPrefix = "ODH_MODULE_OPERATOR"
 )
 
@@ -98,8 +95,7 @@ var structuredExtensions = map[string]bool{
 type Config struct {
 	ManifestsPath         string           `mapstructure:"manifests-path"`
 	ApplicationsNamespace string           `mapstructure:"applications-namespace"`
-	PlatformName          string           `mapstructure:"platform-name"`
-	PlatformVersion       string           `mapstructure:"platform-version"`
+	PlatformVersion       string           `mapstructure:"platformVersion"`
 	Controller            ControllerConfig `mapstructure:"controller"`
 }
 
@@ -142,22 +138,12 @@ type PprofConfig struct {
 	BindAddress string `mapstructure:"bind-address"`
 }
 
-// Release builds a module release from the configured platform type and
-// version. If PlatformVersion is not valid semver, the version defaults
-// to 0.0.0.
-func (c *Config) Release() componentApi.Release {
-	rel := componentApi.Release{
-		Name: componentApi.Platform(c.PlatformName),
+// Release returns the platform release entry for this operator instance.
+func (c *Config) Release() common.ComponentRelease {
+	return common.ComponentRelease{
+		Name:    releases.Platform,
+		Version: c.PlatformVersion,
 	}
-
-	if c.PlatformVersion != "" {
-		v, err := semver.ParseTolerant(c.PlatformVersion)
-		if err == nil {
-			rel.Version = ofVersion.OperatorVersion{Version: v}
-		}
-	}
-
-	return rel
 }
 
 func ApplicationsNamespaceGetter(cfg *Config) fwactions.Getter[string] {
@@ -212,7 +198,6 @@ func LoadFromFS(fsys fs.FS) (*Config, error) {
 func setDefaults(v *viper.Viper) {
 	v.SetDefault(KeyManifestsPath, "")
 	v.SetDefault(KeyApplicationsNS, DefaultApplicationsNS)
-	v.SetDefault(KeyPlatformName, DefaultPlatformName)
 	v.SetDefault(KeyPlatformVersion, DefaultPlatformVersion)
 
 	v.SetDefault(KeyMetricsBindAddr, DefaultMetricsBindAddr)

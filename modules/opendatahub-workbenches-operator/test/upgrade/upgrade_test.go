@@ -79,7 +79,6 @@ func loadOperatorConfig(namespace string) (*moduleconfig.Config, error) {
 		return nil, fmt.Errorf("loading operator config: %w", err)
 	}
 
-	moduleCfg.PlatformName = "OpenDataHub"
 	moduleCfg.PlatformVersion = desiredUpgradeVersion
 	moduleCfg.ApplicationsNamespace = namespace
 	moduleCfg.ManifestsPath = support.MustProjectFile("config", "manifests")

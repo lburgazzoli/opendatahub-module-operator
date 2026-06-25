@@ -22,16 +22,20 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
-	componentApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-workbenches-operator/api/components/v1alpha1"
-	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-workbenches-operator/pkg/config"
+	fwapi "github.com/opendatahub-io/odh-platform-utilities/framework/api"
 	fwtypes "github.com/opendatahub-io/odh-platform-utilities/framework/controller/types"
 	fwparams "github.com/opendatahub-io/odh-platform-utilities/framework/utils/params"
 	odhcluster "github.com/opendatahub-io/odh-platform-utilities/pkg/cluster"
+
+	componentApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-workbenches-operator/api/components/v1alpha1"
+	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-workbenches-operator/pkg/config"
+	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-workbenches-operator/pkg/releases"
 )
 
 // Module holds process-lifetime state for the workbenches controller.
 type Module struct {
-	cfg *moduleconfig.Config
+	cfg     *moduleconfig.Config
+	release fwapi.Release
 	// manifestInfos is computed once at startup from the fixed platform and manifests path.
 	manifestInfos []fwtypes.ManifestInfo
 
@@ -44,8 +48,12 @@ type Module struct {
 }
 
 // NewModule creates a Module and pre-computes manifest paths.
+// Platform overlay defaults to ODH; deployment-time image parameters govern
+// platform-specific behaviour rather than runtime config.
 func NewModule(cfg *moduleconfig.Config) (*Module, error) {
-	platform := componentApi.Platform(cfg.PlatformName)
+	// Default to the ODH overlay; platform-specific overlays are determined
+	// at deployment time via image parameters rather than runtime config.
+	platform := componentApi.Platform(odhcluster.OpenDataHub)
 
 	imgSourcePath, ok := notebookImagesManifestSourcePath[platform]
 	if !ok {
@@ -85,7 +93,8 @@ func (m *Module) Init() error {
 		return fmt.Errorf("updating kf-notebook-controller image params: %w", err)
 	}
 
-	platform := componentApi.Platform(m.cfg.PlatformName)
+	// Default to the ODH params path; overlay selection driven by image parameters.
+	platform := componentApi.Platform(odhcluster.OpenDataHub)
 	nbImgParamsPath := notebookImagesManifestInfo(m.cfg.ManifestsPath, notebookImagesParamsPath[platform])
 	if err := fwparams.Apply(
 		nbImgParamsPath.String(),
@@ -93,6 +102,18 @@ func (m *Module) Init() error {
 		fwparams.Replacement(fwparams.FromEnv(notebookImageParamMap)),
 	); err != nil {
 		return fmt.Errorf("updating notebook image params: %w", err)
+	}
+
+	rel := m.cfg.Release()
+
+	v, err := releases.ParseVersion(rel.Version)
+	if err != nil {
+		return fmt.Errorf("parsing platform version %q: %w", rel.Version, err)
+	}
+
+	m.release = fwapi.Release{
+		Name:    fwapi.Platform(rel.Name),
+		Version: v,
 	}
 
 	return nil

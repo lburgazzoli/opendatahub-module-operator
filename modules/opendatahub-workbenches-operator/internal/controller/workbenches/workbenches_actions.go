@@ -23,12 +23,13 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 
-	localapi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-workbenches-operator/api/components/v1alpha1"
-	module "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-workbenches-operator/pkg/module"
 	fwtypes "github.com/opendatahub-io/odh-platform-utilities/framework/controller/types"
 	fwparams "github.com/opendatahub-io/odh-platform-utilities/framework/utils/params"
 	odhcluster "github.com/opendatahub-io/odh-platform-utilities/pkg/cluster"
-	ofVersion "github.com/operator-framework/api/pkg/lib/version"
+
+	localapi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-workbenches-operator/api/components/v1alpha1"
+	module "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-workbenches-operator/pkg/module"
+	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-workbenches-operator/pkg/releases"
 )
 
 // initialize assigns the pre-computed manifest infos for this reconcile cycle.
@@ -84,7 +85,8 @@ func (m *Module) configureDependencies(_ context.Context, rr *fwtypes.Reconcilia
 	return nil
 }
 
-// reportStatus populates the release status and workbench-specific fields (WorkbenchNamespace).
+// reportStatus writes the platform version handshake entry into status.releases
+// and populates workbench-specific fields (WorkbenchNamespace).
 func (m *Module) reportStatus(_ context.Context, rr *fwtypes.ReconciliationRequest) error {
 	obj, ok := rr.Instance.(*localapi.Workbenches)
 	if !ok {
@@ -93,10 +95,7 @@ func (m *Module) reportStatus(_ context.Context, rr *fwtypes.ReconciliationReque
 
 	obj.Status.WorkbenchNamespace = obj.Spec.WorkbenchNamespace
 
-	obj.Status.Release = localapi.Release{
-		Name:    localapi.Platform(rr.Release.Name),
-		Version: ofVersion.OperatorVersion{Version: rr.Release.Version},
-	}
+	releases.Upsert(obj.GetReleaseStatus(), m.cfg.Release())
 
 	return nil
 }

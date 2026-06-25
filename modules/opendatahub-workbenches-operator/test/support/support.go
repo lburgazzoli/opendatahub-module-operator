@@ -3,9 +3,8 @@ package support
 import "os"
 
 const (
-	DefaultOperatorNamespace        = "opendatahub-workbenches-system"
-	DefaultIntegrationTestNamespace = "opendatahub-workbenches-integration"
-	DefaultPlatformName             = "OpenDataHub"
+	DefaultOperatorNamespace        = "odh-workbenches-system"
+	DefaultIntegrationTestNamespace = "odh-workbenches-integration"
 	DefaultPlatformVersion          = "0.1.0"
 )
 
@@ -28,13 +27,6 @@ func IntegrationTestNamespace() string {
 // HelmNamespace returns the operator namespace used by e2e and Helm deploy targets.
 func HelmNamespace() string {
 	return OperatorNamespace()
-}
-
-func PlatformName() string {
-	if v := os.Getenv("TEST_PLATFORM_TYPE"); v != "" {
-		return v
-	}
-	return DefaultPlatformName
 }
 
 func PlatformVersion() string {

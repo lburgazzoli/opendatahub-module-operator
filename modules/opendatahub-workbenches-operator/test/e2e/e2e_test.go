@@ -60,7 +60,7 @@ func TestWorkbenches(t *testing.T) {
 
 	operatorDeploy := &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      "opendatahub-workbenches-operator",
+			Name:      "odh-workbenches-operator",
 			Namespace: support.OperatorNamespace(),
 		},
 	}

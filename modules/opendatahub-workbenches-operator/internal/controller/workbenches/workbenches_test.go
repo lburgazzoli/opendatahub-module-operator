@@ -20,11 +20,10 @@ import (
 	"context"
 	"testing"
 
-	"github.com/blang/semver/v4"
 	. "github.com/onsi/gomega"
+	common "github.com/opendatahub-io/odh-platform-utilities/api/common"
 	fwapi "github.com/opendatahub-io/odh-platform-utilities/framework/api"
 	fwtypes "github.com/opendatahub-io/odh-platform-utilities/framework/controller/types"
-	ofVersion "github.com/operator-framework/api/pkg/lib/version"
 	corev1 "k8s.io/api/core/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -36,12 +35,12 @@ import (
 
 	componentApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-workbenches-operator/api/components/v1alpha1"
 	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-workbenches-operator/pkg/config"
+	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-workbenches-operator/pkg/releases"
 )
 
 func newTestModule(t *testing.T) *Module {
 	t.Helper()
 	cfg := &moduleconfig.Config{
-		PlatformName:          "OpenDataHub",
 		PlatformVersion:       "1.0.0",
 		ManifestsPath:         "/manifests",
 		ApplicationsNamespace: "test-ns",
@@ -64,18 +63,20 @@ func seedTestAPIReader(t *testing.T, m *Module, objs ...client.Object) {
 		Build()
 }
 
-func newTestRR(obj *componentApi.Workbenches) *fwtypes.ReconciliationRequest {
-	rel := (&moduleconfig.Config{
-		PlatformName:    "OpenDataHub",
-		PlatformVersion: "1.0.0",
-	}).Release()
+func newTestRR(t *testing.T, obj *componentApi.Workbenches) *fwtypes.ReconciliationRequest {
+	t.Helper()
+
+	rel := (&moduleconfig.Config{PlatformVersion: "1.0.0"}).Release()
+
+	v, err := releases.ParseVersion(rel.Version)
+	NewWithT(t).Expect(err).NotTo(HaveOccurred())
 
 	return &fwtypes.ReconciliationRequest{
 		Instance:          obj,
 		ManifestsBasePath: "/manifests",
 		Release: fwapi.Release{
 			Name:    fwapi.Platform(rel.Name),
-			Version: rel.Version.Version,
+			Version: v,
 		},
 	}
 }
@@ -93,7 +94,7 @@ func TestInitialize(t *testing.T) {
 
 	m := newTestModule(t)
 	obj := newTestWorkbenches()
-	rr := newTestRR(obj)
+	rr := newTestRR(t, obj)
 
 	g.Expect(m.initialize(context.Background(), rr)).To(Succeed())
 	// initialize sets 3 manifests: odh-notebook-controller, kf-notebook-controller, notebooks
@@ -114,7 +115,7 @@ func TestUpgradeIfNeededNoVersion(t *testing.T) {
 
 	m := newTestModule(t)
 	obj := newTestWorkbenches()
-	rr := newTestRR(obj)
+	rr := newTestRR(t, obj)
 	rr.Client = fakeClient
 	seedTestAPIReader(t, m, obj.DeepCopy())
 
@@ -132,8 +133,10 @@ func TestUpgradeIfNeededSameVersion(t *testing.T) {
 	m := newTestModule(t)
 	obj := newTestWorkbenches()
 
-	obj.Status.Release.Version = ofVersion.OperatorVersion{Version: semver.MustParse("1.0.0")}
-	rr := newTestRR(obj)
+	obj.Status.Releases = []common.ComponentRelease{
+		{Name: releases.Platform, Version: "1.0.0"},
+	}
+	rr := newTestRR(t, obj)
 	seedTestAPIReader(t, m, obj.DeepCopy())
 
 	g.Expect(m.upgradeIfNeeded(context.Background(), rr)).To(Succeed())
@@ -144,11 +147,12 @@ func TestReportStatus(t *testing.T) {
 
 	m := newTestModule(t)
 	obj := newTestWorkbenches()
-	rr := newTestRR(obj)
+	rr := newTestRR(t, obj)
 
 	g.Expect(m.initialize(context.Background(), rr)).To(Succeed())
 	g.Expect(m.reportStatus(context.Background(), rr)).To(Succeed())
 
-	g.Expect(obj.Status.Release.Version.String()).To(Equal("1.0.0"))
-	g.Expect(string(obj.Status.Release.Name)).To(Equal("OpenDataHub"))
+	g.Expect(obj.Status.Releases).To(ContainElement(
+		common.ComponentRelease{Name: releases.Platform, Version: "1.0.0"},
+	))
 }

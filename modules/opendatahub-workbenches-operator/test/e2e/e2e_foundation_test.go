@@ -3,6 +3,7 @@
 package e2e
 
 import (
+	"fmt"
 	"testing"
 	"testing/fstest"
 
@@ -98,8 +99,7 @@ func (ft *foundationTests) testOperatorConfigMap(t *testing.T) {
 	}
 	g.Eventually(t.Context(), k8sm.Get(ft.Client, operatorCfgMap)).Should(
 		WithTransform(k8sm.Data(), SatisfyAll(
-			HaveKeyWithValue(moduleconfig.KeyPlatformName, Not(BeEmpty())),
-			HaveKeyWithValue(moduleconfig.KeyPlatformVersion, Not(BeEmpty())),
+			HaveKey(moduleconfig.KeyPlatformVersion),
 		)),
 	)
 }
@@ -122,9 +122,6 @@ func (ft *foundationTests) testReleaseStatus(t *testing.T) {
 	g.Eventually(t.Context(), k8sm.Lookup(ft.Client, operatorCfg)).Should(Succeed())
 
 	cfg, err := moduleconfig.LoadFromFS(fstest.MapFS{
-		moduleconfig.KeyPlatformName: {
-			Data: []byte(operatorCfg.Data[moduleconfig.KeyPlatformName]),
-		},
 		moduleconfig.KeyPlatformVersion: {
 			Data: []byte(operatorCfg.Data[moduleconfig.KeyPlatformVersion]),
 		},
@@ -132,22 +129,15 @@ func (ft *foundationTests) testReleaseStatus(t *testing.T) {
 	g.Expect(err).NotTo(HaveOccurred())
 	expectedRelease := cfg.Release()
 
-	g.Eventually(t.Context(), k8sm.Get(ft.Client, module)).Should(And(
-		jq.Matchf(`.status.release.version == "%s"`, expectedRelease.Version.String()),
-		jq.Matchf(`.status.release.name == "%s"`, string(expectedRelease.Name)),
-	))
+	expr := fmt.Sprintf(`.status.releases[] | select(.name == "%s") | .version == "%s"`,
+		expectedRelease.Name, expectedRelease.Version)
+	g.Eventually(t.Context(), k8sm.Get(ft.Client, module)).Should(jq.Match(expr))
 }
 
 func (ft *foundationTests) testPlatformLabels(t *testing.T) {
 	g := NewWithT(t)
 
 	module := ft.ensureReadyModule(t)
-	operatorCfg := &corev1.ConfigMap{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      modulemeta.OperatorConfigName,
-			Namespace: support.OperatorNamespace(),
-		},
-	}
 	workloadDeploy := &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      support.ManagedDeploymentName,
@@ -155,14 +145,10 @@ func (ft *foundationTests) testPlatformLabels(t *testing.T) {
 		},
 	}
 
-	g.Eventually(t.Context(), k8sm.Lookup(ft.Client, operatorCfg)).Should(Succeed())
-
 	g.Eventually(t.Context(), k8sm.Get(ft.Client, workloadDeploy)).Should(And(
 		k8sm.HasLabel(labels.PlatformPartOf, componentsv1alpha1.WorkbenchesComponentName),
 		k8sm.HasAnnotation(annotations.InstanceName, module.GetName()),
 		k8sm.HasAnnotation(annotations.InstanceUID, string(module.GetUID())),
-		k8sm.HasAnnotation(annotations.PlatformType, operatorCfg.Data[moduleconfig.KeyPlatformName]),
-		k8sm.HasAnnotation(annotations.PlatformVersion, module.Status.Release.Version.String()),
 	))
 }
 

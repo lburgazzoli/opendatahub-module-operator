@@ -2,7 +2,7 @@ package module
 
 const (
 	Name               = "workbenches"
-	OperatorConfigName = "opendatahub-workbenches-config"
+	OperatorConfigName = "odh-workbenches-config"
 
 	OwnedNamespaceLabel            = "opendatahub.io/generated-namespace"
 	DefaultNotebooksNamespaceODH   = "opendatahub"

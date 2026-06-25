@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	"testing"
+	"time"
 
 	. "github.com/onsi/gomega"
 	"github.com/rs/xid"
@@ -44,27 +45,27 @@ func (wt *webhookTests) testWebhookResources(t *testing.T) {
 
 	webhookService := &corev1.Service{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      "opendatahub-workbenches-webhook-service",
+			Name:      "odh-workbenches-webhook-service",
 			Namespace: support.OperatorNamespace(),
 		},
 	}
 	webhookConfig := &admissionv1.MutatingWebhookConfiguration{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: "opendatahub-workbenches-mutating-webhook-configuration",
+			Name: "odh-workbenches-mutating-webhook-configuration",
 		},
 	}
 
 	g.Eventually(t.Context(), k8sm.Get(wt.Client, webhookService)).Should(And(
-		jq.Match(`.metadata.name == "opendatahub-workbenches-webhook-service"`),
+		jq.Match(`.metadata.name == "odh-workbenches-webhook-service"`),
 		jq.Match(`[.spec.ports[] | select(.port == 443 and .targetPort == 9443)] | length == 1`),
 	))
 
 	g.Eventually(t.Context(), k8sm.Get(wt.Client, webhookConfig)).Should(And(
-		jq.Match(`.metadata.name == "opendatahub-workbenches-mutating-webhook-configuration"`),
+		jq.Match(`.metadata.name == "odh-workbenches-mutating-webhook-configuration"`),
 		jq.Match(`.webhooks[] | select(.name == "connection-notebook.opendatahub.io")`+
-			` | .clientConfig.service.name == "opendatahub-workbenches-webhook-service"`),
+			` | .clientConfig.service.name == "odh-workbenches-webhook-service"`),
 		jq.Match(`.webhooks[] | select(.name == "hardwareprofile-notebook-injector.opendatahub.io")`+
-			` | .clientConfig.service.name == "opendatahub-workbenches-webhook-service"`),
+			` | .clientConfig.service.name == "odh-workbenches-webhook-service"`),
 	))
 }
 
@@ -97,8 +98,8 @@ func (wt *webhookTests) testConnectionWebhookInjectsSecretEnvFrom(t *testing.T) 
 	cleanupObject(t, wt.Client, secret)
 	cleanupObject(t, wt.Client, nb)
 	t.Cleanup(func() {
-		cleanupObject(t, wt.Client, nb)
-		cleanupObject(t, wt.Client, secret)
+		cleanupObjectBackground(t, wt.Client, nb)
+		cleanupObjectBackground(t, wt.Client, secret)
 	})
 
 	g.Expect(wt.Client.Create(t.Context(), secret)).To(Succeed())
@@ -106,6 +107,8 @@ func (wt *webhookTests) testConnectionWebhookInjectsSecretEnvFrom(t *testing.T) 
 
 	stored := &unstructured.Unstructured{}
 	stored.SetGroupVersionKind(nb.GroupVersionKind())
+	stored.SetName(nb.GetName())
+	stored.SetNamespace(nb.GetNamespace())
 	g.Eventually(t.Context(), k8sm.Get(wt.Client, stored)).Should(And(
 		jq.Matchf(
 			`((.spec.template.spec.containers[0].envFrom // []) | map(select(.secretRef.name == "%s")) | length) == 1`,
@@ -124,7 +127,7 @@ func (wt *webhookTests) testConnectionWebhookDeniesMissingSecret(t *testing.T) {
 
 	cleanupObject(t, wt.Client, nb)
 	t.Cleanup(func() {
-		cleanupObject(t, wt.Client, nb)
+		cleanupObjectBackground(t, wt.Client, nb)
 	})
 
 	err := wt.Client.Create(t.Context(), nb)
@@ -169,8 +172,8 @@ func (wt *webhookTests) testHardwareProfileWebhookMutatesNotebook(t *testing.T) 
 	cleanupObject(t, wt.Client, hwp)
 	cleanupObject(t, wt.Client, nb)
 	t.Cleanup(func() {
-		cleanupObject(t, wt.Client, nb)
-		cleanupObject(t, wt.Client, hwp)
+		cleanupObjectBackground(t, wt.Client, nb)
+		cleanupObjectBackground(t, wt.Client, hwp)
 	})
 
 	g.Expect(wt.Client.Create(t.Context(), hwp)).To(Succeed())
@@ -178,6 +181,8 @@ func (wt *webhookTests) testHardwareProfileWebhookMutatesNotebook(t *testing.T) 
 
 	stored := &unstructured.Unstructured{}
 	stored.SetGroupVersionKind(nb.GroupVersionKind())
+	stored.SetName(nb.GetName())
+	stored.SetNamespace(nb.GetNamespace())
 	g.Eventually(t.Context(), k8sm.Get(wt.Client, stored)).Should(And(
 		k8sm.HasAnnotation(hwpNamespaceAnnotation, operatorNamespace),
 		jq.Match(`.spec.template.spec.containers[0].resources.requests.cpu == "2"`),
@@ -195,7 +200,7 @@ func (wt *webhookTests) testHardwareProfileWebhookDeniesMissingProfile(t *testin
 
 	cleanupObject(t, wt.Client, nb)
 	t.Cleanup(func() {
-		cleanupObject(t, wt.Client, nb)
+		cleanupObjectBackground(t, wt.Client, nb)
 	})
 
 	err := wt.Client.Create(t.Context(), nb)
@@ -209,8 +214,19 @@ func deleteIfExists(ctx context.Context, cli client.Client, obj client.Object) {
 
 func cleanupObject(t *testing.T, cli client.Client, obj client.Object) {
 	t.Helper()
+	cleanupObjectWithContext(t, t.Context(), cli, obj)
+}
 
-	ctx := t.Context()
+func cleanupObjectBackground(t *testing.T, cli client.Client, obj client.Object) {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	cleanupObjectWithContext(t, ctx, cli, obj)
+}
+
+func cleanupObjectWithContext(t *testing.T, ctx context.Context, cli client.Client, obj client.Object) {
+	t.Helper()
+
 	deleteIfExists(ctx, cli, obj)
 
 	g := NewWithT(t)

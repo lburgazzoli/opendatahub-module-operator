@@ -3,7 +3,7 @@ kind: ClusterRole
 metadata:
   labels:
     app.kubernetes.io/name: opendatahub-workbenches-operator
-  name: opendatahub-workbenches-components-workbenches-admin-role
+  name: odh-workbenches-components-workbenches-admin-role
 rules:
 - apiGroups:
   - components.platform.opendatahub.io
@@ -23,7 +23,7 @@ kind: ClusterRole
 metadata:
   labels:
     app.kubernetes.io/name: opendatahub-workbenches-operator
-  name: opendatahub-workbenches-components-workbenches-editor-role
+  name: odh-workbenches-components-workbenches-editor-role
 rules:
 - apiGroups:
   - components.platform.opendatahub.io
@@ -49,7 +49,7 @@ kind: ClusterRole
 metadata:
   labels:
     app.kubernetes.io/name: opendatahub-workbenches-operator
-  name: opendatahub-workbenches-components-workbenches-viewer-role
+  name: odh-workbenches-components-workbenches-viewer-role
 rules:
 - apiGroups:
   - components.platform.opendatahub.io
@@ -69,7 +69,7 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: opendatahub-workbenches-manager-role
+  name: odh-workbenches-manager-role
 rules:
 - nonResourceURLs:
   - /metrics
@@ -352,7 +352,7 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: opendatahub-workbenches-metrics-auth-role
+  name: odh-workbenches-metrics-auth-role
 rules:
 - apiGroups:
   - authentication.k8s.io
@@ -370,7 +370,7 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: opendatahub-workbenches-metrics-reader
+  name: odh-workbenches-metrics-reader
 rules:
 - nonResourceURLs:
   - /metrics

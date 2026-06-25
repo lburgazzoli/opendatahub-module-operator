@@ -33,7 +33,6 @@ import (
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-workbenches-operator/pkg/controller/handlers"
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-workbenches-operator/pkg/controller/predicates"
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-workbenches-operator/pkg/resources/gvk"
-	fwapi "github.com/opendatahub-io/odh-platform-utilities/framework/api"
 	"github.com/opendatahub-io/odh-platform-utilities/framework/controller/actions/deploy"
 	"github.com/opendatahub-io/odh-platform-utilities/framework/controller/actions/gc"
 	"github.com/opendatahub-io/odh-platform-utilities/framework/controller/actions/render/kustomize"
@@ -94,7 +93,6 @@ func NewReconciler(
 	ctx context.Context,
 	mgr ctrl.Manager,
 	cfg *moduleconfig.Config,
-	rel componentApi.Release,
 ) error {
 	m, err := NewModule(cfg)
 	if err != nil {
@@ -145,10 +143,7 @@ func NewReconciler(
 			),
 		).
 		WithReconcilerOpts(
-			reconciler.WithRelease(fwapi.Release{
-				Name:    fwapi.Platform(rel.Name),
-				Version: rel.Version.Version,
-			}),
+			reconciler.WithRelease(m.release),
 		).
 		WithAction(m.initialize).
 		WithAction(m.upgradeIfNeeded).

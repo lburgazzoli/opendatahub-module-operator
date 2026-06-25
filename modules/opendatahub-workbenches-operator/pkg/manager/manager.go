@@ -147,7 +147,7 @@ func New(
 		odhmanager.WithManifestsBasePath(cfg.ManifestsPath),
 	)
 
-	if err := workbenches.NewReconciler(ctx, mgr, cfg, cfg.Release()); err != nil {
+	if err := workbenches.NewReconciler(ctx, mgr, cfg); err != nil {
 		return nil, fmt.Errorf("creating workbenches reconciler: %w", err)
 	}
 
