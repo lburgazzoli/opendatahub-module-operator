@@ -3,7 +3,7 @@ kind: Service
 metadata:
   labels:
     app.kubernetes.io/name: opendatahub-datasciencepipelines-operator
-  name: opendatahub-datasciencepipelines-metrics-service
+  name: odh-datasciencepipelines-metrics-service
   namespace: {{ .Release.Namespace }}
 spec:
   ports:

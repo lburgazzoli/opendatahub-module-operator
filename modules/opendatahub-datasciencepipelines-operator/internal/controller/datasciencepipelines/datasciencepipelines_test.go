@@ -22,16 +22,15 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/blang/semver/v4"
+	. "github.com/onsi/gomega"
+	common "github.com/opendatahub-io/odh-platform-utilities/api/common"
 	fwapi "github.com/opendatahub-io/odh-platform-utilities/framework/api"
 	fwtypes "github.com/opendatahub-io/odh-platform-utilities/framework/controller/types"
-	ofVersion "github.com/operator-framework/api/pkg/lib/version"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	componentApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-datasciencepipelines-operator/api/components/v1alpha1"
 	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-datasciencepipelines-operator/pkg/config"
-	. "github.com/onsi/gomega"
-	"github.com/opendatahub-io/odh-platform-utilities/pkg/cluster"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-datasciencepipelines-operator/pkg/releases"
 )
 
 func writeTestParamsEnv(t *testing.T) string {
@@ -51,7 +50,6 @@ func newTestModule(t *testing.T) *Module {
 	t.Helper()
 
 	cfg := &moduleconfig.Config{
-		PlatformName:          "OpenDataHub",
 		PlatformVersion:       "1.0.0",
 		ManifestsPath:         writeTestParamsEnv(t),
 		ApplicationsNamespace: "test-ns",
@@ -64,20 +62,23 @@ func newTestModule(t *testing.T) *Module {
 }
 
 func newTestRR(
+	t *testing.T,
 	obj *componentApi.DataSciencePipelines,
 	manifestsBasePath string,
 ) *fwtypes.ReconciliationRequest {
-	rel := (&moduleconfig.Config{
-		PlatformName:    string(cluster.OpenDataHub),
-		PlatformVersion: "1.0.0",
-	}).Release()
+	t.Helper()
+
+	rel := (&moduleconfig.Config{PlatformVersion: "1.0.0"}).Release()
+
+	v, err := releases.ParseVersion(rel.Version)
+	NewWithT(t).Expect(err).NotTo(HaveOccurred())
 
 	return &fwtypes.ReconciliationRequest{
 		Instance:          obj,
 		ManifestsBasePath: manifestsBasePath,
 		Release: fwapi.Release{
 			Name:    fwapi.Platform(rel.Name),
-			Version: rel.Version.Version,
+			Version: v,
 		},
 	}
 }
@@ -95,7 +96,6 @@ func TestNewModule(t *testing.T) {
 
 	manifestsPath := writeTestParamsEnv(t)
 	cfg := &moduleconfig.Config{
-		PlatformName:    string(cluster.OpenDataHub),
 		PlatformVersion: "1.0.0",
 		ManifestsPath:   manifestsPath,
 	}
@@ -108,26 +108,12 @@ func TestNewModule(t *testing.T) {
 	g.Expect(m.manifestInfo.SourcePath).To(Equal(overlayODH))
 }
 
-func TestNewModuleSelectsRhoaiOverlay(t *testing.T) {
-	g := NewWithT(t)
-
-	cfg := &moduleconfig.Config{
-		PlatformName:    string(cluster.SelfManagedRhoai),
-		PlatformVersion: "1.0.0",
-		ManifestsPath:   writeTestParamsEnv(t),
-	}
-
-	m, err := NewModule(cfg)
-	g.Expect(err).NotTo(HaveOccurred())
-	g.Expect(m.manifestInfo.SourcePath).To(Equal(overlayRhoai))
-}
-
 func TestInitialize(t *testing.T) {
 	g := NewWithT(t)
 
 	m := newTestModule(t)
 	obj := newTestDataSciencePipelines()
-	rr := newTestRR(obj, m.cfg.ManifestsPath)
+	rr := newTestRR(t, obj, m.cfg.ManifestsPath)
 
 	g.Expect(m.initialize(context.Background(), rr)).To(Succeed())
 	g.Expect(rr.Manifests).To(HaveLen(1))
@@ -141,7 +127,7 @@ func TestUpgradeIfNeededNoVersion(t *testing.T) {
 
 	m := newTestModule(t)
 	obj := newTestDataSciencePipelines()
-	rr := newTestRR(obj, m.cfg.ManifestsPath)
+	rr := newTestRR(t, obj, m.cfg.ManifestsPath)
 
 	g.Expect(m.upgradeIfNeeded(context.Background(), rr)).To(Succeed())
 }
@@ -151,8 +137,11 @@ func TestUpgradeIfNeededSameVersion(t *testing.T) {
 
 	m := newTestModule(t)
 	obj := newTestDataSciencePipelines()
-	obj.Status.Release.Version = ofVersion.OperatorVersion{Version: semver.MustParse("1.0.0")}
-	rr := newTestRR(obj, m.cfg.ManifestsPath)
+
+	obj.Status.Releases = []common.ComponentRelease{
+		{Name: releases.Platform, Version: "1.0.0"},
+	}
+	rr := newTestRR(t, obj, m.cfg.ManifestsPath)
 
 	g.Expect(m.upgradeIfNeeded(context.Background(), rr)).To(Succeed())
 }
@@ -162,11 +151,12 @@ func TestReportStatus(t *testing.T) {
 
 	m := newTestModule(t)
 	obj := newTestDataSciencePipelines()
-	rr := newTestRR(obj, m.cfg.ManifestsPath)
+	rr := newTestRR(t, obj, m.cfg.ManifestsPath)
 
 	g.Expect(m.initialize(context.Background(), rr)).To(Succeed())
 	g.Expect(m.reportStatus(context.Background(), rr)).To(Succeed())
 
-	g.Expect(obj.Status.Release.Version.String()).To(Equal("1.0.0"))
-	g.Expect(string(obj.Status.Release.Name)).To(Equal(string(cluster.OpenDataHub)))
+	g.Expect(obj.Status.Releases).To(ContainElement(
+		common.ComponentRelease{Name: releases.Platform, Version: "1.0.0"},
+	))
 }

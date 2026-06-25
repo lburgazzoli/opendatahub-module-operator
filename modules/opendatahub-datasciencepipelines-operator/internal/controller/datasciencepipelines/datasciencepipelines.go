@@ -26,6 +26,8 @@ import (
 
 	componentApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-datasciencepipelines-operator/api/components/v1alpha1"
 	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-datasciencepipelines-operator/pkg/config"
+	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-datasciencepipelines-operator/pkg/releases"
+	fwapi "github.com/opendatahub-io/odh-platform-utilities/framework/api"
 	fwerrors "github.com/opendatahub-io/odh-platform-utilities/framework/controller/actions/errors"
 	fwtypes "github.com/opendatahub-io/odh-platform-utilities/framework/controller/types"
 	fwparams "github.com/opendatahub-io/odh-platform-utilities/framework/utils/params"
@@ -77,20 +79,14 @@ var (
 
 type Module struct {
 	cfg          *moduleconfig.Config
+	release      fwapi.Release
 	manifestInfo fwtypes.ManifestInfo
 }
 
 func NewModule(cfg *moduleconfig.Config) (*Module, error) {
-	var overlay string
-
-	switch odhcluster.Platform(cfg.PlatformName) {
-	case odhcluster.SelfManagedRhoai:
-		overlay = overlayRhoai
-	case odhcluster.ManagedRhoai:
-		overlay = overlayRhoai
-	default:
-		overlay = overlayODH
-	}
+	// Default to the ODH overlay; platform-specific overlays are determined
+	// at deployment time via image parameters rather than runtime config.
+	overlay := overlayODH
 
 	return &Module{
 		cfg: cfg,
@@ -122,6 +118,18 @@ func (m *Module) Init(ctx context.Context, reader client.Reader) error {
 		}),
 	); err != nil {
 		return fmt.Errorf("failed to update params on path %s: %w", pp, err)
+	}
+
+	rel := m.cfg.Release()
+
+	v, err := releases.ParseVersion(rel.Version)
+	if err != nil {
+		return fmt.Errorf("parsing platform version %q: %w", rel.Version, err)
+	}
+
+	m.release = fwapi.Release{
+		Name:    fwapi.Platform(rel.Name),
+		Version: v,
 	}
 
 	return nil

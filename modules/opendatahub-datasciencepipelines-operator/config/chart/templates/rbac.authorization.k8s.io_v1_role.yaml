@@ -3,7 +3,7 @@ kind: Role
 metadata:
   labels:
     app.kubernetes.io/name: opendatahub-datasciencepipelines-operator
-  name: opendatahub-datasciencepipelines-leader-election-role
+  name: odh-datasciencepipelines-leader-election-role
   namespace: {{ .Release.Namespace }}
 rules:
 - apiGroups:

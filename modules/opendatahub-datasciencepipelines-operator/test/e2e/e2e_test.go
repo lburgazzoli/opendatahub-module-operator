@@ -47,7 +47,7 @@ const (
 	testManagedByLabel = "testing.opendatahub.io/managed-by"
 	testManagedByValue = "dsp-e2e"
 
-	operatorDeploymentName = "opendatahub-datasciencepipelines-operator"
+	operatorDeploymentName = "odh-datasciencepipelines-operator"
 	workloadDeploymentName = "data-science-pipelines-operator-controller-manager"
 	workloadServiceMonName = "data-science-pipelines-operator-service-monitor"
 )

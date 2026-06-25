@@ -4,8 +4,8 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 
-NAMESPACE="${1:-opendatahub-datasciencepipelines-system}"
-HELM_RELEASE="${2:-opendatahub-datasciencepipelines-operator}"
+NAMESPACE="${1:-odh-datasciencepipelines-system}"
+HELM_RELEASE="${2:-odh-datasciencepipelines-operator}"
 CR_RESOURCE="datasciencepipelines.components.platform.opendatahub.io"
 WORKFLOWS_CRD="workflows.argoproj.io"
 TEST_MANAGED_LABEL="testing.opendatahub.io/managed-by"
