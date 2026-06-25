@@ -21,21 +21,43 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
-	"path/filepath"
-	"strings"
 
+	"github.com/blang/semver/v4"
+	"github.com/go-viper/mapstructure/v2"
 	"github.com/spf13/viper"
 
 	common "github.com/opendatahub-io/odh-platform-utilities/api/common"
+	fwapi "github.com/opendatahub-io/odh-platform-utilities/framework/api"
 	fwactions "github.com/opendatahub-io/odh-platform-utilities/framework/controller/actions"
 	fwtypes "github.com/opendatahub-io/odh-platform-utilities/framework/controller/types"
-
-	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-spark-operator/pkg/releases"
 )
+
+// PlatformVersion wraps semver.Version and implements encoding.TextUnmarshaler
+// so mapstructure can decode the platformVersion ConfigMap key directly.
+type PlatformVersion struct {
+	semver.Version
+}
+
+// UnmarshalText implements encoding.TextUnmarshaler.
+// An empty string decodes to the zero semver (0.0.0) without error.
+func (v *PlatformVersion) UnmarshalText(text []byte) error {
+	s := string(text)
+	if s == "" {
+		v.Version = semver.Version{}
+		return nil
+	}
+	sv, err := semver.ParseTolerant(s)
+	if err != nil {
+		return fmt.Errorf("parsing platform version %q: %w", s, err)
+	}
+	v.Version = sv
+	return nil
+}
 
 const (
 	KeyManifestsPath   = "manifests-path"
 	KeyApplicationsNS  = "applications-namespace"
+	KeyPlatformType    = "platformType"
 	KeyPlatformVersion = "platformVersion"
 
 	KeyMetricsBindAddr    = "controller.metrics.bind-address"
@@ -48,17 +70,28 @@ const (
 	KeyPprofEnabled       = "controller.pprof.enabled"
 	KeyPprofBindAddr      = "controller.pprof.bind-address"
 
+	// PlatformType* are the identifier strings written to the platformType
+	// ConfigMap key by the platform operator. They match the switch cases in
+	// odhcluster.DetectPlatform and are distinct from the odhcluster.Platform
+	// display-name constants ("Open Data Hub", "OpenShift AI Self-Managed", …).
+	PlatformTypeOpenDataHub      = "OpenDataHub"
+	PlatformTypeSelfManagedRhoai = "SelfManagedRhoai"
+	PlatformTypeManagedRhoai     = "ManagedRhoai"
+
 	DefaultApplicationsNS  = "opendatahub"
+	DefaultPlatformType    = PlatformTypeOpenDataHub
 	DefaultPlatformVersion = ""
 
 	DefaultMetricsBindAddr    = ":8080"
 	DefaultHealthBindAddr     = ":8081"
 	DefaultLeaderElectEnabled = true
-	DefaultLeaderElectID      = "opendatahub-spark-lock"
+	DefaultLeaderElectID      = "odh-spark-lock"
 	DefaultZapLevel           = "info"
 	DefaultZapDevMode         = false
 	DefaultZapEncoder         = ""
 	DefaultPprofEnabled       = false
+
+	ReleasePlatform = "platform"
 
 	// ConfigPathEnvVar is the environment variable that points to the mounted
 	// ConfigMap directory (or a single config file).
@@ -68,14 +101,6 @@ const (
 	// configuration values (e.g. ODH_MODULE_OPERATOR_PLATFORM_TYPE).
 	EnvPrefix = "ODH_MODULE_OPERATOR"
 )
-
-// structuredExtensions is the set of file extensions that are parsed as
-// structured config (YAML, JSON) rather than simple key-value pairs.
-var structuredExtensions = map[string]bool{
-	"yaml": true,
-	"yml":  true,
-	"json": true,
-}
 
 // Config holds the complete operator configuration.
 //
@@ -89,7 +114,8 @@ var structuredExtensions = map[string]bool{
 type Config struct {
 	ManifestsPath         string           `mapstructure:"manifests-path"`
 	ApplicationsNamespace string           `mapstructure:"applications-namespace"`
-	PlatformVersion       string           `mapstructure:"platformVersion"`
+	PlatformType          string           `mapstructure:"platformType"`
+	PlatformVersion       PlatformVersion  `mapstructure:"platformVersion"`
 	Controller            ControllerConfig `mapstructure:"controller"`
 }
 
@@ -125,11 +151,20 @@ type PprofConfig struct {
 	BindAddress string `mapstructure:"bind-address"`
 }
 
-// Release returns the platform release entry for this operator instance.
-func (c *Config) Release() common.ComponentRelease {
+// ComponentRelease returns the platform handshake entry for status.releases.
+func (c *Config) ComponentRelease() common.ComponentRelease {
 	return common.ComponentRelease{
-		Name:    releases.Platform,
-		Version: c.PlatformVersion,
+		Name:    ReleasePlatform,
+		Version: c.PlatformVersion.String(),
+	}
+}
+
+// PlatformRelease returns the fwapi.Release used by the reconciler and stored
+// in m.release. PlatformVersion is already parsed at load time — no error.
+func (c *Config) PlatformRelease() fwapi.Release {
+	return fwapi.Release{
+		Name:    fwapi.Platform(c.PlatformType),
+		Version: c.PlatformVersion.Version,
 	}
 }
 
@@ -175,99 +210,15 @@ func LoadFromFS(fsys fs.FS) (*Config, error) {
 	}
 
 	cfg := &Config{}
-	if err := v.Unmarshal(cfg); err != nil {
+	if err := v.Unmarshal(cfg, viper.DecodeHook(
+		mapstructure.ComposeDecodeHookFunc(
+			mapstructure.TextUnmarshallerHookFunc(),
+			mapstructure.StringToTimeDurationHookFunc(),
+			mapstructure.StringToSliceHookFunc(","),
+		),
+	)); err != nil {
 		return nil, fmt.Errorf("unmarshaling config: %w", err)
 	}
 
 	return cfg, nil
-}
-
-func setDefaults(v *viper.Viper) {
-	v.SetDefault(KeyManifestsPath, "")
-	v.SetDefault(KeyApplicationsNS, DefaultApplicationsNS)
-	v.SetDefault(KeyPlatformVersion, DefaultPlatformVersion)
-
-	v.SetDefault(KeyMetricsBindAddr, DefaultMetricsBindAddr)
-	v.SetDefault(KeyHealthBindAddr, DefaultHealthBindAddr)
-	v.SetDefault(KeyLeaderElectEnabled, DefaultLeaderElectEnabled)
-	v.SetDefault(KeyLeaderElectID, DefaultLeaderElectID)
-	v.SetDefault(KeyZapLevel, DefaultZapLevel)
-	v.SetDefault(KeyZapDevMode, DefaultZapDevMode)
-	v.SetDefault(KeyZapEncoder, DefaultZapEncoder)
-	v.SetDefault(KeyPprofEnabled, DefaultPprofEnabled)
-	v.SetDefault(KeyPprofBindAddr, "")
-}
-
-func bindEnv(v *viper.Viper) error {
-	v.SetEnvPrefix(EnvPrefix)
-	v.SetEnvKeyReplacer(strings.NewReplacer("-", "_", ".", "_"))
-	v.AutomaticEnv()
-
-	// Explicit BindEnv so Unmarshal picks up env vars.
-	// AutomaticEnv only works with Get(), not Unmarshal().
-	for _, key := range v.AllKeys() {
-		if err := v.BindEnv(key); err != nil {
-			return fmt.Errorf("binding env for key %s: %w", key, err)
-		}
-	}
-
-	return nil
-}
-
-// loadFromFS reads all files from the given fs.FS into a temporary viper
-// instance, then merges the result into v. Structured files (YAML/JSON)
-// are parsed normally. Plain files use the filename as a dot-separated
-// key path (e.g. "controller.zap.level" expands to a nested map).
-// The single MergeConfigMap at the end writes to viper's config layer,
-// so environment variables still take precedence.
-func loadFromFS(v *viper.Viper, fsys fs.FS) error {
-	entries, err := fs.ReadDir(fsys, ".")
-	if err != nil {
-		return fmt.Errorf("reading config directory: %w", err)
-	}
-
-	tmp := viper.New()
-
-	for _, entry := range entries {
-		if entry.IsDir() || strings.HasPrefix(entry.Name(), ".") {
-			continue
-		}
-
-		data, err := fs.ReadFile(fsys, entry.Name())
-		if err != nil {
-			continue
-		}
-
-		ext := strings.TrimPrefix(filepath.Ext(entry.Name()), ".")
-
-		if structuredExtensions[ext] {
-			if err := mergeStructuredFile(tmp, entry.Name(), ext, data); err != nil {
-				return err
-			}
-		} else {
-			tmp.Set(entry.Name(), strings.TrimSpace(string(data)))
-		}
-	}
-
-	if err := v.MergeConfigMap(tmp.AllSettings()); err != nil {
-		return fmt.Errorf("merging config from filesystem: %w", err)
-	}
-
-	return nil
-}
-
-// mergeStructuredFile parses a YAML/JSON file and merges its keys into viper.
-func mergeStructuredFile(v *viper.Viper, name string, ext string, data []byte) error {
-	fv := viper.New()
-	fv.SetConfigType(ext)
-
-	if err := fv.ReadConfig(strings.NewReader(string(data))); err != nil {
-		return fmt.Errorf("parsing config file %s: %w", name, err)
-	}
-
-	if err := v.MergeConfigMap(fv.AllSettings()); err != nil {
-		return fmt.Errorf("merging config from %s: %w", name, err)
-	}
-
-	return nil
 }

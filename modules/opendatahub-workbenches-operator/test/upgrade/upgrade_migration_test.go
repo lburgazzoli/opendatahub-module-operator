@@ -19,7 +19,8 @@ import (
 	k8sm "github.com/lburgazzoli/gomega-matchers/pkg/matchers/k8s"
 
 	componentsv1alpha1 "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-workbenches-operator/api/components/v1alpha1"
-	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-workbenches-operator/pkg/releases"
+	workbenches "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-workbenches-operator/internal/controller/workbenches"
+	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-workbenches-operator/pkg/config"
 	gvk "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-workbenches-operator/pkg/resources/gvk"
 	common "github.com/opendatahub-io/odh-platform-utilities/api/common"
 	infrav1 "github.com/opendatahub-io/opendatahub-operator/v2/api/infrastructure/v1"
@@ -78,8 +79,8 @@ func (mt *migrationTests) testContainerSizeMigration(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{Name: componentsv1alpha1.WorkbenchesInstanceName},
 	}
 	g.Eventually(ctx, k8sm.Lookup(mt.s.directClient, seededModule)).Should(Succeed())
-	releases.Upsert(seededModule.GetReleaseStatus(), common.ComponentRelease{
-		Name:    releases.Platform,
+	workbenches.UpsertRelease(seededModule.GetReleaseStatus(), common.ComponentRelease{
+		Name:    moduleconfig.ReleasePlatform,
 		Version: appliedUpgradeVersion,
 	})
 	g.Expect(mt.s.directClient.Status().Update(ctx, seededModule)).To(Succeed())
@@ -87,7 +88,7 @@ func (mt *migrationTests) testContainerSizeMigration(t *testing.T) {
 	g.Expect(mt.s.directClient.Create(ctx, mt.notebook)).To(Succeed())
 
 	g.Eventually(ctx, k8sm.Lookup(mt.s.directClient, seededModule)).Should(Succeed())
-	prev, _ := releases.Get(seededModule.GetReleaseStatus(), releases.Platform)
+	prev, _ := workbenches.GetRelease(seededModule.GetReleaseStatus(), moduleconfig.ReleasePlatform)
 	g.Expect(prev.Version).To(Equal(appliedUpgradeVersion))
 	g.Eventually(ctx, k8sm.Get(mt.s.directClient, mt.odhDashboardConfig)).Should(And(
 		jq.Match(`.metadata.name == "odh-dashboard-config"`),

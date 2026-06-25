@@ -19,10 +19,10 @@ package mlflowoperator
 import (
 	"context"
 	"testing"
+	"testing/fstest"
 
 	. "github.com/onsi/gomega"
 	common "github.com/opendatahub-io/odh-platform-utilities/api/common"
-	fwapi "github.com/opendatahub-io/odh-platform-utilities/framework/api"
 	odhtypes "github.com/opendatahub-io/odh-platform-utilities/framework/controller/types"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -32,7 +32,6 @@ import (
 
 	componentApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-mlflow-operator/api/components/v1alpha1"
 	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-mlflow-operator/pkg/config"
-	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-mlflow-operator/pkg/releases"
 )
 
 type staticErrReader struct {
@@ -180,14 +179,22 @@ func (c staticErrClient) IsObjectNamespaced(_ runtime.Object) (bool, error) {
 	return false, c.err
 }
 
+func testConfig(t *testing.T) *moduleconfig.Config {
+	t.Helper()
+	cfg, err := moduleconfig.LoadFromFS(fstest.MapFS{
+		moduleconfig.KeyPlatformType:    {Data: []byte("OpenDataHub")},
+		moduleconfig.KeyPlatformVersion: {Data: []byte("1.0.0")},
+	})
+	NewWithT(t).Expect(err).NotTo(HaveOccurred())
+	return cfg
+}
+
 func newTestModule(t *testing.T) *Module {
 	t.Helper()
 
-	cfg := &moduleconfig.Config{
-		PlatformVersion:       "1.0.0",
-		ManifestsPath:         "/manifests",
-		ApplicationsNamespace: "test-ns",
-	}
+	cfg := testConfig(t)
+	cfg.ManifestsPath = "/manifests"
+	cfg.ApplicationsNamespace = "test-ns"
 
 	m, err := NewModule(cfg)
 	NewWithT(t).Expect(err).NotTo(HaveOccurred())
@@ -198,18 +205,11 @@ func newTestModule(t *testing.T) *Module {
 func newTestRR(t *testing.T, obj *componentApi.MLflowOperator) *odhtypes.ReconciliationRequest {
 	t.Helper()
 
-	rel := (&moduleconfig.Config{PlatformVersion: "1.0.0"}).Release()
-
-	v, err := releases.ParseVersion(rel.Version)
-	NewWithT(t).Expect(err).NotTo(HaveOccurred())
-
+	cfg := testConfig(t)
 	return &odhtypes.ReconciliationRequest{
 		Instance:          obj,
 		ManifestsBasePath: "/manifests",
-		Release: fwapi.Release{
-			Name:    fwapi.Platform(rel.Name),
-			Version: v,
-		},
+		Release:           cfg.PlatformRelease(),
 	}
 }
 
@@ -224,10 +224,8 @@ func newTestMLflowOperator() *componentApi.MLflowOperator {
 func TestNewModule(t *testing.T) {
 	g := NewWithT(t)
 
-	cfg := &moduleconfig.Config{
-		PlatformVersion: "1.0.0",
-		ManifestsPath:   "/manifests",
-	}
+	cfg := testConfig(t)
+	cfg.ManifestsPath = "/manifests"
 
 	m, err := NewModule(cfg)
 	g.Expect(err).NotTo(HaveOccurred())
@@ -267,7 +265,7 @@ func TestUpgradeIfNeededSameVersion(t *testing.T) {
 	obj := newTestMLflowOperator()
 
 	obj.Status.Releases = []common.ComponentRelease{
-		{Name: releases.Platform, Version: "1.0.0"},
+		{Name: moduleconfig.ReleasePlatform, Version: "1.0.0"},
 	}
 	rr := newTestRR(t, obj)
 
@@ -285,7 +283,7 @@ func TestReportStatus(t *testing.T) {
 	g.Expect(m.reportStatus(context.Background(), rr)).To(Succeed())
 
 	g.Expect(obj.Status.Releases).To(ContainElement(
-		common.ComponentRelease{Name: releases.Platform, Version: "1.0.0"},
+		common.ComponentRelease{Name: moduleconfig.ReleasePlatform, Version: "1.0.0"},
 	))
 }
 

@@ -21,7 +21,6 @@ import (
 	"fmt"
 
 	componentApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-ray-operator/api/components/v1alpha1"
-	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-ray-operator/pkg/releases"
 	fwtypes "github.com/opendatahub-io/odh-platform-utilities/framework/controller/types"
 	fwparams "github.com/opendatahub-io/odh-platform-utilities/framework/utils/params"
 )
@@ -48,7 +47,7 @@ func (m *Module) reportStatus(ctx context.Context, rr *fwtypes.ReconciliationReq
 		return fmt.Errorf("instance is not a Ray")
 	}
 
-	releases.Upsert(obj.GetReleaseStatus(), m.cfg.Release())
+	UpsertRelease(obj.GetReleaseStatus(), m.cfg.ComponentRelease())
 
 	return nil
 }

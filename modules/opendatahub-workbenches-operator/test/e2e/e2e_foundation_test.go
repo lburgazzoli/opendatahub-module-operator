@@ -127,7 +127,7 @@ func (ft *foundationTests) testReleaseStatus(t *testing.T) {
 		},
 	})
 	g.Expect(err).NotTo(HaveOccurred())
-	expectedRelease := cfg.Release()
+	expectedRelease := cfg.ComponentRelease()
 
 	expr := fmt.Sprintf(`.status.releases[] | select(.name == "%s") | .version == "%s"`,
 		expectedRelease.Name, expectedRelease.Version)

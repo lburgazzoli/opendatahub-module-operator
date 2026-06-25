@@ -29,7 +29,6 @@ import (
 
 	localapi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-workbenches-operator/api/components/v1alpha1"
 	module "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-workbenches-operator/pkg/module"
-	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-workbenches-operator/pkg/releases"
 )
 
 // initialize assigns the pre-computed manifest infos for this reconcile cycle.
@@ -95,7 +94,7 @@ func (m *Module) reportStatus(_ context.Context, rr *fwtypes.ReconciliationReque
 
 	obj.Status.WorkbenchNamespace = obj.Spec.WorkbenchNamespace
 
-	releases.Upsert(obj.GetReleaseStatus(), m.cfg.Release())
+	UpsertRelease(obj.GetReleaseStatus(), m.cfg.ComponentRelease())
 
 	return nil
 }

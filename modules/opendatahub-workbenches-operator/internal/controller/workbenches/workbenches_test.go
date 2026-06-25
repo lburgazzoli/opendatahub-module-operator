@@ -19,10 +19,10 @@ package workbenches
 import (
 	"context"
 	"testing"
+	"testing/fstest"
 
 	. "github.com/onsi/gomega"
 	common "github.com/opendatahub-io/odh-platform-utilities/api/common"
-	fwapi "github.com/opendatahub-io/odh-platform-utilities/framework/api"
 	fwtypes "github.com/opendatahub-io/odh-platform-utilities/framework/controller/types"
 	corev1 "k8s.io/api/core/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
@@ -35,16 +35,23 @@ import (
 
 	componentApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-workbenches-operator/api/components/v1alpha1"
 	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-workbenches-operator/pkg/config"
-	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-workbenches-operator/pkg/releases"
 )
+
+func testConfig(t *testing.T) *moduleconfig.Config {
+	t.Helper()
+	cfg, err := moduleconfig.LoadFromFS(fstest.MapFS{
+		moduleconfig.KeyPlatformType:    {Data: []byte("OpenDataHub")},
+		moduleconfig.KeyPlatformVersion: {Data: []byte("1.0.0")},
+	})
+	NewWithT(t).Expect(err).NotTo(HaveOccurred())
+	return cfg
+}
 
 func newTestModule(t *testing.T) *Module {
 	t.Helper()
-	cfg := &moduleconfig.Config{
-		PlatformVersion:       "1.0.0",
-		ManifestsPath:         "/manifests",
-		ApplicationsNamespace: "test-ns",
-	}
+	cfg := testConfig(t)
+	cfg.ManifestsPath = "/manifests"
+	cfg.ApplicationsNamespace = "test-ns"
 	m, err := NewModule(cfg)
 	NewWithT(t).Expect(err).NotTo(HaveOccurred())
 	return m
@@ -66,18 +73,12 @@ func seedTestAPIReader(t *testing.T, m *Module, objs ...client.Object) {
 func newTestRR(t *testing.T, obj *componentApi.Workbenches) *fwtypes.ReconciliationRequest {
 	t.Helper()
 
-	rel := (&moduleconfig.Config{PlatformVersion: "1.0.0"}).Release()
-
-	v, err := releases.ParseVersion(rel.Version)
-	NewWithT(t).Expect(err).NotTo(HaveOccurred())
+	rel := testConfig(t).PlatformRelease()
 
 	return &fwtypes.ReconciliationRequest{
 		Instance:          obj,
 		ManifestsBasePath: "/manifests",
-		Release: fwapi.Release{
-			Name:    fwapi.Platform(rel.Name),
-			Version: v,
-		},
+		Release:           rel,
 	}
 }
 
@@ -134,7 +135,7 @@ func TestUpgradeIfNeededSameVersion(t *testing.T) {
 	obj := newTestWorkbenches()
 
 	obj.Status.Releases = []common.ComponentRelease{
-		{Name: releases.Platform, Version: "1.0.0"},
+		{Name: moduleconfig.ReleasePlatform, Version: "1.0.0"},
 	}
 	rr := newTestRR(t, obj)
 	seedTestAPIReader(t, m, obj.DeepCopy())
@@ -153,6 +154,6 @@ func TestReportStatus(t *testing.T) {
 	g.Expect(m.reportStatus(context.Background(), rr)).To(Succeed())
 
 	g.Expect(obj.Status.Releases).To(ContainElement(
-		common.ComponentRelease{Name: releases.Platform, Version: "1.0.0"},
+		common.ComponentRelease{Name: moduleconfig.ReleasePlatform, Version: "1.0.0"},
 	))
 }

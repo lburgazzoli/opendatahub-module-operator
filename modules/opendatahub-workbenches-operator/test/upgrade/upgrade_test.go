@@ -36,6 +36,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client/config"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
+	"testing/fstest"
+
 	componentsv1alpha1 "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-workbenches-operator/api/components/v1alpha1"
 	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-workbenches-operator/pkg/config"
 	workbenchesmanager "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-workbenches-operator/pkg/manager"
@@ -74,12 +76,13 @@ func (s *suite) operatorNamespace() string {
 }
 
 func loadOperatorConfig(namespace string) (*moduleconfig.Config, error) {
-	moduleCfg, err := moduleconfig.LoadFromFS(nil)
+	moduleCfg, err := moduleconfig.LoadFromFS(fstest.MapFS{
+		moduleconfig.KeyPlatformVersion: {Data: []byte(desiredUpgradeVersion)},
+	})
 	if err != nil {
 		return nil, fmt.Errorf("loading operator config: %w", err)
 	}
 
-	moduleCfg.PlatformVersion = desiredUpgradeVersion
 	moduleCfg.ApplicationsNamespace = namespace
 	moduleCfg.ManifestsPath = support.MustProjectFile("config", "manifests")
 	moduleCfg.Controller.Metrics.BindAddress = "0"

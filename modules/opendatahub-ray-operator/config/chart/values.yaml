@@ -1,4 +1,5 @@
 config:
+  platformType: OpenDataHub
   platformVersion: ""
 image:
   repository: ttl.sh/opendatahub-ray-operator

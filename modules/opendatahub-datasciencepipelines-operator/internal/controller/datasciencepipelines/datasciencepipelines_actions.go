@@ -24,7 +24,6 @@ import (
 
 	componentApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-datasciencepipelines-operator/api/components/v1alpha1"
 	module "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-datasciencepipelines-operator/pkg/module"
-	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-datasciencepipelines-operator/pkg/releases"
 	fwcluster "github.com/opendatahub-io/odh-platform-utilities/framework/cluster"
 	odherr "github.com/opendatahub-io/odh-platform-utilities/framework/controller/actions/errors"
 	"github.com/opendatahub-io/odh-platform-utilities/framework/controller/conditions"
@@ -141,7 +140,7 @@ func (m *Module) reportStatus(_ context.Context, rr *fwtypes.ReconciliationReque
 		return fmt.Errorf("instance is not a DataSciencePipelines")
 	}
 
-	releases.Upsert(obj.GetReleaseStatus(), m.cfg.Release())
+	UpsertRelease(obj.GetReleaseStatus(), m.cfg.ComponentRelease())
 
 	return nil
 }

@@ -21,7 +21,6 @@ import (
 	"fmt"
 
 	componentApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-spark-operator/api/components/v1alpha1"
-	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-spark-operator/pkg/releases"
 	odhtypes "github.com/opendatahub-io/odh-platform-utilities/framework/controller/types"
 )
 
@@ -38,7 +37,7 @@ func (m *Module) reportStatus(_ context.Context, rr *odhtypes.ReconciliationRequ
 		return fmt.Errorf("instance is not a SparkOperator")
 	}
 
-	releases.Upsert(obj.GetReleaseStatus(), m.cfg.Release())
+	UpsertRelease(obj.GetReleaseStatus(), m.cfg.ComponentRelease())
 
 	return nil
 }

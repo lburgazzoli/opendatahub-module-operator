@@ -25,7 +25,6 @@ import (
 
 	componentApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-ray-operator/api/components/v1alpha1"
 	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-ray-operator/pkg/config"
-	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-ray-operator/pkg/releases"
 )
 
 const (
@@ -73,17 +72,7 @@ func (m *Module) Init() error {
 		return fmt.Errorf("failed to update images on path %s: %w", m.manifestInfo, err)
 	}
 
-	rel := m.cfg.Release()
-
-	v, err := releases.ParseVersion(rel.Version)
-	if err != nil {
-		return fmt.Errorf("parsing platform version %q: %w", rel.Version, err)
-	}
-
-	m.release = fwapi.Release{
-		Name:    fwapi.Platform(rel.Name),
-		Version: v,
-	}
+	m.release = m.cfg.PlatformRelease()
 
 	return nil
 }

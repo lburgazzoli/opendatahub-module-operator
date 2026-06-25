@@ -21,7 +21,6 @@ import (
 	componentsv1alpha1 "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-modelregistry-operator/api/components/v1alpha1"
 	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-modelregistry-operator/pkg/config"
 	modulemeta "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-modelregistry-operator/pkg/module"
-	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-modelregistry-operator/pkg/releases"
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-modelregistry-operator/test/support"
 	common "github.com/opendatahub-io/odh-platform-utilities/api/common"
 	"github.com/opendatahub-io/odh-platform-utilities/pkg/metadata/annotations"
@@ -135,10 +134,10 @@ func (ft *foundationTests) testReleaseStatus(t *testing.T) {
 		},
 	})
 	g.Expect(err).NotTo(HaveOccurred())
-	expectedRelease := cfg.Release()
+	expectedRelease := cfg.ComponentRelease()
 
 	expr := fmt.Sprintf(`.status.releases[] | select(.name == "%s") | .version == "%s"`,
-		releases.Platform, expectedRelease.Version)
+		moduleconfig.ReleasePlatform, expectedRelease.Version)
 	g.Eventually(t.Context(), k8sm.Get(ft.Client, module)).Should(jq.Match(expr))
 }
 

@@ -28,7 +28,6 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
 	componentApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-feast-operator/api/components/v1alpha1"
-	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-feast-operator/pkg/releases"
 	odhtypes "github.com/opendatahub-io/odh-platform-utilities/framework/controller/types"
 	fwparams "github.com/opendatahub-io/odh-platform-utilities/framework/utils/params"
 )
@@ -142,7 +141,7 @@ func (m *Module) reportStatus(_ context.Context, rr *odhtypes.ReconciliationRequ
 		return fmt.Errorf("instance is not a FeastOperator")
 	}
 
-	releases.Upsert(obj.GetReleaseStatus(), m.cfg.Release())
+	UpsertRelease(obj.GetReleaseStatus(), m.cfg.ComponentRelease())
 
 	return nil
 }

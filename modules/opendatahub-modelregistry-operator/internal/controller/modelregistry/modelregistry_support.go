@@ -19,9 +19,12 @@ package modelregistry
 import (
 	"errors"
 	"fmt"
+	"sort"
 
 	rbacv1 "k8s.io/api/rbac/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+
+	common "github.com/opendatahub-io/odh-platform-utilities/api/common"
 
 	componentApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-modelregistry-operator/api/components/v1alpha1"
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-modelregistry-operator/pkg/resources/gvk"
@@ -95,4 +98,26 @@ func (m *Module) computeKustomizeVariables(mr *componentApi.ModelRegistry) (map[
 		"GATEWAY_NAMESPACE":   gatewayNamespace,
 		"HTTPROUTE_NAMESPACE": m.cfg.ApplicationsNamespace,
 	}, nil
+}
+
+func UpsertRelease(status *common.ComponentReleaseStatus, release common.ComponentRelease) {
+	for i := range status.Releases {
+		if status.Releases[i].Name == release.Name {
+			status.Releases[i] = release
+			return
+		}
+	}
+	status.Releases = append(status.Releases, release)
+	sort.Slice(status.Releases, func(i, j int) bool {
+		return status.Releases[i].Name < status.Releases[j].Name
+	})
+}
+
+func GetRelease(status *common.ComponentReleaseStatus, name string) (common.ComponentRelease, bool) {
+	for _, r := range status.Releases {
+		if r.Name == name {
+			return r, true
+		}
+	}
+	return common.ComponentRelease{}, false
 }

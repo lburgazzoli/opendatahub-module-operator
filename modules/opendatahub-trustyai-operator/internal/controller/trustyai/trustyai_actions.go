@@ -25,7 +25,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	componentApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-trustyai-operator/api/components/v1alpha1"
-	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-trustyai-operator/pkg/releases"
 	modulegvk "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-trustyai-operator/pkg/resources/gvk"
 	fwcluster "github.com/opendatahub-io/odh-platform-utilities/framework/cluster"
 	odherrors "github.com/opendatahub-io/odh-platform-utilities/framework/controller/actions/errors"
@@ -121,7 +120,7 @@ func (m *Module) reportStatus(_ context.Context, rr *fwtypes.ReconciliationReque
 		return fmt.Errorf("instance is not a TrustyAI")
 	}
 
-	releases.Upsert(obj.GetReleaseStatus(), m.cfg.Release())
+	UpsertRelease(obj.GetReleaseStatus(), m.cfg.ComponentRelease())
 
 	return nil
 }

@@ -20,6 +20,7 @@ import (
 	"context"
 	"fmt"
 	"path"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -30,6 +31,7 @@ import (
 
 	localapi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-workbenches-operator/api/components/v1alpha1"
 	gvk "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-workbenches-operator/pkg/resources/gvk"
+	common "github.com/opendatahub-io/odh-platform-utilities/api/common"
 	"github.com/opendatahub-io/odh-platform-utilities/framework/controller/actions/status/deployments"
 	fwtypes "github.com/opendatahub-io/odh-platform-utilities/framework/controller/types"
 	odhcluster "github.com/opendatahub-io/odh-platform-utilities/pkg/cluster"
@@ -245,4 +247,26 @@ func getDefaultFQDN(ctx context.Context, cli client.Client) (string, error) {
 		return "", fmt.Errorf("getting cluster domain: %w", err)
 	}
 	return fmt.Sprintf("%s.%s", defaultGatewaySubdomain, clusterDomain), nil
+}
+
+func UpsertRelease(status *common.ComponentReleaseStatus, release common.ComponentRelease) {
+	for i := range status.Releases {
+		if status.Releases[i].Name == release.Name {
+			status.Releases[i] = release
+			return
+		}
+	}
+	status.Releases = append(status.Releases, release)
+	sort.Slice(status.Releases, func(i, j int) bool {
+		return status.Releases[i].Name < status.Releases[j].Name
+	})
+}
+
+func GetRelease(status *common.ComponentReleaseStatus, name string) (common.ComponentRelease, bool) {
+	for _, r := range status.Releases {
+		if r.Name == name {
+			return r, true
+		}
+	}
+	return common.ComponentRelease{}, false
 }

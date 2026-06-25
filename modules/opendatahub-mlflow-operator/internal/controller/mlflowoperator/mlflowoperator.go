@@ -23,11 +23,9 @@ import (
 	fwapi "github.com/opendatahub-io/odh-platform-utilities/framework/api"
 	fwtypes "github.com/opendatahub-io/odh-platform-utilities/framework/controller/types"
 	fwparams "github.com/opendatahub-io/odh-platform-utilities/framework/utils/params"
-	odhcluster "github.com/opendatahub-io/odh-platform-utilities/pkg/cluster"
 
 	componentApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-mlflow-operator/api/components/v1alpha1"
 	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-mlflow-operator/pkg/config"
-	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-mlflow-operator/pkg/releases"
 )
 
 const (
@@ -57,8 +55,8 @@ type Module struct {
 	consoleSectionTitle string
 }
 
-func consoleSectionTitleFor(platform odhcluster.Platform) string {
-	if platform == odhcluster.SelfManagedRhoai || platform == odhcluster.ManagedRhoai {
+func consoleSectionTitleFor(platformType string) string {
+	if platformType == moduleconfig.PlatformTypeSelfManagedRhoai || platformType == moduleconfig.PlatformTypeManagedRhoai {
 		return "OpenShift Self Managed Services"
 	}
 	return "OpenShift Open Data Hub"
@@ -66,9 +64,11 @@ func consoleSectionTitleFor(platform odhcluster.Platform) string {
 
 // NewModule creates a Module with one-shot computed state.
 func NewModule(cfg *moduleconfig.Config) (*Module, error) {
-	// Default to the ODH overlay; platform-specific overlays are determined
-	// at deployment time via image parameters rather than runtime config.
 	overlay := overlayODH
+	switch cfg.PlatformType {
+	case moduleconfig.PlatformTypeSelfManagedRhoai, moduleconfig.PlatformTypeManagedRhoai:
+		overlay = overlayRhoai
+	}
 
 	return &Module{
 		cfg: cfg,
@@ -77,7 +77,7 @@ func NewModule(cfg *moduleconfig.Config) (*Module, error) {
 			ContextDir: componentName,
 			SourcePath: overlay,
 		},
-		consoleSectionTitle: consoleSectionTitleFor(odhcluster.Platform("")),
+		consoleSectionTitle: consoleSectionTitleFor(cfg.PlatformType),
 	}, nil
 }
 
@@ -92,17 +92,7 @@ func (m *Module) Init() error {
 		return fmt.Errorf("failed to update images on path %s: %w", baseParamsPath, err)
 	}
 
-	rel := m.cfg.Release()
-
-	v, err := releases.ParseVersion(rel.Version)
-	if err != nil {
-		return fmt.Errorf("parsing platform version %q: %w", rel.Version, err)
-	}
-
-	m.release = fwapi.Release{
-		Name:    fwapi.Platform(rel.Name),
-		Version: v,
-	}
+	m.release = m.cfg.PlatformRelease()
 
 	return nil
 }

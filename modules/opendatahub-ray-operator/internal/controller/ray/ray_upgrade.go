@@ -20,10 +20,11 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/blang/semver/v4"
 	fwtypes "github.com/opendatahub-io/odh-platform-utilities/framework/controller/types"
 
 	componentApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-ray-operator/api/components/v1alpha1"
-	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-ray-operator/pkg/releases"
+	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-ray-operator/pkg/config"
 )
 
 func (m *Module) upgradeIfNeeded(ctx context.Context, rr *fwtypes.ReconciliationRequest) error {
@@ -32,11 +33,15 @@ func (m *Module) upgradeIfNeeded(ctx context.Context, rr *fwtypes.Reconciliation
 		return fmt.Errorf("instance is not a Ray")
 	}
 
-	prev, _ := releases.Get(obj.GetReleaseStatus(), releases.Platform)
+	prev, _ := GetRelease(obj.GetReleaseStatus(), moduleconfig.ReleasePlatform)
 
-	prevVersion, err := releases.ParseVersion(prev.Version)
-	if err != nil {
-		return fmt.Errorf("parsing previous platform version: %w", err)
+	var prevVersion semver.Version
+	if prev.Version != "" {
+		var err error
+		prevVersion, err = semver.ParseTolerant(prev.Version)
+		if err != nil {
+			return fmt.Errorf("parsing previous platform version: %w", err)
+		}
 	}
 
 	if !rr.Release.Version.GT(prevVersion) {

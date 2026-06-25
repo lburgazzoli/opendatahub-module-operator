@@ -92,7 +92,7 @@ func (ft *foundationTests) testReleaseStatus(t *testing.T) {
 	cfg, err := loadOperatorConfig()
 	g.Expect(err).NotTo(HaveOccurred())
 
-	expectedRelease := cfg.Release()
+	expectedRelease := cfg.ComponentRelease()
 	expr := fmt.Sprintf(`.status.releases[] | select(.name == "%s") | .version == "%s"`,
 		expectedRelease.Name, expectedRelease.Version)
 	g.Eventually(t.Context(), k8sm.Get(ft.Client, module)).Should(jq.Match(expr))

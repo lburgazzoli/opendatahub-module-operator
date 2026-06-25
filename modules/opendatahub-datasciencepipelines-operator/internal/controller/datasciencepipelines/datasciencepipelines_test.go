@@ -21,6 +21,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"testing/fstest"
 
 	. "github.com/onsi/gomega"
 	common "github.com/opendatahub-io/odh-platform-utilities/api/common"
@@ -30,8 +31,17 @@ import (
 
 	componentApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-datasciencepipelines-operator/api/components/v1alpha1"
 	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-datasciencepipelines-operator/pkg/config"
-	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-datasciencepipelines-operator/pkg/releases"
 )
+
+func testConfig(t *testing.T) *moduleconfig.Config {
+	t.Helper()
+	cfg, err := moduleconfig.LoadFromFS(fstest.MapFS{
+		moduleconfig.KeyPlatformType:    {Data: []byte("OpenDataHub")},
+		moduleconfig.KeyPlatformVersion: {Data: []byte("1.0.0")},
+	})
+	NewWithT(t).Expect(err).NotTo(HaveOccurred())
+	return cfg
+}
 
 func writeTestParamsEnv(t *testing.T) string {
 	t.Helper()
@@ -49,11 +59,9 @@ func writeTestParamsEnv(t *testing.T) string {
 func newTestModule(t *testing.T) *Module {
 	t.Helper()
 
-	cfg := &moduleconfig.Config{
-		PlatformVersion:       "1.0.0",
-		ManifestsPath:         writeTestParamsEnv(t),
-		ApplicationsNamespace: "test-ns",
-	}
+	cfg := testConfig(t)
+	cfg.ManifestsPath = writeTestParamsEnv(t)
+	cfg.ApplicationsNamespace = "test-ns"
 
 	m, err := NewModule(cfg)
 	NewWithT(t).Expect(err).NotTo(HaveOccurred())
@@ -68,17 +76,14 @@ func newTestRR(
 ) *fwtypes.ReconciliationRequest {
 	t.Helper()
 
-	rel := (&moduleconfig.Config{PlatformVersion: "1.0.0"}).Release()
-
-	v, err := releases.ParseVersion(rel.Version)
-	NewWithT(t).Expect(err).NotTo(HaveOccurred())
+	rel := testConfig(t).PlatformRelease()
 
 	return &fwtypes.ReconciliationRequest{
 		Instance:          obj,
 		ManifestsBasePath: manifestsBasePath,
 		Release: fwapi.Release{
-			Name:    fwapi.Platform(rel.Name),
-			Version: v,
+			Name:    rel.Name,
+			Version: rel.Version,
 		},
 	}
 }
@@ -95,10 +100,8 @@ func TestNewModule(t *testing.T) {
 	g := NewWithT(t)
 
 	manifestsPath := writeTestParamsEnv(t)
-	cfg := &moduleconfig.Config{
-		PlatformVersion: "1.0.0",
-		ManifestsPath:   manifestsPath,
-	}
+	cfg := testConfig(t)
+	cfg.ManifestsPath = manifestsPath
 
 	m, err := NewModule(cfg)
 	g.Expect(err).NotTo(HaveOccurred())
@@ -139,7 +142,7 @@ func TestUpgradeIfNeededSameVersion(t *testing.T) {
 	obj := newTestDataSciencePipelines()
 
 	obj.Status.Releases = []common.ComponentRelease{
-		{Name: releases.Platform, Version: "1.0.0"},
+		{Name: moduleconfig.ReleasePlatform, Version: "1.0.0"},
 	}
 	rr := newTestRR(t, obj, m.cfg.ManifestsPath)
 
@@ -157,6 +160,6 @@ func TestReportStatus(t *testing.T) {
 	g.Expect(m.reportStatus(context.Background(), rr)).To(Succeed())
 
 	g.Expect(obj.Status.Releases).To(ContainElement(
-		common.ComponentRelease{Name: releases.Platform, Version: "1.0.0"},
+		common.ComponentRelease{Name: moduleconfig.ReleasePlatform, Version: "1.0.0"},
 	))
 }

@@ -16,8 +16,8 @@ import (
 	"github.com/lburgazzoli/gomega-matchers/pkg/matchers/k8s/condition"
 
 	componentsv1alpha1 "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-trainer-operator/api/components/v1alpha1"
+	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-trainer-operator/pkg/config"
 	modulemeta "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-trainer-operator/pkg/module"
-	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-trainer-operator/pkg/releases"
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-trainer-operator/test/support"
 	common "github.com/opendatahub-io/odh-platform-utilities/api/common"
 	"github.com/opendatahub-io/odh-platform-utilities/pkg/metadata/annotations"
@@ -245,7 +245,7 @@ func (ft *foundationTests) testReleaseStatus(t *testing.T) {
 
 	g.Eventually(t.Context(), k8sm.Get(ft.Client, trainer)).Should(And(
 		jq.Matchf(`.status.releases[] | select(.name == "%s") | .version == "%s"`,
-			releases.Platform, cfg.Release().Version),
+			moduleconfig.ReleasePlatform, cfg.Release().Version),
 	))
 }
 

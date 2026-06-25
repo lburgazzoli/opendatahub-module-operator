@@ -3,6 +3,7 @@
 package e2e
 
 import (
+	"fmt"
 	"testing"
 	"testing/fstest"
 
@@ -20,7 +21,6 @@ import (
 	componentsv1alpha1 "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-ray-operator/api/components/v1alpha1"
 	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-ray-operator/pkg/config"
 	modulemeta "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-ray-operator/pkg/module"
-	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-ray-operator/pkg/releases"
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-ray-operator/test/support"
 	common "github.com/opendatahub-io/odh-platform-utilities/api/common"
 	"github.com/opendatahub-io/odh-platform-utilities/pkg/metadata/annotations"
@@ -128,9 +128,9 @@ func (ft *foundationTests) testReleaseStatus(t *testing.T) {
 	})
 	g.Expect(err).NotTo(HaveOccurred())
 
-	g.Eventually(t.Context(), k8sm.Get(ft.Client, module)).Should(
-		jq.Matchf(`.status.releases[] | select(.name == "%s") | .version == "%s"`, releases.Platform, cfg.Release().Version),
-	)
+	expr := fmt.Sprintf(`.status.releases[] | select(.name == "%s") | .version == "%s"`,
+		moduleconfig.ReleasePlatform, cfg.ComponentRelease().Version)
+	g.Eventually(t.Context(), k8sm.Get(ft.Client, module)).Should(jq.Match(expr))
 }
 
 func (ft *foundationTests) testPlatformLabels(t *testing.T) {
@@ -156,7 +156,7 @@ func (ft *foundationTests) testPlatformLabels(t *testing.T) {
 		k8sm.HasLabel(labels.PlatformPartOf, componentsv1alpha1.RayComponentName),
 		k8sm.HasAnnotation(annotations.InstanceName, module.GetName()),
 		k8sm.HasAnnotation(annotations.InstanceUID, string(module.GetUID())),
-		k8sm.HasAnnotation(annotations.PlatformType, releases.Platform),
+		k8sm.HasAnnotation(annotations.PlatformType, moduleconfig.ReleasePlatform),
 		k8sm.HasAnnotation(annotations.PlatformVersion, operatorCfg.Data[moduleconfig.KeyPlatformVersion]),
 	))
 }

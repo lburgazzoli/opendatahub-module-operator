@@ -26,11 +26,13 @@ import (
 
 	componentApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-trainer-operator/api/components/v1alpha1"
 	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-trainer-operator/pkg/config"
-	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-trainer-operator/pkg/releases"
 )
 
 const (
 	componentName = componentApi.TrainerComponentName
+
+	// trainer only ships a rhoai overlay; no separate odh overlay exists.
+	overlayRhoai = "rhoai"
 )
 
 // Module holds process-lifetime state for the trainer controller.
@@ -48,7 +50,7 @@ func NewModule(cfg *moduleconfig.Config) (*Module, error) {
 		manifestInfo: odhtypes.ManifestInfo{
 			Path:       cfg.ManifestsPath,
 			ContextDir: componentName,
-			SourcePath: "rhoai",
+			SourcePath: overlayRhoai,
 		},
 	}, nil
 }
@@ -63,17 +65,7 @@ func (m *Module) Init() error {
 		return fmt.Errorf("failed to update images on path %s: %w", m.manifestInfo, err)
 	}
 
-	rel := m.cfg.Release()
-
-	v, err := releases.ParseVersion(rel.Version)
-	if err != nil {
-		return fmt.Errorf("parsing platform version %q: %w", rel.Version, err)
-	}
-
-	m.release = fwapi.Release{
-		Name:    fwapi.Platform(rel.Name),
-		Version: v,
-	}
+	m.release = m.cfg.PlatformRelease()
 
 	return nil
 }

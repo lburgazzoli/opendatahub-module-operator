@@ -3,9 +3,10 @@ data:
   {{- with .Values.imagePullSecret }}
   imagePullSecret: {{ . }}
   {{- end }}
+  platformType: {{ default "OpenDataHub" (index .Values.config "platformType") | quote }}
   platformVersion: {{ default "" (index .Values.config "platformVersion") | quote }}
   {{- range $key, $val := .Values.config }}
-  {{- if ne $key "platformVersion" }}
+  {{- if and (ne $key "platformType") (ne $key "platformVersion") }}
   {{ $key }}: {{ $val | quote }}
   {{- end }}
   {{- end }}

@@ -20,6 +20,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/blang/semver/v4"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -28,7 +29,7 @@ import (
 	fwtypes "github.com/opendatahub-io/odh-platform-utilities/framework/controller/types"
 
 	componentApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-workbenches-operator/api/components/v1alpha1"
-	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-workbenches-operator/pkg/releases"
+	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-workbenches-operator/pkg/config"
 )
 
 const upgradeEventReasonStarted = "UpgradeStarted"
@@ -43,11 +44,15 @@ func (m *Module) upgradeIfNeeded(ctx context.Context, rr *fwtypes.Reconciliation
 		return fmt.Errorf("instance is not a Workbenches")
 	}
 
-	prev, _ := releases.Get(obj.GetReleaseStatus(), releases.Platform)
+	prev, _ := GetRelease(obj.GetReleaseStatus(), moduleconfig.ReleasePlatform)
 
-	prevVersion, err := releases.ParseVersion(prev.Version)
-	if err != nil {
-		return fmt.Errorf("parsing previous platform version: %w", err)
+	var prevVersion semver.Version
+	if prev.Version != "" {
+		var err error
+		prevVersion, err = semver.ParseTolerant(prev.Version)
+		if err != nil {
+			return fmt.Errorf("parsing previous platform version: %w", err)
+		}
 	}
 
 	if !rr.Release.Version.GT(prevVersion) {

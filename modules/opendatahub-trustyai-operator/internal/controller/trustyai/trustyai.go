@@ -25,7 +25,6 @@ import (
 
 	componentApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-trustyai-operator/api/components/v1alpha1"
 	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-trustyai-operator/pkg/config"
-	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-trustyai-operator/pkg/releases"
 )
 
 const (
@@ -68,9 +67,11 @@ type Module struct {
 
 // NewModule creates a Module with one-shot computed state.
 func NewModule(cfg *moduleconfig.Config) (*Module, error) {
-	// Default to the ODH overlay; platform-specific overlays are determined
-	// at deployment time via image parameters rather than runtime config.
 	overlay := overlayODH
+	switch cfg.PlatformType {
+	case moduleconfig.PlatformTypeSelfManagedRhoai, moduleconfig.PlatformTypeManagedRhoai:
+		overlay = overlayRhoai
+	}
 
 	return &Module{
 		cfg: cfg,
@@ -97,17 +98,7 @@ func (m *Module) Init() error {
 		return fmt.Errorf("failed to update images on path %s: %w", m.manifestInfo, err)
 	}
 
-	rel := m.cfg.Release()
-
-	v, err := releases.ParseVersion(rel.Version)
-	if err != nil {
-		return fmt.Errorf("parsing platform version %q: %w", rel.Version, err)
-	}
-
-	m.release = fwapi.Release{
-		Name:    fwapi.Platform(rel.Name),
-		Version: v,
-	}
+	m.release = m.cfg.PlatformRelease()
 
 	return nil
 }

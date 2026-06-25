@@ -45,7 +45,6 @@ func loadOperatorConfig() (*moduleconfig.Config, error) {
 		return nil, fmt.Errorf("loading operator config: %w", err)
 	}
 
-	moduleCfg.PlatformVersion = support.PlatformVersion()
 	moduleCfg.ApplicationsNamespace = support.IntegrationTestNamespace()
 	moduleCfg.ManifestsPath = support.MustProjectFile("config", "manifests")
 	moduleCfg.Controller.Webhook.Enabled = false

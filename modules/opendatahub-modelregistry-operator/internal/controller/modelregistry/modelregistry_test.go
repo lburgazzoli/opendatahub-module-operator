@@ -19,6 +19,7 @@ package modelregistry
 import (
 	"context"
 	"testing"
+	"testing/fstest"
 
 	. "github.com/onsi/gomega"
 	appsv1 "k8s.io/api/apps/v1"
@@ -35,19 +36,26 @@ import (
 
 	componentApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-modelregistry-operator/api/components/v1alpha1"
 	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-modelregistry-operator/pkg/config"
-	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-modelregistry-operator/pkg/releases"
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-modelregistry-operator/pkg/resources/gvk"
 	fwdeploy "github.com/opendatahub-io/odh-platform-utilities/framework/controller/actions/deploy"
 )
 
+func testConfig(t *testing.T) *moduleconfig.Config {
+	t.Helper()
+	cfg, err := moduleconfig.LoadFromFS(fstest.MapFS{
+		moduleconfig.KeyPlatformType:    {Data: []byte("OpenDataHub")},
+		moduleconfig.KeyPlatformVersion: {Data: []byte("1.0.0")},
+	})
+	NewWithT(t).Expect(err).NotTo(HaveOccurred())
+	return cfg
+}
+
 func newTestModule(t *testing.T) *Module {
 	t.Helper()
 
-	cfg := &moduleconfig.Config{
-		PlatformVersion:       "1.0.0",
-		ManifestsPath:         "/manifests",
-		ApplicationsNamespace: "test-ns",
-	}
+	cfg := testConfig(t)
+	cfg.ManifestsPath = "/manifests"
+	cfg.ApplicationsNamespace = "test-ns"
 
 	m, err := NewModule(cfg)
 	NewWithT(t).Expect(err).NotTo(HaveOccurred())
@@ -56,13 +64,6 @@ func newTestModule(t *testing.T) *Module {
 }
 
 func newTestRR(obj *componentApi.ModelRegistry) *odhtypes.ReconciliationRequest {
-	rel := (&moduleconfig.Config{PlatformVersion: "1.0.0"}).Release()
-
-	v, err := releases.ParseVersion(rel.Version)
-	if err != nil {
-		panic(err)
-	}
-
 	scheme := runtime.NewScheme()
 	_ = clientgoscheme.AddToScheme(scheme)
 	_ = componentApi.AddToScheme(scheme)
@@ -73,10 +74,7 @@ func newTestRR(obj *componentApi.ModelRegistry) *odhtypes.ReconciliationRequest 
 		Client:            fake.NewClientBuilder().WithScheme(scheme).Build(),
 		Instance:          obj,
 		ManifestsBasePath: "/manifests",
-		Release: fwapi.Release{
-			Name:    fwapi.Platform(rel.Name),
-			Version: v,
-		},
+		Release:           fwapi.Release{},
 	}
 }
 
@@ -91,10 +89,8 @@ func newTestModelRegistry() *componentApi.ModelRegistry {
 func TestNewModule(t *testing.T) {
 	g := NewWithT(t)
 
-	cfg := &moduleconfig.Config{
-		PlatformVersion: "1.0.0",
-		ManifestsPath:   "/manifests",
-	}
+	cfg := testConfig(t)
+	cfg.ManifestsPath = "/manifests"
 
 	m, err := NewModule(cfg)
 	g.Expect(err).NotTo(HaveOccurred())
@@ -191,7 +187,7 @@ func TestUpgradeIfNeededSameVersion(t *testing.T) {
 	obj := newTestModelRegistry()
 
 	obj.Status.Releases = []common.ComponentRelease{
-		{Name: releases.Platform, Version: "1.0.0"},
+		{Name: moduleconfig.ReleasePlatform, Version: "1.0.0"},
 	}
 	rr := newTestRR(obj)
 
@@ -209,6 +205,6 @@ func TestReportStatus(t *testing.T) {
 	g.Expect(m.reportStatus(context.Background(), rr)).To(Succeed())
 
 	g.Expect(obj.Status.Releases).To(ContainElement(
-		common.ComponentRelease{Name: releases.Platform, Version: "1.0.0"},
+		common.ComponentRelease{Name: moduleconfig.ReleasePlatform, Version: "1.0.0"},
 	))
 }

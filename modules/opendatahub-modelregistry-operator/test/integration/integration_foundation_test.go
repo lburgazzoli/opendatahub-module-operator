@@ -15,7 +15,7 @@ import (
 	"github.com/lburgazzoli/gomega-matchers/pkg/matchers/k8s/condition"
 
 	componentsv1alpha1 "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-modelregistry-operator/api/components/v1alpha1"
-	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-modelregistry-operator/pkg/releases"
+	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-modelregistry-operator/pkg/config"
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-modelregistry-operator/test/support"
 	common "github.com/opendatahub-io/odh-platform-utilities/api/common"
 	"github.com/opendatahub-io/odh-platform-utilities/pkg/metadata/annotations"
@@ -100,7 +100,7 @@ func (ft *foundationTests) testReleaseStatus(t *testing.T) {
 	g.Expect(err).NotTo(HaveOccurred())
 
 	expr := fmt.Sprintf(`.status.releases[] | select(.name == "%s") | .version == "%s"`,
-		releases.Platform, cfg.Release().Version)
+		moduleconfig.ReleasePlatform, cfg.ComponentRelease().Version)
 	g.Eventually(t.Context(), k8sm.Get(ft.Client, module)).Should(jq.Match(expr))
 }
 
@@ -121,7 +121,7 @@ func (ft *foundationTests) testPlatformLabels(t *testing.T) {
 		k8sm.HasLabel(mdlabels.PlatformPartOf, componentsv1alpha1.ModelRegistryComponentName),
 		k8sm.HasAnnotation(annotations.InstanceName, module.GetName()),
 		k8sm.HasAnnotation(annotations.InstanceUID, string(module.GetUID())),
-		k8sm.HasAnnotation(annotations.PlatformVersion, cfg.Release().Version),
+		k8sm.HasAnnotation(annotations.PlatformVersion, cfg.ComponentRelease().Version),
 	))
 }
 
