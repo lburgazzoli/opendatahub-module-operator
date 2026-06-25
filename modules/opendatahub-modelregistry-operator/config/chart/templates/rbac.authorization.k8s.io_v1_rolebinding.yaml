@@ -3,12 +3,12 @@ kind: RoleBinding
 metadata:
   labels:
     app.kubernetes.io/name: opendatahub-modelregistry-operator
-  name: opendatahub-modelregistry-leader-election-rolebinding
+  name: odh-modelregistry-leader-election-rolebinding
   namespace: {{ .Release.Namespace }}
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: Role
-  name: opendatahub-modelregistry-leader-election-role
+  name: odh-modelregistry-leader-election-role
 subjects:
 - kind: ServiceAccount
   name: {{ default (include "chart.fullname" .) .Values.serviceAccount.name }}

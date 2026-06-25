@@ -29,23 +29,21 @@ import (
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
-	"github.com/blang/semver/v4"
-	ofVersion "github.com/operator-framework/api/pkg/lib/version"
+	common "github.com/opendatahub-io/odh-platform-utilities/api/common"
+	fwapi "github.com/opendatahub-io/odh-platform-utilities/framework/api"
+	odhtypes "github.com/opendatahub-io/odh-platform-utilities/framework/controller/types"
 
 	componentApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-modelregistry-operator/api/components/v1alpha1"
 	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-modelregistry-operator/pkg/config"
+	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-modelregistry-operator/pkg/releases"
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-modelregistry-operator/pkg/resources/gvk"
-	actionapi "github.com/opendatahub-io/odh-platform-utilities/framework/api"
 	fwdeploy "github.com/opendatahub-io/odh-platform-utilities/framework/controller/actions/deploy"
-	odhtypes "github.com/opendatahub-io/odh-platform-utilities/framework/controller/types"
-	"github.com/opendatahub-io/odh-platform-utilities/pkg/cluster"
 )
 
 func newTestModule(t *testing.T) *Module {
 	t.Helper()
 
 	cfg := &moduleconfig.Config{
-		PlatformName:          string(cluster.OpenDataHub),
 		PlatformVersion:       "1.0.0",
 		ManifestsPath:         "/manifests",
 		ApplicationsNamespace: "test-ns",
@@ -58,10 +56,12 @@ func newTestModule(t *testing.T) *Module {
 }
 
 func newTestRR(obj *componentApi.ModelRegistry) *odhtypes.ReconciliationRequest {
-	rel := (&moduleconfig.Config{
-		PlatformName:    string(cluster.OpenDataHub),
-		PlatformVersion: "1.0.0",
-	}).Release()
+	rel := (&moduleconfig.Config{PlatformVersion: "1.0.0"}).Release()
+
+	v, err := releases.ParseVersion(rel.Version)
+	if err != nil {
+		panic(err)
+	}
 
 	scheme := runtime.NewScheme()
 	_ = clientgoscheme.AddToScheme(scheme)
@@ -73,9 +73,9 @@ func newTestRR(obj *componentApi.ModelRegistry) *odhtypes.ReconciliationRequest 
 		Client:            fake.NewClientBuilder().WithScheme(scheme).Build(),
 		Instance:          obj,
 		ManifestsBasePath: "/manifests",
-		Release: actionapi.Release{
-			Name:    actionapi.Platform(rel.Name),
-			Version: rel.Version.Version,
+		Release: fwapi.Release{
+			Name:    fwapi.Platform(rel.Name),
+			Version: v,
 		},
 	}
 }
@@ -92,7 +92,6 @@ func TestNewModule(t *testing.T) {
 	g := NewWithT(t)
 
 	cfg := &moduleconfig.Config{
-		PlatformName:    string(cluster.OpenDataHub),
 		PlatformVersion: "1.0.0",
 		ManifestsPath:   "/manifests",
 	}
@@ -190,8 +189,10 @@ func TestUpgradeIfNeededSameVersion(t *testing.T) {
 
 	m := newTestModule(t)
 	obj := newTestModelRegistry()
-	obj.Status.Release.Version = ofVersion.OperatorVersion{Version: semver.MustParse("1.0.0")}
 
+	obj.Status.Releases = []common.ComponentRelease{
+		{Name: releases.Platform, Version: "1.0.0"},
+	}
 	rr := newTestRR(obj)
 
 	g.Expect(m.upgradeIfNeeded(context.Background(), rr)).To(Succeed())
@@ -207,6 +208,7 @@ func TestReportStatus(t *testing.T) {
 	g.Expect(m.initialize(context.Background(), rr)).To(Succeed())
 	g.Expect(m.reportStatus(context.Background(), rr)).To(Succeed())
 
-	g.Expect(obj.Status.Release.Version.String()).To(Equal("1.0.0"))
-	g.Expect(string(obj.Status.Release.Name)).To(Equal(string(cluster.OpenDataHub)))
+	g.Expect(obj.Status.Releases).To(ContainElement(
+		common.ComponentRelease{Name: releases.Platform, Version: "1.0.0"},
+	))
 }

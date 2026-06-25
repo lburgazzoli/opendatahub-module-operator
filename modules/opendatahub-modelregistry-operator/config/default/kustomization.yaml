@@ -1,6 +1,6 @@
-namespace: opendatahub-modelregistry-system
+namespace: odh-modelregistry-system
 
-namePrefix: opendatahub-modelregistry-
+namePrefix: odh-modelregistry-
 
 resources:
 - ../crd

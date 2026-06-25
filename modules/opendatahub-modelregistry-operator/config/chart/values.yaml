@@ -1,6 +1,5 @@
 config:
-  platform-type: OpenDataHub
-  platform-version: unknown
+  platformVersion: ""
 image:
   pullPolicy: Always
   repository: ttl.sh/opendatahub-modelregistry-operator

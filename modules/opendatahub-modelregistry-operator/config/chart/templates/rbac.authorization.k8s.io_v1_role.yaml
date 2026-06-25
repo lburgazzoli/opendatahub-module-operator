@@ -3,7 +3,7 @@ kind: Role
 metadata:
   labels:
     app.kubernetes.io/name: opendatahub-modelregistry-operator
-  name: opendatahub-modelregistry-leader-election-role
+  name: odh-modelregistry-leader-election-role
   namespace: {{ .Release.Namespace }}
 rules:
 - apiGroups:

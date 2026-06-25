@@ -131,7 +131,7 @@ func New(
 		odhmanager.WithManifestsBasePath(cfg.ManifestsPath),
 	)
 
-	if err := modelregistry.NewReconciler(ctx, mgr, cfg, cfg.Release()); err != nil {
+	if err := modelregistry.NewReconciler(ctx, mgr, cfg); err != nil {
 		return nil, fmt.Errorf("creating modelregistry reconciler: %w", err)
 	}
 

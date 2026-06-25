@@ -3,7 +3,7 @@ kind: Service
 metadata:
   labels:
     app.kubernetes.io/name: opendatahub-modelregistry-operator
-  name: opendatahub-modelregistry-metrics-service
+  name: odh-modelregistry-metrics-service
   namespace: {{ .Release.Namespace }}
 spec:
   ports:

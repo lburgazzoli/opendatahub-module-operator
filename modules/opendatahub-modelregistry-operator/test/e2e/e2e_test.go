@@ -65,7 +65,7 @@ func TestModelRegistry(t *testing.T) {
 
 	operatorDeploy := &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      "opendatahub-modelregistry-operator",
+			Name:      "odh-modelregistry-operator",
 			Namespace: support.OperatorNamespace(),
 		},
 	}

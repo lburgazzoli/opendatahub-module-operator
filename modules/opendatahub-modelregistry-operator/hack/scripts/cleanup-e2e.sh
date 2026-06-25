@@ -4,8 +4,8 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 
-NAMESPACE="${1:-opendatahub-modelregistry-system}"
-HELM_RELEASE="${2:-opendatahub-modelregistry-operator}"
+NAMESPACE="${1:-odh-modelregistry-system}"
+HELM_RELEASE="${2:-odh-modelregistry-operator}"
 CR_RESOURCE="modelregistries.components.platform.opendatahub.io"
 
 echo "Cleaning up e2e test resources..."
