@@ -128,7 +128,6 @@ func New(
 
 	mgr := odhmanager.New(
 		ctrlMgr,
-		odhmanager.WithManifestsBasePath(cfg.ManifestsPath),
 	)
 
 	if err := modelregistry.NewReconciler(ctx, mgr, cfg); err != nil {

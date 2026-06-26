@@ -52,7 +52,6 @@ func loadOperatorConfig() (*moduleconfig.Config, error) {
 	}
 
 	moduleCfg.ApplicationsNamespace = support.IntegrationTestNamespace()
-	moduleCfg.ManifestsPath = support.MustProjectFile("config", "manifests")
 
 	return moduleCfg, nil
 }

@@ -18,8 +18,10 @@ package modelregistry
 
 import (
 	"fmt"
+	iofs "io/fs"
 	"path"
 
+	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-modelregistry-operator/assets"
 	fwapi "github.com/opendatahub-io/odh-platform-utilities/framework/api"
 	odhtypes "github.com/opendatahub-io/odh-platform-utilities/framework/controller/types"
 	kfs "github.com/opendatahub-io/odh-platform-utilities/framework/render/kustomize/fs"
@@ -67,17 +69,18 @@ type Module struct {
 	release       fwapi.Release
 	manifestInfo  odhtypes.ManifestInfo
 	extraManifest odhtypes.ManifestInfo
+	manifestsFS   iofs.FS
 	renderFS      filesys.FileSystem
 }
 
 // NewModule creates a Module with one-shot computed state.
 func NewModule(cfg *moduleconfig.Config) (*Module, error) {
-	baseFS, err := kfs.NewBasePathFs(kfs.NewReadOnlyFs(kfs.NewFsOnDisk()), cfg.ManifestsPath)
+	baseRenderFS, err := kfs.NewFromIOFS(assets.Manifests, "")
 	if err != nil {
 		return nil, fmt.Errorf("creating base render filesystem: %w", err)
 	}
 
-	renderFS, err := kfs.NewUnionFs(baseFS)
+	renderFS, err := kfs.NewUnionFs(baseRenderFS)
 	if err != nil {
 		return nil, fmt.Errorf("creating render filesystem: %w", err)
 	}
@@ -85,16 +88,17 @@ func NewModule(cfg *moduleconfig.Config) (*Module, error) {
 	return &Module{
 		cfg: cfg,
 		manifestInfo: odhtypes.ManifestInfo{
-			Path:       ".",
+			Path:       "manifests",
 			ContextDir: componentName,
 			SourcePath: baseManifestsSourcePath,
 		},
 		extraManifest: odhtypes.ManifestInfo{
-			Path:       ".",
+			Path:       "manifests",
 			ContextDir: componentName,
 			SourcePath: path.Join(baseManifestsSourcePath, "extras"),
 		},
-		renderFS: renderFS,
+		manifestsFS: assets.Manifests,
+		renderFS:    renderFS,
 	}, nil
 }
 

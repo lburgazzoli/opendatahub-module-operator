@@ -123,7 +123,10 @@ func NewReconciler(
 		WithAction(m.initialize).
 		WithAction(m.upgradeIfNeeded).
 		WithAction(m.customizeManifests).
-		WithAction(fwreleases.NewAction()).
+		WithAction(fwreleases.NewAction(
+			fwreleases.WithFS(m.manifestsFS),
+			fwreleases.WithMetadataFilePath(metadataFilePath),
+		)).
 		WithAction(kustomize.NewAction(
 			kustomize.WithManifestsOptions(mk.WithEngineFS(m.renderFS)),
 			kustomize.WithNamespaceFn(moduleconfig.ApplicationsNamespaceGetter(cfg)),

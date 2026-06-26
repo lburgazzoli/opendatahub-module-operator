@@ -34,7 +34,6 @@ var structuredExtensions = map[string]bool{
 }
 
 func setDefaults(v *viper.Viper) {
-	v.SetDefault(KeyManifestsPath, "")
 	v.SetDefault(KeyApplicationsNS, DefaultApplicationsNS)
 	v.SetDefault(KeyPlatformType, DefaultPlatformType)
 	v.SetDefault(KeyPlatformVersion, DefaultPlatformVersion)

@@ -19,7 +19,7 @@ covcounters*
 
 
 # Downloaded manifests (fetched by get-manifests.sh)
-config/manifests/modelregistry/
+assets/manifests/modelregistry/
 
 # Kubeconfig (local dev)
 .kube/

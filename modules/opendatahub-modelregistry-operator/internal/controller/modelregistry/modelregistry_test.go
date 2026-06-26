@@ -54,7 +54,6 @@ func newTestModule(t *testing.T) *Module {
 	t.Helper()
 
 	cfg := testConfig(t)
-	cfg.ManifestsPath = "/manifests"
 	cfg.ApplicationsNamespace = "test-ns"
 
 	m, err := NewModule(cfg)
@@ -71,10 +70,9 @@ func newTestRR(obj *componentApi.ModelRegistry) *odhtypes.ReconciliationRequest 
 	_ = rbacv1.AddToScheme(scheme)
 
 	return &odhtypes.ReconciliationRequest{
-		Client:            fake.NewClientBuilder().WithScheme(scheme).Build(),
-		Instance:          obj,
-		ManifestsBasePath: "/manifests",
-		Release:           fwapi.Release{},
+		Client:   fake.NewClientBuilder().WithScheme(scheme).Build(),
+		Instance: obj,
+		Release:  fwapi.Release{},
 	}
 }
 
@@ -90,7 +88,6 @@ func TestNewModule(t *testing.T) {
 	g := NewWithT(t)
 
 	cfg := testConfig(t)
-	cfg.ManifestsPath = "/manifests"
 
 	m, err := NewModule(cfg)
 	g.Expect(err).NotTo(HaveOccurred())
@@ -108,7 +105,7 @@ func TestInitialize(t *testing.T) {
 
 	g.Expect(m.initialize(context.Background(), rr)).To(Succeed())
 	g.Expect(rr.Manifests).To(HaveLen(2))
-	g.Expect(rr.Manifests[0].Path).To(Equal("."))
+	g.Expect(rr.Manifests[0].Path).To(Equal("manifests"))
 	g.Expect(rr.Manifests[0].ContextDir).To(Equal(componentName))
 	g.Expect(rr.Manifests[0].SourcePath).To(Equal(baseManifestsSourcePath))
 }

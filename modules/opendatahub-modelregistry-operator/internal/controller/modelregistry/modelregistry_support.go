@@ -19,17 +19,22 @@ package modelregistry
 import (
 	"errors"
 	"fmt"
+	"path"
 	"sort"
 
 	rbacv1 "k8s.io/api/rbac/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 
-	common "github.com/opendatahub-io/odh-platform-utilities/api/common"
-
 	componentApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-modelregistry-operator/api/components/v1alpha1"
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-modelregistry-operator/pkg/resources/gvk"
+	common "github.com/opendatahub-io/odh-platform-utilities/api/common"
+	fwreleases "github.com/opendatahub-io/odh-platform-utilities/framework/controller/actions/status/releases"
 	odhtypes "github.com/opendatahub-io/odh-platform-utilities/framework/controller/types"
 )
+
+func metadataFilePath(_ *odhtypes.ReconciliationRequest) string {
+	return path.Join("manifests", componentName, fwreleases.ComponentMetadataFilename)
+}
 
 func upstreamControllerSubject(rr *odhtypes.ReconciliationRequest) (rbacv1.Subject, error) {
 	var fallback *rbacv1.Subject

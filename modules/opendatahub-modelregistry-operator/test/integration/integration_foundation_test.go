@@ -100,7 +100,7 @@ func (ft *foundationTests) testRuntimeParamsWithoutMutatingSource(t *testing.T) 
 	g := NewWithT(t)
 
 	paramsPath := support.MustProjectFile(
-		"config", "manifests", "modelregistry", "overlays", "odh", "params.env",
+		"assets", "manifests", "modelregistry", "overlays", "odh", "params.env",
 	)
 	paramsBefore, err := os.ReadFile(paramsPath)
 	g.Expect(err).NotTo(HaveOccurred())
