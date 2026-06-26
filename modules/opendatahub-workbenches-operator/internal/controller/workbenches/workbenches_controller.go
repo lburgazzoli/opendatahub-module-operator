@@ -41,6 +41,7 @@ import (
 	fwreleases "github.com/opendatahub-io/odh-platform-utilities/framework/controller/actions/status/releases"
 	"github.com/opendatahub-io/odh-platform-utilities/framework/controller/reconciler"
 	fwtypes "github.com/opendatahub-io/odh-platform-utilities/framework/controller/types"
+	mk "github.com/opendatahub-io/odh-platform-utilities/framework/render/kustomize"
 )
 
 const appLabelPrefix = "app.opendatahub.io"
@@ -155,6 +156,7 @@ func NewReconciler(
 		)).
 		WithAction(m.configureDependencies).
 		WithAction(kustomize.NewAction(
+			kustomize.WithManifestsOptions(mk.WithEngineFS(m.renderFS)),
 			kustomize.WithCache(false),
 			kustomize.WithNamespaceFn(moduleconfig.ApplicationsNamespaceGetter(cfg)),
 		)).

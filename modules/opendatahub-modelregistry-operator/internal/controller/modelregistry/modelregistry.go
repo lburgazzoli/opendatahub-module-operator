@@ -22,7 +22,9 @@ import (
 
 	fwapi "github.com/opendatahub-io/odh-platform-utilities/framework/api"
 	odhtypes "github.com/opendatahub-io/odh-platform-utilities/framework/controller/types"
-	fwparams "github.com/opendatahub-io/odh-platform-utilities/framework/utils/params"
+	kfs "github.com/opendatahub-io/odh-platform-utilities/framework/render/kustomize/fs"
+	kparams "github.com/opendatahub-io/odh-platform-utilities/framework/render/kustomize/params"
+	"sigs.k8s.io/kustomize/kyaml/filesys"
 
 	componentApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-modelregistry-operator/api/components/v1alpha1"
 	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-modelregistry-operator/pkg/config"
@@ -65,32 +67,44 @@ type Module struct {
 	release       fwapi.Release
 	manifestInfo  odhtypes.ManifestInfo
 	extraManifest odhtypes.ManifestInfo
+	renderFS      filesys.FileSystem
 }
 
 // NewModule creates a Module with one-shot computed state.
 func NewModule(cfg *moduleconfig.Config) (*Module, error) {
+	baseFS, err := kfs.NewBasePathFs(kfs.NewReadOnlyFs(kfs.NewFsOnDisk()), cfg.ManifestsPath)
+	if err != nil {
+		return nil, fmt.Errorf("creating base render filesystem: %w", err)
+	}
+
+	renderFS, err := kfs.NewUnionFs(baseFS)
+	if err != nil {
+		return nil, fmt.Errorf("creating render filesystem: %w", err)
+	}
+
 	return &Module{
 		cfg: cfg,
 		manifestInfo: odhtypes.ManifestInfo{
-			Path:       cfg.ManifestsPath,
+			Path:       ".",
 			ContextDir: componentName,
 			SourcePath: baseManifestsSourcePath,
 		},
 		extraManifest: odhtypes.ManifestInfo{
-			Path:       cfg.ManifestsPath,
+			Path:       ".",
 			ContextDir: componentName,
 			SourcePath: path.Join(baseManifestsSourcePath, "extras"),
 		},
+		renderFS: renderFS,
 	}, nil
 }
 
 // Init applies image and cert parameter substitutions once at process startup.
 func (m *Module) Init() error {
-	if err := fwparams.Apply(
-		m.manifestInfo.String(),
-		"params.env",
-		fwparams.Replacement(fwparams.FromEnv(imageParamMap)),
-		fwparams.Values(extraParamMap),
+	if err := kparams.Apply(
+		m.renderFS,
+		path.Join(m.manifestInfo.String(), "params.env"),
+		kparams.Replacement(kparams.FromEnv(imageParamMap)),
+		kparams.Values(extraParamMap),
 	); err != nil {
 		return fmt.Errorf("failed to update images on path %s: %w", m.manifestInfo, err)
 	}

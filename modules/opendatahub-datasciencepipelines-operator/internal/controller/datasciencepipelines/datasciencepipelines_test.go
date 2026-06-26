@@ -106,7 +106,7 @@ func TestNewModule(t *testing.T) {
 	m, err := NewModule(cfg)
 	g.Expect(err).NotTo(HaveOccurred())
 	g.Expect(m.cfg).To(Equal(cfg))
-	g.Expect(m.manifestInfo.Path).To(Equal(manifestsPath))
+	g.Expect(m.manifestInfo.Path).To(Equal("."))
 	g.Expect(m.manifestInfo.ContextDir).To(Equal(componentName))
 	g.Expect(m.manifestInfo.SourcePath).To(Equal(overlayODH))
 }
@@ -120,7 +120,7 @@ func TestInitialize(t *testing.T) {
 
 	g.Expect(m.initialize(context.Background(), rr)).To(Succeed())
 	g.Expect(rr.Manifests).To(HaveLen(1))
-	g.Expect(rr.Manifests[0].Path).To(Equal(m.cfg.ManifestsPath))
+	g.Expect(rr.Manifests[0].Path).To(Equal("."))
 	g.Expect(rr.Manifests[0].ContextDir).To(Equal(componentName))
 	g.Expect(rr.Manifests[0].SourcePath).To(Equal(overlayODH))
 }

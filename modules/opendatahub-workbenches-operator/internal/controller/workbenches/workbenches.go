@@ -18,13 +18,16 @@ package workbenches
 
 import (
 	"fmt"
+	"path"
 
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
+	"sigs.k8s.io/kustomize/kyaml/filesys"
 
 	fwapi "github.com/opendatahub-io/odh-platform-utilities/framework/api"
 	fwtypes "github.com/opendatahub-io/odh-platform-utilities/framework/controller/types"
-	fwparams "github.com/opendatahub-io/odh-platform-utilities/framework/utils/params"
+	kfs "github.com/opendatahub-io/odh-platform-utilities/framework/render/kustomize/fs"
+	kparams "github.com/opendatahub-io/odh-platform-utilities/framework/render/kustomize/params"
 	odhcluster "github.com/opendatahub-io/odh-platform-utilities/pkg/cluster"
 
 	componentApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-workbenches-operator/api/components/v1alpha1"
@@ -37,6 +40,7 @@ type Module struct {
 	release fwapi.Release
 	// manifestInfos is computed once at startup from the fixed platform and manifests path.
 	manifestInfos []fwtypes.ManifestInfo
+	renderFS      filesys.FileSystem
 
 	// apiReader is the uncached reader used by webhooks and upgrade migrations
 	// when they need fresh API state instead of informer-backed cache state.
@@ -50,6 +54,16 @@ type Module struct {
 // Platform overlay defaults to ODH; deployment-time image parameters govern
 // platform-specific behaviour rather than runtime config.
 func NewModule(cfg *moduleconfig.Config) (*Module, error) {
+	baseFS, err := kfs.NewBasePathFs(kfs.NewReadOnlyFs(kfs.NewFsOnDisk()), cfg.ManifestsPath)
+	if err != nil {
+		return nil, fmt.Errorf("creating base render filesystem: %w", err)
+	}
+
+	renderFS, err := kfs.NewUnionFs(baseFS)
+	if err != nil {
+		return nil, fmt.Errorf("creating render filesystem: %w", err)
+	}
+
 	// Default to the ODH overlay; platform-specific overlays are determined
 	// at deployment time via image parameters rather than runtime config.
 	platform := componentApi.Platform(odhcluster.OpenDataHub)
@@ -62,19 +76,20 @@ func NewModule(cfg *moduleconfig.Config) (*Module, error) {
 	return &Module{
 		cfg: cfg,
 		manifestInfos: []fwtypes.ManifestInfo{
-			notebookControllerManifestInfo(cfg.ManifestsPath, notebookControllerManifestSourcePath),
-			kfNotebookControllerManifestInfo(cfg.ManifestsPath, kfNotebookControllerManifestSourcePath),
-			notebookImagesManifestInfo(cfg.ManifestsPath, imgSourcePath),
+			notebookControllerManifestInfo(".", notebookControllerManifestSourcePath),
+			kfNotebookControllerManifestInfo(".", kfNotebookControllerManifestSourcePath),
+			notebookImagesManifestInfo(".", imgSourcePath),
 		},
+		renderFS: renderFS,
 	}, nil
 }
 
 // Init applies image parameter substitutions once at process startup.
 func (m *Module) Init() error {
-	if err := fwparams.Apply(
-		m.manifestInfos[0].String(),
-		"params.env",
-		fwparams.Replacement(fwparams.FromEnv(map[string]string{
+	if err := kparams.Apply(
+		m.renderFS,
+		path.Join(m.manifestInfos[0].String(), "params.env"),
+		kparams.Replacement(kparams.FromEnv(map[string]string{
 			"odh-notebook-controller-image": "RELATED_IMAGE_ODH_NOTEBOOK_CONTROLLER_IMAGE",
 			"kube-rbac-proxy":               "RELATED_IMAGE_ODH_KUBE_RBAC_PROXY_IMAGE",
 		})),
@@ -82,10 +97,10 @@ func (m *Module) Init() error {
 		return fmt.Errorf("updating notebook-controller image params: %w", err)
 	}
 
-	if err := fwparams.Apply(
-		m.manifestInfos[1].String(),
-		"params.env",
-		fwparams.Replacement(fwparams.FromEnv(map[string]string{
+	if err := kparams.Apply(
+		m.renderFS,
+		path.Join(m.manifestInfos[1].String(), "params.env"),
+		kparams.Replacement(kparams.FromEnv(map[string]string{
 			"odh-kf-notebook-controller-image": "RELATED_IMAGE_ODH_KF_NOTEBOOK_CONTROLLER_IMAGE",
 		})),
 	); err != nil {
@@ -94,11 +109,11 @@ func (m *Module) Init() error {
 
 	// Default to the ODH params path; overlay selection driven by image parameters.
 	platform := componentApi.Platform(odhcluster.OpenDataHub)
-	nbImgParamsPath := notebookImagesManifestInfo(m.cfg.ManifestsPath, notebookImagesParamsPath[platform])
-	if err := fwparams.Apply(
-		nbImgParamsPath.String(),
-		"params-latest.env",
-		fwparams.Replacement(fwparams.FromEnv(notebookImageParamMap)),
+	nbImgParamsPath := notebookImagesManifestInfo(".", notebookImagesParamsPath[platform])
+	if err := kparams.Apply(
+		m.renderFS,
+		path.Join(nbImgParamsPath.String(), "params-latest.env"),
+		kparams.Replacement(kparams.FromEnv(notebookImageParamMap)),
 	); err != nil {
 		return fmt.Errorf("updating notebook image params: %w", err)
 	}

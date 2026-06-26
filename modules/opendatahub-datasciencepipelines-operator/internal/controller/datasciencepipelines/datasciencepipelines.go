@@ -23,13 +23,15 @@ import (
 	"strconv"
 
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/kustomize/kyaml/filesys"
 
 	componentApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-datasciencepipelines-operator/api/components/v1alpha1"
 	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-datasciencepipelines-operator/pkg/config"
 	fwapi "github.com/opendatahub-io/odh-platform-utilities/framework/api"
 	fwerrors "github.com/opendatahub-io/odh-platform-utilities/framework/controller/actions/errors"
 	fwtypes "github.com/opendatahub-io/odh-platform-utilities/framework/controller/types"
-	fwparams "github.com/opendatahub-io/odh-platform-utilities/framework/utils/params"
+	kfs "github.com/opendatahub-io/odh-platform-utilities/framework/render/kustomize/fs"
+	kparams "github.com/opendatahub-io/odh-platform-utilities/framework/render/kustomize/params"
 	odhcluster "github.com/opendatahub-io/odh-platform-utilities/pkg/cluster"
 )
 
@@ -80,9 +82,20 @@ type Module struct {
 	cfg          *moduleconfig.Config
 	release      fwapi.Release
 	manifestInfo fwtypes.ManifestInfo
+	renderFS     filesys.FileSystem
 }
 
 func NewModule(cfg *moduleconfig.Config) (*Module, error) {
+	baseFS, err := kfs.NewBasePathFs(kfs.NewReadOnlyFs(kfs.NewFsOnDisk()), cfg.ManifestsPath)
+	if err != nil {
+		return nil, fmt.Errorf("creating base render filesystem: %w", err)
+	}
+
+	renderFS, err := kfs.NewUnionFs(baseFS)
+	if err != nil {
+		return nil, fmt.Errorf("creating render filesystem: %w", err)
+	}
+
 	overlay := overlayODH
 	switch cfg.PlatformType {
 	case moduleconfig.PlatformTypeSelfManagedRhoai, moduleconfig.PlatformTypeManagedRhoai:
@@ -92,10 +105,11 @@ func NewModule(cfg *moduleconfig.Config) (*Module, error) {
 	return &Module{
 		cfg: cfg,
 		manifestInfo: fwtypes.ManifestInfo{
-			Path:       cfg.ManifestsPath,
+			Path:       ".",
 			ContextDir: componentName,
 			SourcePath: overlay,
 		},
+		renderFS: renderFS,
 	}, nil
 }
 
@@ -105,15 +119,15 @@ func (m *Module) Init(ctx context.Context, reader client.Reader) error {
 		return fmt.Errorf("detecting cluster info: %w", err)
 	}
 
-	pp := path.Join(m.cfg.ManifestsPath, componentName, "base")
+	pp := path.Join(componentName, "base")
 
-	if err := fwparams.Apply(
-		pp,
-		"params.env",
-		fwparams.Replacement(
-			fwparams.FromEnv(imageParamMap),
+	if err := kparams.Apply(
+		m.renderFS,
+		path.Join(pp, "params.env"),
+		kparams.Replacement(
+			kparams.FromEnv(imageParamMap),
 		),
-		fwparams.Values(map[string]string{
+		kparams.Values(map[string]string{
 			platformVersionParamsKey: m.cfg.PlatformVersion.String(),
 			fipsEnabledParamsKey:     strconv.FormatBool(info.FipsEnabled),
 		}),

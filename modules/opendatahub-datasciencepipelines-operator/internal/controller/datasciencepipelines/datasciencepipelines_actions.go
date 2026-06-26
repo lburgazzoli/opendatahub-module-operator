@@ -28,7 +28,7 @@ import (
 	odherr "github.com/opendatahub-io/odh-platform-utilities/framework/controller/actions/errors"
 	"github.com/opendatahub-io/odh-platform-utilities/framework/controller/conditions"
 	fwtypes "github.com/opendatahub-io/odh-platform-utilities/framework/controller/types"
-	fwparams "github.com/opendatahub-io/odh-platform-utilities/framework/utils/params"
+	kparams "github.com/opendatahub-io/odh-platform-utilities/framework/render/kustomize/params"
 	operatorv1 "github.com/openshift/api/operator/v1"
 	k8serr "k8s.io/apimachinery/pkg/api/errors"
 )
@@ -119,12 +119,12 @@ func (m *Module) argoWorkflowsControllersOptions(_ context.Context, rr *fwtypes.
 		return fmt.Errorf("failed to marshal spec.argoWorkflowsControllers: %w", err)
 	}
 
-	pp := path.Join(rr.ManifestsBasePath, componentName, "base")
+	pp := path.Join(componentName, "base")
 
-	if err := fwparams.Apply(
-		pp,
-		"params.env",
-		fwparams.Values(map[string]string{
+	if err := kparams.Apply(
+		m.renderFS,
+		path.Join(pp, "params.env"),
+		kparams.Values(map[string]string{
 			argoWorkflowsControllersParamsKey: string(awfSpecJSON),
 		}),
 	); err != nil {

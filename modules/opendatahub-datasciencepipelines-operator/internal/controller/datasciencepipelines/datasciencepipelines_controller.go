@@ -32,6 +32,7 @@ import (
 	"github.com/opendatahub-io/odh-platform-utilities/framework/controller/predicates"
 	labelpred "github.com/opendatahub-io/odh-platform-utilities/framework/controller/predicates/label"
 	"github.com/opendatahub-io/odh-platform-utilities/framework/controller/reconciler"
+	mk "github.com/opendatahub-io/odh-platform-utilities/framework/render/kustomize"
 	promv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -124,6 +125,7 @@ func NewReconciler(
 		WithAction(m.argoWorkflowsControllersOptions).
 		WithAction(fwreleases.NewAction()).
 		WithAction(kustomize.NewAction(
+			kustomize.WithManifestsOptions(mk.WithEngineFS(m.renderFS)),
 			kustomize.WithNamespaceFn(moduleconfig.ApplicationsNamespaceGetter(cfg)),
 		)).
 		WithAction(deploy.NewAction(

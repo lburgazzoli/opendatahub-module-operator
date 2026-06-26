@@ -19,20 +19,21 @@ package ray
 import (
 	"context"
 	"fmt"
+	"path"
 
 	componentApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-ray-operator/api/components/v1alpha1"
 	fwtypes "github.com/opendatahub-io/odh-platform-utilities/framework/controller/types"
-	fwparams "github.com/opendatahub-io/odh-platform-utilities/framework/utils/params"
+	kparams "github.com/opendatahub-io/odh-platform-utilities/framework/render/kustomize/params"
 )
 
 // initialize appends manifests and applies image/namespace parameters.
 func (m *Module) initialize(_ context.Context, rr *fwtypes.ReconciliationRequest) error {
 	rr.Manifests = append(rr.Manifests, m.manifestInfo)
 
-	if err := fwparams.Apply(
-		m.manifestInfo.String(),
-		"params.env",
-		fwparams.Values(map[string]string{"namespace": m.cfg.ApplicationsNamespace}),
+	if err := kparams.Apply(
+		m.renderFS,
+		path.Join(m.manifestInfo.String(), "params.env"),
+		kparams.Values(map[string]string{"namespace": m.cfg.ApplicationsNamespace}),
 	); err != nil {
 		return fmt.Errorf("failed to update params.env: %w", err)
 	}

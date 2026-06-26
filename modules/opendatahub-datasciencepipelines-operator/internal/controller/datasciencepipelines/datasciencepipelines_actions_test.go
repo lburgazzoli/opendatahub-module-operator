@@ -19,6 +19,7 @@ package datasciencepipelines
 import (
 	"context"
 	"os"
+	"path"
 	"path/filepath"
 	"testing"
 
@@ -329,7 +330,11 @@ func TestArgoWorkflowsControllersOptions(t *testing.T) {
 				ManifestsBasePath: root,
 			}
 
-			m := &Module{}
+			cfg := testConfig(t)
+			cfg.ManifestsPath = root
+			m, buildErr := NewModule(cfg)
+			g.Expect(buildErr).NotTo(HaveOccurred())
+
 			err := m.argoWorkflowsControllersOptions(context.Background(), &rr)
 			if tt.expectedError {
 				g.Expect(err).To(HaveOccurred())
@@ -338,9 +343,13 @@ func TestArgoWorkflowsControllersOptions(t *testing.T) {
 
 			g.Expect(err).NotTo(HaveOccurred())
 
-			content, readErr := os.ReadFile(filepath.Join(root, componentName, "base", "params.env"))
+			content, readErr := m.renderFS.ReadFile(path.Join(componentName, "base", "params.env"))
 			g.Expect(readErr).NotTo(HaveOccurred())
 			g.Expect(string(content)).To(ContainSubstring(tt.expectedParamString))
+
+			baseContent, baseReadErr := os.ReadFile(filepath.Join(root, componentName, "base", "params.env"))
+			g.Expect(baseReadErr).NotTo(HaveOccurred())
+			g.Expect(string(baseContent)).To(BeEmpty())
 		})
 	}
 }

@@ -1,7 +1,9 @@
 package integration
 
 import (
+	"bytes"
 	"fmt"
+	"os"
 	"testing"
 
 	. "github.com/onsi/gomega"
@@ -18,6 +20,7 @@ import (
 	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-feast-operator/pkg/config"
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-feast-operator/test/support"
 	common "github.com/opendatahub-io/odh-platform-utilities/api/common"
+	kparams "github.com/opendatahub-io/odh-platform-utilities/framework/render/kustomize/params"
 	"github.com/opendatahub-io/odh-platform-utilities/pkg/metadata/annotations"
 	"github.com/opendatahub-io/odh-platform-utilities/pkg/metadata/labels"
 )
@@ -29,20 +32,27 @@ type foundationTests struct {
 func (ft *foundationTests) Execute(t *testing.T) {
 	t.Run("should have module CRD installed", ft.testModuleCRDInstalled)
 	t.Run("should become ready", ft.testBecomesReady)
+	t.Run("should keep source params env unchanged while injecting runtime values", ft.testRuntimeParamsWithoutMutatingSource)
 	t.Run("should report release version and platform", ft.testReleaseStatus)
 	t.Run("should set platform labels and annotations", ft.testPlatformLabels)
 	t.Run("should set owner references", ft.testOwnerReferences)
 }
 
 func (ft *foundationTests) ensureReadyModule(t *testing.T) *componentsv1alpha1.FeastOperator {
-	t.Helper()
-
-	g := NewWithT(t)
-	module := &componentsv1alpha1.FeastOperator{
+	return ft.ensureReadyModuleFor(t, &componentsv1alpha1.FeastOperator{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: componentsv1alpha1.FeastOperatorInstanceName,
 		},
-	}
+	})
+}
+
+func (ft *foundationTests) ensureReadyModuleFor(
+	t *testing.T,
+	module *componentsv1alpha1.FeastOperator,
+) *componentsv1alpha1.FeastOperator {
+	t.Helper()
+
+	g := NewWithT(t)
 	workloadDeploy := &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      support.ManagedDeploymentName,
@@ -84,6 +94,72 @@ func (ft *foundationTests) testModuleCRDInstalled(t *testing.T) {
 
 func (ft *foundationTests) testBecomesReady(t *testing.T) {
 	ft.ensureReadyModule(t)
+}
+
+func (ft *foundationTests) testRuntimeParamsWithoutMutatingSource(t *testing.T) {
+	g := NewWithT(t)
+
+	paramsPath := support.MustProjectFile(
+		"config", "manifests", "feastoperator", "overlays", "odh", "params.env",
+	)
+	paramsBefore, err := os.ReadFile(paramsPath)
+	g.Expect(err).NotTo(HaveOccurred())
+
+	module := &componentsv1alpha1.FeastOperator{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: componentsv1alpha1.FeastOperatorInstanceName,
+		},
+		Spec: componentsv1alpha1.FeastOperatorSpec{
+			OIDC: &componentsv1alpha1.GatewayOIDCSpec{
+				IssuerURL: "https://issuer.example.com",
+			},
+		},
+	}
+	ft.ensureReadyModuleFor(t, module)
+
+	paramsAfter, err := os.ReadFile(paramsPath)
+	g.Expect(err).NotTo(HaveOccurred())
+	g.Expect(bytes.Equal(paramsBefore, paramsAfter)).To(BeTrue())
+
+	paramsEntries, err := kparams.Unmarshal(paramsAfter)
+	g.Expect(err).NotTo(HaveOccurred())
+	g.Expect(paramsEntries).To(HaveKeyWithValue("OIDC_ISSUER_URL", ""))
+
+	workloadDeploy := &appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      support.ManagedDeploymentName,
+			Namespace: support.IntegrationTestNamespace(),
+		},
+	}
+
+	g.Eventually(t.Context(), k8sm.Get(ft.Client, workloadDeploy)).Should(
+		WithTransform(
+			func(deploy *appsv1.Deployment) map[string]string {
+				return deploymentContainerEnvMap(deploy, "manager")
+			},
+			HaveKeyWithValue("OIDC_ISSUER_URL", "https://issuer.example.com"),
+		),
+	)
+}
+
+func deploymentContainerEnvMap(
+	deploy *appsv1.Deployment,
+	containerName string,
+) map[string]string {
+	for _, container := range deploy.Spec.Template.Spec.Containers {
+		if container.Name != containerName {
+			continue
+		}
+
+		out := make(map[string]string, len(container.Env))
+		for _, envVar := range container.Env {
+			out[envVar.Name] = envVar.Value
+		}
+
+		return out
+	}
+
+	return nil
 }
 
 func (ft *foundationTests) testReleaseStatus(t *testing.T) {

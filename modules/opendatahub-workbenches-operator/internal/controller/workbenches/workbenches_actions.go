@@ -24,7 +24,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 
 	fwtypes "github.com/opendatahub-io/odh-platform-utilities/framework/controller/types"
-	fwparams "github.com/opendatahub-io/odh-platform-utilities/framework/utils/params"
+	kparams "github.com/opendatahub-io/odh-platform-utilities/framework/render/kustomize/params"
 	odhcluster "github.com/opendatahub-io/odh-platform-utilities/pkg/cluster"
 
 	localapi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-workbenches-operator/api/components/v1alpha1"
@@ -44,11 +44,11 @@ func (m *Module) customizeManifests(ctx context.Context, rr *fwtypes.Reconciliat
 		return fmt.Errorf("computing kustomize variables: %w", err)
 	}
 
-	paramsPath := path.Join(rr.ManifestsBasePath, notebookControllerContextDir, notebookControllerManifestSourcePath)
-	if err := fwparams.Apply(
-		paramsPath,
-		"params.env",
-		fwparams.Values(extraParamsMap),
+	paramsPath := path.Join(notebookControllerContextDir, notebookControllerManifestSourcePath)
+	if err := kparams.Apply(
+		m.renderFS,
+		path.Join(paramsPath, "params.env"),
+		kparams.Values(extraParamsMap),
 	); err != nil {
 		return fmt.Errorf("applying params.env from %s: %w", paramsPath, err)
 	}

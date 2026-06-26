@@ -18,10 +18,13 @@ package trustyai
 
 import (
 	"fmt"
+	"path"
 
 	fwapi "github.com/opendatahub-io/odh-platform-utilities/framework/api"
 	fwtypes "github.com/opendatahub-io/odh-platform-utilities/framework/controller/types"
-	fwparams "github.com/opendatahub-io/odh-platform-utilities/framework/utils/params"
+	kfs "github.com/opendatahub-io/odh-platform-utilities/framework/render/kustomize/fs"
+	kparams "github.com/opendatahub-io/odh-platform-utilities/framework/render/kustomize/params"
+	"sigs.k8s.io/kustomize/kyaml/filesys"
 
 	componentApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-trustyai-operator/api/components/v1alpha1"
 	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-trustyai-operator/pkg/config"
@@ -63,10 +66,21 @@ type Module struct {
 	manifestInfo fwtypes.ManifestInfo
 	// mcpManifestInfo is used when MCPGuardrailsMode is enabled.
 	mcpManifestInfo fwtypes.ManifestInfo
+	renderFS        filesys.FileSystem
 }
 
 // NewModule creates a Module with one-shot computed state.
 func NewModule(cfg *moduleconfig.Config) (*Module, error) {
+	baseFS, err := kfs.NewBasePathFs(kfs.NewReadOnlyFs(kfs.NewFsOnDisk()), cfg.ManifestsPath)
+	if err != nil {
+		return nil, fmt.Errorf("creating base render filesystem: %w", err)
+	}
+
+	renderFS, err := kfs.NewUnionFs(baseFS)
+	if err != nil {
+		return nil, fmt.Errorf("creating render filesystem: %w", err)
+	}
+
 	overlay := overlayODH
 	switch cfg.PlatformType {
 	case moduleconfig.PlatformTypeSelfManagedRhoai, moduleconfig.PlatformTypeManagedRhoai:
@@ -76,24 +90,25 @@ func NewModule(cfg *moduleconfig.Config) (*Module, error) {
 	return &Module{
 		cfg: cfg,
 		manifestInfo: fwtypes.ManifestInfo{
-			Path:       cfg.ManifestsPath,
+			Path:       ".",
 			ContextDir: componentName,
 			SourcePath: overlay,
 		},
 		mcpManifestInfo: fwtypes.ManifestInfo{
-			Path:       cfg.ManifestsPath,
+			Path:       ".",
 			ContextDir: componentName,
 			SourcePath: overlayMCP,
 		},
+		renderFS: renderFS,
 	}, nil
 }
 
 // Init applies image parameter substitutions once at process startup.
 func (m *Module) Init() error {
-	if err := fwparams.Apply(
-		m.manifestInfo.String(),
-		"params.env",
-		fwparams.Replacement(fwparams.FromEnv(imageParamMap)),
+	if err := kparams.Apply(
+		m.renderFS,
+		path.Join(m.manifestInfo.String(), "params.env"),
+		kparams.Replacement(kparams.FromEnv(imageParamMap)),
 	); err != nil {
 		return fmt.Errorf("failed to update images on path %s: %w", m.manifestInfo, err)
 	}

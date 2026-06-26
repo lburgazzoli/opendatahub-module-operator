@@ -20,6 +20,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"path"
 
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
@@ -29,7 +30,7 @@ import (
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-modelregistry-operator/pkg/resources/gvk"
 	fwdeploy "github.com/opendatahub-io/odh-platform-utilities/framework/controller/actions/deploy"
 	odhtypes "github.com/opendatahub-io/odh-platform-utilities/framework/controller/types"
-	fwparams "github.com/opendatahub-io/odh-platform-utilities/framework/utils/params"
+	kparams "github.com/opendatahub-io/odh-platform-utilities/framework/render/kustomize/params"
 )
 
 const (
@@ -60,10 +61,10 @@ func (m *Module) customizeManifests(_ context.Context, rr *odhtypes.Reconciliati
 
 	extraParams["REGISTRIES_NAMESPACE"] = mr.Spec.RegistriesNamespace
 
-	if err := fwparams.Apply(
-		rr.Manifests[0].String(),
-		"params.env",
-		fwparams.Values(extraParams),
+	if err := kparams.Apply(
+		m.renderFS,
+		path.Join(rr.Manifests[0].String(), "params.env"),
+		kparams.Values(extraParams),
 	); err != nil {
 		return fmt.Errorf("failed to update params on path %s: %w", rr.Manifests[0].String(), err)
 	}

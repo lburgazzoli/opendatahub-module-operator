@@ -21,6 +21,7 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"path"
 
 	appsv1 "k8s.io/api/apps/v1"
 	k8serr "k8s.io/apimachinery/pkg/api/errors"
@@ -29,7 +30,7 @@ import (
 
 	componentApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-feast-operator/api/components/v1alpha1"
 	odhtypes "github.com/opendatahub-io/odh-platform-utilities/framework/controller/types"
-	fwparams "github.com/opendatahub-io/odh-platform-utilities/framework/utils/params"
+	kparams "github.com/opendatahub-io/odh-platform-utilities/framework/render/kustomize/params"
 )
 
 const (
@@ -74,10 +75,10 @@ func (m *Module) customizeManifests(_ context.Context, rr *odhtypes.Reconciliati
 		ParamsEnvKeyOIDCIssuerURL: issuerURL,
 	}
 
-	if err := fwparams.Apply(
-		rr.Manifests[0].String(),
-		"params.env",
-		fwparams.Values(extraParams),
+	if err := kparams.Apply(
+		m.renderFS,
+		path.Join(rr.Manifests[0].String(), "params.env"),
+		kparams.Values(extraParams),
 	); err != nil {
 		return fmt.Errorf("failed to update params.env with kustomize parameters: %w", err)
 	}

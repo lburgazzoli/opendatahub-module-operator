@@ -30,7 +30,7 @@ import (
 	componentApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-mlflow-operator/api/components/v1alpha1"
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-mlflow-operator/pkg/resources/gvk"
 	fwtypes "github.com/opendatahub-io/odh-platform-utilities/framework/controller/types"
-	fwparams "github.com/opendatahub-io/odh-platform-utilities/framework/utils/params"
+	kparams "github.com/opendatahub-io/odh-platform-utilities/framework/render/kustomize/params"
 )
 
 // errGatewayDomainEmpty is returned when GatewayConfig exists but Status.Domain is not yet set.
@@ -98,12 +98,12 @@ func (m *Module) customizeManifests(ctx context.Context, rr *fwtypes.Reconciliat
 	}
 
 	// The monolith writes params to base/, not to the overlay path.
-	paramsPath := path.Join(m.cfg.ManifestsPath, componentName, paramsSubDir)
+	paramsPath := path.Join(componentName, paramsSubDir)
 
-	if err := fwparams.Apply(
-		paramsPath,
-		"params.env",
-		fwparams.Values(extraParams),
+	if err := kparams.Apply(
+		m.renderFS,
+		path.Join(paramsPath, "params.env"),
+		kparams.Values(extraParams),
 	); err != nil {
 		return fmt.Errorf("failed to update params.env from %s: %w", paramsPath, err)
 	}

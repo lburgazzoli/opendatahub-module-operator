@@ -22,7 +22,9 @@ import (
 
 	fwapi "github.com/opendatahub-io/odh-platform-utilities/framework/api"
 	fwtypes "github.com/opendatahub-io/odh-platform-utilities/framework/controller/types"
-	fwparams "github.com/opendatahub-io/odh-platform-utilities/framework/utils/params"
+	kfs "github.com/opendatahub-io/odh-platform-utilities/framework/render/kustomize/fs"
+	kparams "github.com/opendatahub-io/odh-platform-utilities/framework/render/kustomize/params"
+	"sigs.k8s.io/kustomize/kyaml/filesys"
 
 	componentApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-mlflow-operator/api/components/v1alpha1"
 	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-mlflow-operator/pkg/config"
@@ -51,6 +53,7 @@ type Module struct {
 	cfg          *moduleconfig.Config
 	release      fwapi.Release
 	manifestInfo fwtypes.ManifestInfo
+	renderFS     filesys.FileSystem
 	// consoleSectionTitle is the section-title kustomize variable, computed once from platform.
 	consoleSectionTitle string
 }
@@ -64,6 +67,16 @@ func consoleSectionTitleFor(platformType string) string {
 
 // NewModule creates a Module with one-shot computed state.
 func NewModule(cfg *moduleconfig.Config) (*Module, error) {
+	baseFS, err := kfs.NewBasePathFs(kfs.NewReadOnlyFs(kfs.NewFsOnDisk()), cfg.ManifestsPath)
+	if err != nil {
+		return nil, fmt.Errorf("creating base render filesystem: %w", err)
+	}
+
+	renderFS, err := kfs.NewUnionFs(baseFS)
+	if err != nil {
+		return nil, fmt.Errorf("creating render filesystem: %w", err)
+	}
+
 	overlay := overlayODH
 	switch cfg.PlatformType {
 	case moduleconfig.PlatformTypeSelfManagedRhoai, moduleconfig.PlatformTypeManagedRhoai:
@@ -73,21 +86,22 @@ func NewModule(cfg *moduleconfig.Config) (*Module, error) {
 	return &Module{
 		cfg: cfg,
 		manifestInfo: fwtypes.ManifestInfo{
-			Path:       cfg.ManifestsPath,
+			Path:       ".",
 			ContextDir: componentName,
 			SourcePath: overlay,
 		},
+		renderFS:            renderFS,
 		consoleSectionTitle: consoleSectionTitleFor(cfg.PlatformType),
 	}, nil
 }
 
 // Init applies image parameters to base/ from environment — called once at startup.
 func (m *Module) Init() error {
-	baseParamsPath := path.Join(m.cfg.ManifestsPath, componentName, paramsSubDir)
-	if err := fwparams.Apply(
-		baseParamsPath,
-		"params.env",
-		fwparams.Replacement(fwparams.FromEnv(imageParamMap)),
+	baseParamsPath := path.Join(componentName, paramsSubDir)
+	if err := kparams.Apply(
+		m.renderFS,
+		path.Join(baseParamsPath, "params.env"),
+		kparams.Replacement(kparams.FromEnv(imageParamMap)),
 	); err != nil {
 		return fmt.Errorf("failed to update images on path %s: %w", baseParamsPath, err)
 	}
