@@ -18,20 +18,26 @@ package mlflowoperator
 
 import (
 	"fmt"
+	iofs "io/fs"
 	"path"
+	"sort"
 
+	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-mlflow-operator/assets"
+	common "github.com/opendatahub-io/odh-platform-utilities/api/common"
 	fwapi "github.com/opendatahub-io/odh-platform-utilities/framework/api"
 	fwtypes "github.com/opendatahub-io/odh-platform-utilities/framework/controller/types"
-	kfs "github.com/opendatahub-io/odh-platform-utilities/framework/render/kustomize/fs"
 	kparams "github.com/opendatahub-io/odh-platform-utilities/framework/render/kustomize/params"
 	"sigs.k8s.io/kustomize/kyaml/filesys"
+	"sigs.k8s.io/yaml"
 
 	componentApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-mlflow-operator/api/components/v1alpha1"
 	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-mlflow-operator/pkg/config"
 )
 
 const (
-	componentName = componentApi.MLflowOperatorComponentName
+	componentName         = componentApi.MLflowOperatorComponentName
+	manifestsRoot         = "manifests"
+	componentMetadataFile = "component_metadata.yaml"
 
 	overlayODH   = "overlays/odh"
 	overlayRhoai = "overlays/rhoai"
@@ -50,10 +56,11 @@ var imageParamMap = map[string]string{
 
 // Module holds process-lifetime state for the mlflowoperator controller.
 type Module struct {
-	cfg          *moduleconfig.Config
-	release      fwapi.Release
-	manifestInfo fwtypes.ManifestInfo
-	renderFS     filesys.FileSystem
+	cfg             *moduleconfig.Config
+	platformRelease fwapi.Release
+	releases        []common.ComponentRelease
+	manifestInfo    fwtypes.ManifestInfo
+	kustomizeFS     filesys.FileSystem
 	// consoleSectionTitle is the section-title kustomize variable, computed once from platform.
 	consoleSectionTitle string
 }
@@ -67,14 +74,9 @@ func consoleSectionTitleFor(platformType string) string {
 
 // NewModule creates a Module with one-shot computed state.
 func NewModule(cfg *moduleconfig.Config) (*Module, error) {
-	baseFS, err := kfs.NewBasePathFs(kfs.NewReadOnlyFs(kfs.NewFsOnDisk()), cfg.ManifestsPath)
+	kustomizeFS, err := newKustomizeFS()
 	if err != nil {
-		return nil, fmt.Errorf("creating base render filesystem: %w", err)
-	}
-
-	renderFS, err := kfs.NewUnionFs(baseFS)
-	if err != nil {
-		return nil, fmt.Errorf("creating render filesystem: %w", err)
+		return nil, err
 	}
 
 	overlay := overlayODH
@@ -86,27 +88,55 @@ func NewModule(cfg *moduleconfig.Config) (*Module, error) {
 	return &Module{
 		cfg: cfg,
 		manifestInfo: fwtypes.ManifestInfo{
-			Path:       ".",
+			Path:       manifestsRoot,
 			ContextDir: componentName,
 			SourcePath: overlay,
 		},
-		renderFS:            renderFS,
+		kustomizeFS:         kustomizeFS,
 		consoleSectionTitle: consoleSectionTitleFor(cfg.PlatformType),
 	}, nil
 }
 
 // Init applies image parameters to base/ from environment — called once at startup.
 func (m *Module) Init() error {
-	baseParamsPath := path.Join(componentName, paramsSubDir)
+	baseParamsPath := path.Join(manifestsRoot, componentName, paramsSubDir)
 	if err := kparams.Apply(
-		m.renderFS,
+		m.kustomizeFS,
 		path.Join(baseParamsPath, "params.env"),
 		kparams.Replacement(kparams.FromEnv(imageParamMap)),
 	); err != nil {
 		return fmt.Errorf("failed to update images on path %s: %w", baseParamsPath, err)
 	}
 
-	m.release = m.cfg.PlatformRelease()
+	releases, err := m.loadReleases()
+	if err != nil {
+		return fmt.Errorf("failed to load releases: %w", err)
+	}
+
+	m.releases = releases
+	m.platformRelease = m.cfg.PlatformRelease()
 
 	return nil
+}
+
+func (m *Module) loadReleases() ([]common.ComponentRelease, error) {
+	metadataPath := path.Join(manifestsRoot, componentName, componentMetadataFile)
+	raw, err := iofs.ReadFile(assets.Manifests, metadataPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read component metadata from %s: %w", metadataPath, err)
+	}
+
+	var metadata struct {
+		Releases []common.ComponentRelease `json:"releases"`
+	}
+	if err := yaml.Unmarshal(raw, &metadata); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal component metadata from %s: %w", metadataPath, err)
+	}
+
+	releases := append(metadata.Releases, m.cfg.ComponentRelease())
+	sort.Slice(releases, func(i, j int) bool {
+		return releases[i].Name < releases[j].Name
+	})
+
+	return releases, nil
 }

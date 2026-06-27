@@ -9,15 +9,15 @@ deployment on OpenShift.
 **Scaffolding complete.** Teams owning this module must:
 
 - [ ] Fetch manifests: `make get-manifests` and verify the overlay structure
-  under `config/manifests/sparkoperator/overlays/{odh,rhoai}/`
+  under `assets/manifests/sparkoperator/overlays/{odh,rhoai}/`
 - [ ] Identify actual workload Deployment/Service names from the manifests
   and update `test/integration/integration_test.go` and
   `test/e2e/e2e_test.go` fixture names (`workloadDeploy`, `workloadService`)
 - [ ] Derive full RBAC from kustomize output and add missing markers:
   ```bash
-  kustomize build config/manifests/sparkoperator/overlays/odh 2>/dev/null | \
+  kustomize build assets/manifests/sparkoperator/overlays/odh 2>/dev/null | \
     yq e '.kind' - | sort -u
-  kustomize build config/manifests/sparkoperator/overlays/odh 2>/dev/null | \
+  kustomize build assets/manifests/sparkoperator/overlays/odh 2>/dev/null | \
     yq e 'select(.kind == "ClusterRole") | .rules[] | .apiGroups[] + "/" + .resources[] + " " + (.verbs | join(","))' - | sort -u
   ```
 - [ ] Run integration tests against an OpenShift cluster:

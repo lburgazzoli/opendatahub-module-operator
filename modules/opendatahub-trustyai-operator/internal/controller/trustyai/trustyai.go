@@ -18,16 +18,19 @@ package trustyai
 
 import (
 	"fmt"
+	iofs "io/fs"
 	"path"
-
-	fwapi "github.com/opendatahub-io/odh-platform-utilities/framework/api"
-	fwtypes "github.com/opendatahub-io/odh-platform-utilities/framework/controller/types"
-	kfs "github.com/opendatahub-io/odh-platform-utilities/framework/render/kustomize/fs"
-	kparams "github.com/opendatahub-io/odh-platform-utilities/framework/render/kustomize/params"
-	"sigs.k8s.io/kustomize/kyaml/filesys"
+	"sort"
 
 	componentApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-trustyai-operator/api/components/v1alpha1"
+	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-trustyai-operator/assets"
 	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-trustyai-operator/pkg/config"
+	common "github.com/opendatahub-io/odh-platform-utilities/api/common"
+	fwapi "github.com/opendatahub-io/odh-platform-utilities/framework/api"
+	fwtypes "github.com/opendatahub-io/odh-platform-utilities/framework/controller/types"
+	kparams "github.com/opendatahub-io/odh-platform-utilities/framework/render/kustomize/params"
+	"sigs.k8s.io/kustomize/kyaml/filesys"
+	"sigs.k8s.io/yaml"
 )
 
 const (
@@ -36,10 +39,9 @@ const (
 	// LegacyComponentName matches the monolith's LegacyComponentName.
 	LegacyComponentName = "trustyai"
 
-	// overlays — note leading slash matches the monolith's overlaysSourcePaths.
-	overlayODH   = "/overlays/odh"
-	overlayRhoai = "/overlays/rhoai"
-	overlayMCP   = "/overlays/mcp-guardrails"
+	overlayODH   = "overlays/odh"
+	overlayRhoai = "overlays/rhoai"
+	overlayMCP   = "overlays/mcp-guardrails"
 )
 
 // imageParamMap matches the monolith's imageParamMap (trustyai_support.go).
@@ -60,25 +62,21 @@ var imageParamMap = map[string]string{
 
 // Module holds process-lifetime state for the trustyai controller.
 type Module struct {
-	cfg     *moduleconfig.Config
-	release fwapi.Release
+	cfg             *moduleconfig.Config
+	platformRelease fwapi.Release
+	releases        []common.ComponentRelease
 	// manifestInfo is the standard platform overlay (odh/rhoai).
 	manifestInfo fwtypes.ManifestInfo
 	// mcpManifestInfo is used when MCPGuardrailsMode is enabled.
 	mcpManifestInfo fwtypes.ManifestInfo
-	renderFS        filesys.FileSystem
+	kustomizeFS     filesys.FileSystem
 }
 
 // NewModule creates a Module with one-shot computed state.
 func NewModule(cfg *moduleconfig.Config) (*Module, error) {
-	baseFS, err := kfs.NewBasePathFs(kfs.NewReadOnlyFs(kfs.NewFsOnDisk()), cfg.ManifestsPath)
+	kustomizeFS, err := newKustomizeFS()
 	if err != nil {
-		return nil, fmt.Errorf("creating base render filesystem: %w", err)
-	}
-
-	renderFS, err := kfs.NewUnionFs(baseFS)
-	if err != nil {
-		return nil, fmt.Errorf("creating render filesystem: %w", err)
+		return nil, err
 	}
 
 	overlay := overlayODH
@@ -90,30 +88,57 @@ func NewModule(cfg *moduleconfig.Config) (*Module, error) {
 	return &Module{
 		cfg: cfg,
 		manifestInfo: fwtypes.ManifestInfo{
-			Path:       ".",
+			Path:       "manifests",
 			ContextDir: componentName,
 			SourcePath: overlay,
 		},
 		mcpManifestInfo: fwtypes.ManifestInfo{
-			Path:       ".",
+			Path:       "manifests",
 			ContextDir: componentName,
 			SourcePath: overlayMCP,
 		},
-		renderFS: renderFS,
+		kustomizeFS: kustomizeFS,
 	}, nil
 }
 
 // Init applies image parameter substitutions once at process startup.
 func (m *Module) Init() error {
 	if err := kparams.Apply(
-		m.renderFS,
+		m.kustomizeFS,
 		path.Join(m.manifestInfo.String(), "params.env"),
 		kparams.Replacement(kparams.FromEnv(imageParamMap)),
 	); err != nil {
 		return fmt.Errorf("failed to update images on path %s: %w", m.manifestInfo, err)
 	}
 
-	m.release = m.cfg.PlatformRelease()
+	releases, err := m.loadReleases()
+	if err != nil {
+		return fmt.Errorf("failed to load releases: %w", err)
+	}
+
+	m.releases = releases
+	m.platformRelease = m.cfg.PlatformRelease()
 
 	return nil
+}
+
+func (m *Module) loadReleases() ([]common.ComponentRelease, error) {
+	rawMetadata, err := iofs.ReadFile(assets.Manifests, path.Join("manifests", componentName, "component_metadata.yaml"))
+	if err != nil {
+		return nil, fmt.Errorf("failed to read component metadata: %w", err)
+	}
+
+	var metadata struct {
+		Releases []common.ComponentRelease `json:"releases"`
+	}
+	if err := yaml.Unmarshal(rawMetadata, &metadata); err != nil {
+		return nil, fmt.Errorf("failed to parse component metadata: %w", err)
+	}
+
+	releases := append(metadata.Releases, m.cfg.ComponentRelease())
+	sort.Slice(releases, func(i, j int) bool {
+		return releases[i].Name < releases[j].Name
+	})
+
+	return releases, nil
 }

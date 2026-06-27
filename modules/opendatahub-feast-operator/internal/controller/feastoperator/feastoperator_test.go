@@ -44,11 +44,11 @@ func newTestModule(t *testing.T) *Module {
 	t.Helper()
 
 	cfg := testConfig(t)
-	cfg.ManifestsPath = "/manifests"
 	cfg.ApplicationsNamespace = "test-ns"
 
 	m, err := NewModule(cfg)
 	NewWithT(t).Expect(err).NotTo(HaveOccurred())
+	NewWithT(t).Expect(m.Init()).To(Succeed())
 
 	return m
 }
@@ -58,9 +58,8 @@ func newTestRR(t *testing.T, obj *componentApi.FeastOperator) *odhtypes.Reconcil
 
 	cfg := testConfig(t)
 	return &odhtypes.ReconciliationRequest{
-		Instance:          obj,
-		ManifestsBasePath: "/manifests",
-		Release:           cfg.PlatformRelease(),
+		Instance: obj,
+		Release:  cfg.PlatformRelease(),
 	}
 }
 
@@ -76,12 +75,12 @@ func TestNewModule(t *testing.T) {
 	g := NewWithT(t)
 
 	cfg := testConfig(t)
-	cfg.ManifestsPath = "/manifests"
 
 	m, err := NewModule(cfg)
 	g.Expect(err).NotTo(HaveOccurred())
 	g.Expect(m.cfg).To(Equal(cfg))
 	g.Expect(m.manifestInfo.ContextDir).To(Equal(componentName))
+	g.Expect(m.manifestInfo.Path).To(Equal("manifests"))
 	g.Expect(m.manifestInfo.SourcePath).To(Equal(overlayODH))
 }
 
@@ -94,7 +93,7 @@ func TestInitialize(t *testing.T) {
 
 	g.Expect(m.initialize(context.Background(), rr)).To(Succeed())
 	g.Expect(rr.Manifests).To(HaveLen(1))
-	g.Expect(rr.Manifests[0].Path).To(Equal("."))
+	g.Expect(rr.Manifests[0].Path).To(Equal("manifests"))
 	g.Expect(rr.Manifests[0].ContextDir).To(Equal(componentName))
 	g.Expect(rr.Manifests[0].SourcePath).To(Equal(overlayODH))
 }
@@ -127,15 +126,14 @@ func TestReportStatus(t *testing.T) {
 	g := NewWithT(t)
 
 	m := newTestModule(t)
+	g.Expect(m.Init()).To(Succeed())
 	obj := newTestFeastOperator()
 	rr := newTestRR(t, obj)
 
 	g.Expect(m.initialize(context.Background(), rr)).To(Succeed())
 	g.Expect(m.reportStatus(context.Background(), rr)).To(Succeed())
 
-	g.Expect(obj.Status.Releases).To(ContainElement(
-		common.ComponentRelease{Name: moduleconfig.ReleasePlatform, Version: "1.0.0"},
-	))
+	g.Expect(obj.Status.Releases).To(Equal(m.releases))
 }
 
 func TestCustomizeManifestsNoOIDC(t *testing.T) {

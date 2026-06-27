@@ -20,8 +20,10 @@ import (
 	"context"
 	"fmt"
 	"path"
+	"slices"
 
 	componentApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-ray-operator/api/components/v1alpha1"
+	common "github.com/opendatahub-io/odh-platform-utilities/api/common"
 	fwtypes "github.com/opendatahub-io/odh-platform-utilities/framework/controller/types"
 	kparams "github.com/opendatahub-io/odh-platform-utilities/framework/render/kustomize/params"
 )
@@ -31,7 +33,7 @@ func (m *Module) initialize(_ context.Context, rr *fwtypes.ReconciliationRequest
 	rr.Manifests = append(rr.Manifests, m.manifestInfo)
 
 	if err := kparams.Apply(
-		m.renderFS,
+		m.kustomizeFS,
 		path.Join(m.manifestInfo.String(), "params.env"),
 		kparams.Values(map[string]string{"namespace": m.cfg.ApplicationsNamespace}),
 	); err != nil {
@@ -41,14 +43,16 @@ func (m *Module) initialize(_ context.Context, rr *fwtypes.ReconciliationRequest
 	return nil
 }
 
-// reportStatus writes the platform version handshake entry into status.releases.
+// reportStatus refreshes status.releases from the cached static metadata.
 func (m *Module) reportStatus(ctx context.Context, rr *fwtypes.ReconciliationRequest) error {
 	obj, ok := rr.Instance.(*componentApi.Ray)
 	if !ok {
 		return fmt.Errorf("instance is not a Ray")
 	}
 
-	UpsertRelease(obj.GetReleaseStatus(), m.cfg.ComponentRelease())
+	obj.SetReleaseStatus(common.ComponentReleaseStatus{
+		Releases: slices.Clone(m.releases),
+	})
 
 	return nil
 }

@@ -35,7 +35,6 @@ import (
 	"github.com/opendatahub-io/odh-platform-utilities/framework/controller/actions/render/kustomize"
 	"github.com/opendatahub-io/odh-platform-utilities/framework/controller/actions/sanitycheck"
 	"github.com/opendatahub-io/odh-platform-utilities/framework/controller/actions/status/deployments"
-	fwreleases "github.com/opendatahub-io/odh-platform-utilities/framework/controller/actions/status/releases"
 	"github.com/opendatahub-io/odh-platform-utilities/framework/controller/handlers"
 	"github.com/opendatahub-io/odh-platform-utilities/framework/controller/predicates"
 	labelpred "github.com/opendatahub-io/odh-platform-utilities/framework/controller/predicates/label"
@@ -119,16 +118,15 @@ func NewReconciler(
 		).
 		WatchesGVK(gvk.CodeFlare, reconciler.Dynamic(reconciler.CrdExists(gvk.CodeFlare))).
 		WithReconcilerOpts(
-			reconciler.WithRelease(m.release),
+			reconciler.WithRelease(m.platformRelease),
 		).
 		WithAction(sanitycheck.NewAction(
 			sanitycheck.WithUnwantedResource(gvk.CodeFlare, module.CodeFlarePresentMessage),
 		)).
 		WithAction(m.initialize).
 		WithAction(m.upgradeIfNeeded).
-		WithAction(fwreleases.NewAction()).
 		WithAction(kustomize.NewAction(
-			kustomize.WithManifestsOptions(mk.WithEngineFS(m.renderFS)),
+			kustomize.WithManifestsOptions(mk.WithEngineFS(m.kustomizeFS)),
 			kustomize.WithNamespaceFn(moduleconfig.ApplicationsNamespaceGetter(cfg)),
 		)).
 		WithAction(deploy.NewAction(

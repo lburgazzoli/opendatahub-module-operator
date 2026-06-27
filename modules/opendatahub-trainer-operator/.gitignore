@@ -19,7 +19,7 @@ covcounters*
 
 
 # Downloaded manifests (fetched by get-manifests.sh)
-config/manifests/trainer/
+assets/manifests/trainer/
 
 # Kubeconfig (local dev)
 .kube/

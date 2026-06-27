@@ -137,7 +137,6 @@ func New(
 
 	mgr := odhmanager.New(
 		ctrlMgr,
-		odhmanager.WithManifestsBasePath(cfg.ManifestsPath),
 	)
 
 	if err := trainer.NewReconciler(ctx, mgr, cfg); err != nil {

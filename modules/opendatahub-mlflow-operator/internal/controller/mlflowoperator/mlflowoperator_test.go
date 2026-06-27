@@ -193,7 +193,6 @@ func newTestModule(t *testing.T) *Module {
 	t.Helper()
 
 	cfg := testConfig(t)
-	cfg.ManifestsPath = "/manifests"
 	cfg.ApplicationsNamespace = "test-ns"
 
 	m, err := NewModule(cfg)
@@ -207,9 +206,8 @@ func newTestRR(t *testing.T, obj *componentApi.MLflowOperator) *odhtypes.Reconci
 
 	cfg := testConfig(t)
 	return &odhtypes.ReconciliationRequest{
-		Instance:          obj,
-		ManifestsBasePath: "/manifests",
-		Release:           cfg.PlatformRelease(),
+		Instance: obj,
+		Release:  cfg.PlatformRelease(),
 	}
 }
 
@@ -225,12 +223,12 @@ func TestNewModule(t *testing.T) {
 	g := NewWithT(t)
 
 	cfg := testConfig(t)
-	cfg.ManifestsPath = "/manifests"
 
 	m, err := NewModule(cfg)
 	g.Expect(err).NotTo(HaveOccurred())
 	g.Expect(m.cfg).To(Equal(cfg))
 	g.Expect(m.manifestInfo.ContextDir).To(Equal(componentName))
+	g.Expect(m.manifestInfo.Path).To(Equal(manifestsRoot))
 	g.Expect(m.manifestInfo.SourcePath).To(Equal(overlayODH))
 }
 
@@ -243,9 +241,27 @@ func TestInitialize(t *testing.T) {
 
 	g.Expect(m.initialize(context.Background(), rr)).To(Succeed())
 	g.Expect(rr.Manifests).To(HaveLen(1))
-	g.Expect(rr.Manifests[0].Path).To(Equal("."))
+	g.Expect(rr.Manifests[0].Path).To(Equal(manifestsRoot))
 	g.Expect(rr.Manifests[0].ContextDir).To(Equal(componentName))
 	g.Expect(rr.Manifests[0].SourcePath).To(Equal(overlayODH))
+}
+
+func TestInitLoadsReleases(t *testing.T) {
+	g := NewWithT(t)
+
+	m := newTestModule(t)
+
+	g.Expect(m.Init()).To(Succeed())
+	g.Expect(m.releases).To(ContainElement(
+		common.ComponentRelease{
+			Name:    "MLflow",
+			Version: "v3.12.0",
+			RepoURL: "https://github.com/mlflow/mlflow",
+		},
+	))
+	g.Expect(m.releases).To(ContainElement(
+		common.ComponentRelease{Name: moduleconfig.ReleasePlatform, Version: "1.0.0"},
+	))
 }
 
 func TestUpgradeIfNeededNoVersion(t *testing.T) {
@@ -276,15 +292,28 @@ func TestReportStatus(t *testing.T) {
 	g := NewWithT(t)
 
 	m := newTestModule(t)
+	g.Expect(m.Init()).To(Succeed())
+
 	obj := newTestMLflowOperator()
+	obj.Status.Releases = []common.ComponentRelease{
+		{Name: "stale", Version: "0.0.1"},
+	}
 	rr := newTestRR(t, obj)
 
 	g.Expect(m.initialize(context.Background(), rr)).To(Succeed())
 	g.Expect(m.reportStatus(context.Background(), rr)).To(Succeed())
 
-	g.Expect(obj.Status.Releases).To(ContainElement(
-		common.ComponentRelease{Name: moduleconfig.ReleasePlatform, Version: "1.0.0"},
+	g.Expect(obj.Status.Releases).NotTo(ContainElement(
+		common.ComponentRelease{Name: "stale", Version: "0.0.1"},
 	))
+	g.Expect(obj.Status.Releases).To(ContainElement(
+		common.ComponentRelease{
+			Name:    "MLflow",
+			Version: "v3.12.0",
+			RepoURL: "https://github.com/mlflow/mlflow",
+		},
+	))
+	g.Expect(obj.Status.Releases).To(Equal(m.releases))
 }
 
 func TestCustomizeManifestsIgnoresMissingGatewayConfigAPI(t *testing.T) {

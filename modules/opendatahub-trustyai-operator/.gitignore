@@ -19,7 +19,7 @@ covcounters*
 
 
 # Downloaded manifests (fetched by get-manifests.sh)
-config/manifests/trustyai/
+assets/manifests/trustyai/
 
 # Kubeconfig (local dev)
 .kube/

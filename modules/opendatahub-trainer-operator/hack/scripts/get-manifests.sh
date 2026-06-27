@@ -7,7 +7,7 @@ PROJECT_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 COMPONENT_NAME="trainer"
 REPO_NAME="trainer"
 SOURCE_PATH="manifests"
-DST_MANIFESTS_DIR="${PROJECT_ROOT}/config/manifests/${COMPONENT_NAME}"
+DST_MANIFESTS_DIR="${PROJECT_ROOT}/assets/manifests/${COMPONENT_NAME}"
 
 # Always wipe the component dir before copy — see manifest-script.md in
 # .agents/skills/odh-component-to-module/references/

@@ -23,7 +23,6 @@ import (
 	"github.com/blang/semver/v4"
 
 	componentApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-trustyai-operator/api/components/v1alpha1"
-	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-trustyai-operator/pkg/config"
 	fwtypes "github.com/opendatahub-io/odh-platform-utilities/framework/controller/types"
 )
 
@@ -33,7 +32,7 @@ func (m *Module) upgradeIfNeeded(ctx context.Context, rr *fwtypes.Reconciliation
 		return fmt.Errorf("instance is not a TrustyAI")
 	}
 
-	prev, _ := GetRelease(obj.GetReleaseStatus(), moduleconfig.ReleasePlatform)
+	prev, _ := lookupPlatformRelease(obj.GetReleaseStatus())
 
 	var prevVersion semver.Version
 	if prev.Version != "" {

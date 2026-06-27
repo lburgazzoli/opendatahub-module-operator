@@ -19,7 +19,7 @@ covcounters*
 
 
 # Downloaded manifests (fetched by get-manifests.sh)
-config/manifests/mlflowoperator/
+assets/manifests/mlflowoperator/
 
 # Kubeconfig (local dev)
 .kube/

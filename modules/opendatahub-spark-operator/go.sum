@@ -85,8 +85,6 @@ github.com/go-openapi/testify/v2 v2.0.2 h1:X999g3jeLcoY8qctY/c/Z8iBHTbwLz7R2WXd6
 github.com/go-openapi/testify/v2 v2.0.2/go.mod h1:HCPmvFFnheKK2BuwSA0TbbdxJ3I16pjwMkYkP4Ywn54=
 github.com/go-task/slim-sprig/v3 v3.0.0 h1:sUs3vkvUymDpBKi3qH1YSqBQk9+9D/8M2mN1vB6EwHI=
 github.com/go-task/slim-sprig/v3 v3.0.0/go.mod h1:W848ghGpv3Qj3dhTPRyJypKRiqCdHZiAzKg9hl15HA8=
-github.com/go-viper/mapstructure/v2 v2.4.0 h1:EBsztssimR/CONLSZZ04E8qAkxNYq4Qp9LvH92wZUgs=
-github.com/go-viper/mapstructure/v2 v2.4.0/go.mod h1:oJDH3BJKyqBA2TXFhDsKDGDTlndYOZ6rGS0BRZIxGhM=
 github.com/go-viper/mapstructure/v2 v2.5.0 h1:vM5IJoUAy3d7zRSVtIwQgBj7BiWtMPfmPEgAXnvj1Ro=
 github.com/go-viper/mapstructure/v2 v2.5.0/go.mod h1:oJDH3BJKyqBA2TXFhDsKDGDTlndYOZ6rGS0BRZIxGhM=
 github.com/gobwas/glob v0.2.3 h1:A4xDbljILXROh+kObIiy5kIaPYD8e96x1tgBhUI5J+Y=
@@ -135,10 +133,10 @@ github.com/kylelemons/godebug v1.1.0 h1:RPNrshWIDI6G2gRW9EHilWtl7Z6Sb1BR0xunSBf0
 github.com/kylelemons/godebug v1.1.0/go.mod h1:9/0rRGxNHcop5bhtWyNeEfOS8JIWk580+fNqagV/RAw=
 github.com/lburgazzoli/gomega-matchers v0.4.1-0.20260615083735-1af7a46bf167 h1:7IH3/oJe6SzIYBqmvZA+L/YUUXF6lOxcIYOu7OmTKXc=
 github.com/lburgazzoli/gomega-matchers v0.4.1-0.20260615083735-1af7a46bf167/go.mod h1:bim0fMQz8Iha6GKl9T7E75BI6xvoV9VSU6niK3fHeb4=
-github.com/lburgazzoli/opendatahub-platform-utilities v0.0.0-20260614174411-e66fc336d3cf h1:AyXdVIZ4n1Z6Re9CTuPk0GJFUz9IQ1AxgE/CBz5IhVo=
-github.com/lburgazzoli/opendatahub-platform-utilities v0.0.0-20260614174411-e66fc336d3cf/go.mod h1:U76jpNAMv6JO5HFRYTMcGfYObc3NF1IngxsIsgWAMj4=
-github.com/lburgazzoli/opendatahub-platform-utilities/framework v0.0.0-20260614174411-e66fc336d3cf h1:ili7DNMxK/8EsqUq/gz339zj1upR4wn1H30FgCAKLAM=
-github.com/lburgazzoli/opendatahub-platform-utilities/framework v0.0.0-20260614174411-e66fc336d3cf/go.mod h1:MNUis2MPBpgk5C9pShR/ElerEgNW4NruNuFkfXNXjVs=
+github.com/lburgazzoli/opendatahub-platform-utilities v0.0.0-20260626151446-2d3c0dd077d0 h1:xukxTzndtsZS4D4JOSkm9WnesuDoX2ZPyhikXY+RsAg=
+github.com/lburgazzoli/opendatahub-platform-utilities v0.0.0-20260626151446-2d3c0dd077d0/go.mod h1:U76jpNAMv6JO5HFRYTMcGfYObc3NF1IngxsIsgWAMj4=
+github.com/lburgazzoli/opendatahub-platform-utilities/framework v0.0.0-20260626151446-2d3c0dd077d0 h1:+VK5ZRlH6qhQdS41PpzREaLRtEJz6nwtZIeJsKBegLk=
+github.com/lburgazzoli/opendatahub-platform-utilities/framework v0.0.0-20260626151446-2d3c0dd077d0/go.mod h1:4lU9RdkBo0WxH/K81YXsSS5yxuTiXuTqGdUr78SqUYs=
 github.com/mitchellh/copystructure v1.2.0 h1:vpKXTN4ewci03Vljg/q9QvCGUDttBOGBIa15WveJJGw=
 github.com/mitchellh/copystructure v1.2.0/go.mod h1:qLl+cE2AmVv+CoeAwDPye/v+N2HKCj9FbZEVFJRxO9s=
 github.com/mitchellh/reflectwalk v1.0.2 h1:G2LzWKi524PWgd3mLHV8Y5k7s6XUvT0Gef6zxSIeXaQ=
@@ -161,8 +159,6 @@ github.com/opencontainers/go-digest v1.0.0 h1:apOUWs51W5PlhuyGyz9FCeeBIOUDA/6nW8
 github.com/opencontainers/go-digest v1.0.0/go.mod h1:0JzlMkj0TRzQZfJkVvzbP0HBR3IKzErnv2BNG4W4MAM=
 github.com/opencontainers/image-spec v1.1.1 h1:y0fUlFfIZhPF1W537XOLg0/fcx6zcHCJwooC2xJA040=
 github.com/opencontainers/image-spec v1.1.1/go.mod h1:qpqAh3Dmcf36wStyyWU+kCeDgrGnAve2nCC8+7h8Q0M=
-github.com/operator-framework/api v0.42.0 h1:rkc5V3zW8RxZMjePAe12jdL7Co/hwsYo1pLnkkhuR7s=
-github.com/operator-framework/api v0.42.0/go.mod h1:bMEj+wl/8tGqcGNtxt38cLUYagu9chNsbYzb/5HQaUQ=
 github.com/pb33f/ordered-map/v2 v2.3.1 h1:5319HDO0aw4DA4gzi+zv4FXU9UlSs3xGZ40wcP1nBjY=
 github.com/pb33f/ordered-map/v2 v2.3.1/go.mod h1:qxFQgd0PkVUtOMCkTapqotNgzRhMPL7VvaHKbd1HnmQ=
 github.com/pelletier/go-toml/v2 v2.2.4 h1:mye9XuhQ6gvn5h28+VilKrrPoQVanw5PMw/TB0t5Ec4=

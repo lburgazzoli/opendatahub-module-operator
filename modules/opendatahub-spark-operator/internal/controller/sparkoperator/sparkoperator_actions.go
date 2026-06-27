@@ -19,8 +19,10 @@ package sparkoperator
 import (
 	"context"
 	"fmt"
+	"slices"
 
 	componentApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-spark-operator/api/components/v1alpha1"
+	common "github.com/opendatahub-io/odh-platform-utilities/api/common"
 	odhtypes "github.com/opendatahub-io/odh-platform-utilities/framework/controller/types"
 )
 
@@ -30,14 +32,16 @@ func (m *Module) initialize(_ context.Context, rr *odhtypes.ReconciliationReques
 	return nil
 }
 
-// reportStatus writes the platform version handshake entry into status.releases.
+// reportStatus refreshes status.releases from the cached static metadata.
 func (m *Module) reportStatus(_ context.Context, rr *odhtypes.ReconciliationRequest) error {
 	obj, ok := rr.Instance.(*componentApi.SparkOperator)
 	if !ok {
 		return fmt.Errorf("instance is not a SparkOperator")
 	}
 
-	UpsertRelease(obj.GetReleaseStatus(), m.cfg.ComponentRelease())
+	obj.SetReleaseStatus(common.ComponentReleaseStatus{
+		Releases: slices.Clone(m.releases),
+	})
 
 	return nil
 }

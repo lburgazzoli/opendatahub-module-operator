@@ -2,15 +2,24 @@ package trainer
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	iofs "io/fs"
+	"path"
 	"sort"
+	"strings"
 
+	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-trainer-operator/assets"
 	common "github.com/opendatahub-io/odh-platform-utilities/api/common"
+	kfs "github.com/opendatahub-io/odh-platform-utilities/framework/render/kustomize/fs"
+	"gopkg.in/yaml.v3"
 	k8serr "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/kustomize/kyaml/filesys"
 
+	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-trainer-operator/pkg/config"
 	module "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-trainer-operator/pkg/module"
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-trainer-operator/pkg/resources/gvk"
 	fwcluster "github.com/opendatahub-io/odh-platform-utilities/framework/cluster"
@@ -49,6 +58,60 @@ var (
 type preconditionResult struct {
 	Pass    bool
 	Message string
+}
+
+const componentMetadataFilename = "component_metadata.yaml"
+
+func newKustomizeFS() (filesys.FileSystem, error) {
+	baseKustomizeFS, err := kfs.NewFromIOFS(assets.Manifests, "")
+	if err != nil {
+		return nil, fmt.Errorf("creating base render filesystem: %w", err)
+	}
+
+	kustomizeFS, err := kfs.NewUnionFs(baseKustomizeFS)
+	if err != nil {
+		return nil, fmt.Errorf("creating render filesystem: %w", err)
+	}
+
+	return kustomizeFS, nil
+}
+
+func (m *Module) loadReleases() ([]common.ComponentRelease, error) {
+	metadataPath := path.Join("manifests", componentName, componentMetadataFilename)
+
+	yamlData, err := iofs.ReadFile(assets.Manifests, metadataPath)
+	if err != nil {
+		if errors.Is(err, iofs.ErrNotExist) {
+			return []common.ComponentRelease{m.cfg.ComponentRelease()}, nil
+		}
+		return nil, fmt.Errorf("reading metadata file: %w", err)
+	}
+
+	componentReleaseStatus := common.ComponentReleaseStatus{}
+	if err := yaml.Unmarshal(yamlData, &componentReleaseStatus); err != nil {
+		return nil, fmt.Errorf("unmarshaling metadata file: %w", err)
+	}
+
+	releases := make([]common.ComponentRelease, 0, len(componentReleaseStatus.Releases))
+	for _, release := range componentReleaseStatus.Releases {
+		version := strings.TrimSpace(release.Version)
+		if version == "" {
+			continue
+		}
+
+		releases = append(releases, common.ComponentRelease{
+			Name:    release.Name,
+			Version: version,
+			RepoURL: release.RepoURL,
+		})
+	}
+
+	releases = append(releases, m.cfg.ComponentRelease())
+	sort.Slice(releases, func(i, j int) bool {
+		return releases[i].Name < releases[j].Name
+	})
+
+	return releases, nil
 }
 
 func (m *Module) singletonReader(rr *types.ReconciliationRequest) client.Reader {
@@ -141,22 +204,9 @@ func (m *Module) checkJobSetCRD(ctx context.Context, rr *types.ReconciliationReq
 	return preconditionResult{Pass: true}, nil
 }
 
-func UpsertRelease(status *common.ComponentReleaseStatus, release common.ComponentRelease) {
-	for i := range status.Releases {
-		if status.Releases[i].Name == release.Name {
-			status.Releases[i] = release
-			return
-		}
-	}
-	status.Releases = append(status.Releases, release)
-	sort.Slice(status.Releases, func(i, j int) bool {
-		return status.Releases[i].Name < status.Releases[j].Name
-	})
-}
-
-func GetRelease(status *common.ComponentReleaseStatus, name string) (common.ComponentRelease, bool) {
+func lookupPlatformRelease(status *common.ComponentReleaseStatus) (common.ComponentRelease, bool) {
 	for _, r := range status.Releases {
-		if r.Name == name {
+		if r.Name == moduleconfig.ReleasePlatform {
 			return r, true
 		}
 	}

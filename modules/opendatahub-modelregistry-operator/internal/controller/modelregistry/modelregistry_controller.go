@@ -33,7 +33,6 @@ import (
 	"github.com/opendatahub-io/odh-platform-utilities/framework/controller/actions/gc"
 	"github.com/opendatahub-io/odh-platform-utilities/framework/controller/actions/render/kustomize"
 	"github.com/opendatahub-io/odh-platform-utilities/framework/controller/actions/status/deployments"
-	fwreleases "github.com/opendatahub-io/odh-platform-utilities/framework/controller/actions/status/releases"
 	"github.com/opendatahub-io/odh-platform-utilities/framework/controller/handlers"
 	"github.com/opendatahub-io/odh-platform-utilities/framework/controller/predicates"
 	labelpred "github.com/opendatahub-io/odh-platform-utilities/framework/controller/predicates/label"
@@ -118,17 +117,13 @@ func NewReconciler(
 				labelpred.ForLabel(appLabelPrefix+"/"+LegacyComponentName, "true")),
 		).
 		WithReconcilerOpts(
-			reconciler.WithRelease(m.release),
+			reconciler.WithRelease(m.platformRelease),
 		).
 		WithAction(m.initialize).
 		WithAction(m.upgradeIfNeeded).
 		WithAction(m.customizeManifests).
-		WithAction(fwreleases.NewAction(
-			fwreleases.WithFS(m.manifestsFS),
-			fwreleases.WithMetadataFilePath(metadataFilePath),
-		)).
 		WithAction(kustomize.NewAction(
-			kustomize.WithManifestsOptions(mk.WithEngineFS(m.renderFS)),
+			kustomize.WithManifestsOptions(mk.WithEngineFS(m.kustomizeFS)),
 			kustomize.WithNamespaceFn(moduleconfig.ApplicationsNamespaceGetter(cfg)),
 		)).
 		WithAction(m.configureDependencies).
@@ -142,7 +137,6 @@ func NewReconciler(
 			deployments.InNamespaceFn(moduleconfig.ApplicationsNamespaceGetter(cfg)),
 		)).
 		WithAction(m.reportStatus).
-		WithAction(m.updateStatus).
 		WithAction(gc.NewAction(moduleconfig.ApplicationsNamespaceGetter(cfg))).
 		WithConditions(
 			deployments.DefaultConditionType,

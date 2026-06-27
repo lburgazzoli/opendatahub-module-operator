@@ -20,9 +20,9 @@ import (
 	"fmt"
 	"path"
 
+	common "github.com/opendatahub-io/odh-platform-utilities/api/common"
 	fwapi "github.com/opendatahub-io/odh-platform-utilities/framework/api"
 	fwtypes "github.com/opendatahub-io/odh-platform-utilities/framework/controller/types"
-	kfs "github.com/opendatahub-io/odh-platform-utilities/framework/render/kustomize/fs"
 	kparams "github.com/opendatahub-io/odh-platform-utilities/framework/render/kustomize/params"
 	"sigs.k8s.io/kustomize/kyaml/filesys"
 
@@ -47,32 +47,28 @@ var imageParamMap = map[string]string{
 
 // Module holds process-lifetime state for the ray controller.
 type Module struct {
-	cfg          *moduleconfig.Config
-	release      fwapi.Release
-	manifestInfo fwtypes.ManifestInfo
-	renderFS     filesys.FileSystem
+	cfg             *moduleconfig.Config
+	platformRelease fwapi.Release
+	releases        []common.ComponentRelease
+	manifestInfo    fwtypes.ManifestInfo
+	kustomizeFS     filesys.FileSystem
 }
 
 // NewModule creates a Module with one-shot computed state.
 func NewModule(cfg *moduleconfig.Config) (*Module, error) {
-	baseFS, err := kfs.NewBasePathFs(kfs.NewReadOnlyFs(kfs.NewFsOnDisk()), cfg.ManifestsPath)
+	kustomizeFS, err := newKustomizeFS()
 	if err != nil {
-		return nil, fmt.Errorf("creating base render filesystem: %w", err)
-	}
-
-	renderFS, err := kfs.NewUnionFs(baseFS)
-	if err != nil {
-		return nil, fmt.Errorf("creating render filesystem: %w", err)
+		return nil, err
 	}
 
 	return &Module{
 		cfg: cfg,
 		manifestInfo: fwtypes.ManifestInfo{
-			Path:       ".",
+			Path:       "manifests",
 			ContextDir: componentName,
 			SourcePath: overlayOpenShift,
 		},
-		renderFS: renderFS,
+		kustomizeFS: kustomizeFS,
 	}, nil
 }
 
@@ -80,14 +76,20 @@ func NewModule(cfg *moduleconfig.Config) (*Module, error) {
 // release version — called once at startup.
 func (m *Module) Init() error {
 	if err := kparams.Apply(
-		m.renderFS,
+		m.kustomizeFS,
 		path.Join(m.manifestInfo.String(), "params.env"),
 		kparams.Replacement(kparams.FromEnv(imageParamMap)),
 	); err != nil {
 		return fmt.Errorf("failed to update images on path %s: %w", m.manifestInfo, err)
 	}
 
-	m.release = m.cfg.PlatformRelease()
+	releases, err := m.loadReleases()
+	if err != nil {
+		return fmt.Errorf("failed to load releases: %w", err)
+	}
+
+	m.platformRelease = m.cfg.PlatformRelease()
+	m.releases = releases
 
 	return nil
 }

@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"net/url"
 	"path"
+	"slices"
 
 	appsv1 "k8s.io/api/apps/v1"
 	k8serr "k8s.io/apimachinery/pkg/api/errors"
@@ -29,6 +30,7 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
 	componentApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-feast-operator/api/components/v1alpha1"
+	common "github.com/opendatahub-io/odh-platform-utilities/api/common"
 	odhtypes "github.com/opendatahub-io/odh-platform-utilities/framework/controller/types"
 	kparams "github.com/opendatahub-io/odh-platform-utilities/framework/render/kustomize/params"
 )
@@ -76,7 +78,7 @@ func (m *Module) customizeManifests(_ context.Context, rr *odhtypes.Reconciliati
 	}
 
 	if err := kparams.Apply(
-		m.renderFS,
+		m.kustomizeFS,
 		path.Join(rr.Manifests[0].String(), "params.env"),
 		kparams.Values(extraParams),
 	); err != nil {
@@ -135,14 +137,16 @@ func (m *Module) migrateDeploymentSelector(ctx context.Context, rr *odhtypes.Rec
 	return nil
 }
 
-// reportStatus writes the platform version handshake entry into status.releases.
+// reportStatus refreshes status.releases from the cached static metadata.
 func (m *Module) reportStatus(_ context.Context, rr *odhtypes.ReconciliationRequest) error {
 	obj, ok := rr.Instance.(*componentApi.FeastOperator)
 	if !ok {
 		return fmt.Errorf("instance is not a FeastOperator")
 	}
 
-	UpsertRelease(obj.GetReleaseStatus(), m.cfg.ComponentRelease())
+	obj.SetReleaseStatus(common.ComponentReleaseStatus{
+		Releases: slices.Clone(m.releases),
+	})
 
 	return nil
 }

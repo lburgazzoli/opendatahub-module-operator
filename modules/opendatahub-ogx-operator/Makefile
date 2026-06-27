@@ -143,11 +143,11 @@ build-bin: ## Build manager binary only (for Containerfile; run container-prep o
 		go build -ldflags "$(LDFLAGS)" -o "$(BIN_DIR)/$(BIN_NAME)" cmd/main.go
 
 .PHONY: container-prep
-container-prep: manifests generate get-manifests ## On host: regenerate code and fetch manifests before container-build.
+container-prep: manifests generate get-manifests ## On host: regenerate code and refresh embedded assets before container-build.
 
 .PHONY: run
 run: manifests generate fmt vet ## Run a controller from your host.
-	ODH_MODULE_OPERATOR_MANIFESTS_PATH=config/manifests go run -ldflags "$(LDFLAGS)" ./cmd/main.go operator
+	go run -ldflags "$(LDFLAGS)" ./cmd/main.go operator
 
 .PHONY: container-build
 container-build: container-prep ## Build container image with the manager.

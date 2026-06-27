@@ -19,6 +19,7 @@ package trustyai
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strconv"
 
 	corev1 "k8s.io/api/core/v1"
@@ -113,14 +114,15 @@ func (m *Module) createConfigMap(_ context.Context, rr *fwtypes.ReconciliationRe
 	return rr.AddResources(configMap)
 }
 
-// reportStatus writes the platform version handshake entry into status.releases.
+// reportStatus refreshes status.releases from the cached static metadata.
 func (m *Module) reportStatus(_ context.Context, rr *fwtypes.ReconciliationRequest) error {
 	obj, ok := rr.Instance.(*componentApi.TrustyAI)
 	if !ok {
 		return fmt.Errorf("instance is not a TrustyAI")
 	}
 
-	UpsertRelease(obj.GetReleaseStatus(), m.cfg.ComponentRelease())
+	status := obj.GetReleaseStatus()
+	status.Releases = slices.Clone(m.releases)
 
 	return nil
 }

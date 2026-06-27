@@ -18,9 +18,9 @@ package modelregistry
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"path"
+	"slices"
 
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
@@ -62,7 +62,7 @@ func (m *Module) customizeManifests(_ context.Context, rr *odhtypes.Reconciliati
 	extraParams["REGISTRIES_NAMESPACE"] = mr.Spec.RegistriesNamespace
 
 	if err := kparams.Apply(
-		m.renderFS,
+		m.kustomizeFS,
 		path.Join(rr.Manifests[0].String(), "params.env"),
 		kparams.Values(extraParams),
 	); err != nil {
@@ -131,26 +131,15 @@ func (m *Module) configureDependencies(_ context.Context, rr *odhtypes.Reconcili
 	return nil
 }
 
-// updateStatus copies the registries namespace from spec to status.
-func (m *Module) updateStatus(_ context.Context, rr *odhtypes.ReconciliationRequest) error {
-	mr, ok := rr.Instance.(*componentApi.ModelRegistry)
-	if !ok {
-		return errors.New("instance is not of type *ModelRegistry")
-	}
-
-	mr.Status.RegistriesNamespace = mr.Spec.RegistriesNamespace
-
-	return nil
-}
-
-// reportStatus writes the platform version handshake entry into status.releases.
+// reportStatus refreshes status fields from the cached metadata and spec.
 func (m *Module) reportStatus(_ context.Context, rr *odhtypes.ReconciliationRequest) error {
 	obj, ok := rr.Instance.(*componentApi.ModelRegistry)
 	if !ok {
 		return fmt.Errorf("instance is not a ModelRegistry")
 	}
 
-	UpsertRelease(obj.GetReleaseStatus(), m.cfg.ComponentRelease())
+	obj.Status.RegistriesNamespace = obj.Spec.RegistriesNamespace
+	obj.Status.Releases = slices.Clone(m.releases)
 
 	return nil
 }

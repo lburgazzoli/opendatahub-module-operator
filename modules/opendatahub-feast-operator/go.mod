@@ -9,8 +9,8 @@ require (
 	github.com/invopop/jsonschema v0.14.0
 	github.com/lburgazzoli/gomega-matchers v0.4.1-0.20260615083735-1af7a46bf167
 	github.com/onsi/gomega v1.41.0
-	github.com/opendatahub-io/odh-platform-utilities v0.0.0-20260626122357-8a4dad979a5f
-	github.com/opendatahub-io/odh-platform-utilities/framework v0.0.0-20260626122357-8a4dad979a5f
+	github.com/opendatahub-io/odh-platform-utilities v0.0.0-20260626151446-2d3c0dd077d0
+	github.com/opendatahub-io/odh-platform-utilities/framework v0.0.0-20260626151446-2d3c0dd077d0
 	github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring v0.68.0
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/viper v1.21.0
@@ -126,9 +126,9 @@ require (
 	sigs.k8s.io/structured-merge-diff/v6 v6.4.0 // indirect
 )
 
-replace github.com/opendatahub-io/odh-platform-utilities => github.com/lburgazzoli/opendatahub-platform-utilities v0.0.0-20260626122357-8a4dad979a5f
+replace github.com/opendatahub-io/odh-platform-utilities => github.com/lburgazzoli/opendatahub-platform-utilities v0.0.0-20260626151446-2d3c0dd077d0
 
-replace github.com/opendatahub-io/odh-platform-utilities/framework => github.com/lburgazzoli/opendatahub-platform-utilities/framework v0.0.0-20260626122357-8a4dad979a5f
+replace github.com/opendatahub-io/odh-platform-utilities/framework => github.com/lburgazzoli/opendatahub-platform-utilities/framework v0.0.0-20260626151446-2d3c0dd077d0
 
 replace github.com/opendatahub-io/opendatahub-operator/v2 => github.com/lburgazzoli/opendatahub-operator/v2 v2.0.0-20260522211029-67d95fa3b5a1
 

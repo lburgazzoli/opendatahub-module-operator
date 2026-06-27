@@ -55,7 +55,6 @@ func (v *PlatformVersion) UnmarshalText(text []byte) error {
 }
 
 const (
-	KeyManifestsPath   = "manifests-path"
 	KeyApplicationsNS  = "applications-namespace"
 	KeyPlatformType    = "platformType"
 	KeyPlatformVersion = "platformVersion"
@@ -112,7 +111,6 @@ const (
 // Controller-runtime fields use dot-separated ConfigMap keys under
 // the "controller." prefix (e.g. "controller.leader-election.enabled").
 type Config struct {
-	ManifestsPath         string           `mapstructure:"manifests-path"`
 	ApplicationsNamespace string           `mapstructure:"applications-namespace"`
 	PlatformType          string           `mapstructure:"platformType"`
 	PlatformVersion       PlatformVersion  `mapstructure:"platformVersion"`

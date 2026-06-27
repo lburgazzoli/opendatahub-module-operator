@@ -19,21 +19,58 @@ package modelregistry
 import (
 	"errors"
 	"fmt"
-	"path"
+	iofs "io/fs"
 	"sort"
 
 	rbacv1 "k8s.io/api/rbac/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"sigs.k8s.io/kustomize/kyaml/filesys"
 
 	componentApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-modelregistry-operator/api/components/v1alpha1"
+	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-modelregistry-operator/assets"
+	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-modelregistry-operator/pkg/config"
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-modelregistry-operator/pkg/resources/gvk"
 	common "github.com/opendatahub-io/odh-platform-utilities/api/common"
-	fwreleases "github.com/opendatahub-io/odh-platform-utilities/framework/controller/actions/status/releases"
 	odhtypes "github.com/opendatahub-io/odh-platform-utilities/framework/controller/types"
+	kfs "github.com/opendatahub-io/odh-platform-utilities/framework/render/kustomize/fs"
+	"sigs.k8s.io/yaml"
 )
 
-func metadataFilePath(_ *odhtypes.ReconciliationRequest) string {
-	return path.Join("manifests", componentName, fwreleases.ComponentMetadataFilename)
+func newKustomizeFS() (filesys.FileSystem, error) {
+	baseKustomizeFS, err := kfs.NewFromIOFS(assets.Manifests, "")
+	if err != nil {
+		return nil, fmt.Errorf("creating base render filesystem: %w", err)
+	}
+
+	kustomizeFS, err := kfs.NewUnionFs(baseKustomizeFS)
+	if err != nil {
+		return nil, fmt.Errorf("creating render filesystem: %w", err)
+	}
+
+	return kustomizeFS, nil
+}
+
+func (m *Module) loadReleases() ([]common.ComponentRelease, error) {
+	raw, err := iofs.ReadFile(assets.Manifests, componentMetadataPath)
+	if err != nil {
+		return nil, fmt.Errorf("read component metadata: %w", err)
+	}
+
+	var metadata struct {
+		Releases []common.ComponentRelease `json:"releases"`
+	}
+
+	if err := yaml.Unmarshal(raw, &metadata); err != nil {
+		return nil, fmt.Errorf("unmarshal component metadata: %w", err)
+	}
+
+	releases := append(metadata.Releases, m.cfg.ComponentRelease())
+
+	sort.Slice(releases, func(i, j int) bool {
+		return releases[i].Name < releases[j].Name
+	})
+
+	return releases, nil
 }
 
 func upstreamControllerSubject(rr *odhtypes.ReconciliationRequest) (rbacv1.Subject, error) {
@@ -105,22 +142,9 @@ func (m *Module) computeKustomizeVariables(mr *componentApi.ModelRegistry) (map[
 	}, nil
 }
 
-func UpsertRelease(status *common.ComponentReleaseStatus, release common.ComponentRelease) {
-	for i := range status.Releases {
-		if status.Releases[i].Name == release.Name {
-			status.Releases[i] = release
-			return
-		}
-	}
-	status.Releases = append(status.Releases, release)
-	sort.Slice(status.Releases, func(i, j int) bool {
-		return status.Releases[i].Name < status.Releases[j].Name
-	})
-}
-
-func GetRelease(status *common.ComponentReleaseStatus, name string) (common.ComponentRelease, bool) {
+func lookupPlatformRelease(status *common.ComponentReleaseStatus) (common.ComponentRelease, bool) {
 	for _, r := range status.Releases {
-		if r.Name == name {
+		if r.Name == moduleconfig.ReleasePlatform {
 			return r, true
 		}
 	}

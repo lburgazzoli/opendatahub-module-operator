@@ -24,7 +24,6 @@ import (
 	odhtypes "github.com/opendatahub-io/odh-platform-utilities/framework/controller/types"
 
 	componentApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-feast-operator/api/components/v1alpha1"
-	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-feast-operator/pkg/config"
 )
 
 func (m *Module) upgradeIfNeeded(ctx context.Context, rr *odhtypes.ReconciliationRequest) error {
@@ -33,7 +32,7 @@ func (m *Module) upgradeIfNeeded(ctx context.Context, rr *odhtypes.Reconciliatio
 		return fmt.Errorf("instance is not a FeastOperator")
 	}
 
-	prev, _ := GetRelease(obj.GetReleaseStatus(), moduleconfig.ReleasePlatform)
+	prev, _ := lookupPlatformRelease(obj.GetReleaseStatus())
 
 	var prevVersion semver.Version
 	if prev.Version != "" {

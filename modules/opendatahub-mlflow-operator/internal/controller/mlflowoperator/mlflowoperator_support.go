@@ -1,27 +1,32 @@
 package mlflowoperator
 
 import (
-	"sort"
+	"fmt"
 
+	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-mlflow-operator/assets"
+	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-mlflow-operator/pkg/config"
 	common "github.com/opendatahub-io/odh-platform-utilities/api/common"
+	kfs "github.com/opendatahub-io/odh-platform-utilities/framework/render/kustomize/fs"
+	"sigs.k8s.io/kustomize/kyaml/filesys"
 )
 
-func UpsertRelease(status *common.ComponentReleaseStatus, release common.ComponentRelease) {
-	for i := range status.Releases {
-		if status.Releases[i].Name == release.Name {
-			status.Releases[i] = release
-			return
-		}
+func newKustomizeFS() (filesys.FileSystem, error) {
+	baseKustomizeFS, err := kfs.NewFromIOFS(assets.Manifests, "")
+	if err != nil {
+		return nil, fmt.Errorf("creating base render filesystem: %w", err)
 	}
-	status.Releases = append(status.Releases, release)
-	sort.Slice(status.Releases, func(i, j int) bool {
-		return status.Releases[i].Name < status.Releases[j].Name
-	})
+
+	kustomizeFS, err := kfs.NewUnionFs(baseKustomizeFS)
+	if err != nil {
+		return nil, fmt.Errorf("creating render filesystem: %w", err)
+	}
+
+	return kustomizeFS, nil
 }
 
-func GetRelease(status *common.ComponentReleaseStatus, name string) (common.ComponentRelease, bool) {
+func lookupPlatformRelease(status *common.ComponentReleaseStatus) (common.ComponentRelease, bool) {
 	for _, r := range status.Releases {
-		if r.Name == name {
+		if r.Name == moduleconfig.ReleasePlatform {
 			return r, true
 		}
 	}

@@ -33,6 +33,7 @@ import (
 	gvk "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-workbenches-operator/pkg/resources/gvk"
 	common "github.com/opendatahub-io/odh-platform-utilities/api/common"
 	"github.com/opendatahub-io/odh-platform-utilities/framework/controller/actions/status/deployments"
+	fwreleases "github.com/opendatahub-io/odh-platform-utilities/framework/controller/actions/status/releases"
 	fwtypes "github.com/opendatahub-io/odh-platform-utilities/framework/controller/types"
 	odhcluster "github.com/opendatahub-io/odh-platform-utilities/pkg/cluster"
 	odhopenshift "github.com/opendatahub-io/odh-platform-utilities/pkg/cluster/openshift"
@@ -126,6 +127,15 @@ func notebookControllerManifestInfo(basePath string, sourcePath string) fwtypes.
 		ContextDir: notebookControllerContextDir,
 		SourcePath: sourcePath,
 	}
+}
+
+func metadataFilePath(rr *fwtypes.ReconciliationRequest) string {
+	return path.Join(
+		rr.ManifestsBasePath,
+		ComponentName,
+		kfNotebookControllerPath,
+		fwreleases.ComponentMetadataFilename,
+	)
 }
 
 func kfNotebookControllerManifestInfo(basePath string, sourcePath string) fwtypes.ManifestInfo {

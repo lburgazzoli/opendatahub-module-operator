@@ -18,13 +18,11 @@ package modelregistry
 
 import (
 	"fmt"
-	iofs "io/fs"
 	"path"
 
-	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-modelregistry-operator/assets"
+	common "github.com/opendatahub-io/odh-platform-utilities/api/common"
 	fwapi "github.com/opendatahub-io/odh-platform-utilities/framework/api"
 	odhtypes "github.com/opendatahub-io/odh-platform-utilities/framework/controller/types"
-	kfs "github.com/opendatahub-io/odh-platform-utilities/framework/render/kustomize/fs"
 	kparams "github.com/opendatahub-io/odh-platform-utilities/framework/render/kustomize/params"
 	"sigs.k8s.io/kustomize/kyaml/filesys"
 
@@ -42,6 +40,8 @@ const (
 	baseManifestsSourcePath = "overlays/odh"
 
 	defaultModelRegistryCert = "default-modelregistry-cert"
+
+	componentMetadataPath = "manifests/modelregistry/component_metadata.yaml"
 
 	// Gateway constants copied from the monolith's internal/controller/services/gateway package.
 	// These are stable platform-level values; define locally to avoid importing internal packages.
@@ -65,24 +65,19 @@ var extraParamMap = map[string]string{
 
 // Module holds process-lifetime state for the modelregistry controller.
 type Module struct {
-	cfg           *moduleconfig.Config
-	release       fwapi.Release
-	manifestInfo  odhtypes.ManifestInfo
-	extraManifest odhtypes.ManifestInfo
-	manifestsFS   iofs.FS
-	renderFS      filesys.FileSystem
+	cfg             *moduleconfig.Config
+	platformRelease fwapi.Release
+	releases        []common.ComponentRelease
+	manifestInfo    odhtypes.ManifestInfo
+	extraManifest   odhtypes.ManifestInfo
+	kustomizeFS     filesys.FileSystem
 }
 
 // NewModule creates a Module with one-shot computed state.
 func NewModule(cfg *moduleconfig.Config) (*Module, error) {
-	baseRenderFS, err := kfs.NewFromIOFS(assets.Manifests, "")
+	kustomizeFS, err := newKustomizeFS()
 	if err != nil {
-		return nil, fmt.Errorf("creating base render filesystem: %w", err)
-	}
-
-	renderFS, err := kfs.NewUnionFs(baseRenderFS)
-	if err != nil {
-		return nil, fmt.Errorf("creating render filesystem: %w", err)
+		return nil, err
 	}
 
 	return &Module{
@@ -97,15 +92,14 @@ func NewModule(cfg *moduleconfig.Config) (*Module, error) {
 			ContextDir: componentName,
 			SourcePath: path.Join(baseManifestsSourcePath, "extras"),
 		},
-		manifestsFS: assets.Manifests,
-		renderFS:    renderFS,
+		kustomizeFS: kustomizeFS,
 	}, nil
 }
 
 // Init applies image and cert parameter substitutions once at process startup.
 func (m *Module) Init() error {
 	if err := kparams.Apply(
-		m.renderFS,
+		m.kustomizeFS,
 		path.Join(m.manifestInfo.String(), "params.env"),
 		kparams.Replacement(kparams.FromEnv(imageParamMap)),
 		kparams.Values(extraParamMap),
@@ -113,7 +107,13 @@ func (m *Module) Init() error {
 		return fmt.Errorf("failed to update images on path %s: %w", m.manifestInfo, err)
 	}
 
-	m.release = m.cfg.PlatformRelease()
+	releases, err := m.loadReleases()
+	if err != nil {
+		return fmt.Errorf("failed to load releases: %w", err)
+	}
+
+	m.releases = releases
+	m.platformRelease = m.cfg.PlatformRelease()
 
 	return nil
 }

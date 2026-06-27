@@ -21,13 +21,12 @@ import (
 	"testing"
 	"testing/fstest"
 
+	componentApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-trustyai-operator/api/components/v1alpha1"
+	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-trustyai-operator/pkg/config"
 	. "github.com/onsi/gomega"
 	common "github.com/opendatahub-io/odh-platform-utilities/api/common"
 	odhtypes "github.com/opendatahub-io/odh-platform-utilities/framework/controller/types"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-
-	componentApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-trustyai-operator/api/components/v1alpha1"
-	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-trustyai-operator/pkg/config"
 )
 
 func testConfig(t *testing.T) *moduleconfig.Config {
@@ -44,7 +43,6 @@ func newTestModule(t *testing.T) *Module {
 	t.Helper()
 
 	cfg := testConfig(t)
-	cfg.ManifestsPath = "/manifests"
 	cfg.ApplicationsNamespace = "test-ns"
 
 	m, err := NewModule(cfg)
@@ -58,9 +56,8 @@ func newTestRR(t *testing.T, obj *componentApi.TrustyAI) *odhtypes.Reconciliatio
 
 	cfg := testConfig(t)
 	return &odhtypes.ReconciliationRequest{
-		Instance:          obj,
-		ManifestsBasePath: "/manifests",
-		Release:           cfg.PlatformRelease(),
+		Instance: obj,
+		Release:  cfg.PlatformRelease(),
 	}
 }
 
@@ -76,13 +73,13 @@ func TestNewModule(t *testing.T) {
 	g := NewWithT(t)
 
 	cfg := testConfig(t)
-	cfg.ManifestsPath = "/manifests"
 
 	m, err := NewModule(cfg)
 	g.Expect(err).NotTo(HaveOccurred())
 	g.Expect(m.cfg).To(Equal(cfg))
 	g.Expect(m.manifestInfo.ContextDir).To(Equal(componentName))
 	g.Expect(m.manifestInfo.SourcePath).To(Equal(overlayODH))
+	g.Expect(m.manifestInfo.Path).To(Equal("manifests"))
 }
 
 func TestInitialize(t *testing.T) {
@@ -94,9 +91,27 @@ func TestInitialize(t *testing.T) {
 
 	g.Expect(m.initialize(context.Background(), rr)).To(Succeed())
 	g.Expect(rr.Manifests).To(HaveLen(1))
-	g.Expect(rr.Manifests[0].Path).To(Equal("."))
+	g.Expect(rr.Manifests[0].Path).To(Equal("manifests"))
 	g.Expect(rr.Manifests[0].ContextDir).To(Equal(componentName))
 	g.Expect(rr.Manifests[0].SourcePath).To(Equal(overlayODH))
+}
+
+func TestInitLoadsReleases(t *testing.T) {
+	g := NewWithT(t)
+
+	m := newTestModule(t)
+
+	g.Expect(m.Init()).To(Succeed())
+	g.Expect(m.releases).ToNot(BeEmpty())
+	g.Expect(m.releases).To(ContainElement(common.ComponentRelease{
+		Name:    "TrustyAI operator",
+		Version: "v1.37.0",
+		RepoURL: "https://github.com/trustyai-explainability/trustyai-service-operator",
+	}))
+	g.Expect(m.releases).To(ContainElement(common.ComponentRelease{
+		Name:    moduleconfig.ReleasePlatform,
+		Version: "1.0.0",
+	}))
 }
 
 func TestUpgradeIfNeededNoVersion(t *testing.T) {
@@ -130,10 +145,18 @@ func TestReportStatus(t *testing.T) {
 	obj := newTestTrustyAI()
 	rr := newTestRR(t, obj)
 
+	g.Expect(m.Init()).To(Succeed())
 	g.Expect(m.initialize(context.Background(), rr)).To(Succeed())
 	g.Expect(m.reportStatus(context.Background(), rr)).To(Succeed())
 
-	g.Expect(obj.Status.Releases).To(ContainElement(
-		common.ComponentRelease{Name: moduleconfig.ReleasePlatform, Version: "1.0.0"},
-	))
+	g.Expect(obj.Status.Releases).To(ContainElement(common.ComponentRelease{
+		Name:    "TrustyAI operator",
+		Version: "v1.37.0",
+		RepoURL: "https://github.com/trustyai-explainability/trustyai-service-operator",
+	}))
+	g.Expect(obj.Status.Releases).To(ContainElement(common.ComponentRelease{
+		Name:    moduleconfig.ReleasePlatform,
+		Version: "1.0.0",
+	}))
+	g.Expect(obj.Status.Releases).To(Equal(m.releases))
 }

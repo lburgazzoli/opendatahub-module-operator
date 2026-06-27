@@ -110,6 +110,30 @@ func TestInitialize(t *testing.T) {
 	g.Expect(rr.Manifests[0].SourcePath).To(Equal(baseManifestsSourcePath))
 }
 
+func TestInitLoadsReleases(t *testing.T) {
+	g := NewWithT(t)
+
+	m := newTestModule(t)
+
+	g.Expect(m.Init()).To(Succeed())
+	g.Expect(m.releases).To(Equal([]common.ComponentRelease{
+		{
+			Name:    "Kubeflow Model Registry",
+			Version: "latest",
+			RepoURL: "https://github.com/kubeflow/model-registry",
+		},
+		{
+			Name:    "Open Data Hub Model Registry Operator",
+			Version: "latest",
+			RepoURL: "https://github.com/opendatahub-io/model-registry-operator",
+		},
+		{
+			Name:    moduleconfig.ReleasePlatform,
+			Version: "1.0.0",
+		},
+	}))
+}
+
 func TestConfigureDependenciesAddsNamespaceAndOpenShiftRBAC(t *testing.T) {
 	g := NewWithT(t)
 
@@ -195,13 +219,32 @@ func TestReportStatus(t *testing.T) {
 	g := NewWithT(t)
 
 	m := newTestModule(t)
+	g.Expect(m.Init()).To(Succeed())
 	obj := newTestModelRegistry()
+	obj.Spec.RegistriesNamespace = "odh-model-registries"
+	obj.Status.Releases = []common.ComponentRelease{
+		{Name: "stale", Version: "0.1.0"},
+	}
 	rr := newTestRR(obj)
 
 	g.Expect(m.initialize(context.Background(), rr)).To(Succeed())
 	g.Expect(m.reportStatus(context.Background(), rr)).To(Succeed())
 
-	g.Expect(obj.Status.Releases).To(ContainElement(
-		common.ComponentRelease{Name: moduleconfig.ReleasePlatform, Version: "1.0.0"},
-	))
+	g.Expect(obj.Status.RegistriesNamespace).To(Equal("odh-model-registries"))
+	g.Expect(obj.Status.Releases).To(Equal([]common.ComponentRelease{
+		{
+			Name:    "Kubeflow Model Registry",
+			Version: "latest",
+			RepoURL: "https://github.com/kubeflow/model-registry",
+		},
+		{
+			Name:    "Open Data Hub Model Registry Operator",
+			Version: "latest",
+			RepoURL: "https://github.com/opendatahub-io/model-registry-operator",
+		},
+		{
+			Name:    moduleconfig.ReleasePlatform,
+			Version: "1.0.0",
+		},
+	}))
 }

@@ -34,7 +34,6 @@ import (
 	"github.com/opendatahub-io/odh-platform-utilities/framework/controller/actions/gc"
 	"github.com/opendatahub-io/odh-platform-utilities/framework/controller/actions/render/kustomize"
 	"github.com/opendatahub-io/odh-platform-utilities/framework/controller/actions/status/deployments"
-	fwreleases "github.com/opendatahub-io/odh-platform-utilities/framework/controller/actions/status/releases"
 	"github.com/opendatahub-io/odh-platform-utilities/framework/controller/handlers"
 	"github.com/opendatahub-io/odh-platform-utilities/framework/controller/predicates"
 	labelpred "github.com/opendatahub-io/odh-platform-utilities/framework/controller/predicates/label"
@@ -96,13 +95,12 @@ func NewReconciler(
 				labelpred.ForLabel(appLabelPrefix+"/"+componentName, "true")),
 		).
 		WithReconcilerOpts(
-			reconciler.WithRelease(m.release),
+			reconciler.WithRelease(m.platformRelease),
 		).
 		WithAction(m.initialize).
 		WithAction(m.upgradeIfNeeded).
-		WithAction(fwreleases.NewAction()).
 		WithAction(kustomize.NewAction(
-			kustomize.WithManifestsOptions(mk.WithEngineFS(m.renderFS)),
+			kustomize.WithManifestsOptions(mk.WithEngineFS(m.kustomizeFS)),
 			kustomize.WithNamespaceFn(moduleconfig.ApplicationsNamespaceGetter(cfg)),
 		)).
 		WithAction(deploy.NewAction(

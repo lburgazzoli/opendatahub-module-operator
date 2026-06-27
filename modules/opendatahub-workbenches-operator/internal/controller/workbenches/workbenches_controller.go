@@ -18,7 +18,6 @@ package workbenches
 
 import (
 	"context"
-	"path"
 
 	imagev1 "github.com/openshift/api/image/v1"
 	admissionv1 "k8s.io/api/admissionregistration/v1"
@@ -40,7 +39,6 @@ import (
 	fwimagestreams "github.com/opendatahub-io/odh-platform-utilities/framework/controller/actions/status/imagestreams"
 	fwreleases "github.com/opendatahub-io/odh-platform-utilities/framework/controller/actions/status/releases"
 	"github.com/opendatahub-io/odh-platform-utilities/framework/controller/reconciler"
-	fwtypes "github.com/opendatahub-io/odh-platform-utilities/framework/controller/types"
 	mk "github.com/opendatahub-io/odh-platform-utilities/framework/render/kustomize"
 )
 
@@ -150,14 +148,11 @@ func NewReconciler(
 		WithAction(m.upgradeIfNeeded).
 		WithAction(m.customizeManifests).
 		WithAction(fwreleases.NewAction(
-			fwreleases.WithMetadataFilePath(func(rr *fwtypes.ReconciliationRequest) string {
-				return path.Join(rr.ManifestsBasePath, ComponentName, kfNotebookControllerPath, fwreleases.ComponentMetadataFilename)
-			}),
+			fwreleases.WithMetadataFilePath(metadataFilePath),
 		)).
 		WithAction(m.configureDependencies).
 		WithAction(kustomize.NewAction(
 			kustomize.WithManifestsOptions(mk.WithEngineFS(m.renderFS)),
-			kustomize.WithCache(false),
 			kustomize.WithNamespaceFn(moduleconfig.ApplicationsNamespaceGetter(cfg)),
 		)).
 		WithAction(deploy.NewAction(

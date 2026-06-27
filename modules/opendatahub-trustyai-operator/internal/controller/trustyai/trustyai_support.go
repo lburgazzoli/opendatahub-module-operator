@@ -17,14 +17,18 @@ limitations under the License.
 package trustyai
 
 import (
-	"sort"
+	"fmt"
 
+	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-trustyai-operator/assets"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
+	"sigs.k8s.io/kustomize/kyaml/filesys"
 
+	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-trustyai-operator/pkg/config"
 	modulegvk "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-trustyai-operator/pkg/resources/gvk"
 	common "github.com/opendatahub-io/odh-platform-utilities/api/common"
+	kfs "github.com/opendatahub-io/odh-platform-utilities/framework/render/kustomize/fs"
 	fwresources "github.com/opendatahub-io/odh-platform-utilities/framework/resources"
 )
 
@@ -32,6 +36,20 @@ const (
 	InferenceServicesCRDName = "inferenceservices.serving.kserve.io"
 	KserveModuleCRDName      = "kserves.components.platform.opendatahub.io"
 )
+
+func newKustomizeFS() (filesys.FileSystem, error) {
+	baseKustomizeFS, err := kfs.NewFromIOFS(assets.Manifests, "")
+	if err != nil {
+		return nil, fmt.Errorf("creating base render filesystem: %w", err)
+	}
+
+	kustomizeFS, err := kfs.NewUnionFs(baseKustomizeFS)
+	if err != nil {
+		return nil, fmt.Errorf("creating render filesystem: %w", err)
+	}
+
+	return kustomizeFS, nil
+}
 
 // kserveUnstructured returns an unstructured object typed as the Kserve CR GVK,
 // used for watching Kserve CR lifecycle events without importing the kserve module types.
@@ -49,22 +67,9 @@ func createdOrDeletedNamed(name string) predicate.Funcs {
 	}
 }
 
-func UpsertRelease(status *common.ComponentReleaseStatus, release common.ComponentRelease) {
-	for i := range status.Releases {
-		if status.Releases[i].Name == release.Name {
-			status.Releases[i] = release
-			return
-		}
-	}
-	status.Releases = append(status.Releases, release)
-	sort.Slice(status.Releases, func(i, j int) bool {
-		return status.Releases[i].Name < status.Releases[j].Name
-	})
-}
-
-func GetRelease(status *common.ComponentReleaseStatus, name string) (common.ComponentRelease, bool) {
+func lookupPlatformRelease(status *common.ComponentReleaseStatus) (common.ComponentRelease, bool) {
 	for _, r := range status.Releases {
-		if r.Name == name {
+		if r.Name == moduleconfig.ReleasePlatform {
 			return r, true
 		}
 	}

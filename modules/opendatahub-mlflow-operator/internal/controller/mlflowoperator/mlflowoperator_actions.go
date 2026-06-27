@@ -20,6 +20,7 @@ import (
 	"context"
 	"fmt"
 	"path"
+	"slices"
 	"strings"
 
 	k8serr "k8s.io/apimachinery/pkg/api/errors"
@@ -98,10 +99,10 @@ func (m *Module) customizeManifests(ctx context.Context, rr *fwtypes.Reconciliat
 	}
 
 	// The monolith writes params to base/, not to the overlay path.
-	paramsPath := path.Join(componentName, paramsSubDir)
+	paramsPath := path.Join(manifestsRoot, componentName, paramsSubDir)
 
 	if err := kparams.Apply(
-		m.renderFS,
+		m.kustomizeFS,
 		path.Join(paramsPath, "params.env"),
 		kparams.Values(extraParams),
 	); err != nil {
@@ -158,14 +159,15 @@ func (m *Module) fixDeploymentNamespace(_ context.Context, rr *fwtypes.Reconcili
 	return nil
 }
 
-// reportStatus writes the platform version handshake entry into status.releases.
+// reportStatus refreshes status.releases from the cached static metadata.
 func (m *Module) reportStatus(_ context.Context, rr *fwtypes.ReconciliationRequest) error {
 	obj, ok := rr.Instance.(*componentApi.MLflowOperator)
 	if !ok {
 		return fmt.Errorf("instance is not a MLflowOperator")
 	}
 
-	UpsertRelease(obj.GetReleaseStatus(), m.cfg.ComponentRelease())
+	releaseStatus := obj.GetReleaseStatus()
+	releaseStatus.Releases = slices.Clone(m.releases)
 
 	return nil
 }

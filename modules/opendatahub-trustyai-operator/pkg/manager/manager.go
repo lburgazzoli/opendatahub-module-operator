@@ -131,7 +131,6 @@ func New(
 
 	mgr := odhmanager.New(
 		ctrlMgr,
-		odhmanager.WithManifestsBasePath(cfg.ManifestsPath),
 	)
 
 	if err := trustyai.NewReconciler(ctx, mgr, cfg); err != nil {

@@ -129,7 +129,6 @@ func New(
 
 	mgr := odhmanager.New(
 		ctrlMgr,
-		odhmanager.WithManifestsBasePath(cfg.ManifestsPath),
 	)
 
 	if err := sparkoperator.NewReconciler(ctx, mgr, cfg); err != nil {

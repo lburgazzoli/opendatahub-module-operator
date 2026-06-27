@@ -19,11 +19,13 @@ package trainer
 import (
 	"context"
 	"fmt"
+	"slices"
 
 	ofVersion "github.com/operator-framework/api/pkg/lib/version"
 
 	componentApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-trainer-operator/api/components/v1alpha1"
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-trainer-operator/pkg/module"
+	common "github.com/opendatahub-io/odh-platform-utilities/api/common"
 	odherrors "github.com/opendatahub-io/odh-platform-utilities/framework/controller/actions/errors"
 	fwconditions "github.com/opendatahub-io/odh-platform-utilities/framework/controller/conditions"
 	odhtypes "github.com/opendatahub-io/odh-platform-utilities/framework/controller/types"
@@ -78,15 +80,17 @@ func (m *Module) initialize(_ context.Context, rr *odhtypes.ReconciliationReques
 	return nil
 }
 
-// reportStatus writes the platform version handshake entry into status.releases
-// and also maintains the legacy Release field for backward compatibility.
+// reportStatus refreshes status.releases from the cached static metadata and
+// also maintains the legacy Release field for backward compatibility.
 func (m *Module) reportStatus(_ context.Context, rr *odhtypes.ReconciliationRequest) error {
 	obj, ok := rr.Instance.(*componentApi.Trainer)
 	if !ok {
 		return fmt.Errorf("instance is not a Trainer")
 	}
 
-	UpsertRelease(obj.GetReleaseStatus(), m.cfg.ComponentRelease())
+	obj.SetReleaseStatus(common.ComponentReleaseStatus{
+		Releases: slices.Clone(m.releases),
+	})
 
 	obj.Status.Release = componentApi.Release{
 		Name:    componentApi.Platform(rr.Release.Name),
