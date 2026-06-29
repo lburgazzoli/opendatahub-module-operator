@@ -32,6 +32,7 @@ import (
 	"github.com/opendatahub-io/odh-platform-utilities/framework/controller/actions/deploy"
 	"github.com/opendatahub-io/odh-platform-utilities/framework/controller/actions/gc"
 	"github.com/opendatahub-io/odh-platform-utilities/framework/controller/actions/render/kustomize"
+	fwtemplate "github.com/opendatahub-io/odh-platform-utilities/framework/controller/actions/render/template"
 	"github.com/opendatahub-io/odh-platform-utilities/framework/controller/actions/status/deployments"
 	"github.com/opendatahub-io/odh-platform-utilities/framework/controller/handlers"
 	"github.com/opendatahub-io/odh-platform-utilities/framework/controller/predicates"
@@ -60,6 +61,7 @@ const appLabelPrefix = "app.opendatahub.io"
 // +kubebuilder:rbac:groups=coordination.k8s.io,resources=leases,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=authentication.k8s.io,resources=tokenreviews,verbs=create
 // +kubebuilder:rbac:groups=authorization.k8s.io,resources=subjectaccessreviews,verbs=create
+// +kubebuilder:rbac:groups=config.openshift.io,resources=apiservers,verbs=get;list;watch
 // +kubebuilder:rbac:groups=security.openshift.io,resources=securitycontextconstraints,verbs=use
 // +kubebuilder:rbac:urls=/metrics,verbs=get
 
@@ -103,6 +105,9 @@ func NewReconciler(
 		WithAction(kustomize.NewAction(
 			kustomize.WithManifestsOptions(mk.WithEngineFS(m.kustomizeFS)),
 			kustomize.WithNamespaceFn(moduleconfig.ApplicationsNamespaceGetter(cfg)),
+		)).
+		WithAction(fwtemplate.NewAction(
+			fwtemplate.WithNamespaceFn(moduleconfig.ApplicationsNamespaceGetter(cfg)),
 		)).
 		WithAction(deploy.NewAction(
 			deploy.WithCache(),
