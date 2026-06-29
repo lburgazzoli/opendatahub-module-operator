@@ -32,7 +32,7 @@ type foundationTests struct {
 func (ft *foundationTests) Execute(t *testing.T) {
 	t.Run("should have module CRD installed", ft.testModuleCRDInstalled)
 	t.Run("should become ready", ft.testBecomesReady)
-	t.Run("should keep source params env unchanged while injecting runtime values", ft.testRuntimeParamsWithoutMutatingSource)
+	t.Run("should inject runtime params without mutating source", ft.testRuntimeParamsWithoutMutatingSource)
 	t.Run("should report release version and platform", ft.testReleaseStatus)
 	t.Run("should set platform labels and annotations", ft.testPlatformLabels)
 	t.Run("should set owner references", ft.testOwnerReferences)

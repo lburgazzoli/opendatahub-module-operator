@@ -30,6 +30,7 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
 	componentApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-feast-operator/api/components/v1alpha1"
+	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-feast-operator/assets"
 	common "github.com/opendatahub-io/odh-platform-utilities/api/common"
 	odhtypes "github.com/opendatahub-io/odh-platform-utilities/framework/controller/types"
 	kparams "github.com/opendatahub-io/odh-platform-utilities/framework/render/kustomize/params"
@@ -40,15 +41,20 @@ const (
 	ParamsEnvKeyOIDCIssuerURL = "OIDC_ISSUER_URL"
 
 	// deploymentName is the name of the feast operator Deployment subject to selector migration.
-	deploymentName     = "feast-operator-controller-manager"
-	selectorLabelKey   = "app.kubernetes.io/name"
-	selectorLabelValue = "feast-operator"
+	deploymentName                    = "feast-operator-controller-manager"
+	selectorLabelKey                  = "app.kubernetes.io/name"
+	selectorLabelValue                = "feast-operator"
+	openShiftConfigGrantsTemplatePath = "manifests/ext/openshift-config-grants.yaml.tmpl"
 )
 
 // initialize appends the pre-resolved manifest info to the pipeline.
 // Feast does not require namespace substitution in params.env.
 func (m *Module) initialize(_ context.Context, rr *odhtypes.ReconciliationRequest) error {
 	rr.Manifests = append(rr.Manifests, m.manifestInfo)
+	rr.Templates = []odhtypes.TemplateInfo{{
+		FS:   assets.Manifests,
+		Path: openShiftConfigGrantsTemplatePath,
+	}}
 	return nil
 }
 
