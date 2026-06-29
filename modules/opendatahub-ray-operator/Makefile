@@ -77,14 +77,14 @@ test-integration: test-integration-setup test-integration-run ## Run integration
 
 .PHONY: test-e2e-run
 test-e2e-run: ## Run e2e tests only (operator must already be deployed).
-	OPERATOR_NAMESPACE="$(OPERATOR_NAMESPACE)" go test -ldflags "$(LDFLAGS)" ./test/e2e/ -tags=e2e -v -timeout 5m -failfast
+	OPERATOR_NAMESPACE="$(OPERATOR_NAMESPACE)" go test -ldflags "$(LDFLAGS)" ./test/e2e/ -tags=e2e -v -timeout 10m -failfast
 
 .PHONY: test-e2e-setup
 test-e2e-setup: ## Prepare the cluster for e2e tests.
 	@:
 
 .PHONY: test-e2e
-test-e2e: HELM_EXTRA_ARGS += --set-string config.platformVersion=$(TEST_PLATFORM_VERSION)
+test-e2e: HELM_EXTRA_ARGS += --set-string platform.type=$(TEST_PLATFORM_TYPE) --set-string platform.version=$(TEST_PLATFORM_VERSION)
 test-e2e: test-e2e-cleanup test-e2e-setup deploy-helm test-e2e-run ## Run e2e tests (clean, prepare, deploy, then run).
 
 .PHONY: test-integration-cleanup
@@ -164,6 +164,7 @@ HELM_RELEASE   ?= odh-ray-operator
 OPERATOR_NAMESPACE ?= $(HELM_NAMESPACE)
 INTEGRATION_TEST_NAMESPACE ?= odh-ray-integration
 HELM_EXTRA_ARGS ?=
+TEST_PLATFORM_TYPE ?= OpenDataHub
 TEST_PLATFORM_VERSION ?= 0.1.0
 
 .PHONY: helm

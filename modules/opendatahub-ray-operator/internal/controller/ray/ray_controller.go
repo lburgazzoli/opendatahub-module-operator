@@ -33,6 +33,7 @@ import (
 	"github.com/opendatahub-io/odh-platform-utilities/framework/controller/actions/deploy"
 	"github.com/opendatahub-io/odh-platform-utilities/framework/controller/actions/gc"
 	"github.com/opendatahub-io/odh-platform-utilities/framework/controller/actions/render/kustomize"
+	fwtemplate "github.com/opendatahub-io/odh-platform-utilities/framework/controller/actions/render/template"
 	"github.com/opendatahub-io/odh-platform-utilities/framework/controller/actions/sanitycheck"
 	"github.com/opendatahub-io/odh-platform-utilities/framework/controller/actions/status/deployments"
 	"github.com/opendatahub-io/odh-platform-utilities/framework/controller/handlers"
@@ -79,6 +80,7 @@ const appLabelPrefix = "app.opendatahub.io"
 // +kubebuilder:rbac:groups=gateway.networking.k8s.io,resources=httproutes;referencegrants,verbs=get;list;watch;create;delete;patch;update
 // +kubebuilder:rbac:groups=config.openshift.io,resources=authentications;oauths,verbs=get;list;watch
 // +kubebuilder:rbac:groups=config.openshift.io,resources=authentications/status;oauths/status,verbs=get;list;watch
+// +kubebuilder:rbac:groups=config.openshift.io,resources=apiservers,verbs=get;list;watch
 // +kubebuilder:rbac:groups=operator.openshift.io,resources=kubeapiservers,verbs=get;list;watch
 // +kubebuilder:rbac:groups=operator.openshift.io,resources=kubeapiservers/status,verbs=get;list;watch
 // +kubebuilder:rbac:groups=route.openshift.io,resources=routes,verbs=get;list;watch;create;delete;patch;update
@@ -128,6 +130,9 @@ func NewReconciler(
 		WithAction(kustomize.NewAction(
 			kustomize.WithManifestsOptions(mk.WithEngineFS(m.kustomizeFS)),
 			kustomize.WithNamespaceFn(moduleconfig.ApplicationsNamespaceGetter(cfg)),
+		)).
+		WithAction(fwtemplate.NewAction(
+			fwtemplate.WithNamespaceFn(moduleconfig.ApplicationsNamespaceGetter(cfg)),
 		)).
 		WithAction(deploy.NewAction(
 			deploy.WithCache(),

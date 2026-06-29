@@ -23,14 +23,21 @@ import (
 	"slices"
 
 	componentApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-ray-operator/api/components/v1alpha1"
+	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-ray-operator/assets"
 	common "github.com/opendatahub-io/odh-platform-utilities/api/common"
 	fwtypes "github.com/opendatahub-io/odh-platform-utilities/framework/controller/types"
 	kparams "github.com/opendatahub-io/odh-platform-utilities/framework/render/kustomize/params"
 )
 
+const openShiftConfigGrantsTemplatePath = "manifests/ext/openshift-config-grants.yaml.tmpl"
+
 // initialize appends manifests and applies image/namespace parameters.
 func (m *Module) initialize(_ context.Context, rr *fwtypes.ReconciliationRequest) error {
 	rr.Manifests = append(rr.Manifests, m.manifestInfo)
+	rr.Templates = []fwtypes.TemplateInfo{{
+		FS:   assets.Manifests,
+		Path: openShiftConfigGrantsTemplatePath,
+	}}
 
 	if err := kparams.Apply(
 		m.kustomizeFS,
