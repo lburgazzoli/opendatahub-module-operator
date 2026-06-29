@@ -74,7 +74,7 @@ Two different platform concepts — do not conflate them:
 | When | Variable | Purpose |
 |------|----------|---------|
 | **`make get-manifests`** | `ODH_PLATFORM_TYPE` (bash env) | Selects ODH vs RHOAI **git repo/commit** to fetch |
-| **Operator runtime** | `platform-type` in ConfigMap / `cfg.PlatformType` | Selects **kustomize overlay** at reconcile (platform-map components) |
+| **Operator runtime** | `platformType` in ConfigMap / `cfg.PlatformType` | Selects **kustomize overlay** at reconcile (platform-map components) |
 
 - **Fixed overlay** (ray): `SourcePath` is always `openshift`; ODH vs RHOAI
   differs only at fetch time — fetch twice or document which fetch you used.

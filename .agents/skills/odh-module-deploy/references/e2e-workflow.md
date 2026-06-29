@@ -48,7 +48,7 @@ make container-build IMG="${IMG}"      # host prep (if needed) + image build; bi
 make helm                   # generates config/chart (runs manifests generate)
 make cleanup-e2e
 make deploy-helm IMG="${IMG}" \
-  HELM_EXTRA_ARGS="--set-string config.platform-name=OpenDataHub --set-string config.platform-version=<version>"
+  HELM_EXTRA_ARGS="--set-string platform.type=OpenDataHub --set-string platform.version=<version>"
 make test-e2e-run           # go test only -- operator already deployed
 make cleanup-e2e
 ```
@@ -59,7 +59,7 @@ ConfigMap will have empty defaults and tests like `testOperatorConfigMap` and
 `testReleaseStatus` will fail.
 
 Check the module's `Makefile` `test-e2e` target for the exact flag names and
-default values. **The right `config.platform-version` depends on which tests
+default values. **The right `platform.version` depends on which tests
 you are running** — tests that exercise upgrade paths expect a specific
 version sequence (e.g. deploy at version N-1, then upgrade to N). Use the
 version the test expects at the deploy step, not an arbitrary value.

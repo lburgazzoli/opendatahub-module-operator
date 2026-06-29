@@ -62,10 +62,10 @@ From step 1 extraction (`manifestPath` / `ManifestsSourcePath` in monolith
 ### Platform map (spark, ogx, dsp, …)
 
 Fetched tree contains multiple overlays. Start with the overlay selected by
-`platform-type` in `config/manager/configmap.yaml` — same mapping as monolith
+`platformType` in `config/manager/configmap.yaml` — same mapping as monolith
 `ManifestsSourcePath` / module `NewModule`:
 
-| `platform-type` | Overlay |
+| `platformType` | Overlay |
 |-----------------|---------|
 | `OpenDataHub` | `overlays/odh` |
 | `SelfManagedRhoai`, `ManagedRhoai` | `overlays/rhoai` |

@@ -190,7 +190,7 @@ func Test$Kind(t *testing.T) {
 
 ```go
 // Gate (not a subtest -- runs before subtests, fails the whole test if operator not running)
-testOperatorConfigMap   // ConfigMap has platform-type and platform-version
+testOperatorConfigMap   // ConfigMap has platformType and platformVersion
 testOperatorEnvPrefix   // deployment env uses ODH_MODULE_OPERATOR_CONFIGURATION_PATH
 testBecomesReady        // create CR, wait for Ready
 testModuleStatus        // version, platform, sources

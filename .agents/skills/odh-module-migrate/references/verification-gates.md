@@ -124,7 +124,7 @@ After `make get-manifests`, resolve path from extraction checklist:
 # Example ray (fixed overlay)
 kustomize build config/manifests/ray/openshift >/dev/null
 
-# Example spark (platform map — match configmap platform-type)
+# Example spark (platform map — match configmap platformType)
 kustomize build config/manifests/sparkoperator/overlays/odh >/dev/null
 
 # If the module has multiple overlays, build every overlay for RBAC/permission review
