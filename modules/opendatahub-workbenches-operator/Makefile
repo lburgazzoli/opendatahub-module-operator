@@ -68,7 +68,7 @@ test-integration-run: ## Run integration tests only (cluster must be prepared).
 	INTEGRATION_TEST_NAMESPACE="$(INTEGRATION_TEST_NAMESPACE)" TEST_PLATFORM_VERSION="$(TEST_PLATFORM_VERSION)" go test -ldflags "$(LDFLAGS)" ./test/integration/ -tags=integration -v -timeout 5m -failfast
 
 .PHONY: test-integration-setup
-test-integration-setup: manifests generate ## Prepare the cluster for integration tests.
+test-integration-setup: manifests generate get-manifests ## Prepare the cluster for integration tests.
 	$(MAKE) test-integration-cleanup
 	$(MAKE) install
 	$(MAKE) install-external-crds
@@ -81,7 +81,7 @@ test-e2e-run: ## Run e2e tests only (operator must already be deployed).
 	OPERATOR_NAMESPACE="$(OPERATOR_NAMESPACE)" go test -ldflags "$(LDFLAGS)" ./test/e2e/ -tags=e2e -v -timeout 5m -failfast
 
 .PHONY: test-e2e-setup
-test-e2e-setup: ## Prepare the cluster for e2e tests.
+test-e2e-setup: get-manifests ## Prepare the cluster for e2e tests.
 	$(MAKE) install-external-crds
 
 .PHONY: test-e2e
@@ -93,7 +93,7 @@ test-upgrade-run: ## Run upgrade tests only (cluster must be prepared).
 	OPERATOR_NAMESPACE="$(OPERATOR_NAMESPACE)" go test -ldflags "$(LDFLAGS)" ./test/upgrade/ -tags=upgrade -v -timeout 10m -failfast
 
 .PHONY: test-upgrade-setup
-test-upgrade-setup: manifests generate ## Prepare the cluster for upgrade tests.
+test-upgrade-setup: manifests generate get-manifests ## Prepare the cluster for upgrade tests.
 	$(MAKE) install
 	$(MAKE) install-upgrade-external-crds
 
@@ -130,7 +130,7 @@ lint-fix: ## Run golangci-lint linter and perform fixes.
 	$(GOLANGCI_LINT) run --fix
 
 .PHONY: get-manifests
-get-manifests: ## Download component manifests.
+get-manifests: ## Download component manifests into embedded assets.
 	./hack/scripts/get-manifests.sh
 
 ##@ Build
@@ -151,23 +151,23 @@ LDFLAGS        = -X $(VERSION_PKG).Version=$(VERSION) \
                  -X $(VERSION_PKG).Repo=$(GIT_REPO)
 
 .PHONY: build
-build: manifests generate fmt vet ## Build manager binary.
+build: manifests generate get-manifests fmt vet ## Build manager binary.
 	mkdir -p "$(BIN_DIR)"
 	CGO_ENABLED=$(CGO_ENABLED) GOOS=$(GOOS) GOARCH=$(GOARCH) \
 		go build -ldflags "$(LDFLAGS)" -o "$(BIN_DIR)/$(BIN_NAME)" cmd/main.go
 
 .PHONY: build-bin
-build-bin: ## Build manager binary only (for Containerfile; run container-prep on host first).
+build-bin: get-manifests ## Build manager binary only (refresh embedded manifests first).
 	mkdir -p "$(BIN_DIR)"
 	CGO_ENABLED=$(CGO_ENABLED) GOOS=$(GOOS) GOARCH=$(GOARCH) \
 		go build -ldflags "$(LDFLAGS)" -o "$(BIN_DIR)/$(BIN_NAME)" cmd/main.go
 
 .PHONY: container-prep
-container-prep: manifests generate get-manifests ## On host: regenerate code and fetch manifests before container-build.
+container-prep: manifests generate get-manifests ## On host: regenerate code and refresh embedded manifests before container-build.
 
 .PHONY: run
-run: manifests generate fmt vet ## Run a controller from your host.
-	ODH_MODULE_OPERATOR_MANIFESTS_PATH=config/manifests go run -ldflags "$(LDFLAGS)" ./cmd/main.go operator
+run: manifests generate get-manifests fmt vet ## Run a controller from your host.
+	go run -ldflags "$(LDFLAGS)" ./cmd/main.go operator
 
 .PHONY: container-build
 container-build: container-prep ## Build container image with the manager.
@@ -208,7 +208,7 @@ deploy-helm: ## Deploy controller via Helm chart.
 		echo "Deploying image: $$resolved_img"; \
 		$(HELM) upgrade --install $(HELM_RELEASE) config/chart \
 			--namespace $(HELM_NAMESPACE) --create-namespace \
-			--set-string image.fullRef="$$resolved_img" \
+			--set-string operator.image.ref="$$resolved_img" \
 			--wait --timeout 5m $(HELM_EXTRA_ARGS)
 
 .PHONY: undeploy-helm

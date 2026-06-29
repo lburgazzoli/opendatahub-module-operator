@@ -100,9 +100,18 @@ func TestInitialize(t *testing.T) {
 	g.Expect(m.initialize(context.Background(), rr)).To(Succeed())
 	// initialize sets 3 manifests: odh-notebook-controller, kf-notebook-controller, notebooks
 	g.Expect(rr.Manifests).To(HaveLen(3))
+	g.Expect(rr.Manifests[0].Path).To(Equal(manifestsRoot))
 	g.Expect(rr.Manifests[0].ContextDir).To(Equal(notebookControllerContextDir))
 	g.Expect(rr.Manifests[1].ContextDir).To(Equal(kfNotebookControllerContextDir))
 	g.Expect(rr.Manifests[2].ContextDir).To(Equal(notebookContextDir))
+}
+
+func TestMetadataFilePathUsesEmbeddedManifests(t *testing.T) {
+	g := NewWithT(t)
+
+	g.Expect(metadataFilePath(nil)).To(Equal(
+		"manifests/workbenches/kf-notebook-controller/component_metadata.yaml",
+	))
 }
 
 func TestUpgradeIfNeededNoVersion(t *testing.T) {

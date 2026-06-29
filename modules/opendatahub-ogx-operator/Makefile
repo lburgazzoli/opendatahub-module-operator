@@ -187,7 +187,7 @@ deploy-helm: ## Deploy controller via Helm chart.
 		echo "Deploying image: $$resolved_img"; \
 		$(HELM) upgrade --install $(HELM_RELEASE) config/chart \
 			--namespace $(HELM_NAMESPACE) --create-namespace \
-			--set-string image.fullRef="$$resolved_img" \
+			--set-string operator.image.ref="$$resolved_img" \
 			--wait --timeout 5m $(HELM_EXTRA_ARGS)
 
 .PHONY: undeploy-helm

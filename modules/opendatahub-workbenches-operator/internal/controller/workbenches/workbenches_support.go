@@ -28,13 +28,16 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/kustomize/kyaml/filesys"
 
 	localapi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-workbenches-operator/api/components/v1alpha1"
+	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-workbenches-operator/assets"
 	gvk "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-workbenches-operator/pkg/resources/gvk"
 	common "github.com/opendatahub-io/odh-platform-utilities/api/common"
 	"github.com/opendatahub-io/odh-platform-utilities/framework/controller/actions/status/deployments"
 	fwreleases "github.com/opendatahub-io/odh-platform-utilities/framework/controller/actions/status/releases"
 	fwtypes "github.com/opendatahub-io/odh-platform-utilities/framework/controller/types"
+	kfs "github.com/opendatahub-io/odh-platform-utilities/framework/render/kustomize/fs"
 	odhcluster "github.com/opendatahub-io/odh-platform-utilities/pkg/cluster"
 	odhopenshift "github.com/opendatahub-io/odh-platform-utilities/pkg/cluster/openshift"
 )
@@ -47,6 +50,7 @@ const (
 	LegacyComponentName = "workbenches"
 
 	ReadyConditionType = "WorkbenchesReady"
+	manifestsRoot      = "manifests"
 
 	notebooksPath = "notebooks"
 
@@ -129,13 +133,27 @@ func notebookControllerManifestInfo(basePath string, sourcePath string) fwtypes.
 	}
 }
 
-func metadataFilePath(rr *fwtypes.ReconciliationRequest) string {
+func metadataFilePath(_ *fwtypes.ReconciliationRequest) string {
 	return path.Join(
-		rr.ManifestsBasePath,
+		manifestsRoot,
 		ComponentName,
 		kfNotebookControllerPath,
 		fwreleases.ComponentMetadataFilename,
 	)
+}
+
+func newKustomizeFS() (filesys.FileSystem, error) {
+	baseKustomizeFS, err := kfs.NewFromIOFS(assets.Manifests, "")
+	if err != nil {
+		return nil, fmt.Errorf("creating base render filesystem: %w", err)
+	}
+
+	kustomizeFS, err := kfs.NewUnionFs(baseKustomizeFS)
+	if err != nil {
+		return nil, fmt.Errorf("creating render filesystem: %w", err)
+	}
+
+	return kustomizeFS, nil
 }
 
 func kfNotebookControllerManifestInfo(basePath string, sourcePath string) fwtypes.ManifestInfo {

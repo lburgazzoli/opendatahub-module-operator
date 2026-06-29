@@ -11,11 +11,11 @@ DST_MANIFESTS_DIR="${PROJECT_ROOT}/assets/manifests/${COMPONENT_NAME}"
 if [[ "${ODH_PLATFORM_TYPE:-OpenDataHub}" == "OpenDataHub" ]]; then
     echo "Downloading manifests for ODH"
     REPO_URL="https://github.com/opendatahub-io/trustyai-service-operator"
-    COMMIT_SHA="de96668b0690db47574bab3ff737e5748be235ee"
+    COMMIT_SHA="9756af205138b56f9d879c9a592c8e8ec3b4969d"
 else
     echo "Downloading manifests for RHOAI"
     REPO_URL="https://github.com/red-hat-data-services/trustyai-service-operator"
-    COMMIT_SHA="99914bc3c081532d0741a471826143b8adb67c6a"
+    COMMIT_SHA="d0f8bb863a998f8a7840f9573a5e65abbb9a84c2"
 fi
 
 if [[ "${USE_LOCAL:-}" == "true" ]] && [[ -d "${PROJECT_ROOT}/../trustyai-service-operator" ]]; then

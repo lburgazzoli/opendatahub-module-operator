@@ -10,8 +10,8 @@ require (
 	github.com/invopop/jsonschema v0.14.0
 	github.com/lburgazzoli/gomega-matchers v0.4.1-0.20260615083735-1af7a46bf167
 	github.com/onsi/gomega v1.41.0
-	github.com/opendatahub-io/odh-platform-utilities v0.0.0-20260626102409-2e481f6b936d
-	github.com/opendatahub-io/odh-platform-utilities/framework v0.0.0-20260626102409-2e481f6b936d
+	github.com/opendatahub-io/odh-platform-utilities v0.0.0-20260626151446-2d3c0dd077d0
+	github.com/opendatahub-io/odh-platform-utilities/framework v0.0.0-20260626151446-2d3c0dd077d0
 	github.com/opendatahub-io/opendatahub-operator/v2 v2.0.0-00010101000000-000000000000
 	github.com/openshift/api v0.0.0-20260610192510-1b2a074e0bd6
 	github.com/operator-framework/api v0.42.0
@@ -25,6 +25,7 @@ require (
 	k8s.io/client-go v0.36.1
 	sigs.k8s.io/controller-runtime v0.24.1
 	sigs.k8s.io/gateway-api v1.3.0
+	sigs.k8s.io/kustomize/kyaml v0.21.1
 	sigs.k8s.io/yaml v1.6.0
 )
 
@@ -124,14 +125,13 @@ require (
 	oras.land/oras-go/v2 v2.6.0 // indirect
 	sigs.k8s.io/json v0.0.0-20250730193827-2d320260d730 // indirect
 	sigs.k8s.io/kustomize/api v0.21.1 // indirect
-	sigs.k8s.io/kustomize/kyaml v0.21.1 // indirect
 	sigs.k8s.io/randfill v1.0.0 // indirect
 	sigs.k8s.io/structured-merge-diff/v6 v6.4.0 // indirect
 )
 
-replace github.com/opendatahub-io/odh-platform-utilities => github.com/lburgazzoli/opendatahub-platform-utilities v0.0.0-20260626102409-2e481f6b936d
+replace github.com/opendatahub-io/odh-platform-utilities => github.com/lburgazzoli/opendatahub-platform-utilities v0.0.0-20260626151446-2d3c0dd077d0
 
-replace github.com/opendatahub-io/odh-platform-utilities/framework => github.com/lburgazzoli/opendatahub-platform-utilities/framework v0.0.0-20260626102409-2e481f6b936d
+replace github.com/opendatahub-io/odh-platform-utilities/framework => github.com/lburgazzoli/opendatahub-platform-utilities/framework v0.0.0-20260626151446-2d3c0dd077d0
 
 replace github.com/opendatahub-io/opendatahub-operator/v2 => github.com/lburgazzoli/opendatahub-operator/v2 v2.0.0-20260522211029-67d95fa3b5a1
 

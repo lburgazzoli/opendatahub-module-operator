@@ -3,23 +3,77 @@
   "$id": "https://github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-ogx-operator/cmd/chartgen/values",
   "$ref": "#/$defs/Values",
   "$defs": {
-    "ImageSpec": {
+    "ImagePullSecretRef": {
       "properties": {
-        "repository": {
-          "type": "string"
-        },
-        "tag": {
-          "type": "string"
-        },
-        "fullRef": {
+        "name": {
           "type": "string"
         }
       },
       "additionalProperties": false,
       "type": "object",
       "required": [
-        "repository",
-        "tag"
+        "name"
+      ]
+    },
+    "ImageSpec": {
+      "properties": {
+        "ref": {
+          "type": "string"
+        },
+        "pullPolicy": {
+          "type": "string",
+          "enum": [
+            "Always",
+            "IfNotPresent",
+            "Never"
+          ]
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "ref",
+        "pullPolicy"
+      ]
+    },
+    "OperatorSpec": {
+      "properties": {
+        "image": {
+          "$ref": "#/$defs/ImageSpec"
+        },
+        "replicas": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 1
+        },
+        "resources": {
+          "$ref": "#/$defs/ResourceSpec"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "image",
+        "replicas",
+        "resources"
+      ]
+    },
+    "PlatformSpec": {
+      "properties": {
+        "type": {
+          "type": "string",
+          "default": "OpenDataHub"
+        },
+        "version": {
+          "type": "string",
+          "default": ""
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "type",
+        "version"
       ]
     },
     "ResourceList": {
@@ -63,26 +117,20 @@
     },
     "Values": {
       "properties": {
-        "image": {
-          "$ref": "#/$defs/ImageSpec"
-        },
-        "replicas": {
-          "type": "integer",
-          "minimum": 1,
-          "default": 1
-        },
-        "resources": {
-          "$ref": "#/$defs/ResourceSpec"
-        },
-        "leaderElect": {
-          "type": "boolean",
-          "default": true
+        "operator": {
+          "$ref": "#/$defs/OperatorSpec"
         },
         "serviceAccount": {
           "$ref": "#/$defs/ServiceAccountSpec"
         },
-        "imagePullSecret": {
-          "type": "string"
+        "imagePullSecrets": {
+          "items": {
+            "$ref": "#/$defs/ImagePullSecretRef"
+          },
+          "type": "array"
+        },
+        "platform": {
+          "$ref": "#/$defs/PlatformSpec"
         },
         "config": {
           "additionalProperties": {
@@ -94,11 +142,11 @@
       "additionalProperties": false,
       "type": "object",
       "required": [
-        "image",
-        "replicas",
-        "resources",
-        "leaderElect",
-        "serviceAccount"
+        "operator",
+        "serviceAccount",
+        "imagePullSecrets",
+        "platform",
+        "config"
       ]
     }
   }

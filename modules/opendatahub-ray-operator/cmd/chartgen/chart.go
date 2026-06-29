@@ -154,8 +154,8 @@ func transformServiceAccount(obj *unstructured.Unstructured) (string, error) {
 	return raw, nil
 }
 
-// transformConfigMap injects Helm value merging for .Values.config and
-// .Values.imagePullSecret.
+// transformConfigMap injects Helm value merging for explicit platform keys
+// and arbitrary .Values.config entries.
 func transformConfigMap(obj *unstructured.Unstructured) (string, error) {
 	raw, err := marshalResource(obj)
 	if err != nil {
@@ -300,7 +300,7 @@ func replaceImageField(raw string) string {
 		case strings.HasPrefix(trimmed, yamlFieldImage) && !strings.Contains(trimmed, "{{"):
 			indent := line[:len(line)-len(strings.TrimLeft(line, " "))]
 			result = append(result, indent+`image: "{{ include "chart.imageRef" . }}"`)
-			result = append(result, indent+"imagePullPolicy: Always")
+			result = append(result, indent+"imagePullPolicy: {{ .Values.operator.image.pullPolicy }}")
 		case strings.HasPrefix(trimmed, yamlFieldImagePullPolicy):
 			// Drop the original -- the templated version is injected above.
 		default:
@@ -319,7 +319,7 @@ func replaceReplicas(raw string) string {
 		trimmed := strings.TrimSpace(line)
 		if strings.HasPrefix(trimmed, yamlFieldReplicas) && !strings.Contains(trimmed, "{{") {
 			indent := line[:len(line)-len(strings.TrimLeft(line, " "))]
-			lines[i] = indent + "replicas: {{ .Values.replicas }}"
+			lines[i] = indent + "replicas: {{ .Values.operator.replicas }}"
 		}
 	}
 
@@ -337,7 +337,7 @@ func replaceResources(raw string) string {
 		if trimmed == yamlFieldResources {
 			indent := lines[i][:len(lines[i])-len(strings.TrimLeft(lines[i], " "))]
 			result = append(result, indent+"resources:")
-			result = append(result, indent+"  {{- toYaml .Values.resources | nindent "+fmt.Sprintf("%d", len(indent)+2)+" }}")
+			result = append(result, indent+"  {{- toYaml .Values.operator.resources | nindent "+fmt.Sprintf("%d", len(indent)+2)+" }}")
 
 			// Skip the original resources block
 			i++
@@ -378,7 +378,7 @@ func replaceServiceAccountName(raw string) string {
 }
 
 // addImagePullSecrets adds an imagePullSecrets block after the
-// serviceAccountName line if .Values.imagePullSecret is set.
+// serviceAccountName line if .Values.imagePullSecrets is set.
 func addImagePullSecrets(raw string) string {
 	lines := strings.Split(raw, "\n")
 	var result []string
@@ -389,9 +389,9 @@ func addImagePullSecrets(raw string) string {
 		if strings.HasPrefix(trimmed, yamlFieldServiceAccountName) {
 			indent := line[:len(line)-len(strings.TrimLeft(line, " "))]
 			result = append(result,
-				indent+"{{- with .Values.imagePullSecret }}",
+				indent+"{{- with .Values.imagePullSecrets }}",
 				indent+"imagePullSecrets:",
-				indent+"  - name: {{ . }}",
+				indent+"  {{- toYaml . | nindent "+fmt.Sprintf("%d", len(indent)+2)+" }}",
 				indent+"{{- end }}",
 			)
 		}
@@ -526,8 +526,8 @@ func replaceWebhookNamespace(raw string) string {
 	return strings.Join(lines, "\n")
 }
 
-// injectConfigMapValues adds Helm template directives to merge
-// .Values.config and .Values.imagePullSecret into the ConfigMap data.
+// injectConfigMapValues adds Helm template directives to write explicit
+// platform keys and merge .Values.config into the ConfigMap data.
 func injectConfigMapValues(raw string) string {
 	lines := strings.Split(raw, "\n")
 	var result []string
@@ -540,15 +540,10 @@ func injectConfigMapValues(raw string) string {
 			indent := line[:len(line)-len(strings.TrimLeft(line, " "))]
 			result = append(result, line)
 			result = append(result,
-				indent+"  {{- with .Values.imagePullSecret }}",
-				indent+"  imagePullSecret: {{ . }}",
-				indent+"  {{- end }}",
-				indent+`  platformType: {{ default "OpenDataHub" (index .Values.config "platformType") | quote }}`,
-				indent+`  platformVersion: {{ default "" (index .Values.config "platformVersion") | quote }}`,
+				indent+`  platformType: {{ default "OpenDataHub" .Values.platform.type | quote }}`,
+				indent+`  platformVersion: {{ default "" .Values.platform.version | quote }}`,
 				indent+"  {{- range $key, $val := .Values.config }}",
-				indent+`  {{- if and (ne $key "platformType") (ne $key "platformVersion") }}`,
 				indent+"  {{ $key }}: {{ $val | quote }}",
-				indent+"  {{- end }}",
 				indent+"  {{- end }}",
 			)
 

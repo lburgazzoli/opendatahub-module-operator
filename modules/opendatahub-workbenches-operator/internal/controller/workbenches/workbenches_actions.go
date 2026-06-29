@@ -44,13 +44,12 @@ func (m *Module) customizeManifests(ctx context.Context, rr *fwtypes.Reconciliat
 		return fmt.Errorf("computing kustomize variables: %w", err)
 	}
 
-	paramsPath := path.Join(notebookControllerContextDir, notebookControllerManifestSourcePath)
 	if err := kparams.Apply(
 		m.renderFS,
-		path.Join(paramsPath, "params.env"),
+		path.Join(m.manifestInfos[0].String(), "params.env"),
 		kparams.Values(extraParamsMap),
 	); err != nil {
-		return fmt.Errorf("applying params.env from %s: %w", paramsPath, err)
+		return fmt.Errorf("applying params.env from %s: %w", m.manifestInfos[0].String(), err)
 	}
 	return nil
 }

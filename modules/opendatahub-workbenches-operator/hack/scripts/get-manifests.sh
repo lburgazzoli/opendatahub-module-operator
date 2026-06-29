@@ -5,11 +5,18 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 
 COMPONENT_NAME="workbenches"
-DST_MANIFESTS_DIR="${PROJECT_ROOT}/config/manifests/${COMPONENT_NAME}"
+ASSETS_MANIFESTS_DIR="${PROJECT_ROOT}/assets/manifests/${COMPONENT_NAME}"
+LEGACY_MANIFESTS_DIR="${PROJECT_ROOT}/config/manifests/${COMPONENT_NAME}"
+
+sync_legacy_manifests() {
+    rm -rf "${LEGACY_MANIFESTS_DIR}"
+    mkdir -p "$(dirname "${LEGACY_MANIFESTS_DIR}")"
+    cp -a "${ASSETS_MANIFESTS_DIR}" "${LEGACY_MANIFESTS_DIR}"
+}
 
 # Always wipe before copy to keep manifests clean.
-rm -rf "${DST_MANIFESTS_DIR}"
-mkdir -p "${DST_MANIFESTS_DIR}"
+rm -rf "${ASSETS_MANIFESTS_DIR}"
+mkdir -p "${ASSETS_MANIFESTS_DIR}"
 
 if [[ "${ODH_PLATFORM_TYPE:-OpenDataHub}" == "OpenDataHub" ]]; then
     echo "Downloading workbenches manifests for ODH"
@@ -33,8 +40,8 @@ KF_LOCAL="${PROJECT_ROOT}/../kubeflow"
 
 if [[ "${USE_LOCAL:-}" == "true" ]] && [[ -d "${KF_LOCAL}" ]]; then
     echo "Copying kubeflow manifests from adjacent checkout"
-    cp -a "${KF_LOCAL}/components/odh-notebook-controller/config/." "${DST_MANIFESTS_DIR}/odh-notebook-controller/"
-    cp -a "${KF_LOCAL}/components/notebook-controller/config/." "${DST_MANIFESTS_DIR}/kf-notebook-controller/"
+    cp -a "${KF_LOCAL}/components/odh-notebook-controller/config/." "${ASSETS_MANIFESTS_DIR}/odh-notebook-controller/"
+    cp -a "${KF_LOCAL}/components/notebook-controller/config/." "${ASSETS_MANIFESTS_DIR}/kf-notebook-controller/"
 else
     TMP_KF=$(mktemp -d -t "odh-workbenches-kubeflow.XXXXXXXXXX")
     trap 'rm -rf -- "${TMP_KF}"' EXIT
@@ -44,10 +51,10 @@ else
     git -C "${TMP_KF}" fetch --depth 1 -q origin "${KUBEFLOW_COMMIT_SHA}"
     git -C "${TMP_KF}" reset -q --hard "${KUBEFLOW_COMMIT_SHA}"
 
-    mkdir -p "${DST_MANIFESTS_DIR}/odh-notebook-controller"
-    mkdir -p "${DST_MANIFESTS_DIR}/kf-notebook-controller"
-    cp -a "${TMP_KF}/components/odh-notebook-controller/config/." "${DST_MANIFESTS_DIR}/odh-notebook-controller/"
-    cp -a "${TMP_KF}/components/notebook-controller/config/." "${DST_MANIFESTS_DIR}/kf-notebook-controller/"
+    mkdir -p "${ASSETS_MANIFESTS_DIR}/odh-notebook-controller"
+    mkdir -p "${ASSETS_MANIFESTS_DIR}/kf-notebook-controller"
+    cp -a "${TMP_KF}/components/odh-notebook-controller/config/." "${ASSETS_MANIFESTS_DIR}/odh-notebook-controller/"
+    cp -a "${TMP_KF}/components/notebook-controller/config/." "${ASSETS_MANIFESTS_DIR}/kf-notebook-controller/"
 fi
 
 # --------------------------------------------------------------------------
@@ -58,7 +65,7 @@ NB_LOCAL="${PROJECT_ROOT}/../notebooks"
 
 if [[ "${USE_LOCAL:-}" == "true" ]] && [[ -d "${NB_LOCAL}" ]]; then
     echo "Copying notebooks manifests from adjacent checkout"
-    cp -a "${NB_LOCAL}/manifests/." "${DST_MANIFESTS_DIR}/notebooks/"
+    cp -a "${NB_LOCAL}/manifests/." "${ASSETS_MANIFESTS_DIR}/notebooks/"
 else
     TMP_NB=$(mktemp -d -t "odh-workbenches-notebooks.XXXXXXXXXX")
     trap 'rm -rf -- "${TMP_NB}"' EXIT
@@ -68,8 +75,10 @@ else
     git -C "${TMP_NB}" fetch --depth 1 -q origin "${NOTEBOOKS_COMMIT_SHA}"
     git -C "${TMP_NB}" reset -q --hard "${NOTEBOOKS_COMMIT_SHA}"
 
-    mkdir -p "${DST_MANIFESTS_DIR}/notebooks"
-    cp -a "${TMP_NB}/manifests/." "${DST_MANIFESTS_DIR}/notebooks/"
+    mkdir -p "${ASSETS_MANIFESTS_DIR}/notebooks"
+    cp -a "${TMP_NB}/manifests/." "${ASSETS_MANIFESTS_DIR}/notebooks/"
 fi
 
-echo "Workbenches manifests downloaded to ${DST_MANIFESTS_DIR}"
+sync_legacy_manifests
+
+echo "Workbenches manifests downloaded to ${ASSETS_MANIFESTS_DIR}"

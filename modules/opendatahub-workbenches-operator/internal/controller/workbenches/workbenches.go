@@ -26,7 +26,6 @@ import (
 
 	fwapi "github.com/opendatahub-io/odh-platform-utilities/framework/api"
 	fwtypes "github.com/opendatahub-io/odh-platform-utilities/framework/controller/types"
-	kfs "github.com/opendatahub-io/odh-platform-utilities/framework/render/kustomize/fs"
 	kparams "github.com/opendatahub-io/odh-platform-utilities/framework/render/kustomize/params"
 	odhcluster "github.com/opendatahub-io/odh-platform-utilities/pkg/cluster"
 
@@ -54,14 +53,9 @@ type Module struct {
 // Platform overlay defaults to ODH; deployment-time image parameters govern
 // platform-specific behaviour rather than runtime config.
 func NewModule(cfg *moduleconfig.Config) (*Module, error) {
-	baseFS, err := kfs.NewBasePathFs(kfs.NewReadOnlyFs(kfs.NewFsOnDisk()), cfg.ManifestsPath)
+	renderFS, err := newKustomizeFS()
 	if err != nil {
-		return nil, fmt.Errorf("creating base render filesystem: %w", err)
-	}
-
-	renderFS, err := kfs.NewUnionFs(baseFS)
-	if err != nil {
-		return nil, fmt.Errorf("creating render filesystem: %w", err)
+		return nil, err
 	}
 
 	// Default to the ODH overlay; platform-specific overlays are determined
@@ -76,9 +70,9 @@ func NewModule(cfg *moduleconfig.Config) (*Module, error) {
 	return &Module{
 		cfg: cfg,
 		manifestInfos: []fwtypes.ManifestInfo{
-			notebookControllerManifestInfo(".", notebookControllerManifestSourcePath),
-			kfNotebookControllerManifestInfo(".", kfNotebookControllerManifestSourcePath),
-			notebookImagesManifestInfo(".", imgSourcePath),
+			notebookControllerManifestInfo(manifestsRoot, notebookControllerManifestSourcePath),
+			kfNotebookControllerManifestInfo(manifestsRoot, kfNotebookControllerManifestSourcePath),
+			notebookImagesManifestInfo(manifestsRoot, imgSourcePath),
 		},
 		renderFS: renderFS,
 	}, nil
@@ -109,7 +103,7 @@ func (m *Module) Init() error {
 
 	// Default to the ODH params path; overlay selection driven by image parameters.
 	platform := componentApi.Platform(odhcluster.OpenDataHub)
-	nbImgParamsPath := notebookImagesManifestInfo(".", notebookImagesParamsPath[platform])
+	nbImgParamsPath := notebookImagesManifestInfo(manifestsRoot, notebookImagesParamsPath[platform])
 	if err := kparams.Apply(
 		m.renderFS,
 		path.Join(nbImgParamsPath.String(), "params-latest.env"),

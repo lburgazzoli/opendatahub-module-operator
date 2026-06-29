@@ -29,8 +29,7 @@ import (
 )
 
 const (
-	defaultImageRepository = "controller"
-	defaultImageTag        = "latest"
+	defaultImageRef        = "controller:latest"
 	defaultImagePullPolicy = "Always"
 	defaultLimitsCPU       = "500m"
 	defaultLimitsMemory    = "128Mi"
@@ -45,37 +44,45 @@ const (
 
 // Values defines the Helm chart values structure.
 type Values struct {
-	// Image configures the container image for the manager.
-	Image ImageSpec `json:"image"`
+	// Operator configures the operator Deployment itself.
+	Operator OperatorSpec `json:"operator"`
 
-	// Replicas is the number of manager pod replicas.
-	Replicas int32 `json:"replicas" jsonschema:"default=1,minimum=1"`
-
-	// Resources configures CPU and memory requests/limits for the manager.
-	Resources ResourceSpec `json:"resources"`
-
-	// LeaderElect enables leader election for high availability.
-	LeaderElect bool `json:"leaderElect" jsonschema:"default=true"`
-
-	// ServiceAccount configures the operator's ServiceAccount.
+	// ServiceAccount configures the chart-managed ServiceAccount.
 	ServiceAccount ServiceAccountSpec `json:"serviceAccount"`
 
-	// ImagePullSecret is the name of a pull secret for the manager image.
-	// When set it is also injected into the controller ConfigMap so the
-	// operator can propagate it to child resources.
-	ImagePullSecret string `json:"imagePullSecret,omitempty"`
+	// ImagePullSecrets configures pod image pull secrets.
+	ImagePullSecrets []ImagePullSecretRef `json:"imagePullSecrets"`
+
+	// Platform values are written explicitly into the controller ConfigMap.
+	Platform PlatformSpec `json:"platform"`
 
 	// Config provides additional controller configuration entries that are
 	// merged into the controller ConfigMap.
-	Config map[string]string `json:"config,omitempty"`
+	Config map[string]string `json:"config"`
+}
+
+// OperatorSpec configures the operator Deployment.
+type OperatorSpec struct {
+	// Image configures the container image for the operator.
+	Image ImageSpec `json:"image"`
+
+	// Replicas is the number of operator pod replicas.
+	Replicas int32 `json:"replicas" jsonschema:"default=1,minimum=1"`
+
+	// Resources configures CPU and memory requests/limits for the operator.
+	Resources ResourceSpec `json:"resources"`
 }
 
 // ImageSpec describes a container image.
 type ImageSpec struct {
-	Repository string `json:"repository"`
-	Tag        string `json:"tag"`
-	FullRef    string `json:"fullRef,omitempty"`
+	Ref        string `json:"ref"`
 	PullPolicy string `json:"pullPolicy" jsonschema:"enum=Always,enum=IfNotPresent,enum=Never"`
+}
+
+// PlatformSpec contains explicit platform handshake values written to the ConfigMap.
+type PlatformSpec struct {
+	Type    string `json:"type" jsonschema:"default=OpenDataHub"`
+	Version string `json:"version" jsonschema:"default="`
 }
 
 // ResourceSpec mirrors corev1.ResourceRequirements but with simpler
@@ -100,29 +107,38 @@ type ServiceAccountSpec struct {
 	Annotations map[string]string `json:"annotations,omitempty"`
 }
 
+// ImagePullSecretRef matches the pod imagePullSecrets item shape.
+type ImagePullSecretRef struct {
+	Name string `json:"name"`
+}
+
 // DefaultValues returns a Values instance with sensible defaults.
 func DefaultValues() Values {
 	return Values{
-		Image: ImageSpec{
-			Repository: defaultImageRepository,
-			Tag:        defaultImageTag,
-			PullPolicy: defaultImagePullPolicy,
-		},
-		Replicas: 1,
-		Resources: ResourceSpec{
-			Limits: ResourceList{
-				CPU:    defaultLimitsCPU,
-				Memory: defaultLimitsMemory,
+		Operator: OperatorSpec{
+			Image: ImageSpec{
+				Ref:        defaultImageRef,
+				PullPolicy: defaultImagePullPolicy,
 			},
-			Requests: ResourceList{
-				CPU:    defaultRequestsCPU,
-				Memory: defaultRequestsMemory,
+			Replicas: 1,
+			Resources: ResourceSpec{
+				Limits: ResourceList{
+					CPU:    defaultLimitsCPU,
+					Memory: defaultLimitsMemory,
+				},
+				Requests: ResourceList{
+					CPU:    defaultRequestsCPU,
+					Memory: defaultRequestsMemory,
+				},
 			},
 		},
-		LeaderElect: true,
-		Config: map[string]string{
-			"platformVersion": "",
+		ServiceAccount:   ServiceAccountSpec{},
+		ImagePullSecrets: []ImagePullSecretRef{},
+		Platform: PlatformSpec{
+			Type:    "OpenDataHub",
+			Version: "",
 		},
+		Config: map[string]string{},
 	}
 }
 
@@ -142,18 +158,15 @@ func ExtractDefaults(resources []unstructured.Unstructured) Values {
 			c, ok := containers[0].(map[string]any)
 			if ok {
 				if img, exists := c["image"].(string); exists {
-					// Split image:tag
-					parts := splitImageTag(img)
-					values.Image.Repository = parts[0]
-					values.Image.Tag = parts[1]
+					values.Operator.Image.Ref = img
 				}
 
 				if policy, exists := c["imagePullPolicy"].(string); exists {
-					values.Image.PullPolicy = policy
+					values.Operator.Image.PullPolicy = policy
 				}
 
 				if res, exists := c["resources"].(map[string]any); exists {
-					values.Resources = extractResources(res)
+					values.Operator.Resources = extractResources(res)
 				}
 			}
 		}
@@ -161,29 +174,13 @@ func ExtractDefaults(resources []unstructured.Unstructured) Values {
 		// Extract replicas
 		replicas, found, _ := unstructured.NestedInt64(r.Object, "spec", "replicas")
 		if found {
-			values.Replicas = int32(replicas)
+			values.Operator.Replicas = int32(replicas)
 		}
 
 		break // Only process the first Deployment
 	}
 
 	return values
-}
-
-func splitImageTag(image string) [2]string {
-	// Handle images with digest
-	if idx := len(image) - 1; idx > 0 {
-		for i := idx; i >= 0; i-- {
-			if image[i] == ':' {
-				return [2]string{image[:i], image[i+1:]}
-			}
-			if image[i] == '/' {
-				break
-			}
-		}
-	}
-
-	return [2]string{image, defaultImageTag}
 }
 
 func extractResources(res map[string]any) ResourceSpec {

@@ -31,12 +31,8 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end }}
 
 {{/*
-Canonical image reference. Prefer fullRef when explicitly set.
+Canonical image reference.
 */}}
 {{- define "chart.imageRef" -}}
-{{- if .Values.image.fullRef -}}
-{{- .Values.image.fullRef -}}
-{{- else -}}
-{{- printf "%s:%s" .Values.image.repository .Values.image.tag -}}
-{{- end -}}
+{{- .Values.operator.image.ref -}}
 {{- end }}

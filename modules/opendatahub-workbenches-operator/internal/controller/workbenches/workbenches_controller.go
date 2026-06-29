@@ -19,6 +19,7 @@ package workbenches
 import (
 	"context"
 
+	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-workbenches-operator/assets"
 	imagev1 "github.com/openshift/api/image/v1"
 	admissionv1 "k8s.io/api/admissionregistration/v1"
 	appsv1 "k8s.io/api/apps/v1"
@@ -148,6 +149,7 @@ func NewReconciler(
 		WithAction(m.upgradeIfNeeded).
 		WithAction(m.customizeManifests).
 		WithAction(fwreleases.NewAction(
+			fwreleases.WithFS(assets.Manifests),
 			fwreleases.WithMetadataFilePath(metadataFilePath),
 		)).
 		WithAction(m.configureDependencies).

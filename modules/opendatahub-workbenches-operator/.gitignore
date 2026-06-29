@@ -19,6 +19,7 @@ covcounters*
 
 
 # Downloaded manifests (fetched by get-manifests.sh)
+assets/manifests/workbenches/
 config/manifests/workbenches/
 
 # Kubeconfig (local dev)

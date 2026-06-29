@@ -1,15 +1,18 @@
-config:
-  platformVersion: ""
-image:
-  repository: ttl.sh/opendatahub-feast-operator
-  tag: latest
-leaderElect: true
-replicas: 1
-resources:
-  limits:
-    cpu: 500m
-    memory: 512Mi
-  requests:
-    cpu: 10m
-    memory: 128Mi
+config: {}
+imagePullSecrets: []
+operator:
+  image:
+    pullPolicy: Always
+    ref: ttl.sh/opendatahub-feast-operator:latest
+  replicas: 1
+  resources:
+    limits:
+      cpu: 500m
+      memory: 512Mi
+    requests:
+      cpu: 10m
+      memory: 128Mi
+platform:
+  type: OpenDataHub
+  version: ""
 serviceAccount: {}

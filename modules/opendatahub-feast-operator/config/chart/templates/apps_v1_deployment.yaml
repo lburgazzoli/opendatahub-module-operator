@@ -6,7 +6,7 @@ metadata:
   name: odh-feast-operator
   namespace: {{ .Release.Namespace }}
 spec:
-  replicas: {{ .Values.replicas }}
+  replicas: {{ .Values.operator.replicas }}
   selector:
     matchLabels:
       app.kubernetes.io/name: opendatahub-feast-operator
@@ -35,7 +35,7 @@ spec:
         - name: ODH_MODULE_OPERATOR_METRICS_BIND_ADDRESS
           value: :8443
         image: "{{ include "chart.imageRef" . }}"
-        imagePullPolicy: Always
+        imagePullPolicy: {{ .Values.operator.image.pullPolicy }}
         livenessProbe:
           httpGet:
             path: /healthz
@@ -54,7 +54,7 @@ spec:
           initialDelaySeconds: 5
           periodSeconds: 10
         resources:
-          {{- toYaml .Values.resources | nindent 10 }}
+          {{- toYaml .Values.operator.resources | nindent 10 }}
         securityContext:
           allowPrivilegeEscalation: false
           capabilities:
@@ -70,9 +70,9 @@ spec:
         seccompProfile:
           type: RuntimeDefault
       serviceAccountName: {{ default (include "chart.fullname" .) .Values.serviceAccount.name }}
-      {{- with .Values.imagePullSecret }}
+      {{- with .Values.imagePullSecrets }}
       imagePullSecrets:
-        - name: {{ . }}
+        {{- toYaml . | nindent 8 }}
       {{- end }}
       terminationGracePeriodSeconds: 10
       volumes:
