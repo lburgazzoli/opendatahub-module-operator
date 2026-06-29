@@ -23,19 +23,17 @@ import (
 	"slices"
 
 	corev1 "k8s.io/api/core/v1"
-	rbacv1 "k8s.io/api/rbac/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	componentApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-modelregistry-operator/api/components/v1alpha1"
-	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-modelregistry-operator/pkg/resources/gvk"
+	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-modelregistry-operator/assets"
 	fwdeploy "github.com/opendatahub-io/odh-platform-utilities/framework/controller/actions/deploy"
 	odhtypes "github.com/opendatahub-io/odh-platform-utilities/framework/controller/types"
 	kparams "github.com/opendatahub-io/odh-platform-utilities/framework/render/kustomize/params"
 )
 
 const (
-	openShiftAPIServerReaderRoleName        = "model-registry-operator-apiserver-reader"
-	openShiftAPIServerReaderRoleBindingName = "model-registry-operator-apiserver-reader-binding"
+	openShiftConfigGrantsTemplatePath = "manifests/ext/openshift-config-grants.yaml.tmpl"
 )
 
 // initialize sets the per-reconcile manifest list.
@@ -44,6 +42,10 @@ func (m *Module) initialize(_ context.Context, rr *odhtypes.ReconciliationReques
 		m.manifestInfo,
 		m.extraManifest,
 	}
+	rr.Templates = []odhtypes.TemplateInfo{{
+		FS:   assets.Manifests,
+		Path: openShiftConfigGrantsTemplatePath,
+	}}
 	return nil
 }
 
@@ -72,17 +74,11 @@ func (m *Module) customizeManifests(_ context.Context, rr *odhtypes.Reconciliati
 	return nil
 }
 
-// configureDependencies ensures the registries namespace exists and adds
-// supplemental OpenShift RBAC for the upstream controller.
+// configureDependencies ensures the registries namespace exists.
 func (m *Module) configureDependencies(_ context.Context, rr *odhtypes.ReconciliationRequest) error {
 	mr, ok := rr.Instance.(*componentApi.ModelRegistry)
 	if !ok {
 		return fmt.Errorf("resource instance %v is not a ModelRegistry", rr.Instance)
-	}
-
-	subject, err := upstreamControllerSubject(rr)
-	if err != nil {
-		return fmt.Errorf("failed to resolve upstream controller service account: %w", err)
 	}
 
 	if err := rr.AddResources(
@@ -94,38 +90,8 @@ func (m *Module) configureDependencies(_ context.Context, rr *odhtypes.Reconcili
 				},
 			},
 		},
-		// Temporary: grant the rendered upstream controller access to
-		// config.openshift.io/apiservers until the fetched upstream RBAC carries
-		// this permission directly.
-		&rbacv1.ClusterRole{
-			ObjectMeta: metav1.ObjectMeta{
-				Name: openShiftAPIServerReaderRoleName,
-			},
-			Rules: []rbacv1.PolicyRule{{
-				APIGroups: []string{"config.openshift.io"},
-				Resources: []string{"apiservers"},
-				Verbs:     []string{"get", "list", "watch"},
-			}},
-		},
-		&rbacv1.ClusterRoleBinding{
-			ObjectMeta: metav1.ObjectMeta{
-				Name: openShiftAPIServerReaderRoleBindingName,
-			},
-			RoleRef: rbacv1.RoleRef{
-				APIGroup: gvk.ClusterRole.Group,
-				Kind:     gvk.ClusterRole.Kind,
-				Name:     openShiftAPIServerReaderRoleName,
-			},
-			Subjects: []rbacv1.Subject{
-				subject,
-			},
-		},
 	); err != nil {
-		return fmt.Errorf(
-			"failed to add namespace and OpenShift RBAC dependencies for %s: %w",
-			mr.Spec.RegistriesNamespace,
-			err,
-		)
+		return fmt.Errorf("failed to add namespace dependency for %s: %w", mr.Spec.RegistriesNamespace, err)
 	}
 
 	return nil

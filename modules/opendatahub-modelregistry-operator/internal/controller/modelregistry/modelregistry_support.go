@@ -20,17 +20,13 @@ import (
 	"errors"
 	"fmt"
 
-	rbacv1 "k8s.io/api/rbac/v1"
-	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"sigs.k8s.io/kustomize/kyaml/filesys"
 
 	componentApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-modelregistry-operator/api/components/v1alpha1"
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-modelregistry-operator/assets"
 	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-modelregistry-operator/pkg/config"
-	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-modelregistry-operator/pkg/resources/gvk"
 	common "github.com/opendatahub-io/odh-platform-utilities/api/common"
 	fwreleases "github.com/opendatahub-io/odh-platform-utilities/framework/controller/actions/status/releases"
-	odhtypes "github.com/opendatahub-io/odh-platform-utilities/framework/controller/types"
 	kfs "github.com/opendatahub-io/odh-platform-utilities/framework/render/kustomize/fs"
 )
 
@@ -55,55 +51,6 @@ func (m *Module) loadReleases() ([]common.ComponentRelease, error) {
 	}
 
 	return fwreleases.NormalizeComponentReleases(append(releases, m.cfg.ComponentRelease())), nil
-}
-
-func upstreamControllerSubject(rr *odhtypes.ReconciliationRequest) (rbacv1.Subject, error) {
-	var fallback *rbacv1.Subject
-
-	for i := range rr.Resources {
-		resource := &rr.Resources[i]
-
-		switch resource.GroupVersionKind() {
-		case gvk.Deployment:
-			serviceAccountName, found, err := unstructured.NestedString(
-				resource.Object,
-				"spec",
-				"template",
-				"spec",
-				"serviceAccountName",
-			)
-			if err != nil {
-				return rbacv1.Subject{}, fmt.Errorf(
-					"reading serviceAccountName from deployment %s/%s: %w",
-					resource.GetNamespace(),
-					resource.GetName(),
-					err,
-				)
-			}
-			if found && serviceAccountName != "" {
-				return rbacv1.Subject{
-					Kind:      gvk.ServiceAccount.Kind,
-					Name:      serviceAccountName,
-					Namespace: resource.GetNamespace(),
-				}, nil
-			}
-		case gvk.ServiceAccount:
-			subject := rbacv1.Subject{
-				Kind:      gvk.ServiceAccount.Kind,
-				Name:      resource.GetName(),
-				Namespace: resource.GetNamespace(),
-			}
-			if fallback == nil {
-				fallback = &subject
-			}
-		}
-	}
-
-	if fallback != nil {
-		return *fallback, nil
-	}
-
-	return rbacv1.Subject{}, errors.New("no rendered deployment or service account found")
 }
 
 // computeKustomizeVariables returns the gateway and routing kustomize variables from the CR spec.

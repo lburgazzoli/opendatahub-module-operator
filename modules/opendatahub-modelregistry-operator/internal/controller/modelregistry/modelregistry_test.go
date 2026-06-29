@@ -22,7 +22,6 @@ import (
 	"testing/fstest"
 
 	. "github.com/onsi/gomega"
-	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -36,7 +35,6 @@ import (
 
 	componentApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-modelregistry-operator/api/components/v1alpha1"
 	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-modelregistry-operator/pkg/config"
-	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-modelregistry-operator/pkg/resources/gvk"
 	fwdeploy "github.com/opendatahub-io/odh-platform-utilities/framework/controller/actions/deploy"
 )
 
@@ -105,9 +103,11 @@ func TestInitialize(t *testing.T) {
 
 	g.Expect(m.initialize(context.Background(), rr)).To(Succeed())
 	g.Expect(rr.Manifests).To(HaveLen(2))
+	g.Expect(rr.Templates).To(HaveLen(1))
 	g.Expect(rr.Manifests[0].Path).To(Equal("manifests"))
 	g.Expect(rr.Manifests[0].ContextDir).To(Equal(componentName))
 	g.Expect(rr.Manifests[0].SourcePath).To(Equal(baseManifestsSourcePath))
+	g.Expect(rr.Templates[0].Path).To(Equal(openShiftConfigGrantsTemplatePath))
 }
 
 func TestInitLoadsReleases(t *testing.T) {
@@ -134,61 +134,21 @@ func TestInitLoadsReleases(t *testing.T) {
 	}))
 }
 
-func TestConfigureDependenciesAddsNamespaceAndOpenShiftRBAC(t *testing.T) {
+func TestConfigureDependenciesAddsNamespace(t *testing.T) {
 	g := NewWithT(t)
 
 	m := newTestModule(t)
 	obj := newTestModelRegistry()
 	obj.Spec.RegistriesNamespace = "odh-model-registries"
 	rr := newTestRR(obj)
-	g.Expect(rr.AddResources(&appsv1.Deployment{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "rendered-controller",
-			Namespace: "test-ns",
-		},
-		Spec: appsv1.DeploymentSpec{
-			Template: corev1.PodTemplateSpec{
-				Spec: corev1.PodSpec{
-					ServiceAccountName: "rendered-controller-sa",
-				},
-			},
-		},
-	})).To(Succeed())
 
 	g.Expect(m.configureDependencies(context.Background(), rr)).To(Succeed())
-	g.Expect(rr.Resources).To(HaveLen(4))
+	g.Expect(rr.Resources).To(HaveLen(1))
 
-	namespace := rr.Resources[1]
+	namespace := rr.Resources[0]
 	g.Expect(namespace.GetKind()).To(Equal("Namespace"))
 	g.Expect(namespace.GetName()).To(Equal("odh-model-registries"))
 	g.Expect(namespace.GetAnnotations()).To(HaveKeyWithValue(fwdeploy.DefaultManagedByAnnotation, "false"))
-
-	clusterRole := rr.Resources[2]
-	g.Expect(clusterRole.GetKind()).To(Equal("ClusterRole"))
-	g.Expect(clusterRole.GetName()).To(Equal(openShiftAPIServerReaderRoleName))
-	g.Expect(clusterRole.Object["rules"]).To(Equal([]any{
-		map[string]any{
-			"apiGroups": []any{"config.openshift.io"},
-			"resources": []any{"apiservers"},
-			"verbs":     []any{"get", "list", "watch"},
-		},
-	}))
-
-	clusterRoleBinding := rr.Resources[3]
-	g.Expect(clusterRoleBinding.GetKind()).To(Equal("ClusterRoleBinding"))
-	g.Expect(clusterRoleBinding.GetName()).To(Equal(openShiftAPIServerReaderRoleBindingName))
-	g.Expect(clusterRoleBinding.Object["roleRef"]).To(Equal(map[string]any{
-		"apiGroup": gvk.ClusterRole.Group,
-		"kind":     gvk.ClusterRole.Kind,
-		"name":     openShiftAPIServerReaderRoleName,
-	}))
-	g.Expect(clusterRoleBinding.Object["subjects"]).To(Equal([]any{
-		map[string]any{
-			"kind":      gvk.ServiceAccount.Kind,
-			"name":      "rendered-controller-sa",
-			"namespace": "test-ns",
-		},
-	}))
 }
 
 func TestUpgradeIfNeededNoVersion(t *testing.T) {
