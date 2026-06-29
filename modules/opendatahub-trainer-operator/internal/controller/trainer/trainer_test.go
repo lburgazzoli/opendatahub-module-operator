@@ -95,6 +95,8 @@ func TestInitialize(t *testing.T) {
 	g.Expect(rr.Manifests[0].Path).To(Equal("manifests"))
 	g.Expect(rr.Manifests[0].ContextDir).To(Equal(componentName))
 	g.Expect(rr.Manifests[0].SourcePath).To(Equal(overlayRhoai))
+	g.Expect(rr.Templates).To(HaveLen(1))
+	g.Expect(rr.Templates[0].Path).To(Equal(openShiftConfigGrantsTemplatePath))
 }
 
 func TestUpgradeIfNeededNoVersion(t *testing.T) {

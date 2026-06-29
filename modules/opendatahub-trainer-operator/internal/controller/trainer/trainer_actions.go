@@ -24,12 +24,15 @@ import (
 	ofVersion "github.com/operator-framework/api/pkg/lib/version"
 
 	componentApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-trainer-operator/api/components/v1alpha1"
+	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-trainer-operator/assets"
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-trainer-operator/pkg/module"
 	common "github.com/opendatahub-io/odh-platform-utilities/api/common"
 	odherrors "github.com/opendatahub-io/odh-platform-utilities/framework/controller/actions/errors"
 	fwconditions "github.com/opendatahub-io/odh-platform-utilities/framework/controller/conditions"
 	odhtypes "github.com/opendatahub-io/odh-platform-utilities/framework/controller/types"
 )
+
+const openShiftConfigGrantsTemplatePath = "manifests/ext/openshift-config-grants.yaml.tmpl"
 
 // ensureDependenciesAvailable halts reconcile until JobSet dependencies exist.
 func (m *Module) ensureDependenciesAvailable(ctx context.Context, rr *odhtypes.ReconciliationRequest) error {
@@ -76,6 +79,10 @@ func (m *Module) ensureDependenciesAvailable(ctx context.Context, rr *odhtypes.R
 // initialize appends manifests for the trainer component.
 func (m *Module) initialize(_ context.Context, rr *odhtypes.ReconciliationRequest) error {
 	rr.Manifests = append(rr.Manifests, m.manifestInfo)
+	rr.Templates = []odhtypes.TemplateInfo{{
+		FS:   assets.Manifests,
+		Path: openShiftConfigGrantsTemplatePath,
+	}}
 
 	return nil
 }
