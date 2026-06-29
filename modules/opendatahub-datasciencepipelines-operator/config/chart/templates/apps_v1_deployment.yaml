@@ -24,8 +24,6 @@ spec:
         env:
         - name: ODH_MODULE_OPERATOR_CONFIGURATION_PATH
           value: /etc/controller/config
-        - name: ODH_MODULE_OPERATOR_MANIFESTS_PATH
-          value: /manifests
         - name: ODH_MODULE_OPERATOR_NAMESPACE
           valueFrom:
             fieldRef:

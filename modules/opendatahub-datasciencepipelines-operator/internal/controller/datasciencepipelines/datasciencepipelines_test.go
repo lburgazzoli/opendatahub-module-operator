@@ -18,14 +18,11 @@ package datasciencepipelines
 
 import (
 	"context"
-	"os"
-	"path/filepath"
 	"testing"
 	"testing/fstest"
 
 	. "github.com/onsi/gomega"
 	common "github.com/opendatahub-io/odh-platform-utilities/api/common"
-	fwapi "github.com/opendatahub-io/odh-platform-utilities/framework/api"
 	fwtypes "github.com/opendatahub-io/odh-platform-utilities/framework/controller/types"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
@@ -43,24 +40,10 @@ func testConfig(t *testing.T) *moduleconfig.Config {
 	return cfg
 }
 
-func writeTestParamsEnv(t *testing.T) string {
-	t.Helper()
-
-	root := t.TempDir()
-	dir := filepath.Join(root, componentName, "base")
-	err := os.MkdirAll(dir, 0o755)
-	NewWithT(t).Expect(err).NotTo(HaveOccurred())
-	err = os.WriteFile(filepath.Join(dir, "params.env"), []byte(""), 0o600)
-	NewWithT(t).Expect(err).NotTo(HaveOccurred())
-
-	return root
-}
-
 func newTestModule(t *testing.T) *Module {
 	t.Helper()
 
 	cfg := testConfig(t)
-	cfg.ManifestsPath = writeTestParamsEnv(t)
 	cfg.ApplicationsNamespace = "test-ns"
 
 	m, err := NewModule(cfg)
@@ -69,22 +52,13 @@ func newTestModule(t *testing.T) *Module {
 	return m
 }
 
-func newTestRR(
-	t *testing.T,
-	obj *componentApi.DataSciencePipelines,
-	manifestsBasePath string,
-) *fwtypes.ReconciliationRequest {
+func newTestRR(t *testing.T, obj *componentApi.DataSciencePipelines) *fwtypes.ReconciliationRequest {
 	t.Helper()
 
-	rel := testConfig(t).PlatformRelease()
-
+	cfg := testConfig(t)
 	return &fwtypes.ReconciliationRequest{
-		Instance:          obj,
-		ManifestsBasePath: manifestsBasePath,
-		Release: fwapi.Release{
-			Name:    rel.Name,
-			Version: rel.Version,
-		},
+		Instance: obj,
+		Release:  cfg.PlatformRelease(),
 	}
 }
 
@@ -99,14 +73,12 @@ func newTestDataSciencePipelines() *componentApi.DataSciencePipelines {
 func TestNewModule(t *testing.T) {
 	g := NewWithT(t)
 
-	manifestsPath := writeTestParamsEnv(t)
 	cfg := testConfig(t)
-	cfg.ManifestsPath = manifestsPath
 
 	m, err := NewModule(cfg)
 	g.Expect(err).NotTo(HaveOccurred())
 	g.Expect(m.cfg).To(Equal(cfg))
-	g.Expect(m.manifestInfo.Path).To(Equal("."))
+	g.Expect(m.manifestInfo.Path).To(Equal("manifests"))
 	g.Expect(m.manifestInfo.ContextDir).To(Equal(componentName))
 	g.Expect(m.manifestInfo.SourcePath).To(Equal(overlayODH))
 }
@@ -116,11 +88,11 @@ func TestInitialize(t *testing.T) {
 
 	m := newTestModule(t)
 	obj := newTestDataSciencePipelines()
-	rr := newTestRR(t, obj, m.cfg.ManifestsPath)
+	rr := newTestRR(t, obj)
 
 	g.Expect(m.initialize(context.Background(), rr)).To(Succeed())
 	g.Expect(rr.Manifests).To(HaveLen(1))
-	g.Expect(rr.Manifests[0].Path).To(Equal("."))
+	g.Expect(rr.Manifests[0].Path).To(Equal("manifests"))
 	g.Expect(rr.Manifests[0].ContextDir).To(Equal(componentName))
 	g.Expect(rr.Manifests[0].SourcePath).To(Equal(overlayODH))
 	g.Expect(rr.Templates).To(HaveLen(1))
@@ -132,7 +104,7 @@ func TestUpgradeIfNeededNoVersion(t *testing.T) {
 
 	m := newTestModule(t)
 	obj := newTestDataSciencePipelines()
-	rr := newTestRR(t, obj, m.cfg.ManifestsPath)
+	rr := newTestRR(t, obj)
 
 	g.Expect(m.upgradeIfNeeded(context.Background(), rr)).To(Succeed())
 }
@@ -146,7 +118,7 @@ func TestUpgradeIfNeededSameVersion(t *testing.T) {
 	obj.Status.Releases = []common.ComponentRelease{
 		{Name: moduleconfig.ReleasePlatform, Version: "1.0.0"},
 	}
-	rr := newTestRR(t, obj, m.cfg.ManifestsPath)
+	rr := newTestRR(t, obj)
 
 	g.Expect(m.upgradeIfNeeded(context.Background(), rr)).To(Succeed())
 }
@@ -156,7 +128,7 @@ func TestReportStatus(t *testing.T) {
 
 	m := newTestModule(t)
 	obj := newTestDataSciencePipelines()
-	rr := newTestRR(t, obj, m.cfg.ManifestsPath)
+	rr := newTestRR(t, obj)
 
 	g.Expect(m.initialize(context.Background(), rr)).To(Succeed())
 	g.Expect(m.reportStatus(context.Background(), rr)).To(Succeed())

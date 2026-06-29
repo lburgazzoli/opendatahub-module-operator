@@ -20,7 +20,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"path"
 
 	componentApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-datasciencepipelines-operator/api/components/v1alpha1"
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-datasciencepipelines-operator/assets"
@@ -126,16 +125,14 @@ func (m *Module) argoWorkflowsControllersOptions(_ context.Context, rr *fwtypes.
 		return fmt.Errorf("failed to marshal spec.argoWorkflowsControllers: %w", err)
 	}
 
-	pp := path.Join(componentName, "base")
-
 	if err := kparams.Apply(
 		m.renderFS,
-		path.Join(pp, "params.env"),
+		paramsEnvPath,
 		kparams.Values(map[string]string{
 			argoWorkflowsControllersParamsKey: string(awfSpecJSON),
 		}),
 	); err != nil {
-		return fmt.Errorf("failed to update params.env on path %s:: %w", pp, err)
+		return fmt.Errorf("failed to update params.env on path %s: %w", paramsEnvPath, err)
 	}
 
 	return nil

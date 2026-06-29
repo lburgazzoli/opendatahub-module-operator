@@ -11,12 +11,12 @@ operator deployment on OpenShift and gates reconciliation on the
 verify the remaining DSP-specific checks:
 
 - [ ] Fetch manifests: `make get-manifests` and verify the overlay structure
-  under `config/manifests/datasciencepipelines/overlays/{odh,rhoai}/`
+  under `assets/manifests/datasciencepipelines/overlays/{odh,rhoai}/`
 - [ ] Derive full RBAC from kustomize output and add missing markers:
   ```bash
-  kustomize build config/manifests/datasciencepipelines/overlays/odh 2>/dev/null | \
+  kustomize build assets/manifests/datasciencepipelines/overlays/odh 2>/dev/null | \
     yq e '.kind' - | sort -u
-  kustomize build config/manifests/datasciencepipelines/overlays/odh 2>/dev/null | \
+  kustomize build assets/manifests/datasciencepipelines/overlays/odh 2>/dev/null | \
     yq e 'select(.kind == "ClusterRole") | .rules[] | .apiGroups[] + "/" + .resources[] + " " + (.verbs | join(","))' - | sort -u
   ```
 - [ ] Keep the negative-path integration and e2e tests for Argo CRD gating:

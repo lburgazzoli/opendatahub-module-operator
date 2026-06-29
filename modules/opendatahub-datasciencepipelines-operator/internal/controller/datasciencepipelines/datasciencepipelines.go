@@ -19,13 +19,13 @@ package datasciencepipelines
 import (
 	"context"
 	"fmt"
-	"path"
 	"strconv"
 
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/kustomize/kyaml/filesys"
 
 	componentApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-datasciencepipelines-operator/api/components/v1alpha1"
+	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-datasciencepipelines-operator/assets"
 	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-datasciencepipelines-operator/pkg/config"
 	fwapi "github.com/opendatahub-io/odh-platform-utilities/framework/api"
 	fwerrors "github.com/opendatahub-io/odh-platform-utilities/framework/controller/actions/errors"
@@ -43,6 +43,8 @@ const (
 	platformVersionParamsKey          = "PLATFORMVERSION"
 	fipsEnabledParamsKey              = "FIPSENABLED"
 	argoWorkflowsControllersParamsKey = "ARGOWORKFLOWSCONTROLLERS"
+
+	paramsEnvPath = "manifests/" + componentApi.DataSciencePipelinesComponentName + "/base/params.env"
 
 	overlayODH   = "overlays/odh"
 	overlayRhoai = "overlays/rhoai"
@@ -85,15 +87,24 @@ type Module struct {
 	renderFS     filesys.FileSystem
 }
 
-func NewModule(cfg *moduleconfig.Config) (*Module, error) {
-	baseFS, err := kfs.NewBasePathFs(kfs.NewReadOnlyFs(kfs.NewFsOnDisk()), cfg.ManifestsPath)
+func newKustomizeFS() (filesys.FileSystem, error) {
+	baseKustomizeFS, err := kfs.NewFromIOFS(assets.Manifests, "")
 	if err != nil {
 		return nil, fmt.Errorf("creating base render filesystem: %w", err)
 	}
 
-	renderFS, err := kfs.NewUnionFs(baseFS)
+	kustomizeFS, err := kfs.NewUnionFs(baseKustomizeFS)
 	if err != nil {
 		return nil, fmt.Errorf("creating render filesystem: %w", err)
+	}
+
+	return kustomizeFS, nil
+}
+
+func NewModule(cfg *moduleconfig.Config) (*Module, error) {
+	kustomizeFS, err := newKustomizeFS()
+	if err != nil {
+		return nil, err
 	}
 
 	overlay := overlayODH
@@ -105,11 +116,11 @@ func NewModule(cfg *moduleconfig.Config) (*Module, error) {
 	return &Module{
 		cfg: cfg,
 		manifestInfo: fwtypes.ManifestInfo{
-			Path:       ".",
+			Path:       "manifests",
 			ContextDir: componentName,
 			SourcePath: overlay,
 		},
-		renderFS: renderFS,
+		renderFS: kustomizeFS,
 	}, nil
 }
 
@@ -119,11 +130,9 @@ func (m *Module) Init(ctx context.Context, reader client.Reader) error {
 		return fmt.Errorf("detecting cluster info: %w", err)
 	}
 
-	pp := path.Join(componentName, "base")
-
 	if err := kparams.Apply(
 		m.renderFS,
-		path.Join(pp, "params.env"),
+		paramsEnvPath,
 		kparams.Replacement(
 			kparams.FromEnv(imageParamMap),
 		),
@@ -132,7 +141,7 @@ func (m *Module) Init(ctx context.Context, reader client.Reader) error {
 			fipsEnabledParamsKey:     strconv.FormatBool(info.FipsEnabled),
 		}),
 	); err != nil {
-		return fmt.Errorf("failed to update params on path %s: %w", pp, err)
+		return fmt.Errorf("failed to update params on path %s: %w", paramsEnvPath, err)
 	}
 
 	m.release = m.cfg.PlatformRelease()

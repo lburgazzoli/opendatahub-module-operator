@@ -147,7 +147,7 @@ container-prep: manifests generate get-manifests ## On host: regenerate code and
 
 .PHONY: run
 run: manifests generate fmt vet ## Run a controller from your host.
-	ODH_MODULE_OPERATOR_MANIFESTS_PATH=config/manifests go run -ldflags "$(LDFLAGS)" ./cmd/main.go operator
+	go run -ldflags "$(LDFLAGS)" ./cmd/main.go operator
 
 .PHONY: container-build
 container-build: container-prep ## Build container image with the manager.

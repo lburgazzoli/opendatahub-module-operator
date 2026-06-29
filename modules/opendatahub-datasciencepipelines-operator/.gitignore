@@ -19,7 +19,7 @@ covcounters*
 
 
 # Downloaded manifests (fetched by get-manifests.sh)
-config/manifests/datasciencepipelines/
+assets/manifests/datasciencepipelines/
 
 # Kubeconfig (local dev)
 .kube/

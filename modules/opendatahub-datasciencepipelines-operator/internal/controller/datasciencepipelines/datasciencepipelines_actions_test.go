@@ -18,9 +18,6 @@ package datasciencepipelines
 
 import (
 	"context"
-	"os"
-	"path"
-	"path/filepath"
 	"testing"
 
 	"github.com/lburgazzoli/gomega-matchers/pkg/matchers/k8s"
@@ -288,18 +285,16 @@ func TestCheckPreConditionsWrongInstanceType(t *testing.T) {
 }
 
 func TestArgoWorkflowsControllersOptions(t *testing.T) {
-	g := NewWithT(t)
-
 	tests := []struct {
-		name                string
-		instance            common.PlatformObject
-		expectedParamString string
-		expectedError       bool
+		name          string
+		instance      common.PlatformObject
+		expectedState string
+		expectedError bool
 	}{
 		{
-			name:                "defaults to managed when option is omitted",
-			instance:            newTestDataSciencePipelines(),
-			expectedParamString: `ARGOWORKFLOWSCONTROLLERS={"managementState":"Managed"}`,
+			name:          "defaults to managed when option is omitted",
+			instance:      newTestDataSciencePipelines(),
+			expectedState: "Managed",
 		},
 		{
 			name: "writes removed state when explicitly requested",
@@ -313,7 +308,7 @@ func TestArgoWorkflowsControllersOptions(t *testing.T) {
 					},
 				},
 			},
-			expectedParamString: `ARGOWORKFLOWSCONTROLLERS={"managementState":"Removed"}`,
+			expectedState: "Removed",
 		},
 		{
 			name:          "fails for wrong instance type",
@@ -324,16 +319,12 @@ func TestArgoWorkflowsControllersOptions(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			root := writeTestParamsEnv(t)
-			rr := fwtypes.ReconciliationRequest{
-				Instance:          tt.instance,
-				ManifestsBasePath: root,
-			}
+			g := NewWithT(t)
 
-			cfg := testConfig(t)
-			cfg.ManifestsPath = root
-			m, buildErr := NewModule(cfg)
-			g.Expect(buildErr).NotTo(HaveOccurred())
+			m := newTestModule(t)
+			rr := fwtypes.ReconciliationRequest{
+				Instance: tt.instance,
+			}
 
 			err := m.argoWorkflowsControllersOptions(context.Background(), &rr)
 			if tt.expectedError {
@@ -343,13 +334,12 @@ func TestArgoWorkflowsControllersOptions(t *testing.T) {
 
 			g.Expect(err).NotTo(HaveOccurred())
 
-			content, readErr := m.renderFS.ReadFile(path.Join(componentName, "base", "params.env"))
+			content, readErr := m.renderFS.ReadFile(paramsEnvPath)
 			g.Expect(readErr).NotTo(HaveOccurred())
-			g.Expect(string(content)).To(ContainSubstring(tt.expectedParamString))
-
-			baseContent, baseReadErr := os.ReadFile(filepath.Join(root, componentName, "base", "params.env"))
-			g.Expect(baseReadErr).NotTo(HaveOccurred())
-			g.Expect(string(baseContent)).To(BeEmpty())
+			g.Expect(string(content)).To(And(
+				ContainSubstring("ARGOWORKFLOWSCONTROLLERS="),
+				ContainSubstring(tt.expectedState),
+			))
 		})
 	}
 }
