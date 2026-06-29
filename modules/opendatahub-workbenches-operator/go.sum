@@ -135,10 +135,10 @@ github.com/lburgazzoli/gomega-matchers v0.4.1-0.20260615083735-1af7a46bf167 h1:7
 github.com/lburgazzoli/gomega-matchers v0.4.1-0.20260615083735-1af7a46bf167/go.mod h1:bim0fMQz8Iha6GKl9T7E75BI6xvoV9VSU6niK3fHeb4=
 github.com/lburgazzoli/opendatahub-operator/v2 v2.0.0-20260522211029-67d95fa3b5a1 h1:IzBoiVEp2Oxf3G6w4wsb/9VrLmttJtWQ5TghonnPBls=
 github.com/lburgazzoli/opendatahub-operator/v2 v2.0.0-20260522211029-67d95fa3b5a1/go.mod h1:98taq0y6mF3fuSByLOsb5IFbNqG2O1qV2as0AYXjsVc=
-github.com/lburgazzoli/opendatahub-platform-utilities v0.0.0-20260626151446-2d3c0dd077d0 h1:xukxTzndtsZS4D4JOSkm9WnesuDoX2ZPyhikXY+RsAg=
-github.com/lburgazzoli/opendatahub-platform-utilities v0.0.0-20260626151446-2d3c0dd077d0/go.mod h1:U76jpNAMv6JO5HFRYTMcGfYObc3NF1IngxsIsgWAMj4=
-github.com/lburgazzoli/opendatahub-platform-utilities/framework v0.0.0-20260626151446-2d3c0dd077d0 h1:+VK5ZRlH6qhQdS41PpzREaLRtEJz6nwtZIeJsKBegLk=
-github.com/lburgazzoli/opendatahub-platform-utilities/framework v0.0.0-20260626151446-2d3c0dd077d0/go.mod h1:4lU9RdkBo0WxH/K81YXsSS5yxuTiXuTqGdUr78SqUYs=
+github.com/lburgazzoli/opendatahub-platform-utilities v0.0.0-20260629160854-953ca337b8dd h1:IrjZJWHy12s21COA2e+JWF7ZCchNLsGaE9gCfuTwmJs=
+github.com/lburgazzoli/opendatahub-platform-utilities v0.0.0-20260629160854-953ca337b8dd/go.mod h1:U76jpNAMv6JO5HFRYTMcGfYObc3NF1IngxsIsgWAMj4=
+github.com/lburgazzoli/opendatahub-platform-utilities/framework v0.0.0-20260629160854-953ca337b8dd h1:AmGrkAgKJrXovIoU8pZ/9vyoHkriZcghzZN4Qmi4Sdo=
+github.com/lburgazzoli/opendatahub-platform-utilities/framework v0.0.0-20260629160854-953ca337b8dd/go.mod h1:4lU9RdkBo0WxH/K81YXsSS5yxuTiXuTqGdUr78SqUYs=
 github.com/mitchellh/copystructure v1.2.0 h1:vpKXTN4ewci03Vljg/q9QvCGUDttBOGBIa15WveJJGw=
 github.com/mitchellh/copystructure v1.2.0/go.mod h1:qLl+cE2AmVv+CoeAwDPye/v+N2HKCj9FbZEVFJRxO9s=
 github.com/mitchellh/reflectwalk v1.0.2 h1:G2LzWKi524PWgd3mLHV8Y5k7s6XUvT0Gef6zxSIeXaQ=

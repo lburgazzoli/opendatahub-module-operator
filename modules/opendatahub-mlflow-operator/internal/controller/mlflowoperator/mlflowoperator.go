@@ -18,17 +18,15 @@ package mlflowoperator
 
 import (
 	"fmt"
-	iofs "io/fs"
 	"path"
-	"sort"
 
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-mlflow-operator/assets"
 	common "github.com/opendatahub-io/odh-platform-utilities/api/common"
 	fwapi "github.com/opendatahub-io/odh-platform-utilities/framework/api"
+	fwreleases "github.com/opendatahub-io/odh-platform-utilities/framework/controller/actions/status/releases"
 	fwtypes "github.com/opendatahub-io/odh-platform-utilities/framework/controller/types"
 	kparams "github.com/opendatahub-io/odh-platform-utilities/framework/render/kustomize/params"
 	"sigs.k8s.io/kustomize/kyaml/filesys"
-	"sigs.k8s.io/yaml"
 
 	componentApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-mlflow-operator/api/components/v1alpha1"
 	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-mlflow-operator/pkg/config"
@@ -121,22 +119,10 @@ func (m *Module) Init() error {
 
 func (m *Module) loadReleases() ([]common.ComponentRelease, error) {
 	metadataPath := path.Join(manifestsRoot, componentName, componentMetadataFile)
-	raw, err := iofs.ReadFile(assets.Manifests, metadataPath)
+	releases, err := fwreleases.ReadComponentReleases(assets.Manifests, metadataPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read component metadata from %s: %w", metadataPath, err)
 	}
 
-	var metadata struct {
-		Releases []common.ComponentRelease `json:"releases"`
-	}
-	if err := yaml.Unmarshal(raw, &metadata); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal component metadata from %s: %w", metadataPath, err)
-	}
-
-	releases := append(metadata.Releases, m.cfg.ComponentRelease())
-	sort.Slice(releases, func(i, j int) bool {
-		return releases[i].Name < releases[j].Name
-	})
-
-	return releases, nil
+	return fwreleases.NormalizeComponentReleases(append(releases, m.cfg.ComponentRelease())), nil
 }

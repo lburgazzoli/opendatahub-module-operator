@@ -19,8 +19,6 @@ package modelregistry
 import (
 	"errors"
 	"fmt"
-	iofs "io/fs"
-	"sort"
 
 	rbacv1 "k8s.io/api/rbac/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -31,9 +29,9 @@ import (
 	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-modelregistry-operator/pkg/config"
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-modelregistry-operator/pkg/resources/gvk"
 	common "github.com/opendatahub-io/odh-platform-utilities/api/common"
+	fwreleases "github.com/opendatahub-io/odh-platform-utilities/framework/controller/actions/status/releases"
 	odhtypes "github.com/opendatahub-io/odh-platform-utilities/framework/controller/types"
 	kfs "github.com/opendatahub-io/odh-platform-utilities/framework/render/kustomize/fs"
-	"sigs.k8s.io/yaml"
 )
 
 func newKustomizeFS() (filesys.FileSystem, error) {
@@ -51,26 +49,12 @@ func newKustomizeFS() (filesys.FileSystem, error) {
 }
 
 func (m *Module) loadReleases() ([]common.ComponentRelease, error) {
-	raw, err := iofs.ReadFile(assets.Manifests, componentMetadataPath)
+	releases, err := fwreleases.ReadComponentReleases(assets.Manifests, componentMetadataPath)
 	if err != nil {
 		return nil, fmt.Errorf("read component metadata: %w", err)
 	}
 
-	var metadata struct {
-		Releases []common.ComponentRelease `json:"releases"`
-	}
-
-	if err := yaml.Unmarshal(raw, &metadata); err != nil {
-		return nil, fmt.Errorf("unmarshal component metadata: %w", err)
-	}
-
-	releases := append(metadata.Releases, m.cfg.ComponentRelease())
-
-	sort.Slice(releases, func(i, j int) bool {
-		return releases[i].Name < releases[j].Name
-	})
-
-	return releases, nil
+	return fwreleases.NormalizeComponentReleases(append(releases, m.cfg.ComponentRelease())), nil
 }
 
 func upstreamControllerSubject(rr *odhtypes.ReconciliationRequest) (rbacv1.Subject, error) {

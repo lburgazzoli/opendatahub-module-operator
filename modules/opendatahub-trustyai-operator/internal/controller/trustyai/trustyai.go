@@ -18,19 +18,17 @@ package trustyai
 
 import (
 	"fmt"
-	iofs "io/fs"
 	"path"
-	"sort"
 
 	componentApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-trustyai-operator/api/components/v1alpha1"
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-trustyai-operator/assets"
 	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-trustyai-operator/pkg/config"
 	common "github.com/opendatahub-io/odh-platform-utilities/api/common"
 	fwapi "github.com/opendatahub-io/odh-platform-utilities/framework/api"
+	fwreleases "github.com/opendatahub-io/odh-platform-utilities/framework/controller/actions/status/releases"
 	fwtypes "github.com/opendatahub-io/odh-platform-utilities/framework/controller/types"
 	kparams "github.com/opendatahub-io/odh-platform-utilities/framework/render/kustomize/params"
 	"sigs.k8s.io/kustomize/kyaml/filesys"
-	"sigs.k8s.io/yaml"
 )
 
 const (
@@ -123,22 +121,13 @@ func (m *Module) Init() error {
 }
 
 func (m *Module) loadReleases() ([]common.ComponentRelease, error) {
-	rawMetadata, err := iofs.ReadFile(assets.Manifests, path.Join("manifests", componentName, "component_metadata.yaml"))
+	releases, err := fwreleases.ReadComponentReleases(
+		assets.Manifests,
+		path.Join("manifests", componentName, "component_metadata.yaml"),
+	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read component metadata: %w", err)
 	}
 
-	var metadata struct {
-		Releases []common.ComponentRelease `json:"releases"`
-	}
-	if err := yaml.Unmarshal(rawMetadata, &metadata); err != nil {
-		return nil, fmt.Errorf("failed to parse component metadata: %w", err)
-	}
-
-	releases := append(metadata.Releases, m.cfg.ComponentRelease())
-	sort.Slice(releases, func(i, j int) bool {
-		return releases[i].Name < releases[j].Name
-	})
-
-	return releases, nil
+	return fwreleases.NormalizeComponentReleases(append(releases, m.cfg.ComponentRelease())), nil
 }
