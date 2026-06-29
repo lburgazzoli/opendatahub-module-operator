@@ -23,6 +23,7 @@ import (
 	"path"
 
 	componentApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-datasciencepipelines-operator/api/components/v1alpha1"
+	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-datasciencepipelines-operator/assets"
 	module "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-datasciencepipelines-operator/pkg/module"
 	fwcluster "github.com/opendatahub-io/odh-platform-utilities/framework/cluster"
 	odherr "github.com/opendatahub-io/odh-platform-utilities/framework/controller/actions/errors"
@@ -33,8 +34,14 @@ import (
 	k8serr "k8s.io/apimachinery/pkg/api/errors"
 )
 
+const openShiftConfigGrantsTemplatePath = "manifests/ext/openshift-config-grants.yaml.tmpl"
+
 func (m *Module) initialize(_ context.Context, rr *fwtypes.ReconciliationRequest) error {
 	rr.Manifests = append(rr.Manifests, m.manifestInfo)
+	rr.Templates = []fwtypes.TemplateInfo{{
+		FS:   assets.Manifests,
+		Path: openShiftConfigGrantsTemplatePath,
+	}}
 	return nil
 }
 
