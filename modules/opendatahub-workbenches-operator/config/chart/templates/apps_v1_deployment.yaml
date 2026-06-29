@@ -25,7 +25,7 @@ spec:
         - name: ODH_MODULE_OPERATOR_CONFIGURATION_PATH
           value: /etc/controller/config
         - name: ODH_MODULE_OPERATOR_MANIFESTS_PATH
-          value: /opt/manifests
+          value: /manifests
         - name: ODH_MODULE_OPERATOR_NAMESPACE
           valueFrom:
             fieldRef:
@@ -73,26 +73,6 @@ spec:
         - mountPath: /etc/controller/config
           name: config
           readOnly: true
-        - mountPath: /opt/manifests
-          name: manifests
-      initContainers:
-      - command:
-        - cp
-        - -r
-        - /manifests/.
-        - /opt/manifests/
-        image: "{{ include "chart.imageRef" . }}"
-        imagePullPolicy: {{ .Values.operator.image.pullPolicy }}
-        name: copy-manifests
-        securityContext:
-          allowPrivilegeEscalation: false
-          capabilities:
-            drop:
-            - ALL
-          readOnlyRootFilesystem: true
-        volumeMounts:
-        - mountPath: /opt/manifests
-          name: manifests
       securityContext:
         runAsNonRoot: true
         seccompProfile:
@@ -108,8 +88,6 @@ spec:
         secret:
           defaultMode: 420
           secretName: webhook-server-cert
-      - emptyDir: {}
-        name: manifests
       - configMap:
           name: odh-workbenches-config
         name: config

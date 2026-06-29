@@ -32,6 +32,7 @@ import (
 
 	localapi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-workbenches-operator/api/components/v1alpha1"
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-workbenches-operator/assets"
+	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-workbenches-operator/pkg/config"
 	gvk "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-workbenches-operator/pkg/resources/gvk"
 	common "github.com/opendatahub-io/odh-platform-utilities/api/common"
 	"github.com/opendatahub-io/odh-platform-utilities/framework/controller/actions/status/deployments"
@@ -154,6 +155,15 @@ func newKustomizeFS() (filesys.FileSystem, error) {
 	}
 
 	return kustomizeFS, nil
+}
+
+func loadReleases(cfg *moduleconfig.Config) ([]common.ComponentRelease, error) {
+	releases, err := fwreleases.ReadComponentReleases(assets.Manifests, metadataFilePath(nil))
+	if err != nil {
+		return nil, fmt.Errorf("read component metadata: %w", err)
+	}
+
+	return fwreleases.NormalizeComponentReleases(append(releases, cfg.ComponentRelease())), nil
 }
 
 func kfNotebookControllerManifestInfo(basePath string, sourcePath string) fwtypes.ManifestInfo {

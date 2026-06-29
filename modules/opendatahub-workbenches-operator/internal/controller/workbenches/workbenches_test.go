@@ -25,6 +25,7 @@ import (
 	common "github.com/opendatahub-io/odh-platform-utilities/api/common"
 	fwtypes "github.com/opendatahub-io/odh-platform-utilities/framework/controller/types"
 	corev1 "k8s.io/api/core/v1"
+	rbacv1 "k8s.io/api/rbac/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -62,6 +63,7 @@ func seedTestAPIReader(t *testing.T, m *Module, objs ...client.Object) {
 	scheme := runtime.NewScheme()
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
 	utilruntime.Must(corev1.AddToScheme(scheme))
+	utilruntime.Must(rbacv1.AddToScheme(scheme))
 	utilruntime.Must(apiextensionsv1.AddToScheme(scheme))
 	utilruntime.Must(componentApi.AddToScheme(scheme))
 	m.apiReader = fake.NewClientBuilder().
@@ -100,10 +102,12 @@ func TestInitialize(t *testing.T) {
 	g.Expect(m.initialize(context.Background(), rr)).To(Succeed())
 	// initialize sets 3 manifests: odh-notebook-controller, kf-notebook-controller, notebooks
 	g.Expect(rr.Manifests).To(HaveLen(3))
+	g.Expect(rr.Templates).To(HaveLen(1))
 	g.Expect(rr.Manifests[0].Path).To(Equal(manifestsRoot))
 	g.Expect(rr.Manifests[0].ContextDir).To(Equal(notebookControllerContextDir))
 	g.Expect(rr.Manifests[1].ContextDir).To(Equal(kfNotebookControllerContextDir))
 	g.Expect(rr.Manifests[2].ContextDir).To(Equal(notebookContextDir))
+	g.Expect(rr.Templates[0].Path).To(Equal(openShiftConfigGrantsTemplatePath))
 }
 
 func TestMetadataFilePathUsesEmbeddedManifests(t *testing.T) {
@@ -156,6 +160,7 @@ func TestReportStatus(t *testing.T) {
 	g := NewWithT(t)
 
 	m := newTestModule(t)
+	g.Expect(m.Init()).To(Succeed())
 	obj := newTestWorkbenches()
 	rr := newTestRR(t, obj)
 
@@ -165,4 +170,5 @@ func TestReportStatus(t *testing.T) {
 	g.Expect(obj.Status.Releases).To(ContainElement(
 		common.ComponentRelease{Name: moduleconfig.ReleasePlatform, Version: "1.0.0"},
 	))
+	g.Expect(len(obj.Status.Releases)).To(BeNumerically(">", 1))
 }

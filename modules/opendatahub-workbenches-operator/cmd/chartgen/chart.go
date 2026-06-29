@@ -337,7 +337,9 @@ func replaceResources(raw string) string {
 		if trimmed == yamlFieldResources {
 			indent := lines[i][:len(lines[i])-len(strings.TrimLeft(lines[i], " "))]
 			result = append(result, indent+"resources:")
-			result = append(result, indent+"  {{- toYaml .Values.operator.resources | nindent "+fmt.Sprintf("%d", len(indent)+2)+" }}")
+			resourcesLine := indent + "  {{- toYaml .Values.operator.resources | nindent " +
+				fmt.Sprintf("%d", len(indent)+2) + " }}"
+			result = append(result, resourcesLine)
 
 			// Skip the original resources block
 			i++

@@ -85,7 +85,7 @@ test-e2e-setup: get-manifests ## Prepare the cluster for e2e tests.
 	$(MAKE) install-external-crds
 
 .PHONY: test-e2e
-test-e2e: HELM_EXTRA_ARGS += --set-string config.platformVersion=$(TEST_PLATFORM_VERSION)
+test-e2e: HELM_EXTRA_ARGS += --set-string platform.type=$(TEST_PLATFORM_TYPE) --set-string platform.version=$(TEST_PLATFORM_VERSION)
 test-e2e: test-e2e-cleanup test-e2e-setup deploy-helm test-e2e-run ## Run e2e tests (clean, prepare, deploy, then run).
 
 .PHONY: test-upgrade-run
@@ -157,7 +157,7 @@ build: manifests generate get-manifests fmt vet ## Build manager binary.
 		go build -ldflags "$(LDFLAGS)" -o "$(BIN_DIR)/$(BIN_NAME)" cmd/main.go
 
 .PHONY: build-bin
-build-bin: get-manifests ## Build manager binary only (refresh embedded manifests first).
+build-bin: ## Build manager binary only (for Containerfile; run container-prep on host first).
 	mkdir -p "$(BIN_DIR)"
 	CGO_ENABLED=$(CGO_ENABLED) GOOS=$(GOOS) GOARCH=$(GOARCH) \
 		go build -ldflags "$(LDFLAGS)" -o "$(BIN_DIR)/$(BIN_NAME)" cmd/main.go
@@ -184,6 +184,7 @@ HELM_RELEASE   ?= odh-workbenches-operator
 OPERATOR_NAMESPACE ?= $(HELM_NAMESPACE)
 INTEGRATION_TEST_NAMESPACE ?= odh-workbenches-integration
 HELM_EXTRA_ARGS ?=
+TEST_PLATFORM_TYPE ?= OpenDataHub
 TEST_PLATFORM_VERSION ?= 0.1.0
 
 .PHONY: helm

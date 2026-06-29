@@ -20,9 +20,11 @@ import (
 	"context"
 	"fmt"
 	"path"
+	"slices"
 
 	corev1 "k8s.io/api/core/v1"
 
+	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-workbenches-operator/assets"
 	fwtypes "github.com/opendatahub-io/odh-platform-utilities/framework/controller/types"
 	kparams "github.com/opendatahub-io/odh-platform-utilities/framework/render/kustomize/params"
 	odhcluster "github.com/opendatahub-io/odh-platform-utilities/pkg/cluster"
@@ -31,9 +33,19 @@ import (
 	module "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-workbenches-operator/pkg/module"
 )
 
+const (
+	openShiftAPIServerReaderRoleName        = "workbenches-apiserver-reader"
+	openShiftAPIServerReaderRoleBindingName = "workbenches-apiserver-reader-binding"
+	openShiftConfigGrantsTemplatePath       = "manifests/ext/openshift-config-grants.yaml.tmpl"
+)
+
 // initialize assigns the pre-computed manifest infos for this reconcile cycle.
 func (m *Module) initialize(_ context.Context, rr *fwtypes.ReconciliationRequest) error {
-	rr.Manifests = m.manifestInfos
+	rr.Manifests = slices.Clone(m.manifestInfos)
+	rr.Templates = []fwtypes.TemplateInfo{{
+		FS:   assets.Manifests,
+		Path: openShiftConfigGrantsTemplatePath,
+	}}
 	return nil
 }
 
@@ -92,8 +104,7 @@ func (m *Module) reportStatus(_ context.Context, rr *fwtypes.ReconciliationReque
 	}
 
 	obj.Status.WorkbenchNamespace = obj.Spec.WorkbenchNamespace
-
-	UpsertRelease(obj.GetReleaseStatus(), m.cfg.ComponentRelease())
+	obj.Status.Releases = slices.Clone(m.releases)
 
 	return nil
 }

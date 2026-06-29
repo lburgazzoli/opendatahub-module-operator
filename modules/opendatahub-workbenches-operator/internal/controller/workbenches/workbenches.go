@@ -24,6 +24,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 	"sigs.k8s.io/kustomize/kyaml/filesys"
 
+	common "github.com/opendatahub-io/odh-platform-utilities/api/common"
 	fwapi "github.com/opendatahub-io/odh-platform-utilities/framework/api"
 	fwtypes "github.com/opendatahub-io/odh-platform-utilities/framework/controller/types"
 	kparams "github.com/opendatahub-io/odh-platform-utilities/framework/render/kustomize/params"
@@ -35,8 +36,9 @@ import (
 
 // Module holds process-lifetime state for the workbenches controller.
 type Module struct {
-	cfg     *moduleconfig.Config
-	release fwapi.Release
+	cfg      *moduleconfig.Config
+	release  fwapi.Release
+	releases []common.ComponentRelease
 	// manifestInfos is computed once at startup from the fixed platform and manifests path.
 	manifestInfos []fwtypes.ManifestInfo
 	renderFS      filesys.FileSystem
@@ -112,7 +114,13 @@ func (m *Module) Init() error {
 		return fmt.Errorf("updating notebook image params: %w", err)
 	}
 
+	releases, err := loadReleases(m.cfg)
+	if err != nil {
+		return fmt.Errorf("loading releases: %w", err)
+	}
+
 	m.release = m.cfg.PlatformRelease()
+	m.releases = releases
 
 	return nil
 }
