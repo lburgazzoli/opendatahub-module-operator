@@ -66,8 +66,8 @@ The operator reads configuration from a mounted ConfigMap:
 
 | Key | Default | Description |
 |-----|---------|-------------|
-| `platform-name` | `unknown` | Platform identifier (e.g. `OpenDataHub`, `SelfManagedRHOAI`) |
-| `platform-version` | `unknown` | Platform operator version (semver string) |
+| `platformType` | `unknown` | Platform identifier (e.g. `OpenDataHub`, `SelfManagedRHOAI`) |
+| `platformVersion` | `unknown` | Platform operator version (semver string) |
 | `manifests-path` | *(empty)* | Base path for component manifests |
 | `applications-namespace` | `opendatahub` | Namespace where module workloads are deployed |
 

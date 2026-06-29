@@ -29,6 +29,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	componentApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-mlflow-operator/api/components/v1alpha1"
+	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-mlflow-operator/assets"
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-mlflow-operator/pkg/resources/gvk"
 	fwtypes "github.com/opendatahub-io/odh-platform-utilities/framework/controller/types"
 	kparams "github.com/opendatahub-io/odh-platform-utilities/framework/render/kustomize/params"
@@ -36,6 +37,8 @@ import (
 
 // errGatewayDomainEmpty is returned when GatewayConfig exists but Status.Domain is not yet set.
 var errGatewayDomainEmpty = fmt.Errorf("GatewayConfig.Status.Domain is empty")
+
+const openShiftConfigGrantsTemplatePath = "manifests/ext/openshift-config-grants.yaml.tmpl"
 
 // getGatewayDomain reads the gateway domain from the GatewayConfig singleton CR using
 // an unstructured client so no OpenShift service API import is needed.
@@ -61,6 +64,10 @@ func getGatewayDomain(ctx context.Context, reader client.Reader) (string, error)
 // initialize appends the pre-resolved manifest info to the pipeline.
 func (m *Module) initialize(_ context.Context, rr *fwtypes.ReconciliationRequest) error {
 	rr.Manifests = append(rr.Manifests, m.manifestInfo)
+	rr.Templates = []fwtypes.TemplateInfo{{
+		FS:   assets.Manifests,
+		Path: openShiftConfigGrantsTemplatePath,
+	}}
 	return nil
 }
 
