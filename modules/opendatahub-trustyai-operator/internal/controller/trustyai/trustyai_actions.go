@@ -26,6 +26,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	componentApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-trustyai-operator/api/components/v1alpha1"
+	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-trustyai-operator/assets"
 	modulegvk "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-trustyai-operator/pkg/resources/gvk"
 	fwcluster "github.com/opendatahub-io/odh-platform-utilities/framework/cluster"
 	odherrors "github.com/opendatahub-io/odh-platform-utilities/framework/controller/actions/errors"
@@ -34,6 +35,8 @@ import (
 	odhcluster "github.com/opendatahub-io/odh-platform-utilities/pkg/cluster"
 	k8serr "k8s.io/apimachinery/pkg/api/errors"
 )
+
+const openShiftConfigGrantsTemplatePath = "manifests/ext/openshift-config-grants.yaml.tmpl"
 
 // checkPreConditions verifies that:
 //  1. Kserve module CRD (kserves.components.platform.opendatahub.io) exists — KServe module is installed
@@ -81,6 +84,11 @@ func (m *Module) initialize(_ context.Context, rr *fwtypes.ReconciliationRequest
 	} else {
 		rr.Manifests = append(rr.Manifests, m.manifestInfo)
 	}
+
+	rr.Templates = []fwtypes.TemplateInfo{{
+		FS:   assets.Manifests,
+		Path: openShiftConfigGrantsTemplatePath,
+	}}
 
 	return nil
 }
