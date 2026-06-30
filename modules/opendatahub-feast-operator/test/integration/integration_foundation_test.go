@@ -3,7 +3,6 @@ package integration
 import (
 	"bytes"
 	"fmt"
-	"os"
 	"testing"
 
 	. "github.com/onsi/gomega"
@@ -17,6 +16,7 @@ import (
 	"github.com/lburgazzoli/gomega-matchers/pkg/matchers/k8s/condition"
 
 	componentsv1alpha1 "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-feast-operator/api/components/v1alpha1"
+	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-feast-operator/assets"
 	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-feast-operator/pkg/config"
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-feast-operator/test/support"
 	common "github.com/opendatahub-io/odh-platform-utilities/api/common"
@@ -28,6 +28,8 @@ import (
 type foundationTests struct {
 	Client client.Client
 }
+
+const odhParamsEnvPath = "manifests/feastoperator/overlays/odh/params.env"
 
 func (ft *foundationTests) Execute(t *testing.T) {
 	t.Run("should have module CRD installed", ft.testModuleCRDInstalled)
@@ -99,10 +101,7 @@ func (ft *foundationTests) testBecomesReady(t *testing.T) {
 func (ft *foundationTests) testRuntimeParamsWithoutMutatingSource(t *testing.T) {
 	g := NewWithT(t)
 
-	paramsPath := support.MustProjectFile(
-		"assets", "manifests", "feastoperator", "overlays", "odh", "params.env",
-	)
-	paramsBefore, err := os.ReadFile(paramsPath)
+	paramsBefore, err := assets.Manifests.ReadFile(odhParamsEnvPath)
 	g.Expect(err).NotTo(HaveOccurred())
 
 	module := &componentsv1alpha1.FeastOperator{
@@ -117,7 +116,7 @@ func (ft *foundationTests) testRuntimeParamsWithoutMutatingSource(t *testing.T) 
 	}
 	ft.ensureReadyModuleFor(t, module)
 
-	paramsAfter, err := os.ReadFile(paramsPath)
+	paramsAfter, err := assets.Manifests.ReadFile(odhParamsEnvPath)
 	g.Expect(err).NotTo(HaveOccurred())
 	g.Expect(bytes.Equal(paramsBefore, paramsAfter)).To(BeTrue())
 
