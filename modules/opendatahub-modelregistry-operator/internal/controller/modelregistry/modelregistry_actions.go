@@ -36,8 +36,8 @@ const (
 	openShiftConfigGrantsTemplatePath = "manifests/ext/openshift-config-grants.yaml.tmpl"
 )
 
-// initialize sets the per-reconcile manifest list.
-func (m *Module) initialize(_ context.Context, rr *odhtypes.ReconciliationRequest) error {
+// stageManifests sets the per-reconcile manifest list.
+func (m *Module) stageManifests(_ context.Context, rr *odhtypes.ReconciliationRequest) error {
 	rr.Manifests = []odhtypes.ManifestInfo{
 		m.manifestInfo,
 		m.extraManifest,

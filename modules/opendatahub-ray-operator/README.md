@@ -11,7 +11,7 @@ kustomize overlay, and reports standard readiness and release status.
 - Uses the embedded `openshift` manifest overlay
 - Injects image parameters into `params.env` before render/apply
 - Updates the rendered `namespace` kustomize param to the configured
-  applications namespace during `initialize()`
+  applications namespace during `stageManifests()`
 - Renders the embedded `openshift-config-grants` template alongside the
   kustomized manifests
 - Reports `Ready`, `ProvisioningSucceeded`, and `status.releases`
@@ -20,13 +20,13 @@ kustomize overlay, and reports standard readiness and release status.
 
 Compared with some other split modules:
 
-- this module always uses the `openshift` overlay rather than switching between
-  ODH and RHOAI overlays
+- this module always uses the `openshift` overlay by design rather than
+  switching between ODH and RHOAI overlays
 - the `platformType` value is still loaded and reported in status / Helm config
 - the Ray operator image is injected through the
   `RELATED_IMAGE_ODH_KUBERAY_OPERATOR_CONTROLLER_IMAGE` environment variable
-- `initialize()` writes the target workload namespace into `params.env` on each
-  reconcile so the rendered resources follow `applications-namespace`
+- `stageManifests()` writes the target workload namespace into `params.env` on
+  each reconcile so the rendered resources follow `applications-namespace`
 
 ## Configuration
 

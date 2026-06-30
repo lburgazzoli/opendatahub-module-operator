@@ -29,6 +29,7 @@ import (
 
 	componentApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-trustyai-operator/api/components/v1alpha1"
 	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-trustyai-operator/pkg/config"
+	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-trustyai-operator/pkg/module"
 	"github.com/opendatahub-io/odh-platform-utilities/framework/controller/actions/deploy"
 	"github.com/opendatahub-io/odh-platform-utilities/framework/controller/actions/gc"
 	"github.com/opendatahub-io/odh-platform-utilities/framework/controller/actions/render/kustomize"
@@ -128,7 +129,7 @@ func NewReconciler(
 			reconciler.WithRelease(m.platformRelease),
 		).
 		WithAction(m.checkPreConditions).
-		WithAction(m.initialize).
+		WithAction(m.stageManifests).
 		WithAction(m.upgradeIfNeeded).
 		WithAction(m.createConfigMap).
 		WithAction(kustomize.NewAction(
@@ -151,6 +152,7 @@ func NewReconciler(
 		WithAction(gc.NewAction(moduleconfig.ApplicationsNamespaceGetter(cfg))).
 		WithConditions(
 			deployments.DefaultConditionType,
+			module.ConditionDependenciesAvailable,
 		).
 		Build(ctx)
 

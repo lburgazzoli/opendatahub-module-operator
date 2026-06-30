@@ -6,6 +6,8 @@ PROJECT_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 
 NAMESPACE="${1:-odh-mlflow-integration}"
 CR_RESOURCE="mlflowoperators.components.platform.opendatahub.io"
+GATEWAY_CONFIG_RESOURCE="gatewayconfigs.services.platform.opendatahub.io"
+GATEWAY_CONFIG_NAME="default-gateway"
 
 echo "Cleaning up integration test resources..."
 
@@ -29,6 +31,10 @@ kubectl delete clusterrolebindings -l platform.opendatahub.io/part-of=mlflowoper
 # Delete test RBAC
 kubectl delete clusterrole integration-test-role --ignore-not-found 2>/dev/null || true
 kubectl delete clusterrolebinding integration-test-binding --ignore-not-found 2>/dev/null || true
+
+# Delete fake GatewayConfig test preconditions.
+kubectl delete "${GATEWAY_CONFIG_RESOURCE}" "${GATEWAY_CONFIG_NAME}" --ignore-not-found 2>/dev/null || true
+kubectl delete crd "${GATEWAY_CONFIG_RESOURCE}" --ignore-not-found 2>/dev/null || true
 
 # Delete CRD (so next run installs fresh)
 kubectl delete crd "${CR_RESOURCE}" --ignore-not-found 2>/dev/null || true

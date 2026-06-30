@@ -94,14 +94,14 @@ func TestNewModule(t *testing.T) {
 	g.Expect(m.manifestInfo.SourcePath).To(Equal(baseManifestsSourcePath))
 }
 
-func TestInitialize(t *testing.T) {
+func TestStageManifests(t *testing.T) {
 	g := NewWithT(t)
 
 	m := newTestModule(t)
 	obj := newTestModelRegistry()
 	rr := newTestRR(obj)
 
-	g.Expect(m.initialize(context.Background(), rr)).To(Succeed())
+	g.Expect(m.stageManifests(context.Background(), rr)).To(Succeed())
 	g.Expect(rr.Manifests).To(HaveLen(2))
 	g.Expect(rr.Templates).To(HaveLen(1))
 	g.Expect(rr.Manifests[0].Path).To(Equal("manifests"))
@@ -187,7 +187,7 @@ func TestReportStatus(t *testing.T) {
 	}
 	rr := newTestRR(obj)
 
-	g.Expect(m.initialize(context.Background(), rr)).To(Succeed())
+	g.Expect(m.stageManifests(context.Background(), rr)).To(Succeed())
 	g.Expect(m.reportStatus(context.Background(), rr)).To(Succeed())
 
 	g.Expect(obj.Status.RegistriesNamespace).To(Equal("odh-model-registries"))

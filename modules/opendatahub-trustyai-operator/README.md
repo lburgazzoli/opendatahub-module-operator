@@ -21,6 +21,8 @@ release status.
   permission settings
 - Uses explicit named `bind`/`escalate` permissions so the operator can manage
   privileged rendered `ClusterRole`s without broader cluster-wide RBAC
+- Stops reconciliation with `DependenciesAvailable=False` until KServe
+  prerequisites are present
 - Reports `Ready`, `ProvisioningSucceeded`, and `status.releases`
 
 ## Module-Specific Notes

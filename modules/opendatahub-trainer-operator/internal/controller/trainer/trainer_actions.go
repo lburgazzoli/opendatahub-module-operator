@@ -76,8 +76,8 @@ func (m *Module) ensureDependenciesAvailable(ctx context.Context, rr *odhtypes.R
 	return nil
 }
 
-// initialize appends manifests for the trainer component.
-func (m *Module) initialize(_ context.Context, rr *odhtypes.ReconciliationRequest) error {
+// stageManifests appends manifests for the trainer component.
+func (m *Module) stageManifests(_ context.Context, rr *odhtypes.ReconciliationRequest) error {
 	rr.Manifests = append(rr.Manifests, m.manifestInfo)
 	rr.Templates = []odhtypes.TemplateInfo{{
 		FS:   assets.Manifests,

@@ -19,6 +19,7 @@ package mlflowoperator
 import (
 	"context"
 
+	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-mlflow-operator/pkg/module"
 	monitoringv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -65,6 +66,7 @@ const appLabelPrefix = "app.opendatahub.io"
 // +kubebuilder:rbac:groups=authentication.k8s.io,resources=tokenreviews,verbs=create
 // +kubebuilder:rbac:groups=authorization.k8s.io,resources=subjectaccessreviews,verbs=create
 // +kubebuilder:rbac:groups=config.openshift.io,resources=apiservers,verbs=get;list;watch
+// +kubebuilder:rbac:groups=services.platform.opendatahub.io,resources=gatewayconfigs,verbs=get;list;watch
 // +kubebuilder:rbac:groups=mlflow.opendatahub.io,resources=mlflows;mlflows/status;mlflows/finalizers,verbs=get;list;watch;create;delete;deletecollection;patch;update
 // +kubebuilder:rbac:groups=mlflow.kubeflow.org,resources=mlflowconfigs;datasets;experiments;registeredmodels;gatewayendpoints;gatewaymodeldefinitions;gatewaysecrets,verbs=get;list;watch;create;delete;deletecollection;patch;update
 // +kubebuilder:rbac:groups=mlflow.kubeflow.org,resources=gatewayendpoints/use;gatewaymodeldefinitions/use;gatewaysecrets/use,verbs=create
@@ -113,7 +115,7 @@ func NewReconciler(
 		WithReconcilerOpts(
 			reconciler.WithRelease(m.platformRelease),
 		).
-		WithAction(m.initialize).
+		WithAction(m.stageManifests).
 		WithAction(m.upgradeIfNeeded).
 		WithAction(m.customizeManifests).
 		WithAction(kustomize.NewAction(
@@ -136,6 +138,7 @@ func NewReconciler(
 		WithAction(gc.NewAction(moduleconfig.ApplicationsNamespaceGetter(cfg))).
 		WithConditions(
 			deployments.DefaultConditionType,
+			module.ConditionDependenciesAvailable,
 		).
 		Build(ctx)
 

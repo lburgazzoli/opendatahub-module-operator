@@ -31,8 +31,8 @@ import (
 
 const openShiftConfigGrantsTemplatePath = "manifests/ext/openshift-config-grants.yaml.tmpl"
 
-// initialize appends manifests and applies image/namespace parameters.
-func (m *Module) initialize(_ context.Context, rr *fwtypes.ReconciliationRequest) error {
+// stageManifests appends manifests and applies image/namespace parameters.
+func (m *Module) stageManifests(_ context.Context, rr *fwtypes.ReconciliationRequest) error {
 	rr.Manifests = append(rr.Manifests, m.manifestInfo)
 	rr.Templates = []fwtypes.TemplateInfo{{
 		FS:   assets.Manifests,

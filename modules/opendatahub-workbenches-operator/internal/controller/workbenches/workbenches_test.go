@@ -92,15 +92,15 @@ func newTestWorkbenches() *componentApi.Workbenches {
 	}
 }
 
-func TestInitialize(t *testing.T) {
+func TestStageManifests(t *testing.T) {
 	g := NewWithT(t)
 
 	m := newTestModule(t)
 	obj := newTestWorkbenches()
 	rr := newTestRR(t, obj)
 
-	g.Expect(m.initialize(context.Background(), rr)).To(Succeed())
-	// initialize sets 3 manifests: odh-notebook-controller, kf-notebook-controller, notebooks
+	g.Expect(m.stageManifests(context.Background(), rr)).To(Succeed())
+	// stageManifests sets 3 manifests: odh-notebook-controller, kf-notebook-controller, notebooks
 	g.Expect(rr.Manifests).To(HaveLen(3))
 	g.Expect(rr.Templates).To(HaveLen(1))
 	g.Expect(rr.Manifests[0].Path).To(Equal(manifestsRoot))
@@ -164,7 +164,7 @@ func TestReportStatus(t *testing.T) {
 	obj := newTestWorkbenches()
 	rr := newTestRR(t, obj)
 
-	g.Expect(m.initialize(context.Background(), rr)).To(Succeed())
+	g.Expect(m.stageManifests(context.Background(), rr)).To(Succeed())
 	g.Expect(m.reportStatus(context.Background(), rr)).To(Succeed())
 
 	g.Expect(obj.Status.Releases).To(ContainElement(

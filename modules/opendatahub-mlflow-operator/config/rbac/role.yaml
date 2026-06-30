@@ -240,3 +240,11 @@ rules:
   - patch
   - update
   - watch
+- apiGroups:
+  - services.platform.opendatahub.io
+  resources:
+  - gatewayconfigs
+  verbs:
+  - get
+  - list
+  - watch

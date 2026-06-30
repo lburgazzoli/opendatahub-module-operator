@@ -33,3 +33,17 @@ func TestIntegrationTestNamespaceFallsBackToDefault(t *testing.T) {
 
 	g.Expect(IntegrationTestNamespace()).To(Equal(DefaultIntegrationTestNamespace))
 }
+
+func TestGatewayConfigDomainUsesEnvironmentOverride(t *testing.T) {
+	g := NewWithT(t)
+	t.Setenv("TEST_GATEWAY_DOMAIN", "apps.custom.example")
+
+	g.Expect(GatewayConfigDomain()).To(Equal("apps.custom.example"))
+}
+
+func TestGatewayConfigDomainFallsBackToDefault(t *testing.T) {
+	g := NewWithT(t)
+	t.Setenv("TEST_GATEWAY_DOMAIN", "")
+
+	g.Expect(GatewayConfigDomain()).To(Equal(DefaultGatewayDomain))
+}

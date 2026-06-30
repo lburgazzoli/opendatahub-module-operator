@@ -84,14 +84,14 @@ func TestNewModule(t *testing.T) {
 	g.Expect(m.manifestInfo.SourcePath).To(Equal(overlayODH))
 }
 
-func TestInitialize(t *testing.T) {
+func TestStageManifests(t *testing.T) {
 	g := NewWithT(t)
 
 	m := newTestModule(t)
 	obj := newTestFeastOperator()
 	rr := newTestRR(t, obj)
 
-	g.Expect(m.initialize(context.Background(), rr)).To(Succeed())
+	g.Expect(m.stageManifests(context.Background(), rr)).To(Succeed())
 	g.Expect(rr.Manifests).To(HaveLen(1))
 	g.Expect(rr.Templates).To(HaveLen(1))
 	g.Expect(rr.Manifests[0].Path).To(Equal("manifests"))
@@ -132,7 +132,7 @@ func TestReportStatus(t *testing.T) {
 	obj := newTestFeastOperator()
 	rr := newTestRR(t, obj)
 
-	g.Expect(m.initialize(context.Background(), rr)).To(Succeed())
+	g.Expect(m.stageManifests(context.Background(), rr)).To(Succeed())
 	g.Expect(m.reportStatus(context.Background(), rr)).To(Succeed())
 
 	g.Expect(obj.Status.Releases).To(Equal(m.releases))
@@ -145,7 +145,7 @@ func TestCustomizeManifestsNoOIDC(t *testing.T) {
 	obj := newTestFeastOperator()
 	// No OIDC set on the CR
 	rr := newTestRR(t, obj)
-	g.Expect(m.initialize(context.Background(), rr)).To(Succeed())
+	g.Expect(m.stageManifests(context.Background(), rr)).To(Succeed())
 
 	// Should succeed and write empty OIDC_ISSUER_URL
 	g.Expect(m.customizeManifests(context.Background(), rr)).To(Succeed())
@@ -158,7 +158,7 @@ func TestCustomizeManifestsWithOIDC(t *testing.T) {
 	obj := newTestFeastOperator()
 	obj.Spec.OIDC = &componentApi.GatewayOIDCSpec{IssuerURL: "https://issuer.example.com"}
 	rr := newTestRR(t, obj)
-	g.Expect(m.initialize(context.Background(), rr)).To(Succeed())
+	g.Expect(m.stageManifests(context.Background(), rr)).To(Succeed())
 
 	g.Expect(m.customizeManifests(context.Background(), rr)).To(Succeed())
 }
@@ -170,7 +170,7 @@ func TestCustomizeManifestsInvalidOIDC(t *testing.T) {
 	obj := newTestFeastOperator()
 	obj.Spec.OIDC = &componentApi.GatewayOIDCSpec{IssuerURL: "not-a-url"}
 	rr := newTestRR(t, obj)
-	g.Expect(m.initialize(context.Background(), rr)).To(Succeed())
+	g.Expect(m.stageManifests(context.Background(), rr)).To(Succeed())
 
 	err := m.customizeManifests(context.Background(), rr)
 	g.Expect(err).To(HaveOccurred())

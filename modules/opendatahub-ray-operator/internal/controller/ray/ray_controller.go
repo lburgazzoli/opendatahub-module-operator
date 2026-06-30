@@ -125,7 +125,7 @@ func NewReconciler(
 		WithAction(sanitycheck.NewAction(
 			sanitycheck.WithUnwantedResource(gvk.CodeFlare, module.CodeFlarePresentMessage),
 		)).
-		WithAction(m.initialize).
+		WithAction(m.stageManifests).
 		WithAction(m.upgradeIfNeeded).
 		WithAction(kustomize.NewAction(
 			kustomize.WithManifestsOptions(mk.WithEngineFS(m.kustomizeFS)),

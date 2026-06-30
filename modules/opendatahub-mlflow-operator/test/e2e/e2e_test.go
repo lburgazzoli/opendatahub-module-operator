@@ -19,6 +19,7 @@ limitations under the License.
 package e2e
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"testing"
@@ -34,6 +35,8 @@ import (
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-mlflow-operator/test/support"
 )
 
+var manageGatewayConfig bool
+
 func TestMain(m *testing.M) {
 	os.Exit(runTestMain(m))
 }
@@ -48,6 +51,19 @@ func runTestMain(m *testing.M) int {
 	SetDefaultEventuallyTimeout(cfg.EventuallyTimeout)
 	SetDefaultEventuallyPollingInterval(cfg.EventuallyPollingInterval)
 	SetDefaultConsistentlyPollingInterval(cfg.ConsistentlyPollingInterval)
+
+	cli, err := support.NewClient()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to create client: %v\n", err)
+		return 1
+	}
+
+	preconditions, err := support.EnsureMLflowPreconditionsIfMissing(context.Background(), cli)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to ensure MLflow preconditions: %v\n", err)
+		return 1
+	}
+	manageGatewayConfig = preconditions.ManageGatewayConfigCR
 
 	return m.Run()
 }

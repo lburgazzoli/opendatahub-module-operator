@@ -11,7 +11,7 @@ readiness and release status.
 
 - Reconciles the singleton `ModelRegistry` instance named
   `default-modelregistry`
-- Uses embedded manifests from `manifests/modelregistry/overlays/odh`
+- Uses embedded manifests from `manifests/modelregistry/overlays/odh` by design
 - Renders the additional manifest set from `overlays/odh/extras`
 - Injects image parameters and static defaults into `params.env` at startup
 - Computes `GATEWAY_DOMAIN`, `GATEWAY_NAME`, `GATEWAY_NAMESPACE`,
@@ -32,6 +32,8 @@ The main Model Registry-specific runtime behavior is in
   that field is empty
 - the gateway name and namespace are currently fixed to
   `data-science-gateway` and `openshift-ingress`
+- the render base is intentionally fixed to the ODH layout rather than
+  switching between ODH and RHOAI overlays
 - `HTTPROUTE_NAMESPACE` comes from the configured applications namespace
 - `REGISTRIES_NAMESPACE` comes from `spec.registriesNamespace` and is copied to
   status

@@ -127,7 +127,7 @@ func NewReconciler(
 			reconciler.WithRelease(m.platformRelease),
 		).
 		WithAction(m.ensureDependenciesAvailable).
-		WithAction(m.initialize).
+		WithAction(m.stageManifests).
 		WithAction(m.upgradeIfNeeded).
 		WithAction(kustomize.NewAction(
 			kustomize.WithManifestsOptions(mk.WithEngineFS(m.kustomizeFS)),

@@ -103,7 +103,7 @@ func NewReconciler(
 		WithReconcilerOpts(
 			reconciler.WithRelease(m.platformRelease),
 		).
-		WithAction(m.initialize).
+		WithAction(m.stageManifests).
 		WithAction(m.upgradeIfNeeded).
 		WithAction(m.customizeManifests).
 		WithAction(kustomize.NewAction(

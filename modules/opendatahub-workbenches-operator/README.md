@@ -12,7 +12,7 @@ module status.
 - Reconciles the singleton `Workbenches` instance named `default-workbenches`
 - Renders three embedded manifest bundles for the notebook controllers and
   notebook images
-- Uses the embedded ODH render base and injects dynamic params for
+- Uses the embedded ODH render base by design and injects dynamic params for
   `gateway-url`, `section-title`, and `mlflow-enabled`
 - Renders the embedded `openshift-config-grants` template alongside the
   kustomized manifests

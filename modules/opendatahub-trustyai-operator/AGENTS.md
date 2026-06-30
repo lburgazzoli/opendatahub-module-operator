@@ -48,6 +48,8 @@ Do NOT delete `// +kubebuilder:scaffold:*` comments.
   privileged rendered `ClusterRole`s without broader cluster-wide RBAC
 - Halts reconciliation until the KServe module CRD, KServe singleton CR, and
   InferenceServices CRD are all available
+- Marks `DependenciesAvailable=False` while those KServe prerequisites are
+  missing
 - Reports `Ready`, `ProvisioningSucceeded`, and `status.releases`
 
 ## Running Tests

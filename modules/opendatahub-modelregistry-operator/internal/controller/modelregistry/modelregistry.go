@@ -74,6 +74,8 @@ type Module struct {
 }
 
 // NewModule creates a Module with one-shot computed state.
+// Model Registry currently renders from the ODH manifest layout and extras
+// only; platformType is reported in status/config but does not switch overlays.
 func NewModule(cfg *moduleconfig.Config) (*Module, error) {
 	kustomizeFS, err := newKustomizeFS()
 	if err != nil {

@@ -27,9 +27,11 @@ import (
 
 	componentApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-trustyai-operator/api/components/v1alpha1"
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-trustyai-operator/assets"
+	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-trustyai-operator/pkg/module"
 	modulegvk "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-trustyai-operator/pkg/resources/gvk"
 	fwcluster "github.com/opendatahub-io/odh-platform-utilities/framework/cluster"
 	odherrors "github.com/opendatahub-io/odh-platform-utilities/framework/controller/actions/errors"
+	fwconditions "github.com/opendatahub-io/odh-platform-utilities/framework/controller/conditions"
 	fwtypes "github.com/opendatahub-io/odh-platform-utilities/framework/controller/types"
 	pkgresources "github.com/opendatahub-io/odh-platform-utilities/framework/resources"
 	odhcluster "github.com/opendatahub-io/odh-platform-utilities/pkg/cluster"
@@ -47,33 +49,49 @@ func (m *Module) checkPreConditions(ctx context.Context, rr *fwtypes.Reconciliat
 	kserveModuleCRD, err := fwcluster.HasCRD(ctx, rr.Client, modulegvk.Kserve)
 	switch {
 	case err != nil:
-		return odherrors.NewStopError("failed to check Kserve module CRD: %w", err)
+		return m.markDependenciesUnknown(rr, fmt.Errorf("failed to check Kserve module CRD: %w", err))
 	case !kserveModuleCRD:
-		return odherrors.NewStopError("Kserve module CRD (%s) not found: the KServe module operator must be installed before enabling TrustyAI", modulegvk.Kserve.GroupKind())
+		return m.markDependenciesUnavailable(
+			rr,
+			"Kserve module CRD (%s) not found: the KServe module operator must be installed before enabling TrustyAI",
+			modulegvk.Kserve.GroupKind(),
+		)
 	}
 
 	// Check that the Kserve singleton CR exists — signals KServe module is enabled.
 	if err := odhcluster.GetSingleton(ctx, rr.Client, pkgresources.GvkToUnstructured(modulegvk.Kserve)); err != nil {
 		if k8serr.IsNotFound(err) {
-			return odherrors.NewStopError("Kserve CR not found: the KServe module must be enabled before enabling TrustyAI")
+			return m.markDependenciesUnavailable(
+				rr,
+				"Kserve CR not found: the KServe module must be enabled before enabling TrustyAI",
+			)
 		}
-		return odherrors.NewStopError("failed to get Kserve CR: %w", err)
+		return m.markDependenciesUnknown(rr, fmt.Errorf("failed to get Kserve CR: %w", err))
 	}
 
 	// Check InferenceServices CRD (same check as monolith).
 	isvc, err := fwcluster.HasCRD(ctx, rr.Client, modulegvk.InferenceServices)
 	switch {
 	case err != nil:
-		return odherrors.NewStopError("failed to check %s CRD: %w", modulegvk.InferenceServices, err)
+		return m.markDependenciesUnknown(rr, fmt.Errorf("failed to check %s CRD: %w", modulegvk.InferenceServices, err))
 	case !isvc:
-		return odherrors.NewStopError("InferenceServices CRD (%s) not found: KServe must be installed before enabling TrustyAI", modulegvk.InferenceServices.GroupKind())
+		return m.markDependenciesUnavailable(
+			rr,
+			"InferenceServices CRD (%s) not found: KServe must be installed before enabling TrustyAI",
+			modulegvk.InferenceServices.GroupKind(),
+		)
 	}
+
+	rr.Conditions.MarkTrue(
+		module.ConditionDependenciesAvailable,
+		fwconditions.WithObservedGeneration(rr.Instance.GetGeneration()),
+	)
 
 	return nil
 }
 
-// initialize selects the manifest overlay based on MCPGuardrailsMode.
-func (m *Module) initialize(_ context.Context, rr *fwtypes.ReconciliationRequest) error {
+// stageManifests selects the manifest overlay based on MCPGuardrailsMode.
+func (m *Module) stageManifests(_ context.Context, rr *fwtypes.ReconciliationRequest) error {
 	tai, ok := rr.Instance.(*componentApi.TrustyAI)
 	if !ok {
 		return fmt.Errorf("instance is not a TrustyAI")
@@ -133,4 +151,33 @@ func (m *Module) reportStatus(_ context.Context, rr *fwtypes.ReconciliationReque
 	status.Releases = slices.Clone(m.releases)
 
 	return nil
+}
+
+func (m *Module) markDependenciesUnavailable(
+	rr *fwtypes.ReconciliationRequest,
+	message string,
+	args ...any,
+) error {
+	stopErr := odherrors.NewStopError(message, args...)
+	rr.Conditions.MarkFalse(
+		module.ConditionDependenciesAvailable,
+		fwconditions.WithObservedGeneration(rr.Instance.GetGeneration()),
+		fwconditions.WithReason(module.PreConditionFailedReason),
+		fwconditions.WithMessage(message, args...),
+	)
+	return stopErr
+}
+
+func (m *Module) markDependenciesUnknown(
+	rr *fwtypes.ReconciliationRequest,
+	err error,
+) error {
+	stopErr := odherrors.NewStopError("%w", err)
+	rr.Conditions.MarkUnknown(
+		module.ConditionDependenciesAvailable,
+		fwconditions.WithObservedGeneration(rr.Instance.GetGeneration()),
+		fwconditions.WithReason(module.PreConditionFailedReason),
+		fwconditions.WithMessage("%s", stopErr.Error()),
+	)
+	return stopErr
 }

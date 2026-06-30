@@ -55,6 +55,8 @@ type Module struct {
 }
 
 // NewModule creates a Module with one-shot computed state.
+// Ray currently ships only the OpenShift manifest layout, so platformType is
+// reported in status/config but does not switch the rendered source path.
 func NewModule(cfg *moduleconfig.Config) (*Module, error) {
 	kustomizeFS, err := newKustomizeFS()
 	if err != nil {

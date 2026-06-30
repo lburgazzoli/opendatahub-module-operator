@@ -3,6 +3,7 @@
 package e2e
 
 import (
+	"context"
 	"fmt"
 	"testing"
 	"testing/fstest"
@@ -34,6 +35,7 @@ type foundationTests struct {
 func (ft *foundationTests) Execute(t *testing.T) {
 	t.Run("should have module CRD installed", ft.testModuleCRDInstalled)
 	t.Run("should have operator ConfigMap deployed", ft.testOperatorConfigMap)
+	t.Run("should report not ready when GatewayConfig is missing", ft.testPreconditionCRMissing)
 	t.Run("should become ready", ft.testBecomesReady)
 	t.Run("should report release version and platform", ft.testReleaseStatus)
 	t.Run("should set platform labels and annotations", ft.testPlatformLabels)
@@ -100,6 +102,42 @@ func (ft *foundationTests) testOperatorConfigMap(t *testing.T) {
 	g.Eventually(t.Context(), k8sm.Get(ft.Client, operatorCfgMap)).Should(
 		WithTransform(k8sm.Data(), SatisfyAll(
 			HaveKey(moduleconfig.KeyPlatformVersion),
+		)),
+	)
+}
+
+func (ft *foundationTests) testPreconditionCRMissing(t *testing.T) {
+	if !manageGatewayConfig {
+		t.Skip("GatewayConfig already exists on cluster; skipping destructive absence test")
+	}
+
+	g := NewWithT(t)
+	module := &componentsv1alpha1.MLflowOperator{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: componentsv1alpha1.MLflowOperatorInstanceName,
+		},
+	}
+
+	gatewayConfig := support.NewStubGatewayConfig()
+	g.Expect(ft.Client.Delete(t.Context(), gatewayConfig)).To(Succeed())
+	g.Eventually(t.Context(), k8sm.NotFound(ft.Client, gatewayConfig)).Should(BeTrue())
+	t.Cleanup(func() {
+		ctx := context.Background()
+		_, _ = support.EnsureStubGatewayConfigIfMissing(ctx, ft.Client, true)
+		_ = ft.Client.Delete(ctx, module)
+		g := NewWithT(t)
+		g.Eventually(ctx, k8sm.NotFound(ft.Client, module)).Should(BeTrue())
+	})
+
+	g.Expect(ft.Client.Create(t.Context(), module)).To(Succeed())
+
+	g.Eventually(t.Context(), k8sm.Get(ft.Client, module)).Should(
+		WithTransform(k8sm.ConditionsOf[metav1.Condition](), SatisfyAll(
+			ContainElement(condition.Is(string(common.ConditionTypeProvisioningSucceeded), metav1.ConditionFalse)),
+			ContainElement(SatisfyAll(
+				condition.Is(modulemeta.ConditionDependenciesAvailable, metav1.ConditionFalse),
+				condition.HasReason(modulemeta.PreConditionFailedReason),
+			)),
 		)),
 	)
 }

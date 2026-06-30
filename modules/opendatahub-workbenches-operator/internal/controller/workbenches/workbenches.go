@@ -52,8 +52,8 @@ type Module struct {
 }
 
 // NewModule creates a Module and pre-computes manifest paths.
-// Platform overlay defaults to ODH; deployment-time image parameters govern
-// platform-specific behaviour rather than runtime config.
+// Workbenches intentionally renders from the embedded ODH layout; platformType
+// affects namespace defaults and params, but does not switch the manifest roots.
 func NewModule(cfg *moduleconfig.Config) (*Module, error) {
 	renderFS, err := newKustomizeFS()
 	if err != nil {

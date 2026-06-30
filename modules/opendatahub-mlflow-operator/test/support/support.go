@@ -6,6 +6,7 @@ const (
 	DefaultOperatorNamespace        = "odh-mlflow-system"
 	DefaultIntegrationTestNamespace = "odh-mlflow-integration"
 	DefaultPlatformVersion          = "0.1.0"
+	DefaultGatewayDomain            = "apps.example.test"
 )
 
 func OperatorNamespace() string {
@@ -34,4 +35,12 @@ func PlatformVersion() string {
 		return v
 	}
 	return DefaultPlatformVersion
+}
+
+func GatewayConfigDomain() string {
+	if domain := os.Getenv("TEST_GATEWAY_DOMAIN"); domain != "" {
+		return domain
+	}
+
+	return DefaultGatewayDomain
 }

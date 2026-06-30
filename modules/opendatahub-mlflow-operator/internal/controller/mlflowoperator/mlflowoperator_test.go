@@ -23,6 +23,7 @@ import (
 
 	. "github.com/onsi/gomega"
 	common "github.com/opendatahub-io/odh-platform-utilities/api/common"
+	conditions "github.com/opendatahub-io/odh-platform-utilities/framework/controller/conditions"
 	odhtypes "github.com/opendatahub-io/odh-platform-utilities/framework/controller/types"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -32,6 +33,7 @@ import (
 
 	componentApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-mlflow-operator/api/components/v1alpha1"
 	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-mlflow-operator/pkg/config"
+	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-mlflow-operator/pkg/module"
 )
 
 type staticErrReader struct {
@@ -206,6 +208,11 @@ func newTestRR(t *testing.T, obj *componentApi.MLflowOperator) *odhtypes.Reconci
 
 	cfg := testConfig(t)
 	return &odhtypes.ReconciliationRequest{
+		Conditions: conditions.NewManager(
+			obj,
+			string(common.ConditionTypeReady),
+			module.ConditionDependenciesAvailable,
+		),
 		Instance: obj,
 		Release:  cfg.PlatformRelease(),
 	}
@@ -232,14 +239,14 @@ func TestNewModule(t *testing.T) {
 	g.Expect(m.manifestInfo.SourcePath).To(Equal(overlayODH))
 }
 
-func TestInitialize(t *testing.T) {
+func TestStageManifests(t *testing.T) {
 	g := NewWithT(t)
 
 	m := newTestModule(t)
 	obj := newTestMLflowOperator()
 	rr := newTestRR(t, obj)
 
-	g.Expect(m.initialize(context.Background(), rr)).To(Succeed())
+	g.Expect(m.stageManifests(context.Background(), rr)).To(Succeed())
 	g.Expect(rr.Manifests).To(HaveLen(1))
 	g.Expect(rr.Templates).To(HaveLen(1))
 	g.Expect(rr.Manifests[0].Path).To(Equal(manifestsRoot))
@@ -302,7 +309,7 @@ func TestReportStatus(t *testing.T) {
 	}
 	rr := newTestRR(t, obj)
 
-	g.Expect(m.initialize(context.Background(), rr)).To(Succeed())
+	g.Expect(m.stageManifests(context.Background(), rr)).To(Succeed())
 	g.Expect(m.reportStatus(context.Background(), rr)).To(Succeed())
 
 	g.Expect(obj.Status.Releases).NotTo(ContainElement(
@@ -318,11 +325,12 @@ func TestReportStatus(t *testing.T) {
 	g.Expect(obj.Status.Releases).To(Equal(m.releases))
 }
 
-func TestCustomizeManifestsIgnoresMissingGatewayConfigAPI(t *testing.T) {
+func TestCustomizeManifestsStopsWhenGatewayConfigAPIUnavailable(t *testing.T) {
 	g := NewWithT(t)
 
 	m := newTestModule(t)
-	rr := newTestRR(t, newTestMLflowOperator())
+	obj := newTestMLflowOperator()
+	rr := newTestRR(t, obj)
 	rr.Client = staticErrClient{
 		staticErrReader: staticErrReader{
 			err: &meta.NoResourceMatchError{
@@ -334,5 +342,11 @@ func TestCustomizeManifestsIgnoresMissingGatewayConfigAPI(t *testing.T) {
 			},
 		},
 	}
-	g.Expect(m.customizeManifests(context.Background(), rr)).To(Succeed())
+	err := m.customizeManifests(context.Background(), rr)
+	g.Expect(err).To(MatchError(ContainSubstring("GatewayConfig CRD is not installed")))
+	g.Expect(obj.GetConditions()).To(ContainElement(SatisfyAll(
+		HaveField("Type", module.ConditionDependenciesAvailable),
+		HaveField("Status", metav1.ConditionFalse),
+		HaveField("Reason", module.PreConditionFailedReason),
+	)))
 }

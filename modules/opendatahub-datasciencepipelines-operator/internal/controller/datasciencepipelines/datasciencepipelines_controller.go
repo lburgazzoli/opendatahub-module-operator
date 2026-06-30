@@ -122,7 +122,7 @@ func NewReconciler(
 			reconciler.WithRelease(m.release),
 		).
 		WithAction(m.checkPreConditions).
-		WithAction(m.initialize).
+		WithAction(m.stageManifests).
 		WithAction(m.upgradeIfNeeded).
 		WithAction(m.argoWorkflowsControllersOptions).
 		WithAction(fwreleases.NewAction()).

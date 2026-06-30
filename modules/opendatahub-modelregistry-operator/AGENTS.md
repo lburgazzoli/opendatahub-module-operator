@@ -35,7 +35,7 @@ Do NOT delete `// +kubebuilder:scaffold:*` comments.
 ## Module Behavior
 
 - Reconciles only the singleton instance `default-modelregistry`
-- Uses embedded manifests from `manifests/modelregistry/overlays/odh`
+- Uses embedded manifests from `manifests/modelregistry/overlays/odh` by design
 - Renders the extra manifest set from `overlays/odh/extras`
 - Computes routing variables from `spec.gateway.domain` and writes them to
   `params.env` before kustomize renders manifests

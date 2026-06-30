@@ -39,6 +39,8 @@ import (
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-mlflow-operator/test/support"
 )
 
+var manageGatewayConfig bool
+
 func loadOperatorConfig() (*moduleconfig.Config, error) {
 	moduleCfg, err := moduleconfig.LoadFromFS(nil)
 	if err != nil {
@@ -105,6 +107,13 @@ func runTestMain(m *testing.M) int {
 		fmt.Fprintf(os.Stderr, "Failed to create namespace: %v\n", err)
 		return 1
 	}
+
+	preconditions, err := support.EnsureMLflowPreconditionsIfMissing(ctx, cli)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to ensure MLflow preconditions: %v\n", err)
+		return 1
+	}
+	manageGatewayConfig = preconditions.ManageGatewayConfigCR
 
 	moduleCRD := &apiextensionsv1.CustomResourceDefinition{
 		ObjectMeta: metav1.ObjectMeta{Name: componentsv1alpha1.MLflowOperatorCRDName},

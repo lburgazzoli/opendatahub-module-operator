@@ -37,7 +37,7 @@ Do NOT delete `// +kubebuilder:scaffold:*` comments.
 - Reconciles only the singleton instance `default-workbenches`
 - Renders three embedded manifest bundles: `odh-notebook-controller`,
   `kf-notebook-controller`, and notebook image resources
-- Uses the embedded ODH render base and computes per-reconcile params for
+- Uses the embedded ODH render base by design and computes per-reconcile params for
   `gateway-url`, `section-title`, and `mlflow-enabled`
 - Renders the `openshift-config-grants` template from embedded manifests
 - Creates the target workbench namespace with

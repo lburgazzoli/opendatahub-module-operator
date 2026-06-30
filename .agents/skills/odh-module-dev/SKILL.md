@@ -25,18 +25,18 @@ Creating a new module from a monolith component: use
 Split module operators build a sequential pipeline via `reconciler.ReconcilerFor`.
 Each action is `func(context.Context, *ReconciliationRequest) error`.
 
-**Canonical order** (`upgradeIfNeeded` must come immediately after `initialize`,
+**Canonical order** (`upgradeIfNeeded` must come immediately after `stageManifests`,
 with nothing in between):
 
 ```
 [component actions e.g. sanitycheck]
--> initialize -> upgradeIfNeeded -> releases -> kustomize -> deploy
+-> stageManifests -> upgradeIfNeeded -> releases -> kustomize -> deploy
 -> deployments -> reportStatus -> gc
 ```
 
 | Action | What it does |
 |---|---|
-| `initialize` | Sets manifest paths on `rr.Manifests` based on platform overlay |
+| `stageManifests` | Stages manifest paths on `rr.Manifests` based on platform overlay |
 | `upgradeIfNeeded` | Module-only: version/platform migration hook |
 | `releases` | Reads `component_metadata.yaml` and populates release info in CR status |
 | `kustomize` | Renders manifests to `rr.Resources` |
@@ -47,7 +47,7 @@ with nothing in between):
 
 The `ReconciliationRequest` is a shared state bag:
 
-- `rr.Manifests` -- populated by `initialize`, consumed by `kustomize`
+- `rr.Manifests` -- populated by `stageManifests`, consumed by `kustomize`
 - `rr.Resources` -- populated by `kustomize`, consumed by `deploy` and `gc`
 - `rr.Instance` -- the Module CR (cast to `*MyModule` in actions)
 - `rr.Client` -- k8s client
@@ -65,12 +65,12 @@ The `ctrl.Manager` is wrapped by `modulemanager.New(ctx, cfg, moduleCfg)` which:
    cluster info (FIPS state, cluster version, etc.)
 3. Registers the reconciler and wires `rr.ManifestsBasePath` from `cfg.ManifestsPath`
 
-**`Init` vs `initialize`:** `Init(ctx, reader)` runs once at startup and writes image
-params + cluster-derived values to `params.env`. The per-reconcile `initialize` action
+**`Init` vs `stageManifests`:** `Init(ctx, reader)` runs once at startup and writes image
+params + cluster-derived values to `params.env`. The per-reconcile `stageManifests` action
 only appends manifest info to `rr.Manifests`. Never call `fwparams.Apply` inside
-`initialize` -- it runs on every reconcile and the params file has already been written.
+`stageManifests` -- it runs on every reconcile and the params file has already been written.
 
-Without `modulemanager.New`, `initialize` produces paths like `component/overlays/odh`
+Without `modulemanager.New`, `stageManifests` produces paths like `component/overlays/odh`
 with no base prefix and kustomize fails with `lstat /component: no such file or directory`.
 
 Integration tests must use the same `modulemanager.New` wrapper.

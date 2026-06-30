@@ -35,10 +35,10 @@ Do NOT delete `// +kubebuilder:scaffold:*` comments.
 ## Module Behavior
 
 - Reconciles only the singleton instance `default-ray`
-- Uses the embedded `openshift` overlay for all platforms
+- Uses the embedded `openshift` overlay for all platforms by design
 - Applies image substitutions to `params.env` once at startup from environment
   variables
-- Updates the rendered `namespace` kustomize param during `initialize()` to
+- Updates the rendered `namespace` kustomize param during `stageManifests()` to
   match the configured applications namespace
 - Renders the `openshift-config-grants` template from embedded manifests
 - Reports `Ready`, `ProvisioningSucceeded`, and `status.releases`

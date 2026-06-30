@@ -17,6 +17,7 @@ import (
 
 	componentsv1alpha1 "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-trustyai-operator/api/components/v1alpha1"
 	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-trustyai-operator/pkg/config"
+	modulemeta "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-trustyai-operator/pkg/module"
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-trustyai-operator/test/support"
 	common "github.com/opendatahub-io/odh-platform-utilities/api/common"
 	"github.com/opendatahub-io/odh-platform-utilities/pkg/metadata/annotations"
@@ -107,8 +108,12 @@ func (ft *foundationTests) testPreconditionCRMissing(t *testing.T) {
 	g.Expect(ft.Client.Create(t.Context(), module)).To(Succeed())
 
 	g.Eventually(t.Context(), k8sm.Get(ft.Client, module)).Should(
-		WithTransform(k8sm.ConditionsOf[metav1.Condition](), ContainElement(
-			condition.Is(string(common.ConditionTypeProvisioningSucceeded), metav1.ConditionFalse),
+		WithTransform(k8sm.ConditionsOf[metav1.Condition](), SatisfyAll(
+			ContainElement(condition.Is(string(common.ConditionTypeProvisioningSucceeded), metav1.ConditionFalse)),
+			ContainElement(SatisfyAll(
+				condition.Is(modulemeta.ConditionDependenciesAvailable, metav1.ConditionFalse),
+				condition.HasReason(modulemeta.PreConditionFailedReason),
+			)),
 		)),
 	)
 }

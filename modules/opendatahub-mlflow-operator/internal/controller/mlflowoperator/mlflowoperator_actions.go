@@ -23,6 +23,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-mlflow-operator/pkg/module"
 	k8serr "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -31,6 +32,8 @@ import (
 	componentApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-mlflow-operator/api/components/v1alpha1"
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-mlflow-operator/assets"
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-mlflow-operator/pkg/resources/gvk"
+	odherrors "github.com/opendatahub-io/odh-platform-utilities/framework/controller/actions/errors"
+	fwconditions "github.com/opendatahub-io/odh-platform-utilities/framework/controller/conditions"
 	fwtypes "github.com/opendatahub-io/odh-platform-utilities/framework/controller/types"
 	kparams "github.com/opendatahub-io/odh-platform-utilities/framework/render/kustomize/params"
 )
@@ -61,8 +64,8 @@ func getGatewayDomain(ctx context.Context, reader client.Reader) (string, error)
 	return domain, nil
 }
 
-// initialize appends the pre-resolved manifest info to the pipeline.
-func (m *Module) initialize(_ context.Context, rr *fwtypes.ReconciliationRequest) error {
+// stageManifests appends the pre-resolved manifest info to the pipeline.
+func (m *Module) stageManifests(_ context.Context, rr *fwtypes.ReconciliationRequest) error {
 	rr.Manifests = append(rr.Manifests, m.manifestInfo)
 	rr.Templates = []fwtypes.TemplateInfo{{
 		FS:   assets.Manifests,
@@ -73,32 +76,40 @@ func (m *Module) initialize(_ context.Context, rr *fwtypes.ReconciliationRequest
 
 // customizeManifests writes runtime-computed variables (mlflow-url, section-title)
 // to base/params.env before kustomize renders the manifests. The gateway domain is
-// read live from GatewayConfig.Status.Domain.
-//
-// TODO(module-team): validate error-handling behavior for your deployment. Currently,
-// if GatewayConfig is absent or domain is not yet set, the params are skipped and
-// mlflow-url / section-title will not be rendered. The ConsoleLink will be broken
-// until GatewayConfig is available.
+// read live from GatewayConfig.Status.Domain and is treated as a render-time
+// dependency because missing values would otherwise produce a broken ConsoleLink
+// while the workload can still report Ready.
 func (m *Module) customizeManifests(ctx context.Context, rr *fwtypes.ReconciliationRequest) error {
 	consoleLinkDomain, err := getGatewayDomain(ctx, rr.Client)
 	if err != nil {
 		switch {
 		case meta.IsNoMatchError(err):
-			// GatewayConfig CRD not installed — gateway service not deployed.
-			// TODO(module-team): decide whether to requeue instead of silently skipping.
-			return nil
+			return m.markDependenciesUnavailable(
+				rr,
+				"GatewayConfig CRD is not installed: gateway routing must be available before enabling MLflow",
+			)
 		case k8serr.IsNotFound(err):
-			// GatewayConfig CR does not exist yet — may appear later.
-			// TODO(module-team): decide whether to requeue instead of silently skipping.
-			return nil
+			return m.markDependenciesUnavailable(
+				rr,
+				"GatewayConfig default-gateway was not found: gateway routing must be configured before enabling MLflow",
+			)
 		case err == errGatewayDomainEmpty:
-			// GatewayConfig exists but Status.Domain is not populated yet.
-			// TODO(module-team): decide whether to requeue instead of silently skipping.
-			return nil
+			return m.markDependenciesUnavailable(
+				rr,
+				"GatewayConfig default-gateway does not yet report status.domain: gateway routing must be ready before enabling MLflow",
+			)
 		default:
-			return fmt.Errorf("error getting gateway domain: %w", err)
+			return m.markDependenciesUnknown(
+				rr,
+				fmt.Errorf("getting gateway domain: %w", err),
+			)
 		}
 	}
+
+	rr.Conditions.MarkTrue(
+		module.ConditionDependenciesAvailable,
+		fwconditions.WithObservedGeneration(rr.Instance.GetGeneration()),
+	)
 
 	extraParams := map[string]string{
 		"mlflow-url":    fmt.Sprintf("https://%s/", consoleLinkDomain),
@@ -117,6 +128,34 @@ func (m *Module) customizeManifests(ctx context.Context, rr *fwtypes.Reconciliat
 	}
 
 	return nil
+}
+
+func (m *Module) markDependenciesUnavailable(
+	rr *fwtypes.ReconciliationRequest,
+	message string,
+) error {
+	stopErr := odherrors.NewStopError("%s", message)
+	rr.Conditions.MarkFalse(
+		module.ConditionDependenciesAvailable,
+		fwconditions.WithObservedGeneration(rr.Instance.GetGeneration()),
+		fwconditions.WithReason(module.PreConditionFailedReason),
+		fwconditions.WithMessage("%s", message),
+	)
+	return stopErr
+}
+
+func (m *Module) markDependenciesUnknown(
+	rr *fwtypes.ReconciliationRequest,
+	err error,
+) error {
+	stopErr := odherrors.NewStopError("%w", err)
+	rr.Conditions.MarkUnknown(
+		module.ConditionDependenciesAvailable,
+		fwconditions.WithObservedGeneration(rr.Instance.GetGeneration()),
+		fwconditions.WithReason(module.PreConditionFailedReason),
+		fwconditions.WithMessage("%s", stopErr.Error()),
+	)
+	return stopErr
 }
 
 // fixDeploymentNamespace amends the rendered mlflow-operator Deployment in rr.Resources

@@ -47,9 +47,9 @@ const (
 	openShiftConfigGrantsTemplatePath = "manifests/ext/openshift-config-grants.yaml.tmpl"
 )
 
-// initialize appends the pre-resolved manifest info to the pipeline.
+// stageManifests appends the pre-resolved manifest info to the pipeline.
 // Feast does not require namespace substitution in params.env.
-func (m *Module) initialize(_ context.Context, rr *odhtypes.ReconciliationRequest) error {
+func (m *Module) stageManifests(_ context.Context, rr *odhtypes.ReconciliationRequest) error {
 	rr.Manifests = append(rr.Manifests, m.manifestInfo)
 	rr.Templates = []odhtypes.TemplateInfo{{
 		FS:   assets.Manifests,

@@ -83,14 +83,14 @@ func TestNewModule(t *testing.T) {
 	g.Expect(m.manifestInfo.SourcePath).To(Equal(overlayODH))
 }
 
-func TestInitialize(t *testing.T) {
+func TestStageManifests(t *testing.T) {
 	g := NewWithT(t)
 
 	m := newTestModule(t)
 	obj := newTestDataSciencePipelines()
 	rr := newTestRR(t, obj)
 
-	g.Expect(m.initialize(context.Background(), rr)).To(Succeed())
+	g.Expect(m.stageManifests(context.Background(), rr)).To(Succeed())
 	g.Expect(rr.Manifests).To(HaveLen(1))
 	g.Expect(rr.Manifests[0].Path).To(Equal("manifests"))
 	g.Expect(rr.Manifests[0].ContextDir).To(Equal(componentName))
@@ -130,7 +130,7 @@ func TestReportStatus(t *testing.T) {
 	obj := newTestDataSciencePipelines()
 	rr := newTestRR(t, obj)
 
-	g.Expect(m.initialize(context.Background(), rr)).To(Succeed())
+	g.Expect(m.stageManifests(context.Background(), rr)).To(Succeed())
 	g.Expect(m.reportStatus(context.Background(), rr)).To(Succeed())
 
 	g.Expect(obj.Status.Releases).To(ContainElement(

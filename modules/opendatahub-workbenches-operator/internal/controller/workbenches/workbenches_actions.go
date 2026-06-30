@@ -39,8 +39,8 @@ const (
 	openShiftConfigGrantsTemplatePath       = "manifests/ext/openshift-config-grants.yaml.tmpl"
 )
 
-// initialize assigns the pre-computed manifest infos for this reconcile cycle.
-func (m *Module) initialize(_ context.Context, rr *fwtypes.ReconciliationRequest) error {
+// stageManifests assigns the pre-computed manifest infos for this reconcile cycle.
+func (m *Module) stageManifests(_ context.Context, rr *fwtypes.ReconciliationRequest) error {
 	rr.Manifests = slices.Clone(m.manifestInfos)
 	rr.Templates = []fwtypes.TemplateInfo{{
 		FS:   assets.Manifests,

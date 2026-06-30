@@ -40,6 +40,8 @@ Do NOT delete `// +kubebuilder:scaffold:*` comments.
   `platformType=ManagedRhoai`
 - Computes `mlflow-url` and `section-title` from `GatewayConfig.status.domain`
   and platform type before kustomize renders manifests
+- Stops reconciliation with `DependenciesAvailable=False` until
+  `GatewayConfig.status.domain` is available
 - Renders the `openshift-config-grants` template from embedded manifests
 - Rewrites the rendered mlflow Deployment `--namespace=` arg to the configured
   applications namespace

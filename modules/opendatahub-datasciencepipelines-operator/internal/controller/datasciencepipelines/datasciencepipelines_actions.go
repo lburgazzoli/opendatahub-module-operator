@@ -35,7 +35,7 @@ import (
 
 const openShiftConfigGrantsTemplatePath = "manifests/ext/openshift-config-grants.yaml.tmpl"
 
-func (m *Module) initialize(_ context.Context, rr *fwtypes.ReconciliationRequest) error {
+func (m *Module) stageManifests(_ context.Context, rr *fwtypes.ReconciliationRequest) error {
 	rr.Manifests = append(rr.Manifests, m.manifestInfo)
 	rr.Templates = []fwtypes.TemplateInfo{{
 		FS:   assets.Manifests,
@@ -69,6 +69,9 @@ func (m *Module) checkPreConditions(ctx context.Context, rr *fwtypes.Reconciliat
 			return ErrArgoWorkflowCRDMissing
 		}
 
+		// When Argo is still managed, a missing CRD is an expected bootstrap state:
+		// later render/apply will create the bundled Argo resources instead of
+		// treating the absence as an external dependency failure.
 		return nil
 	case err != nil:
 		stopErr := odherr.NewStopError("failed to check for existing %s CRD: %w", ArgoWorkflowCRD, err)

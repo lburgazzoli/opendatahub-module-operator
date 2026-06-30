@@ -17,6 +17,8 @@ readiness and release status.
 - Injects image parameters into `base/params.env` before render/apply
 - Computes `mlflow-url` and `section-title` from `GatewayConfig.status.domain`
   and platform type at reconcile time
+- Stops reconciliation with `DependenciesAvailable=False` until
+  `GatewayConfig.status.domain` is available
 - Renders the embedded `openshift-config-grants` template alongside the
   kustomized manifests
 - Rewrites the rendered mlflow Deployment `--namespace=` argument to the
@@ -34,7 +36,8 @@ The main MLflow-specific runtime behavior is in `customizeManifests()` and
   unstructured client and writes `mlflow-url` / `section-title` into
   `base/params.env`
 - if `GatewayConfig` is missing, its CRD is absent, or `status.domain` is
-  empty, reconciliation currently skips those params rather than requeueing
+  empty, reconciliation stops and marks `DependenciesAvailable=False` instead
+  of deploying with broken console-link params
 - `fixDeploymentNamespace()` patches the rendered Deployment args so tests and
   custom installs can use the configured applications namespace instead of the
   overlay’s hardcoded default
