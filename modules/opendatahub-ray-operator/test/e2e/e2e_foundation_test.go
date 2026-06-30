@@ -156,7 +156,7 @@ func (ft *foundationTests) testPlatformLabels(t *testing.T) {
 		k8sm.HasLabel(labels.PlatformPartOf, componentsv1alpha1.RayComponentName),
 		k8sm.HasAnnotation(annotations.InstanceName, module.GetName()),
 		k8sm.HasAnnotation(annotations.InstanceUID, string(module.GetUID())),
-		k8sm.HasAnnotation(annotations.PlatformType, moduleconfig.ReleasePlatform),
+		k8sm.HasAnnotation(annotations.PlatformType, operatorCfg.Data[moduleconfig.KeyPlatformType]),
 		k8sm.HasAnnotation(annotations.PlatformVersion, operatorCfg.Data[moduleconfig.KeyPlatformVersion]),
 	))
 }
