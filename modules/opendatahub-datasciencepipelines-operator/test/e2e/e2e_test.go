@@ -180,7 +180,7 @@ func loadOrCreateWorkflowCRD(t *testing.T, cli client.Client) *apiextensionsv1.C
 	}
 
 	crdPath := support.MustProjectFile(
-		"config", "manifests", "datasciencepipelines", "argo", "crd.workflows.yaml",
+		"assets", "manifests", "datasciencepipelines", "argo", "crd.workflows.yaml",
 	)
 	if err := support.InstallCRDFile(ctx, cli, crdPath); err != nil {
 		t.Fatalf("installing workflows CRD: %v", err)
