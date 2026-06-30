@@ -1,7 +1,7 @@
 # AGENTS.md — opendatahub-trainer-operator
 
-Standalone module operator reconciling a cluster-scoped singleton
-`Trainer` CR (API group `components.opendatahub.io`).
+Standalone module operator reconciling the cluster-scoped singleton
+`Trainer` CR (API group `components.platform.opendatahub.io`).
 
 ## Auto-Generated — Never Edit
 
@@ -32,6 +32,18 @@ Do NOT delete `// +kubebuilder:scaffold:*` comments.
 - The `go.mod` uses a `replace` directive for `lburgazzoli/opendatahub-operator`
   (moves `internal/controller/status` → `pkg/controller/status`)
 
+## Module Behavior
+
+- Reconciles only the singleton instance `default-trainer`
+- Uses the embedded `rhoai` overlay for all supported platforms
+- Applies image substitutions to `params.env` once at startup from environment
+  variables
+- Renders the `openshift-config-grants` template from embedded manifests
+- Halts reconciliation until the JobSet operator CRD, JobSet operator CR, and
+  JobSet CRD are all available
+- Reports `Ready`, `ProvisioningSucceeded`, `status.releases`, and maintains
+  the legacy `status.release` field for compatibility
+
 ## Running Tests
 
 **Unit tests** — no cluster required:
@@ -39,7 +51,7 @@ Do NOT delete `// +kubebuilder:scaffold:*` comments.
 make test
 ```
 
-**Integration tests** — requires a cluster (installs CRDs, runs against real API server):
+**Integration tests** — requires a cluster:
 ```sh
 make test-integration           # setup + run in one step
 # or split:
@@ -48,33 +60,61 @@ make test-integration-run       # run tests only
 make test-integration-cleanup   # clean up
 ```
 
-**E2E tests** — requires a cluster with the operator image published:
+**E2E tests** — requires a cluster and a published operator image:
 ```sh
 IMG="ttl.sh/$(uuidgen | tr '[:upper:]' '[:lower:]'):1h"
 make container-build IMG="$IMG"
 make container-push IMG="$IMG"
 make helm
-make test-e2e-cleanup
-make deploy-helm IMG="$IMG"
+make test-e2e IMG="$IMG"        # cleanup + deploy + run
+
+# or, if the operator is already deployed:
 make test-e2e-run
-make test-e2e-cleanup
 ```
 
-## ConfigMap Fields
+## Operator Configuration
 
-The operator reads configuration from a mounted ConfigMap:
+Configuration precedence:
+
+1. Built-in defaults
+2. Mounted ConfigMap files from `ODH_MODULE_OPERATOR_CONFIGURATION_PATH`
+3. `ODH_MODULE_OPERATOR_*` environment variables
+
+Core keys:
 
 | Key | Default | Description |
 |-----|---------|-------------|
-| `platformType` | `unknown` | Platform identifier (e.g. `OpenDataHub`, `SelfManagedRHOAI`) |
-| `platformVersion` | `unknown` | Platform operator version (semver string) |
 | `applications-namespace` | `opendatahub` | Namespace where module workloads are deployed |
+| `platformType` | `OpenDataHub` | Platform identifier reported in status and Helm config |
+| `platformVersion` | `""` | Platform version reported in `status.releases` |
+
+Supported `controller.*` keys:
+
+| Key | Default |
+|---|---|
+| `controller.metrics.bind-address` | `:8080` |
+| `controller.health.bind-address` | `:8081` |
+| `controller.leader-election.enabled` | `true` |
+| `controller.leader-election.id` | `opendatahub-trainer-operator-lock` |
+| `controller.zap.level` | `info` |
+| `controller.zap.dev-mode` | `false` |
+| `controller.zap.encoder` | `""` |
+| `controller.pprof.enabled` | `false` |
+| `controller.pprof.bind-address` | `""` |
+
+When deployed through Helm, `.Values.platform.type`, `.Values.platform.version`,
+and `.Values.config` are written into the operator ConfigMap.
 
 ## Key Make Targets
 
 | Target | Purpose |
 |---|---|
+| `make test` | Run unit tests |
+| `make test-integration` | Prepare cluster and run integration tests |
+| `make test-e2e` | Clean up, deploy via Helm, and run e2e tests |
+| `make test-e2e-run` | Run e2e tests against an existing deployment |
 | `make lint` | Run golangci-lint |
 | `make fmt` | Run golangci-lint formatters |
-| `make manifests generate` | Regenerate CRDs, RBAC, DeepCopy |
+| `make manifests generate` | Regenerate CRDs, RBAC, and DeepCopy |
+| `make get-manifests` | Download embedded Trainer manifests |
 | `make helm` | Generate Helm chart |
