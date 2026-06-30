@@ -3,6 +3,7 @@
 package e2e
 
 import (
+	"context"
 	"fmt"
 	"testing"
 	"testing/fstest"
@@ -121,10 +122,11 @@ func (ft *foundationTests) testPreconditionCRMissing(t *testing.T) {
 	g.Expect(ft.Client.Delete(t.Context(), kserveCR)).To(Succeed())
 	g.Eventually(t.Context(), k8sm.NotFound(ft.Client, kserveCR)).Should(BeTrue())
 	t.Cleanup(func() {
-		_, _ = support.EnsureStubKserveCRIfMissing(t.Context(), ft.Client)
-		_ = ft.Client.Delete(t.Context(), module)
+		ctx := context.Background()
+		_, _ = support.EnsureStubKserveCRIfMissing(ctx, ft.Client)
+		_ = ft.Client.Delete(ctx, module)
 		g := NewWithT(t)
-		g.Eventually(t.Context(), k8sm.NotFound(ft.Client, module)).Should(BeTrue())
+		g.Eventually(ctx, k8sm.NotFound(ft.Client, module)).Should(BeTrue())
 	})
 
 	g.Expect(ft.Client.Create(t.Context(), module)).To(Succeed())

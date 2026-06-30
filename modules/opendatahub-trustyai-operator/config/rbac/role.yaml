@@ -163,6 +163,13 @@ rules:
   - update
   - watch
 - apiGroups:
+  - infrastructure.opendatahub.io
+  resources:
+  - hardwareprofiles
+  verbs:
+  - get
+  - list
+- apiGroups:
   - kueue.x-k8s.io
   resources:
   - workloads
@@ -220,6 +227,18 @@ rules:
   - patch
   - update
   - watch
+- apiGroups:
+  - rbac.authorization.k8s.io
+  resourceNames:
+  - trustyai-service-operator-evalhub-model-secret
+  - trustyai-service-operator-guardrailsorchestrator-admin-role
+  - trustyai-service-operator-nemo-guardrails-manager-role
+  - trustyai-service-operator-nemoguardrail-admin-role
+  resources:
+  - clusterroles
+  verbs:
+  - bind
+  - escalate
 - apiGroups:
   - route.openshift.io
   resources:
