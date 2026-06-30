@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"testing/fstest"
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -14,12 +15,9 @@ import (
 	. "github.com/onsi/gomega"
 )
 
-func TestApplyYAMLCreatesObject(t *testing.T) {
-	g := NewWithT(t)
-	ctx := context.Background()
-	scheme := newClusterTestScheme(t)
-	cli := fake.NewClientBuilder().WithScheme(scheme).Build()
-	manifestPath := writeClusterTestManifest(t, `
+const testManifestPath = "manifests/example.yaml"
+
+const createConfigMapManifest = `
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -27,9 +25,28 @@ metadata:
   namespace: test-ns
 data:
   key: value
-`)
+`
 
-	err := ApplyYAML(ctx, cli, manifestPath)
+const updateConfigMapManifest = `
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: example
+  namespace: test-ns
+data:
+  key: new
+`
+
+func TestApplyManifestFromFileCreatesObject(t *testing.T) {
+	t.Parallel()
+
+	g := NewWithT(t)
+	ctx := context.Background()
+	scheme := newManifestTestScheme(t)
+	cli := fake.NewClientBuilder().WithScheme(scheme).Build()
+	manifestPath := writeManifestTestFile(t, createConfigMapManifest)
+
+	err := ApplyManifestFromFile(ctx, cli, manifestPath)
 
 	g.Expect(err).NotTo(HaveOccurred())
 
@@ -39,26 +56,24 @@ data:
 	g.Expect(stored.Data).To(HaveKeyWithValue("key", "value"))
 }
 
-func TestApplyYAMLUpdatesExistingObject(t *testing.T) {
+func TestApplyManifestFromFSUpdatesExistingObject(t *testing.T) {
+	t.Parallel()
+
 	g := NewWithT(t)
 	ctx := context.Background()
-	scheme := newClusterTestScheme(t)
+	scheme := newManifestTestScheme(t)
 	existing := &corev1.ConfigMap{}
 	existing.Name = "example"
 	existing.Namespace = "test-ns"
 	existing.Data = map[string]string{"key": "old"}
 	cli := fake.NewClientBuilder().WithScheme(scheme).WithObjects(existing).Build()
-	manifestPath := writeClusterTestManifest(t, `
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: example
-  namespace: test-ns
-data:
-  key: new
-`)
+	manifests := fstest.MapFS{
+		testManifestPath: {
+			Data: []byte(updateConfigMapManifest),
+		},
+	}
 
-	err := ApplyYAML(ctx, cli, manifestPath)
+	err := ApplyManifestFromFS(ctx, cli, manifests, testManifestPath)
 
 	g.Expect(err).NotTo(HaveOccurred())
 
@@ -68,7 +83,7 @@ data:
 	g.Expect(stored.Data).To(HaveKeyWithValue("key", "new"))
 }
 
-func newClusterTestScheme(t *testing.T) *runtime.Scheme {
+func newManifestTestScheme(t *testing.T) *runtime.Scheme {
 	t.Helper()
 
 	scheme := runtime.NewScheme()
@@ -79,7 +94,7 @@ func newClusterTestScheme(t *testing.T) *runtime.Scheme {
 	return scheme
 }
 
-func writeClusterTestManifest(t *testing.T, content string) string {
+func writeManifestTestFile(t *testing.T, content string) string {
 	t.Helper()
 
 	manifestPath := filepath.Join(t.TempDir(), "manifest.yaml")
