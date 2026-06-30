@@ -37,6 +37,7 @@ import (
 	promv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
 
 	componentsv1alpha1 "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-datasciencepipelines-operator/api/components/v1alpha1"
+	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-datasciencepipelines-operator/assets"
 	dspcontroller "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-datasciencepipelines-operator/internal/controller/datasciencepipelines"
 	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-datasciencepipelines-operator/pkg/config"
 	modulemanager "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-datasciencepipelines-operator/pkg/manager"
@@ -260,10 +261,12 @@ func loadOrCreateWorkflowCRD(t *testing.T, cli client.Client) *apiextensionsv1.C
 		t.Fatalf("getting workflows CRD: %v", err)
 	}
 
-	crdPath := support.MustProjectFile(
-		"assets", "manifests", "datasciencepipelines", "argo", "crd.workflows.yaml",
-	)
-	if err := support.InstallCRDFile(ctx, cli, crdPath); err != nil {
+	if err := support.ApplyManifestFromFS(
+		ctx,
+		cli,
+		assets.Manifests,
+		"manifests/datasciencepipelines/argo/crd.workflows.yaml",
+	); err != nil {
 		t.Fatalf("installing workflows CRD: %v", err)
 	}
 	return updateWorkflowCRDEventually(t, cli, func(crd *apiextensionsv1.CustomResourceDefinition) {
