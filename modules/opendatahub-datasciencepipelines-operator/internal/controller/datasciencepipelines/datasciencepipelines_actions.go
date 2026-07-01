@@ -22,25 +22,25 @@ import (
 	"fmt"
 
 	componentApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-datasciencepipelines-operator/api/components/v1alpha1"
-	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-datasciencepipelines-operator/assets"
 	module "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-datasciencepipelines-operator/pkg/module"
 	fwcluster "github.com/opendatahub-io/odh-platform-utilities/framework/cluster"
 	odherr "github.com/opendatahub-io/odh-platform-utilities/framework/controller/actions/errors"
 	"github.com/opendatahub-io/odh-platform-utilities/framework/controller/conditions"
 	fwtypes "github.com/opendatahub-io/odh-platform-utilities/framework/controller/types"
-	kparams "github.com/opendatahub-io/odh-platform-utilities/framework/render/kustomize/params"
 	operatorv1 "github.com/openshift/api/operator/v1"
 	k8serr "k8s.io/apimachinery/pkg/api/errors"
 )
 
-const openShiftConfigGrantsTemplatePath = "manifests/ext/openshift-config-grants.yaml.tmpl"
-
 func (m *Module) stageManifests(_ context.Context, rr *fwtypes.ReconciliationRequest) error {
-	rr.Manifests = append(rr.Manifests, m.manifestInfo)
-	rr.Templates = []fwtypes.TemplateInfo{{
-		FS:   assets.Manifests,
-		Path: openShiftConfigGrantsTemplatePath,
-	}}
+	rr.Manifests = make([]fwtypes.ManifestInfo, 0, len(m.variant.Kustomize))
+	for _, item := range m.variant.Kustomize {
+		if item.SkipRender {
+			continue
+		}
+		rr.Manifests = append(rr.Manifests, item.ManifestInfo)
+	}
+	rr.Templates = m.variant.Templates
+	rr.HelmCharts = m.variant.HelmCharts
 	return nil
 }
 
@@ -128,14 +128,10 @@ func (m *Module) argoWorkflowsControllersOptions(_ context.Context, rr *fwtypes.
 		return fmt.Errorf("failed to marshal spec.argoWorkflowsControllers: %w", err)
 	}
 
-	if err := kparams.Apply(
-		m.renderFS,
-		paramsEnvPath,
-		kparams.Values(map[string]string{
-			argoWorkflowsControllersParamsKey: string(awfSpecJSON),
-		}),
-	); err != nil {
-		return fmt.Errorf("failed to update params.env on path %s: %w", paramsEnvPath, err)
+	if err := module.ApplyRuntimeParams(m.renderFS, m.variant.Kustomize, map[string]string{
+		argoWorkflowsControllersParamsKey: string(awfSpecJSON),
+	}); err != nil {
+		return fmt.Errorf("applying runtime params for variant %q: %w", m.variant.Name, err)
 	}
 
 	return nil

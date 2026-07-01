@@ -334,7 +334,7 @@ func TestArgoWorkflowsControllersOptions(t *testing.T) {
 
 			g.Expect(err).NotTo(HaveOccurred())
 
-			content, readErr := m.renderFS.ReadFile(paramsEnvPath)
+			content, readErr := m.renderFS.ReadFile(m.variant.Kustomize[1].Params[0].File)
 			g.Expect(readErr).NotTo(HaveOccurred())
 			g.Expect(string(content)).To(And(
 				ContainSubstring("ARGOWORKFLOWSCONTROLLERS="),

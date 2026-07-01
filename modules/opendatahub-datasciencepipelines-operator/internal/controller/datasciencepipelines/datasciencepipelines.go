@@ -27,11 +27,10 @@ import (
 	componentApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-datasciencepipelines-operator/api/components/v1alpha1"
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-datasciencepipelines-operator/assets"
 	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-datasciencepipelines-operator/pkg/config"
+	modulemeta "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-datasciencepipelines-operator/pkg/module"
 	fwapi "github.com/opendatahub-io/odh-platform-utilities/framework/api"
 	fwerrors "github.com/opendatahub-io/odh-platform-utilities/framework/controller/actions/errors"
-	fwtypes "github.com/opendatahub-io/odh-platform-utilities/framework/controller/types"
 	kfs "github.com/opendatahub-io/odh-platform-utilities/framework/render/kustomize/fs"
-	kparams "github.com/opendatahub-io/odh-platform-utilities/framework/render/kustomize/params"
 	odhcluster "github.com/opendatahub-io/odh-platform-utilities/pkg/cluster"
 )
 
@@ -43,35 +42,9 @@ const (
 	platformVersionParamsKey          = "PLATFORMVERSION"
 	fipsEnabledParamsKey              = "FIPSENABLED"
 	argoWorkflowsControllersParamsKey = "ARGOWORKFLOWSCONTROLLERS"
-
-	paramsEnvPath = "manifests/" + componentApi.DataSciencePipelinesComponentName + "/base/params.env"
-
-	overlayODH   = "overlays/odh"
-	overlayRhoai = "overlays/rhoai"
 )
 
 var (
-	imageParamMap = map[string]string{
-		"IMAGES_DSPO":                     "RELATED_IMAGE_ODH_DATA_SCIENCE_PIPELINES_OPERATOR_CONTROLLER_IMAGE",
-		"IMAGES_APISERVER":                "RELATED_IMAGE_ODH_ML_PIPELINES_API_SERVER_V2_IMAGE",
-		"IMAGES_PERSISTENCEAGENT":         "RELATED_IMAGE_ODH_ML_PIPELINES_PERSISTENCEAGENT_V2_IMAGE",
-		"IMAGES_SCHEDULEDWORKFLOW":        "RELATED_IMAGE_ODH_ML_PIPELINES_SCHEDULEDWORKFLOW_V2_IMAGE",
-		"IMAGES_ARGO_EXEC":                "RELATED_IMAGE_ODH_DATA_SCIENCE_PIPELINES_ARGO_ARGOEXEC_IMAGE",
-		"IMAGES_ARGO_WORKFLOWCONTROLLER":  "RELATED_IMAGE_ODH_DATA_SCIENCE_PIPELINES_ARGO_WORKFLOWCONTROLLER_IMAGE",
-		"IMAGES_DRIVER":                   "RELATED_IMAGE_ODH_ML_PIPELINES_DRIVER_IMAGE",
-		"IMAGES_LAUNCHER":                 "RELATED_IMAGE_ODH_ML_PIPELINES_LAUNCHER_IMAGE",
-		"IMAGES_MLMDGRPC":                 "RELATED_IMAGE_ODH_MLMD_GRPC_SERVER_IMAGE",
-		"IMAGES_PIPELINESRUNTIMEGENERIC":  "RELATED_IMAGE_ODH_ML_PIPELINES_RUNTIME_GENERIC_IMAGE",
-		"IMAGES_MLMDENVOY":                "RELATED_IMAGE_DSP_PROXYV2_IMAGE",
-		"IMAGES_MARIADB":                  "RELATED_IMAGE_DSP_MARIADB_IMAGE",
-		"IMAGES_TOOLBOX":                  "RELATED_IMAGE_DSP_TOOLBOX_IMAGE",
-		"IMAGES_RHELAI":                   "RELATED_IMAGE_DSP_INSTRUCTLAB_NVIDIA_IMAGE",
-		"kube-rbac-proxy":                 "RELATED_IMAGE_ODH_KUBE_RBAC_PROXY_IMAGE",
-		"IMAGES_PIPELINES_COMPONENTS":     "RELATED_IMAGE_ODH_PIPELINES_COMPONENTS_IMAGE",
-		"RELATED_IMAGE_ODH_AUTOML_IMAGE":  "RELATED_IMAGE_ODH_AUTOML_IMAGE",
-		"RELATED_IMAGE_ODH_AUTORAG_IMAGE": "RELATED_IMAGE_ODH_AUTORAG_IMAGE",
-	}
-
 	ErrArgoWorkflowAPINotOwned = fwerrors.NewStopError(
 		"Failed upgrade. DataSciencePipelines component found existing Argo Workflow CRD, which is not managed by ODH.",
 	)
@@ -81,10 +54,10 @@ var (
 )
 
 type Module struct {
-	cfg          *moduleconfig.Config
-	release      fwapi.Release
-	manifestInfo fwtypes.ManifestInfo
-	renderFS     filesys.FileSystem
+	cfg      *moduleconfig.Config
+	release  fwapi.Release
+	variant  modulemeta.ResolvedVariant
+	renderFS filesys.FileSystem
 }
 
 func newKustomizeFS() (filesys.FileSystem, error) {
@@ -107,19 +80,24 @@ func NewModule(cfg *moduleconfig.Config) (*Module, error) {
 		return nil, err
 	}
 
-	overlay := overlayODH
+	variantName := modulemeta.VariantODH
 	switch cfg.PlatformType {
 	case moduleconfig.PlatformTypeSelfManagedRhoai, moduleconfig.PlatformTypeManagedRhoai:
-		overlay = overlayRhoai
+		variantName = modulemeta.VariantRhoai
+	}
+
+	variant, err := modulemeta.LoadVariant(
+		assets.Manifests,
+		modulemeta.DescriptorPath,
+		variantName,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("loading variant %q: %w", variantName, err)
 	}
 
 	return &Module{
-		cfg: cfg,
-		manifestInfo: fwtypes.ManifestInfo{
-			Path:       "manifests",
-			ContextDir: componentName,
-			SourcePath: overlay,
-		},
+		cfg:      cfg,
+		variant:  variant,
 		renderFS: kustomizeFS,
 	}, nil
 }
@@ -130,18 +108,15 @@ func (m *Module) Init(ctx context.Context, reader client.Reader) error {
 		return fmt.Errorf("detecting cluster info: %w", err)
 	}
 
-	if err := kparams.Apply(
-		m.renderFS,
-		paramsEnvPath,
-		kparams.Replacement(
-			kparams.FromEnv(imageParamMap),
-		),
-		kparams.Values(map[string]string{
-			platformVersionParamsKey: m.cfg.PlatformVersion.String(),
-			fipsEnabledParamsKey:     strconv.FormatBool(info.FipsEnabled),
-		}),
-	); err != nil {
-		return fmt.Errorf("failed to update params on path %s: %w", paramsEnvPath, err)
+	if err := modulemeta.ApplyStaticParams(m.renderFS, m.variant.Kustomize); err != nil {
+		return err
+	}
+
+	if err := modulemeta.ApplyRuntimeParams(m.renderFS, m.variant.Kustomize, map[string]string{
+		platformVersionParamsKey: m.cfg.PlatformVersion.String(),
+		fipsEnabledParamsKey:     strconv.FormatBool(info.FipsEnabled),
+	}); err != nil {
+		return fmt.Errorf("applying init params for variant %q: %w", m.variant.Name, err)
 	}
 
 	m.release = m.cfg.PlatformRelease()
