@@ -18,16 +18,15 @@ package ray
 
 import (
 	"fmt"
-	"path"
 
+	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-ray-operator/assets"
 	common "github.com/opendatahub-io/odh-platform-utilities/api/common"
 	fwapi "github.com/opendatahub-io/odh-platform-utilities/framework/api"
-	fwtypes "github.com/opendatahub-io/odh-platform-utilities/framework/controller/types"
-	kparams "github.com/opendatahub-io/odh-platform-utilities/framework/render/kustomize/params"
 	"sigs.k8s.io/kustomize/kyaml/filesys"
 
 	componentApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-ray-operator/api/components/v1alpha1"
 	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-ray-operator/pkg/config"
+	modulemeta "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-ray-operator/pkg/module"
 )
 
 const (
@@ -37,20 +36,14 @@ const (
 	// Kustomize. Deployment selectors are immutable so this must match
 	// whatever the upstream manifests use.
 	LegacyComponentName = "ray"
-
-	overlayOpenShift = "openshift"
 )
-
-var imageParamMap = map[string]string{
-	"odh-kuberay-operator-controller-image": "RELATED_IMAGE_ODH_KUBERAY_OPERATOR_CONTROLLER_IMAGE",
-}
 
 // Module holds process-lifetime state for the ray controller.
 type Module struct {
 	cfg             *moduleconfig.Config
+	variant         modulemeta.ResolvedVariant
 	platformRelease fwapi.Release
 	releases        []common.ComponentRelease
-	manifestInfo    fwtypes.ManifestInfo
 	kustomizeFS     filesys.FileSystem
 }
 
@@ -63,13 +56,24 @@ func NewModule(cfg *moduleconfig.Config) (*Module, error) {
 		return nil, err
 	}
 
+	variantName := modulemeta.VariantODH
+	switch cfg.PlatformType {
+	case moduleconfig.PlatformTypeSelfManagedRhoai, moduleconfig.PlatformTypeManagedRhoai:
+		variantName = modulemeta.VariantRhoai
+	}
+
+	variant, err := modulemeta.LoadVariant(
+		assets.Manifests,
+		modulemeta.DescriptorPath,
+		variantName,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("loading variant %q: %w", variantName, err)
+	}
+
 	return &Module{
-		cfg: cfg,
-		manifestInfo: fwtypes.ManifestInfo{
-			Path:       "manifests",
-			ContextDir: componentName,
-			SourcePath: overlayOpenShift,
-		},
+		cfg:         cfg,
+		variant:     variant,
 		kustomizeFS: kustomizeFS,
 	}, nil
 }
@@ -77,12 +81,13 @@ func NewModule(cfg *moduleconfig.Config) (*Module, error) {
 // Init applies image parameters from environment and parses the platform
 // release version — called once at startup.
 func (m *Module) Init() error {
-	if err := kparams.Apply(
-		m.kustomizeFS,
-		path.Join(m.manifestInfo.String(), "params.env"),
-		kparams.Replacement(kparams.FromEnv(imageParamMap)),
-	); err != nil {
-		return fmt.Errorf("failed to update images on path %s: %w", m.manifestInfo, err)
+	if err := modulemeta.ApplyStaticParams(m.kustomizeFS, m.variant.Kustomize); err != nil {
+		return err
+	}
+	if err := modulemeta.ApplyRuntimeParams(m.kustomizeFS, m.variant.Kustomize, map[string]string{
+		"namespace": m.cfg.ApplicationsNamespace,
+	}); err != nil {
+		return fmt.Errorf("applying init params for variant %q: %w", m.variant.Name, err)
 	}
 
 	releases, err := m.loadReleases()

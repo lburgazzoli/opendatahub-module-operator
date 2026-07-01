@@ -1,0 +1,25 @@
+variants:
+  odh:
+    manifests:
+      kustomize:
+        - path: manifests
+          contextDir: ray
+          sourcePath: openshift
+          params:
+            - file: params.env
+              replaceFromEnv:
+                odh-kuberay-operator-controller-image: RELATED_IMAGE_ODH_KUBERAY_OPERATOR_CONTROLLER_IMAGE
+      templates:
+        - path: manifests/ext/openshift-config-grants.yaml.tmpl
+  rhoai:
+    manifests:
+      kustomize:
+        - path: manifests
+          contextDir: ray
+          sourcePath: openshift
+          params:
+            - file: params.env
+              replaceFromEnv:
+                odh-kuberay-operator-controller-image: RELATED_IMAGE_ODH_KUBERAY_OPERATOR_CONTROLLER_IMAGE
+      templates:
+        - path: manifests/ext/openshift-config-grants.yaml.tmpl
