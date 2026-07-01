@@ -35,6 +35,7 @@ import (
 
 	componentApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-modelregistry-operator/api/components/v1alpha1"
 	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-modelregistry-operator/pkg/config"
+	module "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-modelregistry-operator/pkg/module"
 	fwdeploy "github.com/opendatahub-io/odh-platform-utilities/framework/controller/actions/deploy"
 )
 
@@ -90,8 +91,10 @@ func TestNewModule(t *testing.T) {
 	m, err := NewModule(cfg)
 	g.Expect(err).NotTo(HaveOccurred())
 	g.Expect(m.cfg).To(Equal(cfg))
-	g.Expect(m.manifestInfo.ContextDir).To(Equal(componentName))
-	g.Expect(m.manifestInfo.SourcePath).To(Equal(baseManifestsSourcePath))
+	g.Expect(m.variant.Name).To(Equal(module.VariantODH))
+	g.Expect(m.variant.Kustomize).To(HaveLen(2))
+	g.Expect(m.variant.Kustomize[0].ManifestInfo.ContextDir).To(Equal(componentName))
+	g.Expect(m.variant.Kustomize[0].ManifestInfo.SourcePath).To(Equal("overlays/odh"))
 }
 
 func TestStageManifests(t *testing.T) {
@@ -106,8 +109,9 @@ func TestStageManifests(t *testing.T) {
 	g.Expect(rr.Templates).To(HaveLen(1))
 	g.Expect(rr.Manifests[0].Path).To(Equal("manifests"))
 	g.Expect(rr.Manifests[0].ContextDir).To(Equal(componentName))
-	g.Expect(rr.Manifests[0].SourcePath).To(Equal(baseManifestsSourcePath))
-	g.Expect(rr.Templates[0].Path).To(Equal(openShiftConfigGrantsTemplatePath))
+	g.Expect(rr.Manifests[0].SourcePath).To(Equal("overlays/odh"))
+	g.Expect(rr.Manifests[1].SourcePath).To(Equal("overlays/odh/extras"))
+	g.Expect(rr.Templates[0].Path).To(Equal("manifests/ext/openshift-config-grants.yaml.tmpl"))
 }
 
 func TestInitLoadsReleases(t *testing.T) {
@@ -132,6 +136,18 @@ func TestInitLoadsReleases(t *testing.T) {
 			Version: "1.0.0",
 		},
 	}))
+}
+
+func TestComputeRuntimeParamsRequiresGatewayDomain(t *testing.T) {
+	g := NewWithT(t)
+
+	m := newTestModule(t)
+	obj := newTestModelRegistry()
+
+	params, err := m.computeRuntimeParams(obj)
+	g.Expect(err).To(HaveOccurred())
+	g.Expect(err.Error()).To(ContainSubstring("spec.gateway.domain"))
+	g.Expect(params).To(BeNil())
 }
 
 func TestConfigureDependenciesAddsNamespace(t *testing.T) {

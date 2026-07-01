@@ -19,56 +19,42 @@ package modelregistry
 import (
 	"context"
 	"fmt"
-	"path"
 	"slices"
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	componentApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-modelregistry-operator/api/components/v1alpha1"
-	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-modelregistry-operator/assets"
+	modulemeta "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-modelregistry-operator/pkg/module"
 	fwdeploy "github.com/opendatahub-io/odh-platform-utilities/framework/controller/actions/deploy"
 	odhtypes "github.com/opendatahub-io/odh-platform-utilities/framework/controller/types"
-	kparams "github.com/opendatahub-io/odh-platform-utilities/framework/render/kustomize/params"
-)
-
-const (
-	openShiftConfigGrantsTemplatePath = "manifests/ext/openshift-config-grants.yaml.tmpl"
 )
 
 // stageManifests sets the per-reconcile manifest list.
 func (m *Module) stageManifests(_ context.Context, rr *odhtypes.ReconciliationRequest) error {
-	rr.Manifests = []odhtypes.ManifestInfo{
-		m.manifestInfo,
-		m.extraManifest,
+	rr.Manifests = make([]odhtypes.ManifestInfo, 0, len(m.variant.Kustomize))
+	for _, item := range m.variant.Kustomize {
+		rr.Manifests = append(rr.Manifests, item.ManifestInfo)
 	}
-	rr.Templates = []odhtypes.TemplateInfo{{
-		FS:   assets.Manifests,
-		Path: openShiftConfigGrantsTemplatePath,
-	}}
+	rr.Templates = m.variant.Templates
+	rr.HelmCharts = m.variant.HelmCharts
 	return nil
 }
 
-// customizeManifests computes kustomize variables (gateway, namespace) and writes them to params.env.
+// customizeManifests computes runtime params and writes them to each resolved params file.
 func (m *Module) customizeManifests(_ context.Context, rr *odhtypes.ReconciliationRequest) error {
 	mr, ok := rr.Instance.(*componentApi.ModelRegistry)
 	if !ok {
 		return fmt.Errorf("resource instance %v is not a ModelRegistry", rr.Instance)
 	}
 
-	extraParams, err := m.computeKustomizeVariables(mr)
+	extraParams, err := m.computeRuntimeParams(mr)
 	if err != nil {
-		return fmt.Errorf("failed to compute kustomize variables: %w", err)
+		return fmt.Errorf("failed to compute runtime params: %w", err)
 	}
 
-	extraParams["REGISTRIES_NAMESPACE"] = mr.Spec.RegistriesNamespace
-
-	if err := kparams.Apply(
-		m.kustomizeFS,
-		path.Join(rr.Manifests[0].String(), "params.env"),
-		kparams.Values(extraParams),
-	); err != nil {
-		return fmt.Errorf("failed to update params on path %s: %w", rr.Manifests[0].String(), err)
+	if err := modulemeta.ApplyRuntimeParams(m.kustomizeFS, m.variant.Kustomize, extraParams); err != nil {
+		return fmt.Errorf("applying runtime params for variant %q: %w", m.variant.Name, err)
 	}
 
 	return nil

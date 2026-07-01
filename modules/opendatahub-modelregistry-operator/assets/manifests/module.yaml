@@ -1,0 +1,24 @@
+variants:
+  odh:
+    manifests:
+      kustomize:
+        - path: manifests
+          contextDir: modelregistry
+          sourcePath: overlays/odh
+          params:
+            - file: params.env
+              replaceFromEnv:
+                IMAGES_MODELREGISTRY_OPERATOR: RELATED_IMAGE_ODH_MODEL_REGISTRY_OPERATOR_IMAGE
+                IMAGES_REST_SERVICE: RELATED_IMAGE_ODH_MODEL_REGISTRY_IMAGE
+                IMAGES_CATALOG_DATA: RELATED_IMAGE_ODH_MODEL_METADATA_COLLECTION_IMAGE
+                IMAGES_BENCHMARK_DATA: RELATED_IMAGE_ODH_MODEL_PERFORMANCE_DATA_IMAGE
+                IMAGES_JOBS_ASYNC_UPLOAD: RELATED_IMAGE_ODH_MODEL_REGISTRY_JOB_ASYNC_UPLOAD_IMAGE
+                kube-rbac-proxy: RELATED_IMAGE_ODH_KUBE_RBAC_PROXY_IMAGE
+                IMAGES_POSTGRES: RELATED_IMAGE_POSTGRESQL_16_IMAGE
+              values:
+                DEFAULT_CERT: default-modelregistry-cert
+        - path: manifests
+          contextDir: modelregistry
+          sourcePath: overlays/odh/extras
+      templates:
+        - path: manifests/ext/openshift-config-grants.yaml.tmpl

@@ -53,8 +53,8 @@ func (m *Module) loadReleases() ([]common.ComponentRelease, error) {
 	return fwreleases.NormalizeComponentReleases(append(releases, m.cfg.ComponentRelease())), nil
 }
 
-// computeKustomizeVariables returns the gateway and routing kustomize variables from the CR spec.
-func (m *Module) computeKustomizeVariables(mr *componentApi.ModelRegistry) (map[string]string, error) {
+// computeRuntimeParams returns the runtime params written to each resolved params file.
+func (m *Module) computeRuntimeParams(mr *componentApi.ModelRegistry) (map[string]string, error) {
 	var domain string
 	if mr.Spec.Gateway != nil {
 		domain = mr.Spec.Gateway.Domain
@@ -66,10 +66,11 @@ func (m *Module) computeKustomizeVariables(mr *componentApi.ModelRegistry) (map[
 	}
 
 	return map[string]string{
-		"GATEWAY_DOMAIN":      domain,
-		"GATEWAY_NAME":        defaultGatewayName,
-		"GATEWAY_NAMESPACE":   gatewayNamespace,
-		"HTTPROUTE_NAMESPACE": m.cfg.ApplicationsNamespace,
+		"GATEWAY_DOMAIN":       domain,
+		"GATEWAY_NAME":         defaultGatewayName,
+		"GATEWAY_NAMESPACE":    gatewayNamespace,
+		"HTTPROUTE_NAMESPACE":  m.cfg.ApplicationsNamespace,
+		"REGISTRIES_NAMESPACE": mr.Spec.RegistriesNamespace,
 	}, nil
 }
 
