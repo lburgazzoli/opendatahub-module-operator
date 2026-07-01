@@ -18,32 +18,28 @@ package trainer
 
 import (
 	"fmt"
-	"path"
 
+	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-trainer-operator/assets"
 	common "github.com/opendatahub-io/odh-platform-utilities/api/common"
 	fwapi "github.com/opendatahub-io/odh-platform-utilities/framework/api"
-	odhtypes "github.com/opendatahub-io/odh-platform-utilities/framework/controller/types"
-	kparams "github.com/opendatahub-io/odh-platform-utilities/framework/render/kustomize/params"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/kustomize/kyaml/filesys"
 
 	componentApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-trainer-operator/api/components/v1alpha1"
 	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-trainer-operator/pkg/config"
+	modulemeta "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-trainer-operator/pkg/module"
 )
 
 const (
 	componentName = componentApi.TrainerComponentName
-
-	// trainer only ships a rhoai overlay; no separate odh overlay exists.
-	overlayRhoai = "rhoai"
 )
 
 // Module holds process-lifetime state for the trainer controller.
 type Module struct {
 	cfg             *moduleconfig.Config
+	variant         modulemeta.ResolvedVariant
 	platformRelease fwapi.Release
 	releases        []common.ComponentRelease
-	manifestInfo    odhtypes.ManifestInfo
 	apiReader       client.Reader
 	kustomizeFS     filesys.FileSystem
 }
@@ -57,25 +53,32 @@ func NewModule(cfg *moduleconfig.Config) (*Module, error) {
 		return nil, err
 	}
 
+	variantName := modulemeta.VariantODH
+	switch cfg.PlatformType {
+	case moduleconfig.PlatformTypeSelfManagedRhoai, moduleconfig.PlatformTypeManagedRhoai:
+		variantName = modulemeta.VariantRhoai
+	}
+
+	variant, err := modulemeta.LoadVariant(
+		assets.Manifests,
+		modulemeta.DescriptorPath,
+		variantName,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("loading variant %q: %w", variantName, err)
+	}
+
 	return &Module{
-		cfg: cfg,
-		manifestInfo: odhtypes.ManifestInfo{
-			Path:       "manifests",
-			ContextDir: componentName,
-			SourcePath: overlayRhoai,
-		},
+		cfg:         cfg,
+		variant:     variant,
 		kustomizeFS: kustomizeFS,
 	}, nil
 }
 
 // Init applies image parameters from environment — called once at startup.
 func (m *Module) Init() error {
-	if err := kparams.Apply(
-		m.kustomizeFS,
-		path.Join(m.manifestInfo.String(), "params.env"),
-		kparams.Replacement(kparams.FromEnv(imageParamMap)),
-	); err != nil {
-		return fmt.Errorf("failed to update images on path %s: %w", m.manifestInfo, err)
+	if err := modulemeta.ApplyStaticParams(m.kustomizeFS, m.variant.Kustomize); err != nil {
+		return err
 	}
 
 	releases, err := m.loadReleases()
