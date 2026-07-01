@@ -1,0 +1,27 @@
+variants:
+  odh:
+    manifests:
+      kustomize:
+        - path: manifests
+          contextDir: ogx
+          sourcePath: overlays/odh
+          params:
+            - file: params.env
+              replaceFromEnv:
+                RELATED_IMAGE_ODH_OGX_OPERATOR: RELATED_IMAGE_ODH_OGX_K8S_OPERATOR_IMAGE
+                RELATED_IMAGE_RH_DISTRIBUTION: RELATED_IMAGE_ODH_OGX_CORE_IMAGE
+      templates:
+        - path: manifests/ext/openshift-config-grants.yaml.tmpl
+  rhoai:
+    manifests:
+      kustomize:
+        - path: manifests
+          contextDir: ogx
+          sourcePath: overlays/rhoai
+          params:
+            - file: params.env
+              replaceFromEnv:
+                RELATED_IMAGE_ODH_OGX_OPERATOR: RELATED_IMAGE_ODH_OGX_K8S_OPERATOR_IMAGE
+                RELATED_IMAGE_RH_DISTRIBUTION: RELATED_IMAGE_ODH_OGX_CORE_IMAGE
+      templates:
+        - path: manifests/ext/openshift-config-grants.yaml.tmpl
