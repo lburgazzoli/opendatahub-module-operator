@@ -19,29 +19,24 @@ package mlflowoperator
 import (
 	"context"
 	"fmt"
-	"path"
 	"slices"
 	"strings"
 
-	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-mlflow-operator/pkg/module"
 	k8serr "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	componentApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-mlflow-operator/api/components/v1alpha1"
-	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-mlflow-operator/assets"
+	module "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-mlflow-operator/pkg/module"
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-mlflow-operator/pkg/resources/gvk"
 	odherrors "github.com/opendatahub-io/odh-platform-utilities/framework/controller/actions/errors"
 	fwconditions "github.com/opendatahub-io/odh-platform-utilities/framework/controller/conditions"
 	fwtypes "github.com/opendatahub-io/odh-platform-utilities/framework/controller/types"
-	kparams "github.com/opendatahub-io/odh-platform-utilities/framework/render/kustomize/params"
 )
 
 // errGatewayDomainEmpty is returned when GatewayConfig exists but Status.Domain is not yet set.
 var errGatewayDomainEmpty = fmt.Errorf("GatewayConfig.Status.Domain is empty")
-
-const openShiftConfigGrantsTemplatePath = "manifests/ext/openshift-config-grants.yaml.tmpl"
 
 // getGatewayDomain reads the gateway domain from the GatewayConfig singleton CR using
 // an unstructured client so no OpenShift service API import is needed.
@@ -66,11 +61,15 @@ func getGatewayDomain(ctx context.Context, reader client.Reader) (string, error)
 
 // stageManifests appends the pre-resolved manifest info to the pipeline.
 func (m *Module) stageManifests(_ context.Context, rr *fwtypes.ReconciliationRequest) error {
-	rr.Manifests = append(rr.Manifests, m.manifestInfo)
-	rr.Templates = []fwtypes.TemplateInfo{{
-		FS:   assets.Manifests,
-		Path: openShiftConfigGrantsTemplatePath,
-	}}
+	rr.Manifests = make([]fwtypes.ManifestInfo, 0, len(m.variant.Kustomize))
+	for _, item := range m.variant.Kustomize {
+		if item.SkipRender {
+			continue
+		}
+		rr.Manifests = append(rr.Manifests, item.ManifestInfo)
+	}
+	rr.Templates = m.variant.Templates
+	rr.HelmCharts = m.variant.HelmCharts
 	return nil
 }
 
@@ -116,15 +115,8 @@ func (m *Module) customizeManifests(ctx context.Context, rr *fwtypes.Reconciliat
 		"section-title": m.consoleSectionTitle,
 	}
 
-	// The monolith writes params to base/, not to the overlay path.
-	paramsPath := path.Join(manifestsRoot, componentName, paramsSubDir)
-
-	if err := kparams.Apply(
-		m.kustomizeFS,
-		path.Join(paramsPath, "params.env"),
-		kparams.Values(extraParams),
-	); err != nil {
-		return fmt.Errorf("failed to update params.env from %s: %w", paramsPath, err)
+	if err := module.ApplyRuntimeParams(m.kustomizeFS, m.variant.Kustomize, extraParams); err != nil {
+		return fmt.Errorf("applying runtime params for variant %q: %w", m.variant.Name, err)
 	}
 
 	return nil

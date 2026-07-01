@@ -54,6 +54,8 @@ func EnsureStubCRD(
 	kind string,
 	plural string,
 ) error {
+	preserveUnknownFields := true
+
 	crd := &apiextensionsv1.CustomResourceDefinition{
 		ObjectMeta: metav1.ObjectMeta{Name: crdName},
 		Spec: apiextensionsv1.CustomResourceDefinitionSpec{
@@ -71,7 +73,7 @@ func EnsureStubCRD(
 				Schema: &apiextensionsv1.CustomResourceValidation{
 					OpenAPIV3Schema: &apiextensionsv1.JSONSchemaProps{
 						Type:                   "object",
-						XPreserveUnknownFields: boolPtr(true),
+						XPreserveUnknownFields: &preserveUnknownFields,
 					},
 				},
 			}},
@@ -105,6 +107,8 @@ func EnsureStubCRDIfMissing(
 }
 
 func newStubGatewayConfigCRD() *apiextensionsv1.CustomResourceDefinition {
+	preserveUnknownFields := true
+
 	return &apiextensionsv1.CustomResourceDefinition{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: gatewayConfigCRDName,
@@ -135,7 +139,7 @@ func newStubGatewayConfigCRD() *apiextensionsv1.CustomResourceDefinition {
 								},
 							},
 						},
-						XPreserveUnknownFields: boolPtr(true),
+						XPreserveUnknownFields: &preserveUnknownFields,
 					},
 				},
 				Subresources: &apiextensionsv1.CustomResourceSubresources{
@@ -323,8 +327,4 @@ func EnsureNamespace(
 	}
 
 	return nil
-}
-
-func boolPtr(v bool) *bool {
-	return &v
 }

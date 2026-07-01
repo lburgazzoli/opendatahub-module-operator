@@ -1,0 +1,37 @@
+variants:
+  odh:
+    manifests:
+      kustomize:
+        - path: manifests
+          contextDir: mlflowoperator
+          sourcePath: overlays/odh
+        - path: manifests
+          contextDir: mlflowoperator
+          sourcePath: base
+          skipRender: true
+          params:
+            - file: params.env
+              replaceFromEnv:
+                MLFLOW_IMAGE: RELATED_IMAGE_ODH_MLFLOW_IMAGE
+                MLFLOW_OPERATOR_IMAGE: RELATED_IMAGE_ODH_MLFLOW_OPERATOR_IMAGE
+                KUBE_AUTH_PROXY_IMAGE: RELATED_IMAGE_ODH_KUBE_RBAC_PROXY_IMAGE
+      templates:
+        - path: manifests/ext/openshift-config-grants.yaml.tmpl
+  rhoai:
+    manifests:
+      kustomize:
+        - path: manifests
+          contextDir: mlflowoperator
+          sourcePath: overlays/rhoai
+        - path: manifests
+          contextDir: mlflowoperator
+          sourcePath: base
+          skipRender: true
+          params:
+            - file: params.env
+              replaceFromEnv:
+                MLFLOW_IMAGE: RELATED_IMAGE_ODH_MLFLOW_IMAGE
+                MLFLOW_OPERATOR_IMAGE: RELATED_IMAGE_ODH_MLFLOW_OPERATOR_IMAGE
+                KUBE_AUTH_PROXY_IMAGE: RELATED_IMAGE_ODH_KUBE_RBAC_PROXY_IMAGE
+      templates:
+        - path: manifests/ext/openshift-config-grants.yaml.tmpl
