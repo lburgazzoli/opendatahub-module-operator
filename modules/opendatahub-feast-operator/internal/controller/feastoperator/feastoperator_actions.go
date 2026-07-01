@@ -21,7 +21,6 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
-	"path"
 	"slices"
 
 	appsv1 "k8s.io/api/apps/v1"
@@ -30,10 +29,9 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
 	componentApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-feast-operator/api/components/v1alpha1"
-	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-feast-operator/assets"
+	modulemeta "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-feast-operator/pkg/module"
 	common "github.com/opendatahub-io/odh-platform-utilities/api/common"
 	odhtypes "github.com/opendatahub-io/odh-platform-utilities/framework/controller/types"
-	kparams "github.com/opendatahub-io/odh-platform-utilities/framework/render/kustomize/params"
 )
 
 const (
@@ -41,33 +39,29 @@ const (
 	ParamsEnvKeyOIDCIssuerURL = "OIDC_ISSUER_URL"
 
 	// deploymentName is the name of the feast operator Deployment subject to selector migration.
-	deploymentName                    = "feast-operator-controller-manager"
-	selectorLabelKey                  = "app.kubernetes.io/name"
-	selectorLabelValue                = "feast-operator"
-	openShiftConfigGrantsTemplatePath = "manifests/ext/openshift-config-grants.yaml.tmpl"
+	deploymentName     = "feast-operator-controller-manager"
+	selectorLabelKey   = "app.kubernetes.io/name"
+	selectorLabelValue = "feast-operator"
 )
 
 // stageManifests appends the pre-resolved manifest info to the pipeline.
 // Feast does not require namespace substitution in params.env.
 func (m *Module) stageManifests(_ context.Context, rr *odhtypes.ReconciliationRequest) error {
-	rr.Manifests = append(rr.Manifests, m.manifestInfo)
-	rr.Templates = []odhtypes.TemplateInfo{{
-		FS:   assets.Manifests,
-		Path: openShiftConfigGrantsTemplatePath,
-	}}
+	rr.Manifests = make([]odhtypes.ManifestInfo, 0, len(m.variant.Kustomize))
+	for _, item := range m.variant.Kustomize {
+		rr.Manifests = append(rr.Manifests, item.ManifestInfo)
+	}
+	rr.Templates = m.variant.Templates
+	rr.HelmCharts = m.variant.HelmCharts
 	return nil
 }
 
-// customizeManifests merges runtime values from the FeastOperator CR into params.env
-// before kustomize renders the manifests. Writes OIDC_ISSUER_URL (empty when OIDC not in use).
+// customizeManifests merges runtime values from the FeastOperator CR into each
+// resolved params file before kustomize renders the manifests.
 func (m *Module) customizeManifests(_ context.Context, rr *odhtypes.ReconciliationRequest) error {
 	feast, ok := rr.Instance.(*componentApi.FeastOperator)
 	if !ok {
 		return errors.New("instance is not a FeastOperator")
-	}
-
-	if len(rr.Manifests) == 0 {
-		return errors.New("no manifests initialized before customizeManifests")
 	}
 
 	issuerURL := ""
@@ -83,12 +77,8 @@ func (m *Module) customizeManifests(_ context.Context, rr *odhtypes.Reconciliati
 		ParamsEnvKeyOIDCIssuerURL: issuerURL,
 	}
 
-	if err := kparams.Apply(
-		m.kustomizeFS,
-		path.Join(rr.Manifests[0].String(), "params.env"),
-		kparams.Values(extraParams),
-	); err != nil {
-		return fmt.Errorf("failed to update params.env with kustomize parameters: %w", err)
+	if err := modulemeta.ApplyRuntimeParams(m.kustomizeFS, m.variant.Kustomize, extraParams); err != nil {
+		return fmt.Errorf("applying runtime params for variant %q: %w", m.variant.Name, err)
 	}
 
 	return nil
