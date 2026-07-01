@@ -1,0 +1,27 @@
+variants:
+  odh:
+    manifests:
+      kustomize:
+        - path: manifests
+          contextDir: sparkoperator
+          sourcePath: overlays/odh
+          params:
+            - file: params.env
+              replaceFromEnv:
+                SPARK_OPERATOR_CONTROLLER_IMAGE: RELATED_IMAGE_ODH_SPARK_OPERATOR_IMAGE
+                SPARK_OPERATOR_WEBHOOK_IMAGE: RELATED_IMAGE_ODH_SPARK_OPERATOR_IMAGE
+      templates:
+        - path: manifests/ext/openshift-config-grants.yaml.tmpl
+  rhoai:
+    manifests:
+      kustomize:
+        - path: manifests
+          contextDir: sparkoperator
+          sourcePath: overlays/rhoai
+          params:
+            - file: params.env
+              replaceFromEnv:
+                SPARK_OPERATOR_CONTROLLER_IMAGE: RELATED_IMAGE_ODH_SPARK_OPERATOR_IMAGE
+                SPARK_OPERATOR_WEBHOOK_IMAGE: RELATED_IMAGE_ODH_SPARK_OPERATOR_IMAGE
+      templates:
+        - path: manifests/ext/openshift-config-grants.yaml.tmpl

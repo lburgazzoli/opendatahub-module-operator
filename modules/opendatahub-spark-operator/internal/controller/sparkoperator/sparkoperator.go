@@ -18,37 +18,27 @@ package sparkoperator
 
 import (
 	"fmt"
-	"path"
 
+	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-spark-operator/assets"
 	common "github.com/opendatahub-io/odh-platform-utilities/api/common"
 	fwapi "github.com/opendatahub-io/odh-platform-utilities/framework/api"
-	odhtypes "github.com/opendatahub-io/odh-platform-utilities/framework/controller/types"
-	kparams "github.com/opendatahub-io/odh-platform-utilities/framework/render/kustomize/params"
 	"sigs.k8s.io/kustomize/kyaml/filesys"
 
 	componentApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-spark-operator/api/components/v1alpha1"
 	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-spark-operator/pkg/config"
+	modulemeta "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-spark-operator/pkg/module"
 )
 
 const (
 	componentName = componentApi.SparkOperatorComponentName
-
-	overlayODH   = "overlays/odh"
-	overlayRhoai = "overlays/rhoai"
 )
-
-// imageParamMap matches the monolith's imageParamMap.
-var imageParamMap = map[string]string{
-	"SPARK_OPERATOR_CONTROLLER_IMAGE": "RELATED_IMAGE_ODH_SPARK_OPERATOR_IMAGE",
-	"SPARK_OPERATOR_WEBHOOK_IMAGE":    "RELATED_IMAGE_ODH_SPARK_OPERATOR_IMAGE",
-}
 
 // Module holds process-lifetime state for the sparkoperator controller.
 type Module struct {
 	cfg             *moduleconfig.Config
+	variant         modulemeta.ResolvedVariant
 	platformRelease fwapi.Release
 	releases        []common.ComponentRelease
-	manifestInfo    odhtypes.ManifestInfo
 	kustomizeFS     filesys.FileSystem
 }
 
@@ -59,19 +49,24 @@ func NewModule(cfg *moduleconfig.Config) (*Module, error) {
 		return nil, err
 	}
 
-	overlay := overlayODH
+	variantName := modulemeta.VariantODH
 	switch cfg.PlatformType {
 	case moduleconfig.PlatformTypeSelfManagedRhoai, moduleconfig.PlatformTypeManagedRhoai:
-		overlay = overlayRhoai
+		variantName = modulemeta.VariantRhoai
+	}
+
+	variant, err := modulemeta.LoadVariant(
+		assets.Manifests,
+		modulemeta.DescriptorPath,
+		variantName,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("loading variant %q: %w", variantName, err)
 	}
 
 	return &Module{
-		cfg: cfg,
-		manifestInfo: odhtypes.ManifestInfo{
-			Path:       "manifests",
-			ContextDir: componentName,
-			SourcePath: overlay,
-		},
+		cfg:         cfg,
+		variant:     variant,
 		kustomizeFS: kustomizeFS,
 	}, nil
 }
@@ -80,12 +75,8 @@ func NewModule(cfg *moduleconfig.Config) (*Module, error) {
 // the manifest path. Must be called once after NewModule, before the reconciler
 // starts processing requests.
 func (m *Module) Init() error {
-	if err := kparams.Apply(
-		m.kustomizeFS,
-		path.Join(m.manifestInfo.String(), "params.env"),
-		kparams.Replacement(kparams.FromEnv(imageParamMap)),
-	); err != nil {
-		return fmt.Errorf("failed to update images on path %s: %w", m.manifestInfo, err)
+	if err := modulemeta.ApplyStaticParams(m.kustomizeFS, m.variant.Kustomize); err != nil {
+		return err
 	}
 
 	releases, err := m.loadReleases()

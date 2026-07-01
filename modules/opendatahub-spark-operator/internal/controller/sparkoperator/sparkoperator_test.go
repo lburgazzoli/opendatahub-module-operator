@@ -28,6 +28,7 @@ import (
 
 	componentApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-spark-operator/api/components/v1alpha1"
 	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-spark-operator/pkg/config"
+	module "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-spark-operator/pkg/module"
 )
 
 func testConfig(t *testing.T) *moduleconfig.Config {
@@ -79,8 +80,22 @@ func TestNewModule(t *testing.T) {
 	m, err := NewModule(cfg)
 	g.Expect(err).NotTo(HaveOccurred())
 	g.Expect(m.cfg).To(Equal(cfg))
-	g.Expect(m.manifestInfo.ContextDir).To(Equal(componentName))
-	g.Expect(m.manifestInfo.SourcePath).To(Equal(overlayODH))
+	g.Expect(m.variant.Name).To(Equal(module.VariantODH))
+	g.Expect(m.variant.Kustomize).To(HaveLen(1))
+	g.Expect(m.variant.Kustomize[0].ManifestInfo.ContextDir).To(Equal(componentName))
+	g.Expect(m.variant.Kustomize[0].ManifestInfo.SourcePath).To(Equal("overlays/odh"))
+}
+
+func TestNewModuleRhoaiVariant(t *testing.T) {
+	g := NewWithT(t)
+
+	cfg := testConfig(t)
+	cfg.PlatformType = moduleconfig.PlatformTypeManagedRhoai
+
+	m, err := NewModule(cfg)
+	g.Expect(err).NotTo(HaveOccurred())
+	g.Expect(m.variant.Name).To(Equal(module.VariantRhoai))
+	g.Expect(m.variant.Kustomize[0].ManifestInfo.SourcePath).To(Equal("overlays/rhoai"))
 }
 
 func TestStageManifests(t *testing.T) {
@@ -94,9 +109,9 @@ func TestStageManifests(t *testing.T) {
 	g.Expect(rr.Manifests).To(HaveLen(1))
 	g.Expect(rr.Manifests[0].Path).To(Equal("manifests"))
 	g.Expect(rr.Manifests[0].ContextDir).To(Equal(componentName))
-	g.Expect(rr.Manifests[0].SourcePath).To(Equal(overlayODH))
+	g.Expect(rr.Manifests[0].SourcePath).To(Equal("overlays/odh"))
 	g.Expect(rr.Templates).To(HaveLen(1))
-	g.Expect(rr.Templates[0].Path).To(Equal(openShiftConfigGrantsTemplatePath))
+	g.Expect(rr.Templates[0].Path).To(Equal("manifests/ext/openshift-config-grants.yaml.tmpl"))
 }
 
 func TestUpgradeIfNeededNoVersion(t *testing.T) {
