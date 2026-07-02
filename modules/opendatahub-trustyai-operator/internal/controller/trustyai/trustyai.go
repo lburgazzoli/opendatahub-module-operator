@@ -23,11 +23,10 @@ import (
 	componentApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-trustyai-operator/api/components/v1alpha1"
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-trustyai-operator/assets"
 	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-trustyai-operator/pkg/config"
+	modulemeta "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-trustyai-operator/pkg/module"
 	common "github.com/opendatahub-io/odh-platform-utilities/api/common"
 	fwapi "github.com/opendatahub-io/odh-platform-utilities/framework/api"
 	fwreleases "github.com/opendatahub-io/odh-platform-utilities/framework/controller/actions/status/releases"
-	fwtypes "github.com/opendatahub-io/odh-platform-utilities/framework/controller/types"
-	kparams "github.com/opendatahub-io/odh-platform-utilities/framework/render/kustomize/params"
 	"sigs.k8s.io/kustomize/kyaml/filesys"
 )
 
@@ -36,37 +35,15 @@ const (
 
 	// LegacyComponentName matches the monolith's LegacyComponentName.
 	LegacyComponentName = "trustyai"
-
-	overlayODH   = "overlays/odh"
-	overlayRhoai = "overlays/rhoai"
-	overlayMCP   = "overlays/mcp-guardrails"
 )
-
-// imageParamMap matches the monolith's imageParamMap (trustyai_support.go).
-var imageParamMap = map[string]string{
-	"trustyaiServiceImage":               "RELATED_IMAGE_ODH_TRUSTYAI_SERVICE_IMAGE",
-	"trustyaiOperatorImage":              "RELATED_IMAGE_ODH_TRUSTYAI_SERVICE_OPERATOR_IMAGE",
-	"lmes-driver-image":                  "RELATED_IMAGE_ODH_TA_LMES_DRIVER_IMAGE",
-	"lmes-pod-image":                     "RELATED_IMAGE_ODH_TA_LMES_JOB_IMAGE",
-	"guardrails-orchestrator-image":      "RELATED_IMAGE_ODH_FMS_GUARDRAILS_ORCHESTRATOR_IMAGE",
-	"guardrails-sidecar-gateway-image":   "RELATED_IMAGE_ODH_TRUSTYAI_VLLM_ORCHESTRATOR_GATEWAY_IMAGE",
-	"guardrails-built-in-detector-image": "RELATED_IMAGE_ODH_BUILT_IN_DETECTOR_IMAGE",
-	"ragas-provider-image":               "RELATED_IMAGE_ODH_PYTHON_312_IMAGE",
-	"garak-provider-image":               "RELATED_IMAGE_ODH_TRUSTYAI_GARAK_LLS_PROVIDER_DSP_IMAGE",
-	"nemo-guardrails-image":              "RELATED_IMAGE_ODH_TRUSTYAI_NEMO_GUARDRAILS_SERVER_IMAGE",
-	"evalHubImage":                       "RELATED_IMAGE_ODH_EVAL_HUB_IMAGE",
-	"kube-rbac-proxy":                    "RELATED_IMAGE_ODH_KUBE_RBAC_PROXY_IMAGE",
-}
 
 // Module holds process-lifetime state for the trustyai controller.
 type Module struct {
 	cfg             *moduleconfig.Config
+	variant         modulemeta.ResolvedVariant
+	mcpVariant      modulemeta.ResolvedVariant
 	platformRelease fwapi.Release
 	releases        []common.ComponentRelease
-	// manifestInfo is the standard platform overlay (odh/rhoai).
-	manifestInfo fwtypes.ManifestInfo
-	// mcpManifestInfo is used when MCPGuardrailsMode is enabled.
-	mcpManifestInfo fwtypes.ManifestInfo
 	kustomizeFS     filesys.FileSystem
 }
 
@@ -77,36 +54,45 @@ func NewModule(cfg *moduleconfig.Config) (*Module, error) {
 		return nil, err
 	}
 
-	overlay := overlayODH
+	variantName := modulemeta.VariantODH
 	switch cfg.PlatformType {
 	case moduleconfig.PlatformTypeSelfManagedRhoai, moduleconfig.PlatformTypeManagedRhoai:
-		overlay = overlayRhoai
+		variantName = modulemeta.VariantRhoai
+	}
+
+	variant, err := modulemeta.LoadVariant(
+		assets.Manifests,
+		modulemeta.DescriptorPath,
+		variantName,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("loading variant %q: %w", variantName, err)
+	}
+
+	mcpVariant, err := modulemeta.LoadVariant(
+		assets.Manifests,
+		modulemeta.DescriptorPath,
+		modulemeta.VariantMCPGuardrails,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("loading variant %q: %w", modulemeta.VariantMCPGuardrails, err)
 	}
 
 	return &Module{
-		cfg: cfg,
-		manifestInfo: fwtypes.ManifestInfo{
-			Path:       "manifests",
-			ContextDir: componentName,
-			SourcePath: overlay,
-		},
-		mcpManifestInfo: fwtypes.ManifestInfo{
-			Path:       "manifests",
-			ContextDir: componentName,
-			SourcePath: overlayMCP,
-		},
+		cfg:         cfg,
+		variant:     variant,
+		mcpVariant:  mcpVariant,
 		kustomizeFS: kustomizeFS,
 	}, nil
 }
 
 // Init applies image parameter substitutions once at process startup.
 func (m *Module) Init() error {
-	if err := kparams.Apply(
-		m.kustomizeFS,
-		path.Join(m.manifestInfo.String(), "params.env"),
-		kparams.Replacement(kparams.FromEnv(imageParamMap)),
-	); err != nil {
-		return fmt.Errorf("failed to update images on path %s: %w", m.manifestInfo, err)
+	if err := modulemeta.ApplyStaticParams(m.kustomizeFS, m.variant.Kustomize); err != nil {
+		return fmt.Errorf("applying static params for variant %q: %w", m.variant.Name, err)
+	}
+	if err := modulemeta.ApplyStaticParams(m.kustomizeFS, m.mcpVariant.Kustomize); err != nil {
+		return fmt.Errorf("applying static params for variant %q: %w", m.mcpVariant.Name, err)
 	}
 
 	releases, err := m.loadReleases()

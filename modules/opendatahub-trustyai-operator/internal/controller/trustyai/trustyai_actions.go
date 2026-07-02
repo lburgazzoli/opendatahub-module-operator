@@ -18,6 +18,7 @@ package trustyai
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"slices"
 	"strconv"
@@ -26,7 +27,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	componentApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-trustyai-operator/api/components/v1alpha1"
-	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-trustyai-operator/assets"
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-trustyai-operator/pkg/module"
 	modulegvk "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-trustyai-operator/pkg/resources/gvk"
 	fwcluster "github.com/opendatahub-io/odh-platform-utilities/framework/cluster"
@@ -37,8 +37,6 @@ import (
 	odhcluster "github.com/opendatahub-io/odh-platform-utilities/pkg/cluster"
 	k8serr "k8s.io/apimachinery/pkg/api/errors"
 )
-
-const openShiftConfigGrantsTemplatePath = "manifests/ext/openshift-config-grants.yaml.tmpl"
 
 // checkPreConditions verifies that:
 //  1. Kserve module CRD (kserves.components.platform.opendatahub.io) exists — KServe module is installed
@@ -60,7 +58,7 @@ func (m *Module) checkPreConditions(ctx context.Context, rr *fwtypes.Reconciliat
 
 	// Check that the Kserve singleton CR exists — signals KServe module is enabled.
 	if err := odhcluster.GetSingleton(ctx, rr.Client, pkgresources.GvkToUnstructured(modulegvk.Kserve)); err != nil {
-		if k8serr.IsNotFound(err) {
+		if k8serr.IsNotFound(err) || errors.Is(err, odhcluster.ErrNoInstance) {
 			return m.markDependenciesUnavailable(
 				rr,
 				"Kserve CR not found: the KServe module must be enabled before enabling TrustyAI",
@@ -97,16 +95,17 @@ func (m *Module) stageManifests(_ context.Context, rr *fwtypes.ReconciliationReq
 		return fmt.Errorf("instance is not a TrustyAI")
 	}
 
+	selected := m.variant
 	if tai.Spec.MCPGuardrailsMode {
-		rr.Manifests = append(rr.Manifests, m.mcpManifestInfo)
-	} else {
-		rr.Manifests = append(rr.Manifests, m.manifestInfo)
+		selected = m.mcpVariant
 	}
 
-	rr.Templates = []fwtypes.TemplateInfo{{
-		FS:   assets.Manifests,
-		Path: openShiftConfigGrantsTemplatePath,
-	}}
+	rr.Manifests = make([]fwtypes.ManifestInfo, 0, len(selected.Kustomize))
+	for _, item := range selected.Kustomize {
+		rr.Manifests = append(rr.Manifests, item.ManifestInfo)
+	}
+	rr.Templates = selected.Templates
+	rr.HelmCharts = selected.HelmCharts
 
 	return nil
 }

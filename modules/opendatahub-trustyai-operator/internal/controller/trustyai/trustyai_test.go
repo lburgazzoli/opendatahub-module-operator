@@ -23,6 +23,7 @@ import (
 
 	componentApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-trustyai-operator/api/components/v1alpha1"
 	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-trustyai-operator/pkg/config"
+	modulemeta "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-trustyai-operator/pkg/module"
 	. "github.com/onsi/gomega"
 	common "github.com/opendatahub-io/odh-platform-utilities/api/common"
 	odhtypes "github.com/opendatahub-io/odh-platform-utilities/framework/controller/types"
@@ -77,9 +78,25 @@ func TestNewModule(t *testing.T) {
 	m, err := NewModule(cfg)
 	g.Expect(err).NotTo(HaveOccurred())
 	g.Expect(m.cfg).To(Equal(cfg))
-	g.Expect(m.manifestInfo.ContextDir).To(Equal(componentName))
-	g.Expect(m.manifestInfo.SourcePath).To(Equal(overlayODH))
-	g.Expect(m.manifestInfo.Path).To(Equal("manifests"))
+	g.Expect(m.variant.Name).To(Equal(modulemeta.VariantODH))
+	g.Expect(m.variant.Kustomize).To(HaveLen(1))
+	g.Expect(m.variant.Kustomize[0].ManifestInfo.ContextDir).To(Equal(componentName))
+	g.Expect(m.variant.Kustomize[0].ManifestInfo.SourcePath).To(Equal("overlays/odh"))
+	g.Expect(m.variant.Kustomize[0].ManifestInfo.Path).To(Equal("manifests"))
+	g.Expect(m.mcpVariant.Name).To(Equal(modulemeta.VariantMCPGuardrails))
+	g.Expect(m.mcpVariant.Kustomize[0].ManifestInfo.SourcePath).To(Equal("overlays/mcp-guardrails"))
+}
+
+func TestNewModuleRhoaiVariant(t *testing.T) {
+	g := NewWithT(t)
+
+	cfg := testConfig(t)
+	cfg.PlatformType = moduleconfig.PlatformTypeManagedRhoai
+
+	m, err := NewModule(cfg)
+	g.Expect(err).NotTo(HaveOccurred())
+	g.Expect(m.variant.Name).To(Equal(modulemeta.VariantRhoai))
+	g.Expect(m.variant.Kustomize[0].ManifestInfo.SourcePath).To(Equal("overlays/rhoai"))
 }
 
 func TestStageManifests(t *testing.T) {
@@ -93,9 +110,24 @@ func TestStageManifests(t *testing.T) {
 	g.Expect(rr.Manifests).To(HaveLen(1))
 	g.Expect(rr.Manifests[0].Path).To(Equal("manifests"))
 	g.Expect(rr.Manifests[0].ContextDir).To(Equal(componentName))
-	g.Expect(rr.Manifests[0].SourcePath).To(Equal(overlayODH))
+	g.Expect(rr.Manifests[0].SourcePath).To(Equal("overlays/odh"))
 	g.Expect(rr.Templates).To(HaveLen(1))
-	g.Expect(rr.Templates[0].Path).To(Equal(openShiftConfigGrantsTemplatePath))
+	g.Expect(rr.Templates[0].Path).To(Equal("manifests/ext/openshift-config-grants.yaml.tmpl"))
+}
+
+func TestStageManifestsMCPGuardrailsMode(t *testing.T) {
+	g := NewWithT(t)
+
+	m := newTestModule(t)
+	obj := newTestTrustyAI()
+	obj.Spec.MCPGuardrailsMode = true
+	rr := newTestRR(t, obj)
+
+	g.Expect(m.stageManifests(context.Background(), rr)).To(Succeed())
+	g.Expect(rr.Manifests).To(HaveLen(1))
+	g.Expect(rr.Manifests[0].SourcePath).To(Equal("overlays/mcp-guardrails"))
+	g.Expect(rr.Templates).To(HaveLen(1))
+	g.Expect(rr.Templates[0].Path).To(Equal("manifests/ext/openshift-config-grants.yaml.tmpl"))
 }
 
 func TestInitLoadsReleases(t *testing.T) {
