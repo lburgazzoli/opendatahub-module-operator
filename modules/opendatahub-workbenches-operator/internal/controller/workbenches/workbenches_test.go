@@ -36,6 +36,7 @@ import (
 
 	componentApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-workbenches-operator/api/components/v1alpha1"
 	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-workbenches-operator/pkg/config"
+	modulemeta "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-workbenches-operator/pkg/module"
 )
 
 func testConfig(t *testing.T) *moduleconfig.Config {
@@ -107,7 +108,38 @@ func TestStageManifests(t *testing.T) {
 	g.Expect(rr.Manifests[0].ContextDir).To(Equal(notebookControllerContextDir))
 	g.Expect(rr.Manifests[1].ContextDir).To(Equal(kfNotebookControllerContextDir))
 	g.Expect(rr.Manifests[2].ContextDir).To(Equal(notebookContextDir))
-	g.Expect(rr.Templates[0].Path).To(Equal(openShiftConfigGrantsTemplatePath))
+	g.Expect(rr.Manifests[2].SourcePath).To(Equal("odh/overlays/additional"))
+	g.Expect(rr.Templates[0].Path).To(Equal("manifests/ext/openshift-config-grants.yaml.tmpl"))
+}
+
+func TestNewModuleUsesResolvedVariant(t *testing.T) {
+	g := NewWithT(t)
+
+	cfg := testConfig(t)
+
+	m, err := NewModule(cfg)
+	g.Expect(err).NotTo(HaveOccurred())
+	g.Expect(m.variant.Name).To(Equal(modulemeta.VariantODH))
+	g.Expect(m.variant.Kustomize).To(HaveLen(4))
+	g.Expect(m.variant.Kustomize[0].ManifestInfo.ContextDir).To(Equal(notebookControllerContextDir))
+	g.Expect(m.variant.Kustomize[1].ManifestInfo.ContextDir).To(Equal(kfNotebookControllerContextDir))
+	g.Expect(m.variant.Kustomize[2].ManifestInfo.ContextDir).To(Equal(notebookContextDir))
+	g.Expect(m.variant.Kustomize[2].ManifestInfo.SourcePath).To(Equal("odh/overlays/additional"))
+	g.Expect(m.variant.Kustomize[3].SkipRender).To(BeTrue())
+	g.Expect(m.variant.Kustomize[3].ManifestInfo.SourcePath).To(Equal("odh/base"))
+}
+
+func TestNewModuleRhoaiVariant(t *testing.T) {
+	g := NewWithT(t)
+
+	cfg := testConfig(t)
+	cfg.PlatformType = moduleconfig.PlatformTypeManagedRhoai
+
+	m, err := NewModule(cfg)
+	g.Expect(err).NotTo(HaveOccurred())
+	g.Expect(m.variant.Name).To(Equal(modulemeta.VariantRhoai))
+	g.Expect(m.variant.Kustomize).To(HaveLen(4))
+	g.Expect(m.variant.Kustomize[2].ManifestInfo.SourcePath).To(Equal("odh/overlays/additional"))
 }
 
 func TestMetadataFilePathUsesEmbeddedManifests(t *testing.T) {

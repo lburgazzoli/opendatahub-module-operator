@@ -19,33 +19,28 @@ package workbenches
 import (
 	"context"
 	"fmt"
-	"path"
 	"slices"
 
 	corev1 "k8s.io/api/core/v1"
 
-	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-workbenches-operator/assets"
 	fwtypes "github.com/opendatahub-io/odh-platform-utilities/framework/controller/types"
-	kparams "github.com/opendatahub-io/odh-platform-utilities/framework/render/kustomize/params"
 	odhcluster "github.com/opendatahub-io/odh-platform-utilities/pkg/cluster"
 
 	localapi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-workbenches-operator/api/components/v1alpha1"
-	module "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-workbenches-operator/pkg/module"
-)
-
-const (
-	openShiftAPIServerReaderRoleName        = "workbenches-apiserver-reader"
-	openShiftAPIServerReaderRoleBindingName = "workbenches-apiserver-reader-binding"
-	openShiftConfigGrantsTemplatePath       = "manifests/ext/openshift-config-grants.yaml.tmpl"
+	modulemeta "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-workbenches-operator/pkg/module"
 )
 
 // stageManifests assigns the pre-computed manifest infos for this reconcile cycle.
 func (m *Module) stageManifests(_ context.Context, rr *fwtypes.ReconciliationRequest) error {
-	rr.Manifests = slices.Clone(m.manifestInfos)
-	rr.Templates = []fwtypes.TemplateInfo{{
-		FS:   assets.Manifests,
-		Path: openShiftConfigGrantsTemplatePath,
-	}}
+	rr.Manifests = make([]fwtypes.ManifestInfo, 0, len(m.variant.Kustomize))
+	for _, item := range m.variant.Kustomize {
+		if item.SkipRender {
+			continue
+		}
+		rr.Manifests = append(rr.Manifests, item.ManifestInfo)
+	}
+	rr.Templates = m.variant.Templates
+	rr.HelmCharts = m.variant.HelmCharts
 	return nil
 }
 
@@ -56,12 +51,13 @@ func (m *Module) customizeManifests(ctx context.Context, rr *fwtypes.Reconciliat
 		return fmt.Errorf("computing kustomize variables: %w", err)
 	}
 
-	if err := kparams.Apply(
-		m.renderFS,
-		path.Join(m.manifestInfos[0].String(), "params.env"),
-		kparams.Values(extraParamsMap),
-	); err != nil {
-		return fmt.Errorf("applying params.env from %s: %w", m.manifestInfos[0].String(), err)
+	runtimeItems := runtimeParamItems(m.variant.Kustomize)
+	if len(runtimeItems) == 0 {
+		return fmt.Errorf("runtime params target not found for variant %q", m.variant.Name)
+	}
+
+	if err := modulemeta.ApplyRuntimeParams(m.renderFS, runtimeItems, extraParamsMap); err != nil {
+		return fmt.Errorf("applying runtime params for variant %q: %w", m.variant.Name, err)
 	}
 	return nil
 }
@@ -75,7 +71,7 @@ func (m *Module) configureDependencies(_ context.Context, rr *fwtypes.Reconcilia
 
 	ns := &corev1.Namespace{}
 	ns.Labels = map[string]string{
-		module.OwnedNamespaceLabel: "true",
+		modulemeta.OwnedNamespaceLabel: "true",
 	}
 
 	switch {
@@ -83,9 +79,9 @@ func (m *Module) configureDependencies(_ context.Context, rr *fwtypes.Reconcilia
 		ns.Name = workbench.Spec.WorkbenchNamespace
 	case localapi.Platform(rr.Release.Name) == localapi.Platform(odhcluster.SelfManagedRhoai) ||
 		localapi.Platform(rr.Release.Name) == localapi.Platform(odhcluster.ManagedRhoai):
-		ns.Name = module.DefaultNotebooksNamespaceRHOAI
+		ns.Name = modulemeta.DefaultNotebooksNamespaceRHOAI
 	default:
-		ns.Name = module.DefaultNotebooksNamespaceODH
+		ns.Name = modulemeta.DefaultNotebooksNamespaceODH
 	}
 
 	if err := rr.AddResources(ns); err != nil {

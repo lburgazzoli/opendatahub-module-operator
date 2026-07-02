@@ -33,6 +33,7 @@ import (
 	localapi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-workbenches-operator/api/components/v1alpha1"
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-workbenches-operator/assets"
 	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-workbenches-operator/pkg/config"
+	modulemeta "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-workbenches-operator/pkg/module"
 	gvk "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-workbenches-operator/pkg/resources/gvk"
 	common "github.com/opendatahub-io/odh-platform-utilities/api/common"
 	"github.com/opendatahub-io/odh-platform-utilities/framework/controller/actions/status/deployments"
@@ -83,18 +84,6 @@ var (
 	kfNotebookControllerContextDir = path.Join(ComponentName, kfNotebookControllerPath)
 	notebookContextDir             = path.Join(ComponentName, notebooksPath)
 
-	notebookImagesManifestSourcePath = map[localapi.Platform]string{
-		localapi.Platform(odhcluster.SelfManagedRhoai): "rhoai/overlays/additional",
-		localapi.Platform(odhcluster.ManagedRhoai):     "rhoai/overlays/additional",
-		localapi.Platform(odhcluster.OpenDataHub):      "odh/overlays/additional",
-	}
-
-	notebookImagesParamsPath = map[localapi.Platform]string{
-		localapi.Platform(odhcluster.SelfManagedRhoai): "rhoai/base",
-		localapi.Platform(odhcluster.ManagedRhoai):     "rhoai/base",
-		localapi.Platform(odhcluster.OpenDataHub):      "odh/base",
-	}
-
 	// conditionTypes contributing to the controller Ready status.
 	// ConditionImageStreamsAvailable is intentionally excluded: some upstream images
 	// (CUDA/ROCm) may not be published yet so including it would prevent Workbenches
@@ -102,37 +91,7 @@ var (
 	conditionTypes = []string{
 		deployments.DefaultConditionType,
 	}
-
-	// notebookImageParamMap maps params-latest.env keys to RELATED_IMAGE env vars.
-	notebookImageParamMap = map[string]string{
-		"odh-workbench-codeserver-datascience-cpu-py312-ubi9-n":         "RELATED_IMAGE_ODH_WORKBENCH_CODESERVER_DATASCIENCE_CPU_PY312_IMAGE",
-		"odh-workbench-jupyter-datascience-cpu-py312-ubi9-n":            "RELATED_IMAGE_ODH_WORKBENCH_JUPYTER_DATASCIENCE_CPU_PY312_IMAGE",
-		"odh-workbench-jupyter-minimal-cpu-py312-ubi9-n":                "RELATED_IMAGE_ODH_WORKBENCH_JUPYTER_MINIMAL_CPU_PY312_IMAGE",
-		"odh-workbench-jupyter-minimal-cuda-py312-ubi9-n":               "RELATED_IMAGE_ODH_WORKBENCH_JUPYTER_MINIMAL_CUDA_PY312_IMAGE",
-		"odh-workbench-jupyter-minimal-rocm-py312-ubi9-n":               "RELATED_IMAGE_ODH_WORKBENCH_JUPYTER_MINIMAL_ROCM_PY312_IMAGE",
-		"odh-workbench-jupyter-pytorch-cuda-py312-ubi9-n":               "RELATED_IMAGE_ODH_WORKBENCH_JUPYTER_PYTORCH_CUDA_PY312_IMAGE",
-		"odh-workbench-jupyter-pytorch-rocm-py312-ubi9-n":               "RELATED_IMAGE_ODH_WORKBENCH_JUPYTER_PYTORCH_ROCM_PY312_IMAGE",
-		"odh-workbench-jupyter-tensorflow-cuda-py312-ubi9-n":            "RELATED_IMAGE_ODH_WORKBENCH_JUPYTER_TENSORFLOW_CUDA_PY312_IMAGE",
-		"odh-workbench-jupyter-tensorflow-rocm-py312-ubi9-n":            "RELATED_IMAGE_ODH_WORKBENCH_JUPYTER_TENSORFLOW_ROCM_PY312_IMAGE",
-		"odh-workbench-jupyter-trustyai-cpu-py312-ubi9-n":               "RELATED_IMAGE_ODH_WORKBENCH_JUPYTER_TRUSTYAI_CPU_PY312_IMAGE",
-		"odh-workbench-jupyter-pytorch-llmcompressor-cuda-py312-ubi9-n": "RELATED_IMAGE_ODH_WORKBENCH_JUPYTER_PYTORCH_LLMCOMPRESSOR_CUDA_PY312_IMAGE",
-		"odh-pipeline-runtime-datascience-cpu-py312-ubi9-n":             "RELATED_IMAGE_ODH_PIPELINE_RUNTIME_DATASCIENCE_CPU_PY312_IMAGE",
-		"odh-pipeline-runtime-minimal-cpu-py312-ubi9-n":                 "RELATED_IMAGE_ODH_PIPELINE_RUNTIME_MINIMAL_CPU_PY312_IMAGE",
-		"odh-pipeline-runtime-tensorflow-cuda-py312-ubi9-n":             "RELATED_IMAGE_ODH_PIPELINE_RUNTIME_TENSORFLOW_CUDA_PY312_IMAGE",
-		"odh-pipeline-runtime-tensorflow-rocm-py312-ubi9-n":             "RELATED_IMAGE_ODH_PIPELINE_RUNTIME_TENSORFLOW_ROCM_PY312_IMAGE",
-		"odh-pipeline-runtime-pytorch-cuda-py312-ubi9-n":                "RELATED_IMAGE_ODH_PIPELINE_RUNTIME_PYTORCH_CUDA_PY312_IMAGE",
-		"odh-pipeline-runtime-pytorch-rocm-py312-ubi9-n":                "RELATED_IMAGE_ODH_PIPELINE_RUNTIME_PYTORCH_ROCM_PY312_IMAGE",
-		"odh-pipeline-runtime-pytorch-llmcompressor-cuda-py312-ubi9-n":  "RELATED_IMAGE_ODH_PIPELINE_RUNTIME_PYTORCH_LLMCOMPRESSOR_CUDA_PY312_IMAGE",
-	}
 )
-
-func notebookControllerManifestInfo(basePath string, sourcePath string) fwtypes.ManifestInfo {
-	return fwtypes.ManifestInfo{
-		Path:       basePath,
-		ContextDir: notebookControllerContextDir,
-		SourcePath: sourcePath,
-	}
-}
 
 func metadataFilePath(_ *fwtypes.ReconciliationRequest) string {
 	return path.Join(
@@ -166,20 +125,15 @@ func loadReleases(cfg *moduleconfig.Config) ([]common.ComponentRelease, error) {
 	return fwreleases.NormalizeComponentReleases(append(releases, cfg.ComponentRelease())), nil
 }
 
-func kfNotebookControllerManifestInfo(basePath string, sourcePath string) fwtypes.ManifestInfo {
-	return fwtypes.ManifestInfo{
-		Path:       basePath,
-		ContextDir: kfNotebookControllerContextDir,
-		SourcePath: sourcePath,
+func runtimeParamItems(items []modulemeta.ResolvedKustomizeItem) []modulemeta.ResolvedKustomizeItem {
+	for _, item := range items {
+		if item.ManifestInfo.ContextDir == notebookControllerContextDir &&
+			item.ManifestInfo.SourcePath == notebookControllerManifestSourcePath {
+			return []modulemeta.ResolvedKustomizeItem{item}
+		}
 	}
-}
 
-func notebookImagesManifestInfo(basePath string, sourcePath string) fwtypes.ManifestInfo {
-	return fwtypes.ManifestInfo{
-		Path:       basePath,
-		ContextDir: notebookContextDir,
-		SourcePath: sourcePath,
-	}
+	return nil
 }
 
 // ComputeKustomizeVariable builds the dynamic kustomize parameter map.

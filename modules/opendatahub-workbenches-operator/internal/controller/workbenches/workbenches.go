@@ -18,20 +18,16 @@ package workbenches
 
 import (
 	"fmt"
-	"path"
 
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 	"sigs.k8s.io/kustomize/kyaml/filesys"
 
+	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-workbenches-operator/assets"
+	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-workbenches-operator/pkg/config"
+	modulemeta "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-workbenches-operator/pkg/module"
 	common "github.com/opendatahub-io/odh-platform-utilities/api/common"
 	fwapi "github.com/opendatahub-io/odh-platform-utilities/framework/api"
-	fwtypes "github.com/opendatahub-io/odh-platform-utilities/framework/controller/types"
-	kparams "github.com/opendatahub-io/odh-platform-utilities/framework/render/kustomize/params"
-	odhcluster "github.com/opendatahub-io/odh-platform-utilities/pkg/cluster"
-
-	componentApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-workbenches-operator/api/components/v1alpha1"
-	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-workbenches-operator/pkg/config"
 )
 
 // Module holds process-lifetime state for the workbenches controller.
@@ -39,9 +35,8 @@ type Module struct {
 	cfg      *moduleconfig.Config
 	release  fwapi.Release
 	releases []common.ComponentRelease
-	// manifestInfos is computed once at startup from the fixed platform and manifests path.
-	manifestInfos []fwtypes.ManifestInfo
-	renderFS      filesys.FileSystem
+	variant  modulemeta.ResolvedVariant
+	renderFS filesys.FileSystem
 
 	// apiReader is the uncached reader used by webhooks and upgrade migrations
 	// when they need fresh API state instead of informer-backed cache state.
@@ -60,58 +55,32 @@ func NewModule(cfg *moduleconfig.Config) (*Module, error) {
 		return nil, err
 	}
 
-	// Default to the ODH overlay; platform-specific overlays are determined
-	// at deployment time via image parameters rather than runtime config.
-	platform := componentApi.Platform(odhcluster.OpenDataHub)
+	variantName := modulemeta.VariantODH
+	switch cfg.PlatformType {
+	case moduleconfig.PlatformTypeSelfManagedRhoai, moduleconfig.PlatformTypeManagedRhoai:
+		variantName = modulemeta.VariantRhoai
+	}
 
-	imgSourcePath, ok := notebookImagesManifestSourcePath[platform]
-	if !ok {
-		imgSourcePath = notebookImagesManifestSourcePath[componentApi.Platform(odhcluster.OpenDataHub)]
+	variant, err := modulemeta.LoadVariant(
+		assets.Manifests,
+		modulemeta.DescriptorPath,
+		variantName,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("loading variant %q: %w", variantName, err)
 	}
 
 	return &Module{
-		cfg: cfg,
-		manifestInfos: []fwtypes.ManifestInfo{
-			notebookControllerManifestInfo(manifestsRoot, notebookControllerManifestSourcePath),
-			kfNotebookControllerManifestInfo(manifestsRoot, kfNotebookControllerManifestSourcePath),
-			notebookImagesManifestInfo(manifestsRoot, imgSourcePath),
-		},
+		cfg:      cfg,
+		variant:  variant,
 		renderFS: renderFS,
 	}, nil
 }
 
 // Init applies image parameter substitutions once at process startup.
 func (m *Module) Init() error {
-	if err := kparams.Apply(
-		m.renderFS,
-		path.Join(m.manifestInfos[0].String(), "params.env"),
-		kparams.Replacement(kparams.FromEnv(map[string]string{
-			"odh-notebook-controller-image": "RELATED_IMAGE_ODH_NOTEBOOK_CONTROLLER_IMAGE",
-			"kube-rbac-proxy":               "RELATED_IMAGE_ODH_KUBE_RBAC_PROXY_IMAGE",
-		})),
-	); err != nil {
-		return fmt.Errorf("updating notebook-controller image params: %w", err)
-	}
-
-	if err := kparams.Apply(
-		m.renderFS,
-		path.Join(m.manifestInfos[1].String(), "params.env"),
-		kparams.Replacement(kparams.FromEnv(map[string]string{
-			"odh-kf-notebook-controller-image": "RELATED_IMAGE_ODH_KF_NOTEBOOK_CONTROLLER_IMAGE",
-		})),
-	); err != nil {
-		return fmt.Errorf("updating kf-notebook-controller image params: %w", err)
-	}
-
-	// Default to the ODH params path; overlay selection driven by image parameters.
-	platform := componentApi.Platform(odhcluster.OpenDataHub)
-	nbImgParamsPath := notebookImagesManifestInfo(manifestsRoot, notebookImagesParamsPath[platform])
-	if err := kparams.Apply(
-		m.renderFS,
-		path.Join(nbImgParamsPath.String(), "params-latest.env"),
-		kparams.Replacement(kparams.FromEnv(notebookImageParamMap)),
-	); err != nil {
-		return fmt.Errorf("updating notebook image params: %w", err)
+	if err := modulemeta.ApplyStaticParams(m.renderFS, m.variant.Kustomize); err != nil {
+		return fmt.Errorf("applying static params for variant %q: %w", m.variant.Name, err)
 	}
 
 	releases, err := loadReleases(m.cfg)
