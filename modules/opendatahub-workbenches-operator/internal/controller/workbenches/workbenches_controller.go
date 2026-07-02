@@ -148,7 +148,6 @@ func NewReconciler(
 			reconciler.WithRelease(m.release),
 		).
 		WithAction(m.stageManifests).
-		WithAction(m.upgradeIfNeeded).
 		WithAction(m.customizeManifests).
 		WithAction(fwreleases.NewAction(
 			fwreleases.WithFS(assets.Manifests),

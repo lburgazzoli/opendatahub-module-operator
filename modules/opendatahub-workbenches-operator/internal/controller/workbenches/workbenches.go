@@ -38,9 +38,9 @@ type Module struct {
 	variant  modulemeta.ResolvedVariant
 	renderFS filesys.FileSystem
 
-	// apiReader is the uncached reader used by webhooks and upgrade migrations
-	// when they need fresh API state instead of informer-backed cache state.
-	// The remaining webhook fields are set by RegisterWebhooks.
+	// apiReader is the uncached reader used by webhooks when they need fresh
+	// API state instead of informer-backed cache state. The remaining webhook
+	// fields are set by RegisterWebhooks.
 	decoder       admission.Decoder
 	apiReader     client.Reader
 	webhookClient client.Client

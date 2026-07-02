@@ -24,15 +24,7 @@ import (
 	. "github.com/onsi/gomega"
 	common "github.com/opendatahub-io/odh-platform-utilities/api/common"
 	fwtypes "github.com/opendatahub-io/odh-platform-utilities/framework/controller/types"
-	corev1 "k8s.io/api/core/v1"
-	rbacv1 "k8s.io/api/rbac/v1"
-	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/runtime"
-	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
-	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
-	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
 	componentApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-workbenches-operator/api/components/v1alpha1"
 	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-workbenches-operator/pkg/config"
@@ -57,20 +49,6 @@ func newTestModule(t *testing.T) *Module {
 	m, err := NewModule(cfg)
 	NewWithT(t).Expect(err).NotTo(HaveOccurred())
 	return m
-}
-
-func seedTestAPIReader(t *testing.T, m *Module, objs ...client.Object) {
-	t.Helper()
-	scheme := runtime.NewScheme()
-	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
-	utilruntime.Must(corev1.AddToScheme(scheme))
-	utilruntime.Must(rbacv1.AddToScheme(scheme))
-	utilruntime.Must(apiextensionsv1.AddToScheme(scheme))
-	utilruntime.Must(componentApi.AddToScheme(scheme))
-	m.apiReader = fake.NewClientBuilder().
-		WithScheme(scheme).
-		WithObjects(objs...).
-		Build()
 }
 
 func newTestRR(t *testing.T, obj *componentApi.Workbenches) *fwtypes.ReconciliationRequest {
@@ -148,44 +126,6 @@ func TestMetadataFilePathUsesEmbeddedManifests(t *testing.T) {
 	g.Expect(metadataFilePath(nil)).To(Equal(
 		"manifests/workbenches/kf-notebook-controller/component_metadata.yaml",
 	))
-}
-
-func TestUpgradeIfNeededNoVersion(t *testing.T) {
-	g := NewWithT(t)
-
-	scheme := runtime.NewScheme()
-	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
-	utilruntime.Must(corev1.AddToScheme(scheme))
-	utilruntime.Must(componentApi.AddToScheme(scheme))
-	fakeClient := fake.NewClientBuilder().WithScheme(scheme).Build()
-
-	m := newTestModule(t)
-	obj := newTestWorkbenches()
-	rr := newTestRR(t, obj)
-	rr.Client = fakeClient
-	seedTestAPIReader(t, m, obj.DeepCopy())
-
-	g.Expect(m.upgradeIfNeeded(context.Background(), rr)).To(Succeed())
-
-	events := &corev1.EventList{}
-	g.Expect(fakeClient.List(context.Background(), events)).To(Succeed())
-	g.Expect(events.Items).To(HaveLen(1))
-	g.Expect(events.Items[0].Reason).To(Equal(upgradeEventReasonStarted))
-}
-
-func TestUpgradeIfNeededSameVersion(t *testing.T) {
-	g := NewWithT(t)
-
-	m := newTestModule(t)
-	obj := newTestWorkbenches()
-
-	obj.Status.Releases = []common.ComponentRelease{
-		{Name: moduleconfig.ReleasePlatform, Version: "1.0.0"},
-	}
-	rr := newTestRR(t, obj)
-	seedTestAPIReader(t, m, obj.DeepCopy())
-
-	g.Expect(m.upgradeIfNeeded(context.Background(), rr)).To(Succeed())
 }
 
 func TestReportStatus(t *testing.T) {

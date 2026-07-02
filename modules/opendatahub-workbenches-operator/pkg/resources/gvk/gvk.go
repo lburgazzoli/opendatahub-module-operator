@@ -75,10 +75,10 @@ var (
 		Kind:    "HardwareProfile",
 	}
 
-	// OdhDashboardConfig drives notebook size migration and upgrade behavior.
+	// OdhDashboardConfig drives notebook controller and workbench UI behavior.
 	OdhDashboardConfig = fwgvk.OdhDashboardConfig
 
-	// DashboardAcceleratorProfile is migrated to notebook HardwareProfiles on upgrade.
+	// DashboardAcceleratorProfile is referenced by webhook validation.
 	DashboardAcceleratorProfile = fwgvk.DashboardAcceleratorProfile
 
 	// LLMInferenceServiceV1Alpha1/V1Alpha2 — referenced only in the hardware profile

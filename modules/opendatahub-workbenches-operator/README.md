@@ -22,8 +22,6 @@ module status.
   on ODH and `rhods-notebooks` on RHOAI platforms
 - Watches MLflow installation state so notebook image rendering can reflect
   whether MLflow support should be enabled
-- Runs upgrade migrations that convert legacy notebook hardware annotations into
-  HardwareProfile resources
 - Reports `Ready`, `ProvisioningSucceeded`, `ImageStreamsAvailable`,
   `status.releases`, and `status.workbenchNamespace`
 
@@ -37,9 +35,6 @@ Compared with some of the other split modules:
   base itself is fixed to the embedded ODH layout
 - the controller watches the MLflow module CRD and singleton resource so the
   `mlflow-enabled` param can be recomputed when MLflow is installed or removed
-- the upgrade path includes notebook metadata migrations and emits an
-  `UpgradeStarted` event when a platform version advance triggers those
-  migrations
 - webhook resources are part of the managed operand set when
   `controller.webhook.enabled=true`
 
@@ -81,7 +76,6 @@ make deploy-helm IMG="$IMG"
 # Run cluster-backed tests
 make test-integration
 make test-e2e-run
-make test-upgrade-run
 ```
 
 ## Test Flows
@@ -98,9 +92,6 @@ make test-e2e IMG="$IMG"
 
 # E2E tests against an already deployed operator
 make test-e2e-run
-
-# Upgrade tests
-make test-upgrade
 ```
 
 If you prefer using the internal OpenShift registry for e2e images, use the

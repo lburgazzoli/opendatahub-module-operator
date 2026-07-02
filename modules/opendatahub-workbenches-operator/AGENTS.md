@@ -46,8 +46,6 @@ Do NOT delete `// +kubebuilder:scaffold:*` comments.
   on ODH and `rhods-notebooks` on RHOAI platforms
 - Watches the MLflow module CRD and singleton CR so notebook image rendering can
   react when MLflow becomes enabled or disabled
-- Runs upgrade migrations that convert legacy notebook accelerator and
-  container-size annotations into HardwareProfile resources
 - Reports deployment readiness, image stream readiness, `status.releases`, and
   `status.workbenchNamespace`
 
@@ -77,15 +75,6 @@ make test-e2e IMG="$IMG"        # cleanup + deploy + run
 
 # or, if the operator is already deployed:
 make test-e2e-run
-```
-
-**Upgrade tests** — requires a cluster:
-```sh
-make test-upgrade               # cleanup + setup + run in one step
-# or split:
-make test-upgrade-setup         # install CRDs, prepare cluster
-make test-upgrade-run           # run tests only
-make test-upgrade-cleanup       # clean up
 ```
 
 ## Operator Configuration
@@ -130,7 +119,6 @@ and `.Values.config` are written into the operator ConfigMap.
 | `make test-integration` | Prepare cluster and run integration tests |
 | `make test-e2e` | Clean up, deploy via Helm, and run e2e tests |
 | `make test-e2e-run` | Run e2e tests against an existing deployment |
-| `make test-upgrade` | Prepare cluster and run upgrade tests |
 | `make lint` | Run golangci-lint |
 | `make fmt` | Run golangci-lint formatters |
 | `make manifests generate` | Regenerate CRDs, RBAC, and DeepCopy |

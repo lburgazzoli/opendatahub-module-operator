@@ -88,18 +88,6 @@ test-e2e-setup: get-manifests ## Prepare the cluster for e2e tests.
 test-e2e: HELM_EXTRA_ARGS += --set-string platform.type=$(TEST_PLATFORM_TYPE) --set-string platform.version=$(TEST_PLATFORM_VERSION)
 test-e2e: test-e2e-cleanup test-e2e-setup deploy-helm test-e2e-run ## Run e2e tests (clean, prepare, deploy, then run).
 
-.PHONY: test-upgrade-run
-test-upgrade-run: ## Run upgrade tests only (cluster must be prepared).
-	OPERATOR_NAMESPACE="$(OPERATOR_NAMESPACE)" go test -ldflags "$(LDFLAGS)" ./test/upgrade/ -tags=upgrade -v -timeout 10m -failfast
-
-.PHONY: test-upgrade-setup
-test-upgrade-setup: manifests generate get-manifests ## Prepare the cluster for upgrade tests.
-	$(MAKE) install
-	$(MAKE) install-upgrade-external-crds
-
-.PHONY: test-upgrade
-test-upgrade: test-upgrade-cleanup test-upgrade-setup test-upgrade-run ## Run seeded upgrade tests (clean, prepare, then run).
-
 .PHONY: test-integration-cleanup
 test-integration-cleanup: ## Clean up integration test resources from the cluster.
 	./hack/scripts/cleanup-integration.sh "$(INTEGRATION_TEST_NAMESPACE)"
@@ -114,16 +102,9 @@ test-e2e-cleanup: ## Clean up e2e test resources and uninstall operator from the
 .PHONY: cleanup-e2e
 cleanup-e2e: test-e2e-cleanup ## Alias for test-e2e-cleanup.
 
-.PHONY: test-upgrade-cleanup
-test-upgrade-cleanup: ## Clean up upgrade test resources from the cluster.
-	./hack/scripts/cleanup-integration.sh "$(OPERATOR_NAMESPACE)"
-
-.PHONY: cleanup-upgrade
-cleanup-upgrade: test-upgrade-cleanup ## Alias for test-upgrade-cleanup.
-
 .PHONY: lint
 lint: ## Run golangci-lint linter.
-	$(GOLANGCI_LINT) run --build-tags integration,e2e,upgrade
+	$(GOLANGCI_LINT) run --build-tags integration,e2e
 
 .PHONY: lint-fix
 lint-fix: ## Run golangci-lint linter and perform fixes.
@@ -229,10 +210,6 @@ uninstall: manifests ## Uninstall CRDs from the K8s cluster specified in ~/.kube
 .PHONY: install-external-crds
 install-external-crds: ## Install dependency CRDs from pinned upstream references.
 	KUBECTL="$(KUBECTL)" ./hack/scripts/external-types-install.sh
-
-.PHONY: install-upgrade-external-crds
-install-upgrade-external-crds: ## Install upgrade-only dependency CRDs.
-	KUBECTL="$(KUBECTL)" ./hack/scripts/external-types-install.sh upgrade
 
 .PHONY: uninstall-external-crds
 uninstall-external-crds: ## Remove dependency CRDs from pinned upstream references.
