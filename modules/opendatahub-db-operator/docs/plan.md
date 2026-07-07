@@ -443,15 +443,22 @@ RELATED_IMAGE_ODH_MODEL_REGISTRY_OPERATOR_IMAGE`) already uses:
 
 | `spec.embedded.extensions` contains | Image config key | Compiled default |
 |---|---|---|
-| `vector` | `DefaultPgvectorImage` | community `pgvector/pgvector:pg16` — no known Red Hat-shipped equivalent as of this writing; verify at implementation time (§7.1 note in task-08) |
-| only extensions bundled in the stock image (`pg_trgm`, `uuid-ossp`, `pgcrypto`, ...) | `DefaultPostgresImage` | a Red Hat-shipped PostgreSQL image (`registry.redhat.io/rhel9/postgresql-16` or current equivalent — confirm exact name/tag at implementation time), not the community `postgres:16` |
+| `vector` | `DefaultPgvectorImage` | community `pgvector/pgvector:pg16` — no known Red Hat-shipped equivalent |
+| only extensions bundled in the stock image (`pg_trgm`, `uuid-ossp`, `pgcrypto`, ...) | `DefaultPostgresImage` | community `postgres:16` |
 | anything else unmapped | — | reconcile fails; `Reachable: False` condition tells the admin to use `External` |
 
-**Prefer Red Hat-shipped images for these compiled defaults wherever one exists** — consistent
-with RHOAI's downstream support posture, not just an arbitrary Docker Hub reference. This lets an
-admin also repoint either image to a mirrored/digest-pinned registry reference for disconnected
-environments without a code change — add both keys via the standard 5-step procedure in
-`.agents/skills/odh-module-dev/references/config-keys.md` (task-01/task-08).
+**Considered and rejected: defaulting to `registry.redhat.io/rhel9/postgresql-16`.** A Red
+Hat-shipped image would better match RHOAI's downstream support posture, but
+`registry.redhat.io` requires an entitlement pull secret that a vanilla, unauthenticated `kind`
+cluster doesn't have — defaulting to it would break spec.md's own constraint that this module be
+"testable on a plain `kind` cluster." The compiled defaults stay the community images so the
+module works out of the box on that baseline. This is exactly why both are `pkg/config` keys and
+not hardcoded literals: on a platform where the entitlement pull secret *is* configured (e.g. a
+connected OpenShift cluster), an admin repoints `DefaultPostgresImage` to
+`registry.redhat.io/rhel9/postgresql-16` via the mounted ConfigMap — no code change, no
+compiled-default change, and the `kind`-testable baseline is unaffected either way. Add both keys
+via the standard 5-step procedure in `.agents/skills/odh-module-dev/references/config-keys.md`
+(task-01/task-08).
 
 ### 7.2 Admin password — generate-once, never regenerate
 

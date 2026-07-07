@@ -19,11 +19,11 @@ Nothing (first task). `go.mod`/`go.sum` already exist in this module.
 - `pkg/config/config.go` — three-layer config (compiled defaults → mounted ConfigMap →
   `ODH_MODULE_OPERATOR_` env vars), same as every module (`.agents/skills/odh-module-dev`).
   Includes, from the start, the config keys later tasks need
-  (`docs/plan.md` §6/§7.1/§7.7): `DefaultPostgresImage` (compiled default should be a Red
-  Hat-shipped PostgreSQL image, e.g. `registry.redhat.io/rhel9/postgresql-16` — confirm exact
-  name/tag against the current Red Hat container catalog before hardcoding it as the compiled
-  default), `DefaultPgvectorImage` (compiled default `pgvector/pgvector:pg16` — community image,
-  no known Red Hat-shipped equivalent; verify during task-08),
+  (`docs/plan.md` §6/§7.1/§7.7): `DefaultPostgresImage` (compiled default `postgres:16` —
+  the community image, not `registry.redhat.io/rhel9/postgresql-16`, since the latter needs an
+  entitlement pull secret a vanilla `kind` cluster doesn't have; see `docs/plan.md` §7.1's
+  "Considered and rejected" note), `DefaultPgvectorImage` (compiled default
+  `pgvector/pgvector:pg16` — community image, no known Red Hat-shipped equivalent),
   `EmbeddedIdleGracePeriod` (compiled default `10m`), `DatabaseProviderRetryInterval` (compiled
   default `2m`), and `ClaimRetryInterval` (compiled default `5m`) — added via the 5-step
   procedure in `.agents/skills/odh-module-dev/references/config-keys.md` so tasks 03/04/06/07/08

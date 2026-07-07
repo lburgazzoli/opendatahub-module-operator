@@ -40,19 +40,20 @@ string in this function**:
 | only stock-bundled extensions (`pg_trgm`, `uuid-ossp`, `pgcrypto`) | `cfg.DefaultPostgresImage` |
 | anything else | error → `Reachable: False, reason: ImageUnmapped`, message tells the admin to use `External` |
 
-**Prefer Red Hat-shipped images for the compiled defaults, not community Docker Hub images.**
-`cfg.DefaultPostgresImage`'s compiled default should be a `registry.redhat.io` PostgreSQL image
-(the RHEL Software Collections PostgreSQL image, e.g. `registry.redhat.io/rhel9/postgresql-16` —
-confirm the exact current name/tag against the Red Hat container catalog at implementation time
-rather than trusting this doc's guess) instead of the community `postgres:16` — this is a
-supported, Red Hat-built image consistent with RHOAI's downstream support posture, unlike
-`docker.io/library/postgres`. **`cfg.DefaultPgvectorImage` is the one case where a Red Hat
-equivalent may not exist** — `pgvector/pgvector:pg16` is a community image with no known
-Red Hat-shipped counterpart as of this writing; verify during task-01/task-08 implementation
-whether RHOAI/RHEL AI ships a supported Postgres image with `pgvector` bundled, and only fall
-back to the community image if genuinely none exists (documenting that decision explicitly in
-code, not silently). Either way, the mechanism doesn't change: both remain `pkg/config` compiled
-defaults, overridable via ConfigMap/env, never literal strings inline in the `switch`.
+**Compiled defaults are the community images (`postgres:16`, `pgvector/pgvector:pg16`), not
+`registry.redhat.io` — considered and rejected.** A Red Hat-shipped PostgreSQL image
+(`registry.redhat.io/rhel9/postgresql-16`) was the first instinct, since it's a supported,
+Red Hat-built image consistent with RHOAI's downstream support posture — but `registry.redhat.io`
+requires an entitlement pull secret that a vanilla, unauthenticated `kind` cluster does not have,
+which would directly break spec.md's own constraint that this module be "testable on a plain
+`kind` cluster" with "no OpenShift-specific logic." The compiled default must work out of the box
+on that baseline cluster, so it stays the community image. This doesn't foreclose Red Hat images
+in production: on a platform where the entitlement pull secret *is* configured (e.g. a connected
+OpenShift cluster), an admin repoints `cfg.DefaultPostgresImage` via the mounted ConfigMap to
+`registry.redhat.io/rhel9/postgresql-16` — this is exactly why it's a config key and not a
+hardcoded literal. `cfg.DefaultPgvectorImage` stays the community `pgvector/pgvector:pg16`
+regardless — no known Red Hat-shipped equivalent exists, and even if one surfaces later it would
+have the same registry-auth problem for the `kind`-testable baseline.
 
 No image override field exists on the CRD (task-02) — do not add one, even as an "advanced" or
 hidden field. (The config keys above are an *operator-wide* default an admin can repoint for a
