@@ -18,19 +18,24 @@ Nothing (first task). `go.mod`/`go.sum` already exist in this module.
   module's GVKs (per `pkg/resources/gvk/gvk.go` below).
 - `pkg/config/config.go` — three-layer config (compiled defaults → mounted ConfigMap →
   `ODH_MODULE_OPERATOR_` env vars), same as every module (`.agents/skills/odh-module-dev`).
-  Includes, from the start, the config keys later tasks need
-  (`docs/plan.md` §6/§7.1/§7.7): `DefaultPostgresImage` (compiled default `postgres:16` —
-  the community image, not `registry.redhat.io/rhel9/postgresql-16`, since the latter needs an
-  entitlement pull secret a vanilla `kind` cluster doesn't have; see `docs/plan.md` §7.1's
-  "Considered and rejected" note), `DefaultPgvectorImage` (compiled default
-  `pgvector/pgvector:pg16` — community image, no known Red Hat-shipped equivalent),
-  `EmbeddedIdleGracePeriod` (compiled default `10m`), `DatabaseProviderRetryInterval` (compiled
-  default `2m`), and `ClaimRetryInterval` (compiled default `5m`) — added via the 5-step
+  Includes, from the start, the config keys later tasks need (`docs/plan.md` §6/§7.1/§7.7):
+  `EmbeddedConfig.PostgresImage`/`PgvectorImage` (compiled defaults `postgres:16` /
+  `pgvector/pgvector:pg16` — community images, not `registry.redhat.io/rhel9/postgresql-16`,
+  since the latter needs an entitlement pull secret a vanilla `kind` cluster doesn't have; see
+  `docs/plan.md` §7.1's "Considered and rejected" note. Named `*Image`, not `Default*Image` —
+  there's no CRD override field for either, so there's nothing for these to be a fallback
+  *from*), `EmbeddedConfig.IdleGracePeriod` (compiled default `10m`), and four independent
+  `RetryConfig{RetryInterval}` values — `Config.SchemaClaim`, `.DatabaseClaim`,
+  `.DatabaseProvider`, `.DatabaseService` — sharing the same field name/shape but each its own
+  key and independently overridable (compiled default `3m` for all four). Added via the 5-step
   procedure in `.agents/skills/odh-module-dev/references/config-keys.md` so tasks 03/04/06/07/08
   have them ready. These are config keys, never hardcoded Go literals referenced directly from
   controller code.
-- `pkg/manager/manager.go` — `modulemanager.New(ctx, cfg, moduleCfg)` wrapper wiring
-  `rr.ManifestsBasePath`, scheme registration, leader election, health/ready checks.
+- `pkg/manager/manager.go` — `manager.New(ctx, kubeConfig, cfg, opts...)` wrapper: generic scheme
+  registration (client-go + apiextensions only at this stage), leader election, health/ready
+  checks. CRD scheme registration and reconciler wiring are deliberately deferred to task-02/03 —
+  this file has a comment marking exactly where each lands, so this task doesn't guess at a shape
+  the CRDs haven't defined yet.
 - `pkg/resources/gvk/gvk.go` — module-local GVK registry; module code must import this, never
   `github.com/opendatahub-io/opendatahub-operator/v2/pkg/cluster/gvk` directly.
 - `config/{crd/bases,rbac,manager,chart,default}` — empty/skeleton, populated by `make manifests`
@@ -63,9 +68,11 @@ Nothing (first task). `go.mod`/`go.sum` already exist in this module.
    cluster-scoped GVK package.
 5. Verify the empty scaffold builds: `go build ./...` succeeds even with no CRD types yet (an
    empty `api/` package is fine at this stage — task-02 fills it in).
-6. Add unit tests for `pkg/config`'s three-layer precedence, including the five new keys from
-   step 2 above: compiled default wins with nothing else set; a mounted ConfigMap value
-   overrides the compiled default; an `ODH_MODULE_OPERATOR_` env var overrides both.
+6. Add unit tests for `pkg/config`'s three-layer precedence, including the new keys from step 2
+   above: compiled default wins with nothing else set; a mounted ConfigMap value overrides the
+   compiled default; an `ODH_MODULE_OPERATOR_` env var overrides both; and the four retry-interval
+   keys are genuinely independent of one another (setting one doesn't affect the others' compiled
+   defaults).
 7. Add an integration smoke test, run against the connected cluster (assume `kubectl`'s current
    context already points at a working cluster — do not skip or stub this waiting for "a later
    task"): start the manager via `modulemanager.New` against the real cluster and confirm it
@@ -84,3 +91,10 @@ Nothing (first task). `go.mod`/`go.sum` already exist in this module.
   complete without it.
 - **Integration test** for manager startup against the connected cluster (step 7) exists and
   passes — this task is not complete without it.
+
+## Status: Done
+
+Verified via the real `make` targets, not ad hoc `go` invocations: `make deps`, `make test`
+(runs `manifests generate fmt vet` then unit tests — all green), and `make test-integration-run`
+against the connected `kind` cluster (`TestManagerStartup` passes: cache syncs, `/healthz` and
+`/readyz` respond via `Eventually(...).Should(HaveHTTPStatus(http.StatusOK))`).

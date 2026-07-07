@@ -1,0 +1,37 @@
+package support
+
+import "os"
+
+const (
+	DefaultOperatorNamespace        = "odh-db-operator-system"
+	DefaultIntegrationTestNamespace = "odh-db-operator-integration"
+	DefaultPlatformVersion          = "0.1.0"
+)
+
+func OperatorNamespace() string {
+	if namespace := os.Getenv("OPERATOR_NAMESPACE"); namespace != "" {
+		return namespace
+	}
+
+	return DefaultOperatorNamespace
+}
+
+func IntegrationTestNamespace() string {
+	if namespace := os.Getenv("INTEGRATION_TEST_NAMESPACE"); namespace != "" {
+		return namespace
+	}
+
+	return DefaultIntegrationTestNamespace
+}
+
+// HelmNamespace returns the operator namespace used by e2e and Helm deploy targets.
+func HelmNamespace() string {
+	return OperatorNamespace()
+}
+
+func PlatformVersion() string {
+	if v := os.Getenv("TEST_PLATFORM_VERSION"); v != "" {
+		return v
+	}
+	return DefaultPlatformVersion
+}

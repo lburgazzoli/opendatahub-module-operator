@@ -1,0 +1,2 @@
+resources:
+# CRD bases are added here by `make manifests` once the CRD types exist (task-02).

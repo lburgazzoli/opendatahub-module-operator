@@ -10,7 +10,7 @@ source of implementation progress:
 
 | # | Task | Focus | Status |
 |---|------|-------|--------|
-| 01 | Module scaffold | Directory layout, Makefile/Containerfile, `cmd/`, `pkg/config` (incl. image and retry-interval config keys), `pkg/manager`, `pkg/resources/gvk`, `config/{crd,rbac,manager,default}`, module descriptor skeleton, `go.mod` additions (`pgx/v5`) | Pending |
+| 01 | Module scaffold | Directory layout, Makefile/Containerfile, `cmd/`, `pkg/config` (incl. image and retry-interval config keys), `pkg/manager`, `pkg/resources/gvk`, `config/{crd,rbac,manager,default}`, module descriptor skeleton, `go.mod` additions (`pgx/v5`) | Done |
 | 02 | CRD API types | `SchemaClaim`, `DatabaseClaim`, `DatabaseProvider` (`External`+`Embedded`) types, schema/CEL validation, status/condition wiring, deepcopy, generated CRD YAML | Pending |
 | 03 | Shared reconciler scaffolding & module enablement CR | `reconciler.ReconcilerFor` wiring for all 3 kinds; provider-resolution helper; `upgradeIfNeeded`/periodic-retry wiring; the `DatabaseService` module-enablement CR | Pending |
 | 04 | `DatabaseProvider` — `External` | Connectivity-check action, `Reachable` condition, admin-secret parsing | Pending |

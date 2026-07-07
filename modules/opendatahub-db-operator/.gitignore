@@ -1,0 +1,35 @@
+# Build artifacts
+bin/
+vendor/
+*.test
+cover.out
+covmeta*
+covcounters*
+
+# IDE
+.vscode/
+.idea/
+.cursor/
+
+# OS
+.DS_Store
+*~
+*.swp
+*.swo
+
+
+# No upstream get-manifests.sh fetch for this module (docs/plan.md §3) --
+# assets/manifests/ is hand-authored and committed, not fetched/ignored.
+
+# Kubeconfig (local dev)
+.kube/
+
+# Custom golangci-lint plugin config
+.custom-gcl.yml
+
+# Makefile overrides
+local.mk
+*.mktmp.*
+
+# direnv
+.envrc

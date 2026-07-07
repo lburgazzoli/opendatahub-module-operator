@@ -1,0 +1,176 @@
+/*
+Copyright 2026.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
+package config_test
+
+import (
+	"testing"
+	"testing/fstest"
+	"time"
+
+	. "github.com/onsi/gomega"
+
+	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/pkg/config"
+)
+
+func TestLoadFromFS_Defaults(t *testing.T) {
+	g := NewWithT(t)
+
+	cfg, err := config.LoadFromFS(nil)
+	g.Expect(err).NotTo(HaveOccurred())
+	g.Expect(cfg.PlatformType).To(Equal(config.DefaultPlatformType))
+	g.Expect(cfg.PlatformVersion.String()).To(Equal("0.0.0"))
+	g.Expect(cfg.ApplicationsNamespace).To(Equal(config.DefaultApplicationsNS))
+}
+
+func TestLoadFromFS_ParsesPlatformVersion(t *testing.T) {
+	g := NewWithT(t)
+
+	cfg, err := config.LoadFromFS(fstest.MapFS{
+		config.KeyPlatformVersion: {Data: []byte("3.5.0")},
+	})
+	g.Expect(err).NotTo(HaveOccurred())
+	g.Expect(cfg.PlatformVersion.String()).To(Equal("3.5.0"))
+}
+
+func TestLoadFromFS_EmptyPlatformVersionIsZero(t *testing.T) {
+	g := NewWithT(t)
+
+	cfg, err := config.LoadFromFS(fstest.MapFS{
+		config.KeyPlatformVersion: {Data: []byte("")},
+	})
+	g.Expect(err).NotTo(HaveOccurred())
+	g.Expect(cfg.PlatformVersion.String()).To(Equal("0.0.0"))
+}
+
+func TestLoadFromFS_InvalidPlatformVersionReturnsError(t *testing.T) {
+	g := NewWithT(t)
+
+	_, err := config.LoadFromFS(fstest.MapFS{
+		config.KeyPlatformVersion: {Data: []byte("not-a-version")},
+	})
+	g.Expect(err).To(HaveOccurred())
+	g.Expect(err.Error()).To(ContainSubstring("not-a-version"))
+}
+
+func TestLoadFromFS_PlatformType(t *testing.T) {
+	g := NewWithT(t)
+
+	cfg, err := config.LoadFromFS(fstest.MapFS{
+		config.KeyPlatformType: {Data: []byte(config.PlatformTypeSelfManagedRhoai)},
+	})
+	g.Expect(err).NotTo(HaveOccurred())
+	g.Expect(cfg.PlatformType).To(Equal(config.PlatformTypeSelfManagedRhoai))
+}
+
+func TestComponentRelease(t *testing.T) {
+	g := NewWithT(t)
+
+	cfg, err := config.LoadFromFS(fstest.MapFS{
+		config.KeyPlatformVersion: {Data: []byte("2.1.0")},
+	})
+	g.Expect(err).NotTo(HaveOccurred())
+
+	rel := cfg.ComponentRelease()
+	g.Expect(rel.Name).To(Equal(config.ReleasePlatform))
+	g.Expect(rel.Version).To(Equal("2.1.0"))
+}
+
+func TestPlatformRelease(t *testing.T) {
+	g := NewWithT(t)
+
+	cfg, err := config.LoadFromFS(fstest.MapFS{
+		config.KeyPlatformType:    {Data: []byte(config.DefaultPlatformType)},
+		config.KeyPlatformVersion: {Data: []byte("2.1.0")},
+	})
+	g.Expect(err).NotTo(HaveOccurred())
+
+	rel := cfg.PlatformRelease()
+	g.Expect(string(rel.Name)).To(Equal(config.DefaultPlatformType))
+	g.Expect(rel.Version.String()).To(Equal("2.1.0"))
+}
+
+func TestComponentRelease_EmptyVersion(t *testing.T) {
+	g := NewWithT(t)
+
+	cfg, err := config.LoadFromFS(nil)
+	g.Expect(err).NotTo(HaveOccurred())
+
+	// Zero OperatorVersion serialises as "0.0.0"
+	rel := cfg.ComponentRelease()
+	g.Expect(rel.Name).To(Equal(config.ReleasePlatform))
+	g.Expect(rel.Version).To(Equal("0.0.0"))
+}
+
+// Embedded image / retry-interval config keys (docs/plan.md §6, §7.1, §7.7) --
+// these must always be config-driven, never hardcoded literals in controller
+// code, so their three-layer precedence (compiled default -> ConfigMap ->
+// env var) is exercised explicitly.
+
+func TestLoadFromFS_EmbeddedAndRetryDefaults(t *testing.T) {
+	g := NewWithT(t)
+
+	cfg, err := config.LoadFromFS(nil)
+	g.Expect(err).NotTo(HaveOccurred())
+
+	g.Expect(cfg.Embedded.PostgresImage).To(Equal(config.DefaultPostgresImage))
+	g.Expect(cfg.Embedded.PgvectorImage).To(Equal(config.DefaultPgvectorImage))
+	g.Expect(cfg.Embedded.IdleGracePeriod).To(Equal(config.DefaultEmbeddedIdleGracePeriod))
+
+	// All four reconcilers share the same compiled default, but each is its
+	// own independently-configurable key (docs/plan.md §6).
+	g.Expect(cfg.SchemaClaim.RetryInterval).To(Equal(config.DefaultRetryInterval))
+	g.Expect(cfg.DatabaseClaim.RetryInterval).To(Equal(config.DefaultRetryInterval))
+	g.Expect(cfg.DatabaseProvider.RetryInterval).To(Equal(config.DefaultRetryInterval))
+	g.Expect(cfg.DatabaseService.RetryInterval).To(Equal(config.DefaultRetryInterval))
+}
+
+func TestLoadFromFS_EmbeddedImages_ConfigMapOverride(t *testing.T) {
+	g := NewWithT(t)
+
+	cfg, err := config.LoadFromFS(fstest.MapFS{
+		config.KeyPostgresImage:           {Data: []byte("registry.redhat.io/rhel9/postgresql-16")},
+		config.KeyEmbeddedIdleGracePeriod: {Data: []byte("15m")},
+	})
+	g.Expect(err).NotTo(HaveOccurred())
+
+	g.Expect(cfg.Embedded.PostgresImage).To(Equal("registry.redhat.io/rhel9/postgresql-16"))
+	g.Expect(cfg.Embedded.IdleGracePeriod).To(Equal(15 * time.Minute))
+	// Untouched keys keep their compiled defaults.
+	g.Expect(cfg.Embedded.PgvectorImage).To(Equal(config.DefaultPgvectorImage))
+}
+
+func TestLoadFromFS_RetryIntervals_AreIndependentAndEnvOverridesConfigMap(t *testing.T) {
+	g := NewWithT(t)
+
+	t.Setenv("ODH_MODULE_OPERATOR_DATABASEPROVIDER_RETRY_INTERVAL", "90s")
+	t.Setenv("ODH_MODULE_OPERATOR_DATABASESERVICE_RETRY_INTERVAL", "1h")
+
+	cfg, err := config.LoadFromFS(fstest.MapFS{
+		// ConfigMap sets a different value than the env var above for
+		// databaseprovider -- env must win. schemaclaim is ConfigMap-only.
+		config.KeyDatabaseProviderRetryInterval: {Data: []byte("3m")},
+		config.KeySchemaClaimRetryInterval:      {Data: []byte("7m")},
+	})
+	g.Expect(err).NotTo(HaveOccurred())
+
+	g.Expect(cfg.DatabaseProvider.RetryInterval).To(Equal(90 * time.Second))
+	g.Expect(cfg.DatabaseService.RetryInterval).To(Equal(time.Hour))
+	g.Expect(cfg.SchemaClaim.RetryInterval).To(Equal(7 * time.Minute))
+	// Untouched by either ConfigMap or env -- stays at the compiled default,
+	// proving the four keys are genuinely independent of one another.
+	g.Expect(cfg.DatabaseClaim.RetryInterval).To(Equal(config.DefaultRetryInterval))
+}
