@@ -12,7 +12,7 @@ source of implementation progress:
 |---|------|-------|--------|
 | 01 | Module scaffold | Directory layout, Makefile/Containerfile, `cmd/`, `pkg/config` (incl. image and retry-interval config keys), `pkg/manager`, `pkg/resources/gvk`, `config/{crd,rbac,manager,default}`, module descriptor skeleton, `go.mod` additions (`pgx/v5`) | Done |
 | 02 | CRD API types | `SchemaClaim`, `DatabaseClaim`, `DatabaseProvider` (`External`+`Embedded`) types, schema/CEL validation, status/condition wiring, deepcopy, generated CRD YAML | Done |
-| 03 | Shared reconciler scaffolding & module enablement CR | `reconciler.ReconcilerFor` wiring for all 3 kinds; provider-resolution helper; `upgradeIfNeeded`/periodic-retry wiring; the `DatabaseService` module-enablement CR | Pending |
+| 03 | Shared reconciler scaffolding & module enablement CR | `reconciler.ReconcilerFor` wiring for all 3 kinds; provider-resolution helper; `upgradeIfNeeded`/periodic-retry wiring; the `DatabaseService` module-enablement CR | Done |
 | 04 | `DatabaseProvider` — `External` | Connectivity-check action, `Reachable` condition, admin-secret parsing | Pending |
 | 05 | PostgreSQL DDL layer (`pkg/postgres`) | `pgxpool` management, identifier/literal quoting, password generation, schema/role/grant/drop statement builders | Pending |
 | 06 | `SchemaClaim` reconciler | Idempotent schema+user provisioning, SSA Secret write, `Retain`/`Delete` finalizer logic, conditions/status | Pending |

@@ -32,6 +32,12 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
+	infraApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/api/infrastructure/v1alpha1"
+	servicesv1alpha1 "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/api/services/v1alpha1"
+	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/internal/controller/databaseclaim"
+	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/internal/controller/databaseprovider"
+	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/internal/controller/databaseservice"
+	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/internal/controller/schemaclaim"
 	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/pkg/config"
 	odhmanager "github.com/opendatahub-io/odh-platform-utilities/framework/manager"
 	libcache "github.com/opendatahub-io/odh-platform-utilities/pkg/cache"
@@ -44,15 +50,14 @@ const (
 
 type Option func(*ctrl.Options)
 
-// NewScheme registers only the generic types this scaffold needs. Task-02 adds the
-// infrastructure/v1alpha1 (SchemaClaim, DatabaseClaim, DatabaseProvider) and
-// components/v1alpha1 (DatabaseService) schemes here once those types exist
-// (docs/plan.md §3); task-03 wires the corresponding reconcilers into New below.
+// NewScheme registers all types this module needs.
 func NewScheme() *runtime.Scheme {
 	scheme := runtime.NewScheme()
 
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
 	utilruntime.Must(apiextensionsv1.AddToScheme(scheme))
+	utilruntime.Must(infraApi.AddToScheme(scheme))
+	utilruntime.Must(servicesv1alpha1.AddToScheme(scheme))
 
 	return scheme
 }
@@ -111,8 +116,18 @@ func New(
 		ctrlMgr,
 	)
 
-	// Reconciler registration (SchemaClaim, DatabaseClaim, DatabaseProvider,
-	// DatabaseService) is added in task-03, once the CRD types from task-02 exist.
+	if err := databaseservice.NewReconciler(ctx, mgr, cfg); err != nil {
+		return nil, fmt.Errorf("creating databaseservice reconciler: %w", err)
+	}
+	if err := schemaclaim.NewReconciler(ctx, mgr, cfg); err != nil {
+		return nil, fmt.Errorf("creating schemaclaim reconciler: %w", err)
+	}
+	if err := databaseclaim.NewReconciler(ctx, mgr, cfg); err != nil {
+		return nil, fmt.Errorf("creating databaseclaim reconciler: %w", err)
+	}
+	if err := databaseprovider.NewReconciler(ctx, mgr, cfg); err != nil {
+		return nil, fmt.Errorf("creating databaseprovider reconciler: %w", err)
+	}
 
 	if err := mgr.AddHealthzCheck(healthCheckName, healthz.Ping); err != nil {
 		return nil, fmt.Errorf("setting up health check: %w", err)

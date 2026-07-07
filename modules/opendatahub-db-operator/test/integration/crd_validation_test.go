@@ -26,7 +26,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	infrav1alpha1 "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/api/infrastructure/v1alpha1"
+	infraApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/api/infrastructure/v1alpha1"
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/test/support"
 )
 
@@ -45,26 +45,26 @@ func TestCRDValidation(t *testing.T) {
 	g.Expect(support.EnsureNamespace(ctx, cli, ns)).To(Succeed())
 
 	t.Run("DatabaseProvider", func(t *testing.T) {
-		externalSpec := infrav1alpha1.ExternalProviderSpec{
+		externalSpec := infraApi.ExternalProviderSpec{
 			ConnectionSecretRef: corev1.SecretReference{Name: "admin-secret", Namespace: ns},
 		}
-		embeddedSpec := infrav1alpha1.EmbeddedProviderSpec{
-			Storage: infrav1alpha1.StorageSpec{Size: resource.MustParse("1Gi")},
+		embeddedSpec := infraApi.EmbeddedProviderSpec{
+			Storage: infraApi.StorageSpec{Size: resource.MustParse("1Gi")},
 		}
 
 		cases := []struct {
 			name string
-			spec infrav1alpha1.DatabaseProviderSpec
+			spec infraApi.DatabaseProviderSpec
 		}{
-			{"both-set", infrav1alpha1.DatabaseProviderSpec{Type: infrav1alpha1.ProviderTypeExternal, External: &externalSpec, Embedded: &embeddedSpec}},
-			{"neither-set", infrav1alpha1.DatabaseProviderSpec{Type: infrav1alpha1.ProviderTypeExternal}},
-			{"type-mismatch-external", infrav1alpha1.DatabaseProviderSpec{Type: infrav1alpha1.ProviderTypeExternal, Embedded: &embeddedSpec}},
-			{"type-mismatch-embedded", infrav1alpha1.DatabaseProviderSpec{Type: infrav1alpha1.ProviderTypeEmbedded, External: &externalSpec}},
+			{"both-set", infraApi.DatabaseProviderSpec{Type: infraApi.ProviderTypeExternal, External: &externalSpec, Embedded: &embeddedSpec}},
+			{"neither-set", infraApi.DatabaseProviderSpec{Type: infraApi.ProviderTypeExternal}},
+			{"type-mismatch-external", infraApi.DatabaseProviderSpec{Type: infraApi.ProviderTypeExternal, Embedded: &embeddedSpec}},
+			{"type-mismatch-embedded", infraApi.DatabaseProviderSpec{Type: infraApi.ProviderTypeEmbedded, External: &externalSpec}},
 		}
 		for _, tc := range cases {
 			t.Run("rejects-"+tc.name, func(t *testing.T) {
 				g := NewWithT(t)
-				obj := &infrav1alpha1.DatabaseProvider{
+				obj := &infraApi.DatabaseProvider{
 					ObjectMeta: metav1.ObjectMeta{Name: "dbp-" + tc.name},
 					Spec:       tc.spec,
 				}
@@ -74,9 +74,9 @@ func TestCRDValidation(t *testing.T) {
 
 		t.Run("accepts-valid-external", func(t *testing.T) {
 			g := NewWithT(t)
-			obj := &infrav1alpha1.DatabaseProvider{
+			obj := &infraApi.DatabaseProvider{
 				ObjectMeta: metav1.ObjectMeta{Name: "dbp-valid-external"},
-				Spec:       infrav1alpha1.DatabaseProviderSpec{Type: infrav1alpha1.ProviderTypeExternal, External: &externalSpec},
+				Spec:       infraApi.DatabaseProviderSpec{Type: infraApi.ProviderTypeExternal, External: &externalSpec},
 			}
 			g.Expect(cli.Create(ctx, obj)).To(Succeed())
 			t.Cleanup(func() { _ = cli.Delete(ctx, obj) })
@@ -84,9 +84,9 @@ func TestCRDValidation(t *testing.T) {
 
 		t.Run("accepts-valid-embedded", func(t *testing.T) {
 			g := NewWithT(t)
-			obj := &infrav1alpha1.DatabaseProvider{
+			obj := &infraApi.DatabaseProvider{
 				ObjectMeta: metav1.ObjectMeta{Name: "dbp-valid-embedded"},
-				Spec:       infrav1alpha1.DatabaseProviderSpec{Type: infrav1alpha1.ProviderTypeEmbedded, Embedded: &embeddedSpec},
+				Spec:       infraApi.DatabaseProviderSpec{Type: infraApi.ProviderTypeEmbedded, Embedded: &embeddedSpec},
 			}
 			g.Expect(cli.Create(ctx, obj)).To(Succeed())
 			t.Cleanup(func() { _ = cli.Delete(ctx, obj) })
@@ -96,9 +96,9 @@ func TestCRDValidation(t *testing.T) {
 			g := NewWithT(t)
 			bad := embeddedSpec
 			bad.Extensions = []string{"Not-Valid!"}
-			obj := &infrav1alpha1.DatabaseProvider{
+			obj := &infraApi.DatabaseProvider{
 				ObjectMeta: metav1.ObjectMeta{Name: "dbp-bad-extension"},
-				Spec:       infrav1alpha1.DatabaseProviderSpec{Type: infrav1alpha1.ProviderTypeEmbedded, Embedded: &bad},
+				Spec:       infraApi.DatabaseProviderSpec{Type: infraApi.ProviderTypeEmbedded, Embedded: &bad},
 			}
 			g.Expect(cli.Create(ctx, obj)).NotTo(Succeed())
 		})
@@ -109,28 +109,28 @@ func TestCRDValidation(t *testing.T) {
 
 		t.Run("rejects-provider-both-set", func(t *testing.T) {
 			g := NewWithT(t)
-			obj := &infrav1alpha1.SchemaClaim{
+			obj := &infraApi.SchemaClaim{
 				ObjectMeta: metav1.ObjectMeta{Name: "sc-both", Namespace: ns},
-				Spec:       infrav1alpha1.SchemaClaimSpec{Provider: infrav1alpha1.ProviderRef{Name: "p", Selector: selector}},
+				Spec:       infraApi.SchemaClaimSpec{Provider: infraApi.ProviderRef{Name: "p", Selector: selector}},
 			}
 			g.Expect(cli.Create(ctx, obj)).NotTo(Succeed())
 		})
 
 		t.Run("rejects-provider-neither-set", func(t *testing.T) {
 			g := NewWithT(t)
-			obj := &infrav1alpha1.SchemaClaim{
+			obj := &infraApi.SchemaClaim{
 				ObjectMeta: metav1.ObjectMeta{Name: "sc-neither", Namespace: ns},
-				Spec:       infrav1alpha1.SchemaClaimSpec{},
+				Spec:       infraApi.SchemaClaimSpec{},
 			}
 			g.Expect(cli.Create(ctx, obj)).NotTo(Succeed())
 		})
 
 		t.Run("rejects-invalid-access", func(t *testing.T) {
 			g := NewWithT(t)
-			obj := &infrav1alpha1.SchemaClaim{
+			obj := &infraApi.SchemaClaim{
 				ObjectMeta: metav1.ObjectMeta{Name: "sc-bad-access", Namespace: ns},
-				Spec: infrav1alpha1.SchemaClaimSpec{
-					Provider: infrav1alpha1.ProviderRef{Name: "p"},
+				Spec: infraApi.SchemaClaimSpec{
+					Provider: infraApi.ProviderRef{Name: "p"},
 					Access:   "NotAValidAccessMode",
 				},
 			}
@@ -139,10 +139,10 @@ func TestCRDValidation(t *testing.T) {
 
 		t.Run("rejects-invalid-deletion-policy", func(t *testing.T) {
 			g := NewWithT(t)
-			obj := &infrav1alpha1.SchemaClaim{
+			obj := &infraApi.SchemaClaim{
 				ObjectMeta: metav1.ObjectMeta{Name: "sc-bad-deletion-policy", Namespace: ns},
-				Spec: infrav1alpha1.SchemaClaimSpec{
-					Provider:       infrav1alpha1.ProviderRef{Name: "p"},
+				Spec: infraApi.SchemaClaimSpec{
+					Provider:       infraApi.ProviderRef{Name: "p"},
 					DeletionPolicy: "NotAValidPolicy",
 				},
 			}
@@ -151,10 +151,10 @@ func TestCRDValidation(t *testing.T) {
 
 		t.Run("rejects-schema-pattern-violation", func(t *testing.T) {
 			g := NewWithT(t)
-			obj := &infrav1alpha1.SchemaClaim{
+			obj := &infraApi.SchemaClaim{
 				ObjectMeta: metav1.ObjectMeta{Name: "sc-bad-schema-pattern", Namespace: ns},
-				Spec: infrav1alpha1.SchemaClaimSpec{
-					Provider: infrav1alpha1.ProviderRef{Name: "p"},
+				Spec: infraApi.SchemaClaimSpec{
+					Provider: infraApi.ProviderRef{Name: "p"},
 					Schema:   "1-not-a-valid-identifier",
 				},
 			}
@@ -167,10 +167,10 @@ func TestCRDValidation(t *testing.T) {
 			for range 64 {
 				tooLong += "a"
 			}
-			obj := &infrav1alpha1.SchemaClaim{
+			obj := &infraApi.SchemaClaim{
 				ObjectMeta: metav1.ObjectMeta{Name: "sc-bad-schema-length", Namespace: ns},
-				Spec: infrav1alpha1.SchemaClaimSpec{
-					Provider: infrav1alpha1.ProviderRef{Name: "p"},
+				Spec: infraApi.SchemaClaimSpec{
+					Provider: infraApi.ProviderRef{Name: "p"},
 					Schema:   tooLong,
 				},
 			}
@@ -179,10 +179,10 @@ func TestCRDValidation(t *testing.T) {
 
 		t.Run("accepts-valid-and-schema-is-immutable", func(t *testing.T) {
 			g := NewWithT(t)
-			obj := &infrav1alpha1.SchemaClaim{
+			obj := &infraApi.SchemaClaim{
 				ObjectMeta: metav1.ObjectMeta{Name: "sc-valid", Namespace: ns},
-				Spec: infrav1alpha1.SchemaClaimSpec{
-					Provider: infrav1alpha1.ProviderRef{Name: "p"},
+				Spec: infraApi.SchemaClaimSpec{
+					Provider: infraApi.ProviderRef{Name: "p"},
 					Schema:   "my_schema",
 				},
 			}
@@ -199,10 +199,10 @@ func TestCRDValidation(t *testing.T) {
 
 		t.Run("rejects-provider-both-set", func(t *testing.T) {
 			g := NewWithT(t)
-			obj := &infrav1alpha1.DatabaseClaim{
+			obj := &infraApi.DatabaseClaim{
 				ObjectMeta: metav1.ObjectMeta{Name: "dc-both", Namespace: ns},
-				Spec: infrav1alpha1.DatabaseClaimSpec{
-					Provider: infrav1alpha1.ProviderRef{Name: "p", Selector: selector},
+				Spec: infraApi.DatabaseClaimSpec{
+					Provider: infraApi.ProviderRef{Name: "p", Selector: selector},
 					Database: "somedb",
 				},
 			}
@@ -211,28 +211,28 @@ func TestCRDValidation(t *testing.T) {
 
 		t.Run("rejects-provider-neither-set", func(t *testing.T) {
 			g := NewWithT(t)
-			obj := &infrav1alpha1.DatabaseClaim{
+			obj := &infraApi.DatabaseClaim{
 				ObjectMeta: metav1.ObjectMeta{Name: "dc-neither", Namespace: ns},
-				Spec:       infrav1alpha1.DatabaseClaimSpec{Database: "somedb"},
+				Spec:       infraApi.DatabaseClaimSpec{Database: "somedb"},
 			}
 			g.Expect(cli.Create(ctx, obj)).NotTo(Succeed())
 		})
 
 		t.Run("rejects-missing-database", func(t *testing.T) {
 			g := NewWithT(t)
-			obj := &infrav1alpha1.DatabaseClaim{
+			obj := &infraApi.DatabaseClaim{
 				ObjectMeta: metav1.ObjectMeta{Name: "dc-missing-db", Namespace: ns},
-				Spec:       infrav1alpha1.DatabaseClaimSpec{Provider: infrav1alpha1.ProviderRef{Name: "p"}},
+				Spec:       infraApi.DatabaseClaimSpec{Provider: infraApi.ProviderRef{Name: "p"}},
 			}
 			g.Expect(cli.Create(ctx, obj)).NotTo(Succeed())
 		})
 
 		t.Run("accepts-valid-and-database-is-immutable", func(t *testing.T) {
 			g := NewWithT(t)
-			obj := &infrav1alpha1.DatabaseClaim{
+			obj := &infraApi.DatabaseClaim{
 				ObjectMeta: metav1.ObjectMeta{Name: "dc-valid", Namespace: ns},
-				Spec: infrav1alpha1.DatabaseClaimSpec{
-					Provider: infrav1alpha1.ProviderRef{Name: "p"},
+				Spec: infraApi.DatabaseClaimSpec{
+					Provider: infraApi.ProviderRef{Name: "p"},
 					Database: "ai_pipelines",
 				},
 			}
