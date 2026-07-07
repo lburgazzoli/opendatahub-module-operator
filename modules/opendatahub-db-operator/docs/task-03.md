@@ -42,17 +42,15 @@ Task-02 (CRD types).
    computation — reuse them as-is, pointed at this Deployment's own rollout status, so
    `DatabaseService` gets the same upgrade-gating behavior (`Ready: False` while `Progressing: True`,
    `observedGeneration` tracking) every other module gets from this pipeline.
-2. `providerresolve.Resolve(ctx, cli, ref ProviderRef) (*DatabaseProvider, matched []string, err
-   error)`:
+2. `providerresolve.Resolve(ctx, cli, ref ProviderRef) (*DatabaseProvider, error)`:
    - `ref.Name` set → `Get`; not found → typed not-found error the caller turns into a `Pending`
      condition.
    - `ref.Selector` set → `List` with the selector; zero matches → typed error; one match →
      return it; multiple → pick highest `db.infrastructure.opendatahub.io/selection-priority`
      annotation (parse as int, missing/invalid treated as `0`), tie-break alphabetically by
-     `metadata.name`; return `matched []string` for `status.matchedProviders` **with the selected
-     provider first**, remaining matches following in the same priority/alphabetical order used
-     to pick it (this ordering convention is how `status.matchedProviders` shows "which one was
-     ultimately selected" per spec.md, without an extra field — `docs/plan.md` §6).
+     `metadata.name`; return the winner only. The caller writes its name to `status.provider`
+     (task-02's singular field, not spec.md's literal `matchedProviders` list — `docs/plan.md`
+     §6 records this as a deliberate, disclosed divergence).
    - Neither set → `List` all providers, filter to
      `db.infrastructure.opendatahub.io/is-default-provider: "true"`; none → typed error.
    - Caller (task-06/07) is responsible for checking the resolved provider's `Reachable`
@@ -84,7 +82,7 @@ Task-02 (CRD types).
    purpose; do not add redundant manual requeues there.
 6. Unit tests for `providerresolve.Resolve` covering: exact name hit/miss, selector single/zero/
    multi match, priority tie-break, alphabetical tie-break on equal priority, default-provider
-   fallback, no-provider-at-all case, and the "selected provider first" ordering of `matched`.
+   fallback, no-provider-at-all case.
 7. Unit tests for `upgrade.NeedsUpgrade`/`StampVersion`: missing annotation → needs upgrade;
    annotation matching current version → does not; annotation with an older/different version →
    does; `StampVersion` sets exactly the current running version, nothing else.
@@ -92,8 +90,8 @@ Task-02 (CRD types).
    `DatabaseProvider` fixtures (varying names, labels, priority annotations) and a `SchemaClaim`/
    `DatabaseClaim` referencing them by both `name` and `selector`, start the wired-up manager
    against the real cluster, and confirm: (a) the placeholder actions actually run and set
-   `Provisioned: False, reason: NotImplemented` (plus `status.matchedProviders` where a selector
-   was used) on the real objects; (b) the `infrastructure.opendatahub.io/controller-version`
+   `Provisioned: False, reason: NotImplemented` (plus `status.provider` where a selector was
+   used) on the real objects; (b) the `infrastructure.opendatahub.io/controller-version`
    annotation is stamped on every reconciled object with the running binary's version; (c) the
    reconcile result carries the configured `RequeueAfter` from step 5 — not just an in-memory
    fake-client assertion.

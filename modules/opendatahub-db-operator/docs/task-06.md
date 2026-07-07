@@ -39,8 +39,10 @@ to actually run).
 6. SSA-write the credentials Secret: name `== claim.Name`, claim's own namespace, owner reference
    to the `SchemaClaim`, keys for host/port/database/schema/user/password (exact key names should
    match spec.md's `status.connection` shape so consumers don't need a translation layer).
-7. Set `status.connection` (host/port/database/schema + `secretRef`), `status.matchedProviders`
-   (from step 2), `Provisioned: True, reason: SchemaReady`, `phase: Ready`.
+7. Set `status.connection` (host/port/database/schema + `secretRef`), `status.provider` (from
+   step 2, only when a selector was used), `Provisioned: True, reason: SchemaReady`. Do not set a
+   custom phase string — `common.Status.Phase` (embedded, task-02) is managed generically; this
+   reconciler only ever sets conditions.
 8. Deletion (finalizer logic):
    - `deletionPolicy: Retain` (default): drop only the provisioned user
      (`pkg/postgres.DropRole`); the Secret is garbage-collected automatically via its owner

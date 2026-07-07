@@ -11,7 +11,7 @@ source of implementation progress:
 | # | Task | Focus | Status |
 |---|------|-------|--------|
 | 01 | Module scaffold | Directory layout, Makefile/Containerfile, `cmd/`, `pkg/config` (incl. image and retry-interval config keys), `pkg/manager`, `pkg/resources/gvk`, `config/{crd,rbac,manager,default}`, module descriptor skeleton, `go.mod` additions (`pgx/v5`) | Done |
-| 02 | CRD API types | `SchemaClaim`, `DatabaseClaim`, `DatabaseProvider` (`External`+`Embedded`) types, schema/CEL validation, status/condition wiring, deepcopy, generated CRD YAML | Pending |
+| 02 | CRD API types | `SchemaClaim`, `DatabaseClaim`, `DatabaseProvider` (`External`+`Embedded`) types, schema/CEL validation, status/condition wiring, deepcopy, generated CRD YAML | Done |
 | 03 | Shared reconciler scaffolding & module enablement CR | `reconciler.ReconcilerFor` wiring for all 3 kinds; provider-resolution helper; `upgradeIfNeeded`/periodic-retry wiring; the `DatabaseService` module-enablement CR | Pending |
 | 04 | `DatabaseProvider` — `External` | Connectivity-check action, `Reachable` condition, admin-secret parsing | Pending |
 | 05 | PostgreSQL DDL layer (`pkg/postgres`) | `pgxpool` management, identifier/literal quoting, password generation, schema/role/grant/drop statement builders | Pending |
@@ -77,7 +77,7 @@ modules/opendatahub-db-operator/
   go.mod, go.sum                         # already scaffolded
   Makefile, Containerfile
   api/infrastructure/v1alpha1/           # SchemaClaim, DatabaseClaim, DatabaseProvider types
-  api/components/v1alpha1/               # DatabaseService module-enablement CR (§4)
+  api/services/v1alpha1/                 # DatabaseService module-enablement CR (§4)
   cmd/
     main.go
     operator/operator.go
@@ -125,7 +125,7 @@ enumerated-type dispatch and should be `switch` statements, not `if`/`else` chai
 ## 4. Module Enablement CR (`DatabaseService`)
 
 So the ODH Operator can enable/disable/gate on this module exactly like any other, a thin
-singleton CR (`components.platform.opendatahub.io/v1alpha1`, `Kind: DatabaseService`) is reconciled
+singleton CR (`services.platform.opendatahub.io/v1alpha1`, `Kind: DatabaseService`) is reconciled
 with the **standard** pipeline every other module uses:
 
 ```
@@ -199,8 +199,12 @@ settles — asserting the four conditions merely *exist* is not sufficient cover
 ## 5. CRD Design
 
 Full field tables are in spec.md; summarized here with the status/condition contract expressed
-via this repo's existing `common.Status` / `meta.SetStatusCondition`-style helpers (reused, not
-reinvented).
+via this repo's existing `common.Status` embedding pattern (reused, not reinvented). **All four
+CRDs embed both `common.Status` and `common.ComponentReleaseStatus`**, not just `DatabaseService`
+— `reconciler.ReconcilerFor[T]`'s generic constraint is the full `common.PlatformObject`
+interface (status + conditions + releases), so `SchemaClaim`/`DatabaseClaim`/`DatabaseProvider`
+need the release-status plumbing structurally to typecheck against that builder in task-03, even
+though "releases" has no obvious semantic meaning for a claim (task-02).
 
 **Validate at the CRD layer wherever possible.** Anything expressible as an OpenAPI schema
 constraint or CEL `+kubebuilder:validation:XValidation` rule (required fields, enums, string
@@ -224,7 +228,7 @@ itself. Task-02 enumerates the specific schema/CEL rules for each CRD.
 | `spec.deletionPolicy` | `Retain` (default) \| `Delete` |
 | `status.schema` | always populated, whether from `spec.schema` or the default |
 | `status.connection.secretRef` | `corev1.LocalObjectReference`, `.name == metadata.name`, no namespace field (always claim's own namespace) |
-| `status.matchedProviders` | populated when `spec.provider.selector` is used |
+| `status.provider` | the single `DatabaseProvider` ultimately selected; populated when `spec.provider.selector` is used (task-02: singular, not a list — a claim binds to exactly one provider, so there's nothing to gain from also surfacing the candidates that lost) |
 
 ### `DatabaseClaim` (namespace-scoped)
 
@@ -236,6 +240,7 @@ itself. Task-02 enumerates the specific schema/CEL rules for each CRD.
 | (no `deletionPolicy`) | always `Retain` semantics — the database pre-exists and isn't exclusively owned by this claim |
 | `status.database` | echoes `spec.database` |
 | `status.connection.secretRef` | same shape as `SchemaClaim` |
+| `status.provider` | same as `SchemaClaim.status.provider` |
 
 ### `DatabaseProvider` (cluster-scoped)
 
@@ -243,9 +248,10 @@ itself. Task-02 enumerates the specific schema/CEL rules for each CRD.
 (`db.infrastructure.opendatahub.io/capability-*`) advertise what a provider supports; claims
 select a provider by `spec.provider.name` (exact) or `spec.provider.selector` (label match).
 Multiple matches are resolved by highest `db.infrastructure.opendatahub.io/selection-priority`
-annotation, ties broken alphabetically by name — `status.matchedProviders` on the claim lists
-every match and which one won, for diagnosability. No `spec.provider` at all falls back to
-whichever provider is annotated `db.infrastructure.opendatahub.io/is-default-provider: "true"`.
+annotation, ties broken alphabetically by name — `status.provider` on the claim names the winner
+(task-02: a single field, not a list of every candidate — a claim binds to exactly one provider).
+No `spec.provider` at all falls back to whichever provider is annotated
+`db.infrastructure.opendatahub.io/is-default-provider: "true"`.
 
 `status.conditions[Reachable]` is common to both types; everything else is type-specific (§6, §7).
 
@@ -297,13 +303,11 @@ needed.
 **Provider resolution** (shared helper, used by both claim reconcilers):
 1. `spec.provider.name` set → exact lookup; not found → `Provisioned: False`, actionable message, requeue.
 2. `spec.provider.selector` set → list `DatabaseProvider`s matching the selector; if >1, pick
-   highest `selection-priority` annotation, tie-break alphabetically by name; populate
-   `status.matchedProviders` with every match, **ordered with the selected provider first**
-   (remaining matches follow in the same priority/alphabetical order used to pick the winner) —
-   this is the whole list's ordering convention, not a separate field, so spec.md's requirement
-   that `status.matchedProviders` show "which one was ultimately selected" is satisfied without
-   adding a field beyond what spec.md's own CRD example already shows
-   (`matchedProviders: ["platform-shared"]`).
+   highest `selection-priority` annotation, tie-break alphabetically by name; write the winner's
+   name to `status.provider`. **Task-02 deliberately diverges from spec.md's own CRD example
+   here**: spec.md shows `matchedProviders: ["platform-shared"]` (a list of every candidate that
+   matched), but a claim only ever binds to one provider, so a list of also-rans has no consumer
+   — `status.provider` (singular) is simpler and loses nothing a real caller needs.
 3. Neither set → use the provider annotated `is-default-provider: "true"`; none exists → `Pending`
    with actionable message.
 4. Resolved provider not `Reachable` → propagate as the claim's condition message.
