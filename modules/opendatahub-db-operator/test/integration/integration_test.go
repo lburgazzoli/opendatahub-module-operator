@@ -22,12 +22,16 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	k8sm "github.com/lburgazzoli/gomega-matchers/pkg/matchers/k8s"
+	infraApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/api/infrastructure/v1alpha1"
 	. "github.com/onsi/gomega"
 	tcpostgres "github.com/testcontainers/testcontainers-go/modules/postgres"
+	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/client-go/rest"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -51,8 +55,6 @@ type testDatabase struct {
 	cfg       postgres.Config
 	terminate func(context.Context) error
 }
-
-var sharedIntegrationEnv *integrationEnv
 
 func TestMain(m *testing.M) {
 	os.Exit(runTestMain(m))
@@ -90,26 +92,43 @@ func runTestMain(m *testing.M) int {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	sharedIntegrationEnv, err = setupIntegrationEnv(ctx, restCfg, moduleCfg)
+	cli, err := support.NewClient()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to set up integration environment: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Failed to create integration client: %v\n", err)
+		return 1
+	}
+	if err := cleanupIntegrationFixtures(ctx, cli, support.IntegrationTestNamespace()); err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to clean integration fixtures: %v\n", err)
+		return 1
+	}
+
+	if err := startIntegrationManager(ctx, restCfg, moduleCfg); err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to start integration manager: %v\n", err)
 		return 1
 	}
 
 	return m.Run()
 }
 
-func newIntegrationEnv(t *testing.T) *integrationEnv {
+func newIntegrationEnv(t *testing.T) (*integrationEnv, error) {
 	t.Helper()
 
-	g := NewWithT(t)
-	g.Expect(sharedIntegrationEnv).NotTo(BeNil(), "shared integration environment must be initialized in TestMain")
+	cli, err := support.NewClient()
+	if err != nil {
+		return nil, fmt.Errorf("creating test client: %w", err)
+	}
+
+	moduleCfg, err := moduleconfig.LoadFromFS(nil)
+	if err != nil {
+		return nil, fmt.Errorf("loading module config: %w", err)
+	}
+	moduleCfg.ApplicationsNamespace = support.IntegrationTestNamespace()
 
 	return &integrationEnv{
-		Client:    sharedIntegrationEnv.Client,
-		Namespace: sharedIntegrationEnv.Namespace,
-		Config:    sharedIntegrationEnv.Config,
-	}
+		Client:    cli,
+		Namespace: support.IntegrationTestNamespace(),
+		Config:    moduleCfg,
+	}, nil
 }
 
 // startDatabase spins up a postgres:16 container for a claim integration suite.
@@ -133,6 +152,7 @@ func startDatabase(ctx context.Context) (*testDatabase, error) {
 		_ = ctr.Terminate(ctx)
 		return nil, fmt.Errorf("parsing postgres DSN: %w", err)
 	}
+
 	return &testDatabase{
 		cfg: cfg,
 		terminate: func(ctx context.Context) error {
@@ -156,17 +176,17 @@ func (db *testDatabase) Close(ctx context.Context) error {
 	return db.terminate(ctx)
 }
 
-// setupIntegrationEnv starts the full module manager and returns the
-// immutable-ish suite environment used by individual test groups.
-func setupIntegrationEnv(
+// startIntegrationManager starts the full module manager and ensures the
+// integration namespace exists before tests begin.
+func startIntegrationManager(
 	ctx context.Context,
 	restCfg *rest.Config,
 	cfg *moduleconfig.Config,
 	opts ...modulemanager.Option,
-) (*integrationEnv, error) {
+) error {
 	mgr, err := modulemanager.New(ctx, restCfg, cfg, opts...)
 	if err != nil {
-		return nil, fmt.Errorf("creating manager: %w", err)
+		return fmt.Errorf("creating manager: %w", err)
 	}
 
 	go func() {
@@ -176,20 +196,165 @@ func setupIntegrationEnv(
 	}()
 
 	if !mgr.GetCache().WaitForCacheSync(ctx) {
-		return nil, fmt.Errorf("cache failed to sync")
+		return fmt.Errorf("cache failed to sync")
 	}
 
 	cli := mgr.GetClient()
 	ns := support.IntegrationTestNamespace()
 	if err := support.EnsureNamespace(ctx, cli, ns); err != nil {
-		return nil, fmt.Errorf("creating namespace %q: %w", ns, err)
+		return fmt.Errorf("creating namespace %q: %w", ns, err)
 	}
 
-	return &integrationEnv{
-		Client:    cli,
-		Namespace: ns,
-		Config:    cfg,
-	}, nil
+	return nil
+}
+
+func cleanupIntegrationFixtures(ctx context.Context, cli client.Client, namespace string) error {
+	for _, item := range []struct {
+		list    client.ObjectList
+		matches func(client.Object) bool
+	}{
+		{
+			list: &infraApi.DatabaseProviderList{},
+			matches: func(obj client.Object) bool {
+				return hasAnyPrefix(
+					obj.GetName(),
+					"provider-",
+					"schema-provider-",
+					"database-provider-",
+				) || obj.GetAnnotations()["db.infrastructure.opendatahub.io/operator-namespace"] == namespace
+			},
+		},
+		{
+			list: &infraApi.SchemaClaimList{},
+			matches: func(obj client.Object) bool {
+				return obj.GetNamespace() == namespace && strings.HasPrefix(obj.GetName(), "sc-")
+			},
+		},
+		{
+			list: &infraApi.DatabaseClaimList{},
+			matches: func(obj client.Object) bool {
+				return obj.GetNamespace() == namespace && strings.HasPrefix(obj.GetName(), "dc-")
+			},
+		},
+		{
+			list: &corev1.SecretList{},
+			matches: func(obj client.Object) bool {
+				return obj.GetNamespace() == namespace && hasAnyPrefix(
+					obj.GetName(),
+					"provider-secret-",
+					"schema-provider-",
+					"database-provider-",
+					"sc-",
+					"dc-",
+				)
+			},
+		},
+	} {
+		if isClusterScopedList(item.list) {
+			if err := cli.List(ctx, item.list); err != nil {
+				return err
+			}
+		} else {
+			if err := cli.List(ctx, item.list, client.InNamespace(namespace)); err != nil {
+				return err
+			}
+		}
+		if err := forEachListedObject(item.list, func(obj client.Object) error {
+			if !item.matches(obj) {
+				return nil
+			}
+			return deleteObjectAndWait(ctx, cli, obj)
+		}); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func deleteObjectAndWait(ctx context.Context, cli client.Client, obj client.Object) error {
+	key := client.ObjectKeyFromObject(obj)
+	if err := cli.Get(ctx, key, obj); err != nil {
+		if apierrors.IsNotFound(err) {
+			return nil
+		}
+		return err
+	}
+
+	if len(obj.GetFinalizers()) > 0 {
+		patch := client.MergeFrom(obj.DeepCopyObject().(client.Object))
+		obj.SetFinalizers(nil)
+		if err := cli.Patch(ctx, obj, patch); err != nil && !apierrors.IsNotFound(err) {
+			return err
+		}
+	}
+	if err := cli.Delete(ctx, obj); err != nil && !apierrors.IsNotFound(err) {
+		return err
+	}
+
+	deadline := time.Now().Add(30 * time.Second)
+	for {
+		if err := cli.Get(ctx, key, obj); err != nil {
+			if apierrors.IsNotFound(err) {
+				return nil
+			}
+			return err
+		}
+		if time.Now().After(deadline) {
+			return fmt.Errorf("timed out waiting for %s to be deleted", key)
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(200 * time.Millisecond):
+		}
+	}
+}
+
+func forEachListedObject(list client.ObjectList, fn func(client.Object) error) error {
+	switch items := list.(type) {
+	case *infraApi.DatabaseProviderList:
+		for i := range items.Items {
+			if err := fn(&items.Items[i]); err != nil {
+				return err
+			}
+		}
+	case *infraApi.SchemaClaimList:
+		for i := range items.Items {
+			if err := fn(&items.Items[i]); err != nil {
+				return err
+			}
+		}
+	case *infraApi.DatabaseClaimList:
+		for i := range items.Items {
+			if err := fn(&items.Items[i]); err != nil {
+				return err
+			}
+		}
+	case *corev1.SecretList:
+		for i := range items.Items {
+			if err := fn(&items.Items[i]); err != nil {
+				return err
+			}
+		}
+	default:
+		return fmt.Errorf("unsupported list type %T", list)
+	}
+	return nil
+}
+
+func isClusterScopedList(list client.ObjectList) bool {
+	_, ok := list.(*infraApi.DatabaseProviderList)
+	return ok
+}
+
+func hasAnyPrefix(value string, prefixes ...string) bool {
+	for _, prefix := range prefixes {
+		if strings.HasPrefix(value, prefix) {
+			return true
+		}
+	}
+	return false
 }
 
 // deleteAndWait deletes obj (stripping its finalizers first if needed) and

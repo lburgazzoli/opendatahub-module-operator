@@ -83,6 +83,9 @@ func NewReconciler(
 			reconciler.WithDefaultRequeueAfter(cfg.DatabaseProvider.RetryInterval),
 		).
 		WithAction(dbcontroller.UpgradeIfNeeded()).
+		WithAction(m.reconcileExternalAction).
+		WithAction(m.reconcileEmbeddedAction).
+		WithConditions(ConditionReachable).
 		Build(ctx)
 
 	return err

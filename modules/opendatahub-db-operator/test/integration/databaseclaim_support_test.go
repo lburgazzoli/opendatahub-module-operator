@@ -48,8 +48,13 @@ type databaseClaimSuite struct {
 func newDatabaseClaimSuite(t *testing.T) (*databaseClaimSuite, error) {
 	t.Helper()
 
+	env, err := newIntegrationEnv(t)
+	if err != nil {
+		return nil, err
+	}
+
 	suite := &databaseClaimSuite{
-		env:          newIntegrationEnv(t),
+		env:          env,
 		providerName: "database-provider-" + xid.New().String(),
 	}
 

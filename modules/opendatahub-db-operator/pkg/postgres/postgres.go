@@ -17,7 +17,6 @@ limitations under the License.
 package postgres
 
 import (
-	"context"
 	"fmt"
 	"reflect"
 
@@ -127,20 +126,4 @@ func ConfigFromDSN(dsn string) (Config, error) {
 func (c Config) DSN() string {
 	return fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s sslmode=disable",
 		c.Host, c.Port, c.User, c.Password, c.DBName)
-}
-
-// Ping opens a single connection to verify the server is reachable, then
-// closes it immediately. It is a liveness check, not a long-lived pool.
-// The returned error message never contains the password.
-func Ping(ctx context.Context, cfg Config) error {
-	pool, err := pgxpool.New(ctx, cfg.DSN())
-	if err != nil {
-		return sanitize(err, cfg.Password)
-	}
-	defer pool.Close()
-
-	if err := pool.Ping(ctx); err != nil {
-		return sanitize(err, cfg.Password)
-	}
-	return nil
 }

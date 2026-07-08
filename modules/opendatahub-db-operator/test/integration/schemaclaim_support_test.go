@@ -42,8 +42,13 @@ type schemaClaimSuite struct {
 func newSchemaClaimSuite(t *testing.T) (*schemaClaimSuite, error) {
 	t.Helper()
 
+	env, err := newIntegrationEnv(t)
+	if err != nil {
+		return nil, err
+	}
+
 	suite := &schemaClaimSuite{
-		env:          newIntegrationEnv(t),
+		env:          env,
 		databaseName: "schema_" + xid.New().String(),
 		providerName: "schema-provider-" + xid.New().String(),
 	}
