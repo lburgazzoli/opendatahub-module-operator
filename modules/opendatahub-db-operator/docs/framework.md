@@ -101,3 +101,69 @@ rr.Templates          // []TemplateInfo (set by custom action, consumed by fwtem
 rr.Resources          // UnstructuredList (populated by kustomize/fwtemplate, consumed by deploy/gc)
 rr.ManifestsBasePath  // string set by modulemanager.New
 ```
+
+## Finalizer API
+
+The framework manages the finalizer lifecycle automatically. Register a cleanup
+action via the builder — no manual `controllerutil.AddFinalizer` needed:
+
+```go
+_, err = reconciler.ReconcilerFor(mgr, &MyType{}).
+    WithReconcilerOpts(
+        reconciler.WithFinalizerName("my-domain.io/my-finalizer"), // optional, default = "platform.opendatahub.io/finalizer"
+    ).
+    WithFinalizer(myCleanupAction). // runs on deletion before the finalizer is removed
+    WithAction(myNormalAction).
+    Build(ctx)
+```
+
+Constants:
+```go
+reconciler.DefaultFinalizerName = "platform.opendatahub.io/finalizer"
+```
+
+## Early return from an action (stop the pipeline)
+
+```go
+import odherrors "github.com/opendatahub-io/odh-platform-utilities/framework/controller/actions/errors"
+
+// Stop pipeline, no requeue -- error is surfaced in conditions
+return odherrors.NewStopError("provider %q not found", name)
+
+// Stop pipeline and wrap an existing error
+return odherrors.NewStopErrorW(err)
+
+// Stop and requeue after a specific delay
+return odherrors.NewStopErrorWithRequeueAfter(30*time.Second, "waiting for %q", name)
+
+// Stop with wrapped error + requeue
+return odherrors.NewStopErrorWithRequeueAfterW(30*time.Second, err)
+```
+
+`StopError` is handled specially during deletion (the pipeline continues to the
+next finalizer action instead of returning the error to the caller).
+
+## Owned object SSA write pattern (Secrets, etc.)
+
+For objects the controller owns (e.g. credentials Secrets) that are NOT managed
+via the kustomize/deploy pipeline, write directly via the client using SSA:
+
+```go
+import "sigs.k8s.io/controller-runtime/pkg/client"
+
+secret := &corev1.Secret{...}
+// Set owner reference so Kubernetes GCs the Secret with the owning CR
+_ = ctrl.SetControllerReference(owner, secret, rr.Client.Scheme())
+
+if err := rr.Client.Patch(ctx, secret,
+    client.Apply,
+    client.FieldOwner("db-operator"),
+    client.ForceOwnership,
+); err != nil {
+    return fmt.Errorf("applying credentials secret: %w", err)
+}
+```
+
+Note: `client.Apply` is the constant for server-side apply patch type. The
+Secret must have `TypeMeta` set (`Kind: "Secret"`, `APIVersion: "v1"`) for
+SSA to work correctly.

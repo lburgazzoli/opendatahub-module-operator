@@ -76,9 +76,13 @@ const (
 	// for either image (spec.md is explicit: no image override field, ever),
 	// so there's nothing for this config value to be a fallback *from* --
 	// it's simply the image, and this key is the only way to change it.
-	KeyPostgresImage           = "embedded.postgres-image"
-	KeyPgvectorImage           = "embedded.pgvector-image"
-	KeyEmbeddedIdleGracePeriod = "embedded.idle-grace-period"
+	KeyPostgresImage = "embedded.postgres-image"
+	KeyPgvectorImage = "embedded.pgvector-image"
+
+	// KeyGracePeriod is a generic grace period used wherever the operator needs
+	// to wait before taking a destructive action (Embedded provider idle teardown,
+	// claim cleanup retry timeout, etc.).
+	KeyGracePeriod = "grace-period"
 
 	// Periodic-retry intervals (docs/plan.md §6), one per reconciler
 	// (SchemaClaim, DatabaseClaim, DatabaseProvider, and the DatabaseService
@@ -124,7 +128,7 @@ const (
 	DefaultPostgresImage = "postgres:16"
 	DefaultPgvectorImage = "pgvector/pgvector:pg16"
 
-	DefaultEmbeddedIdleGracePeriod = 10 * time.Minute
+	DefaultGracePeriod = 10 * time.Minute
 
 	// DefaultRetryInterval is the shared compiled default for all four
 	// retry-interval keys above. Each key is independently overridable, so an
@@ -163,15 +167,18 @@ type Config struct {
 	DatabaseClaim         RetryConfig      `mapstructure:"databaseclaim"`
 	DatabaseProvider      RetryConfig      `mapstructure:"databaseprovider"`
 	DatabaseService       RetryConfig      `mapstructure:"databaseservice"`
+	// GracePeriod is a generic operator-wide timeout used wherever a destructive
+	// action should be deferred: Embedded provider idle teardown, claim cleanup
+	// retry ceiling, etc. Defaults to DefaultGracePeriod.
+	GracePeriod time.Duration `mapstructure:"grace-period"`
 }
 
 // EmbeddedConfig holds the Embedded DatabaseProvider's operator-wide image
-// defaults and idle-cleanup timing (docs/plan.md §7.1, §7.7). Never
-// referenced as literals in controller code.
+// defaults (docs/plan.md §7.1). Never referenced as literals in controller code.
+// The idle teardown grace period is now the top-level Config.GracePeriod.
 type EmbeddedConfig struct {
-	PostgresImage   string        `mapstructure:"postgres-image"`
-	PgvectorImage   string        `mapstructure:"pgvector-image"`
-	IdleGracePeriod time.Duration `mapstructure:"idle-grace-period"`
+	PostgresImage string `mapstructure:"postgres-image"`
+	PgvectorImage string `mapstructure:"pgvector-image"`
 }
 
 // RetryConfig holds one reconciler's periodic-retry interval (docs/plan.md

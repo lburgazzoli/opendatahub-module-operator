@@ -165,6 +165,15 @@ func DatabaseExists(ctx context.Context, pool *pgxpool.Pool, name string) (bool,
 	return exists, err
 }
 
+// RoleExists returns true if a PostgreSQL role with the given name exists.
+func RoleExists(ctx context.Context, pool *pgxpool.Pool, name string) (bool, error) {
+	var exists bool
+	err := pool.QueryRow(ctx,
+		"SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = $1)", name,
+	).Scan(&exists)
+	return exists, err
+}
+
 // CreateExtensionIfNotExists runs CREATE EXTENSION IF NOT EXISTS for each name.
 // Used by the Embedded provider's bootstrap step (task-08).
 func CreateExtensionIfNotExists(ctx context.Context, pool *pgxpool.Pool, extensions []string) error {

@@ -25,31 +25,32 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// Secret key names for connection parameters, matching PostgreSQL's own
-// env-var convention. The official postgres image uses these same names,
-// ensuring External and Embedded admin Secrets share the same schema
-// (docs/plan.md §7.2).
+// Secret key names for connection parameters. Uses a "pg.<field>" properties
+// convention rather than PostgreSQL's PGXXX env-var names to keep the Secret
+// schema clean and namespaced.
 const (
-	SecretKeyHost     = "PGHOST"
-	SecretKeyPort     = "PGPORT"
-	SecretKeyUser     = "PGUSER"
-	SecretKeyPassword = "PGPASSWORD"
-	SecretKeyDatabase = "PGDATABASE"
+	SecretKeyHost     = "pg.host"
+	SecretKeyPort     = "pg.port"
+	SecretKeyUser     = "pg.user"
+	SecretKeyPassword = "pg.password"
+	SecretKeyDatabase = "pg.database"
+	SecretKeySchema   = "pg.schema"
 
-	// DefaultPort is the standard PostgreSQL port, used when PGPORT is absent.
+	// DefaultPort is the standard PostgreSQL port, used when pg.port is absent.
 	DefaultPort = 5432
 )
 
-// Config holds the connection parameters parsed from a Kubernetes Secret
-// (docs/plan.md §6). The mapstructure tags use PostgreSQL's own env-var names
-// (PGHOST etc.) which are also used by the official postgres image, ensuring
-// External and Embedded admin Secrets share the same schema (docs/plan.md §7.2).
+// Config holds the connection parameters parsed from or written to a Kubernetes
+// Secret (docs/plan.md §6). The pg.* key convention keeps the Secret schema
+// clean and namespaced. The mapstructure tags match the SecretKey*
+// constants above. Schema is optional -- set only for SchemaClaim credentials.
 type Config struct {
-	Host     string `mapstructure:"PGHOST"`
-	Port     int    `mapstructure:"PGPORT"`
-	User     string `mapstructure:"PGUSER"`
-	Password string `mapstructure:"PGPASSWORD"`
-	DBName   string `mapstructure:"PGDATABASE"`
+	Host     string `mapstructure:"pg.host"`
+	Port     int    `mapstructure:"pg.port"`
+	User     string `mapstructure:"pg.user"`
+	Password string `mapstructure:"pg.password"`
+	DBName   string `mapstructure:"pg.database"`
+	Schema   string `mapstructure:"pg.schema"`
 }
 
 // Validate checks that all required Config fields are set and the port is valid.

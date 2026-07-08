@@ -19,13 +19,14 @@ package schemaclaim
 import (
 	"context"
 
-	infraApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/api/infrastructure/v1alpha1"
-	dbcontroller "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/pkg/controller"
-	"github.com/opendatahub-io/odh-platform-utilities/framework/controller/reconciler"
 	corev1 "k8s.io/api/core/v1"
 	ctrl "sigs.k8s.io/controller-runtime"
 
+	infraApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/api/infrastructure/v1alpha1"
 	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/pkg/config"
+	dbcontroller "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/pkg/controller"
+	"github.com/opendatahub-io/odh-platform-utilities/framework/controller/actions/deploy"
+	"github.com/opendatahub-io/odh-platform-utilities/framework/controller/reconciler"
 )
 
 // Module holds process-lifetime state for this controller.
@@ -62,15 +63,26 @@ func NewReconciler(
 	mgr ctrl.Manager,
 	cfg *moduleconfig.Config,
 ) error {
-	m := NewModule(cfg)
+	m := NewModule(cfg, Options{
+		Recorder: mgr.GetEventRecorderFor(infraApi.SchemaClaimResource),
+	})
 
 	_, err := reconciler.ReconcilerFor(mgr, &infraApi.SchemaClaim{}).
 		Owns(&corev1.Secret{}).
 		WithReconcilerOpts(
 			reconciler.WithRelease(m.platformRelease),
 			reconciler.WithDefaultRequeueAfter(cfg.SchemaClaim.RetryInterval),
+			reconciler.WithFinalizerName(FinalizerName),
 		).
 		WithAction(dbcontroller.UpgradeIfNeeded()).
+		WithFinalizer(m.cleanupAction).
+		WithAction(m.provisionAction).
+		WithAction(deploy.NewAction(
+			deploy.WithCache(),
+			deploy.WithApplyOrder(),
+			deploy.WithLabel("app.opendatahub.io/db-operator", "true"),
+		)).
+		WithConditions(ConditionProvisioned).
 		Build(ctx)
 
 	return err

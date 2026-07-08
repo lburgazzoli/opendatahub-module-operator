@@ -128,7 +128,7 @@ func TestLoadFromFS_EmbeddedAndRetryDefaults(t *testing.T) {
 
 	g.Expect(cfg.Embedded.PostgresImage).To(Equal(config.DefaultPostgresImage))
 	g.Expect(cfg.Embedded.PgvectorImage).To(Equal(config.DefaultPgvectorImage))
-	g.Expect(cfg.Embedded.IdleGracePeriod).To(Equal(config.DefaultEmbeddedIdleGracePeriod))
+	g.Expect(cfg.GracePeriod).To(Equal(config.DefaultGracePeriod))
 
 	// All four reconcilers share the same compiled default, but each is its
 	// own independently-configurable key (docs/plan.md §6).
@@ -143,12 +143,12 @@ func TestLoadFromFS_EmbeddedImages_ConfigMapOverride(t *testing.T) {
 
 	cfg, err := config.LoadFromFS(fstest.MapFS{
 		config.KeyPostgresImage:           {Data: []byte("registry.redhat.io/rhel9/postgresql-16")},
-		config.KeyEmbeddedIdleGracePeriod: {Data: []byte("15m")},
+		config.KeyGracePeriod: {Data: []byte("15m")},
 	})
 	g.Expect(err).NotTo(HaveOccurred())
 
 	g.Expect(cfg.Embedded.PostgresImage).To(Equal("registry.redhat.io/rhel9/postgresql-16"))
-	g.Expect(cfg.Embedded.IdleGracePeriod).To(Equal(15 * time.Minute))
+	g.Expect(cfg.GracePeriod).To(Equal(15 * time.Minute))
 	// Untouched keys keep their compiled defaults.
 	g.Expect(cfg.Embedded.PgvectorImage).To(Equal(config.DefaultPgvectorImage))
 }
