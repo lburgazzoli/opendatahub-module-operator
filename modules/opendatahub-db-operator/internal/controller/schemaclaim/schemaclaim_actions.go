@@ -76,13 +76,20 @@ func (m *Controller) provisionAction(ctx context.Context, rr *odhtypes.Reconcili
 	if err != nil {
 		rr.Conditions.Mark(ConditionProvisioned, metav1.ConditionFalse,
 			conditions.WithError(err))
+		if retryErr := dbcontroller.StopWithQuickRetryIfConnectionRefused(err); retryErr != nil {
+			return retryErr
+		}
 		return odherrors.NewStopErrorW(err)
 	}
 	defer pool.Close()
 
 	// 4. Idempotent schema creation.
 	if err := postgres.CreateSchema(ctx, pool, schema); err != nil {
-		return fmt.Errorf("creating schema: %w", err)
+		err = fmt.Errorf("creating schema: %w", err)
+		if retryErr := dbcontroller.StopWithQuickRetryIfConnectionRefused(err); retryErr != nil {
+			return retryErr
+		}
+		return err
 	}
 
 	// 5. Role + credentials:
@@ -94,7 +101,11 @@ func (m *Controller) provisionAction(ctx context.Context, rr *odhtypes.Reconcili
 	role := roleNameFor(obj)
 	roleExists, err := postgres.RoleExists(ctx, pool, role)
 	if err != nil {
-		return fmt.Errorf("checking role existence: %w", err)
+		err = fmt.Errorf("checking role existence: %w", err)
+		if retryErr := dbcontroller.StopWithQuickRetryIfConnectionRefused(err); retryErr != nil {
+			return retryErr
+		}
+		return err
 	}
 	secretExists, err := credentialsSecretExists(ctx, rr.Client, obj)
 	if err != nil {
@@ -107,11 +118,19 @@ func (m *Controller) provisionAction(ctx context.Context, rr *odhtypes.Reconcili
 			return fmt.Errorf("generating password: %w", err)
 		}
 		if err := postgres.CreateRole(ctx, pool, role, pw); err != nil {
-			return fmt.Errorf("creating role: %w", err)
+			err = fmt.Errorf("creating role: %w", err)
+			if retryErr := dbcontroller.StopWithQuickRetryIfConnectionRefused(err); retryErr != nil {
+				return retryErr
+			}
+			return err
 		}
 		readOnly := obj.Spec.Access == infraApi.AccessModeReadOnly
 		if err := postgres.GrantSchemaPrivileges(ctx, pool, schema, role, readOnly); err != nil {
-			return fmt.Errorf("granting schema privileges: %w", err)
+			err = fmt.Errorf("granting schema privileges: %w", err)
+			if retryErr := dbcontroller.StopWithQuickRetryIfConnectionRefused(err); retryErr != nil {
+				return retryErr
+			}
+			return err
 		}
 
 		// 6. Add the credentials Secret to rr.Resources so deploy.NewAction applies

@@ -45,6 +45,8 @@ const (
 
 	sqlGrantConnectOnDatabase = "GRANT CONNECT ON DATABASE %s TO %s"
 	sqlGrantCreateOnDatabase  = "GRANT CREATE ON DATABASE %s TO %s"
+	sqlRevokeConnectOnDB      = "REVOKE CONNECT ON DATABASE %s FROM %s"
+	sqlRevokeCreateOnDB       = "REVOKE CREATE ON DATABASE %s FROM %s"
 
 	sqlCreateExtensionIfNotExists = "CREATE EXTENSION IF NOT EXISTS %s"
 
@@ -135,6 +137,24 @@ func GrantDatabasePrivileges(ctx context.Context, pool *pgxpool.Pool, database, 
 		return fmt.Errorf("grant create on database: %w", err)
 	}
 	return nil
+}
+
+// RevokeDatabasePrivileges revokes the privileges granted by GrantDatabasePrivileges.
+func RevokeDatabasePrivileges(ctx context.Context, pool *pgxpool.Pool, database, role string) error {
+	q := QuoteIdentifier
+	var errs []error
+	for _, stmt := range []string{
+		fmt.Sprintf(sqlRevokeCreateOnDB, q(database), q(role)),
+		fmt.Sprintf(sqlRevokeConnectOnDB, q(database), q(role)),
+	} {
+		if _, err := pool.Exec(ctx, stmt); err != nil {
+			errs = append(errs, err)
+		}
+	}
+	if len(errs) == 0 {
+		return nil
+	}
+	return fmt.Errorf("revoking database privileges (partial): %v", errs)
 }
 
 // RevokeSchemaPrivileges revokes the privileges granted by GrantSchemaPrivileges.

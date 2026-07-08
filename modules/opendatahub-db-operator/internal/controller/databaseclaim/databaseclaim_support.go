@@ -98,13 +98,13 @@ func adminSecretRef(provider *infraApi.DatabaseProvider) corev1.SecretReference 
 }
 
 // claimConfig builds a postgres.Config for the claim user from the admin config.
-func claimConfig(adminCfg postgres.Config, role, password string) postgres.Config {
+func claimConfig(adminCfg postgres.Config, database, role, password string) postgres.Config {
 	return postgres.Config{
 		Host:     adminCfg.Host,
 		Port:     adminCfg.Port,
 		User:     role,
 		Password: password,
-		DBName:   adminCfg.DBName,
+		DBName:   database,
 		// DatabaseClaim has no schema -- Schema field left empty
 	}
 }

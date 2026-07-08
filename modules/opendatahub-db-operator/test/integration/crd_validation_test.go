@@ -18,7 +18,6 @@ package integration
 
 import (
 	"context"
-	"strings"
 	"testing"
 
 	. "github.com/onsi/gomega"
@@ -38,10 +37,8 @@ import (
 func TestCRDValidation(t *testing.T) {
 	g := NewWithT(t)
 	ctx := context.Background()
-
 	cli, err := support.NewClient()
 	g.Expect(err).NotTo(HaveOccurred())
-
 	ns := support.IntegrationTestNamespace()
 	g.Expect(support.EnsureNamespace(ctx, cli, ns)).To(Succeed())
 
@@ -121,146 +118,6 @@ func TestCRDValidation(t *testing.T) {
 				Spec:       infraApi.DatabaseProviderSpec{Type: infraApi.ProviderTypeEmbedded, Embedded: &bad},
 			}
 			g.Expect(cli.Create(ctx, obj)).To(HaveOccurred())
-		})
-	})
-
-	t.Run("SchemaClaim", func(t *testing.T) {
-		selector := &metav1.LabelSelector{MatchLabels: map[string]string{"k": "v"}}
-
-		t.Run("rejects-provider-both-set", func(t *testing.T) {
-			g := NewWithT(t)
-			obj := &infraApi.SchemaClaim{
-				ObjectMeta: metav1.ObjectMeta{Name: "sc-both", Namespace: ns},
-				Spec:       infraApi.SchemaClaimSpec{Provider: infraApi.ProviderRef{Name: "p", Selector: selector}},
-			}
-			g.Expect(cli.Create(ctx, obj)).To(HaveOccurred())
-		})
-
-		t.Run("rejects-provider-neither-set", func(t *testing.T) {
-			g := NewWithT(t)
-			obj := &infraApi.SchemaClaim{
-				ObjectMeta: metav1.ObjectMeta{Name: "sc-neither", Namespace: ns},
-				Spec:       infraApi.SchemaClaimSpec{},
-			}
-			g.Expect(cli.Create(ctx, obj)).To(HaveOccurred())
-		})
-
-		t.Run("rejects-invalid-access", func(t *testing.T) {
-			g := NewWithT(t)
-			obj := &infraApi.SchemaClaim{
-				ObjectMeta: metav1.ObjectMeta{Name: "sc-bad-access", Namespace: ns},
-				Spec: infraApi.SchemaClaimSpec{
-					Provider: infraApi.ProviderRef{Name: "p"},
-					Access:   "NotAValidAccessMode",
-				},
-			}
-			g.Expect(cli.Create(ctx, obj)).To(HaveOccurred())
-		})
-
-		t.Run("rejects-invalid-deletion-policy", func(t *testing.T) {
-			g := NewWithT(t)
-			obj := &infraApi.SchemaClaim{
-				ObjectMeta: metav1.ObjectMeta{Name: "sc-bad-deletion-policy", Namespace: ns},
-				Spec: infraApi.SchemaClaimSpec{
-					Provider:       infraApi.ProviderRef{Name: "p"},
-					DeletionPolicy: "NotAValidPolicy",
-				},
-			}
-			g.Expect(cli.Create(ctx, obj)).To(HaveOccurred())
-		})
-
-		t.Run("rejects-schema-pattern-violation", func(t *testing.T) {
-			g := NewWithT(t)
-			obj := &infraApi.SchemaClaim{
-				ObjectMeta: metav1.ObjectMeta{Name: "sc-bad-schema-pattern", Namespace: ns},
-				Spec: infraApi.SchemaClaimSpec{
-					Provider: infraApi.ProviderRef{Name: "p"},
-					Schema:   "1-not-a-valid-identifier",
-				},
-			}
-			g.Expect(cli.Create(ctx, obj)).To(HaveOccurred())
-		})
-
-		t.Run("rejects-schema-too-long", func(t *testing.T) {
-			g := NewWithT(t)
-			var tooLong strings.Builder
-			for range 64 {
-				tooLong.WriteString("a")
-			}
-			obj := &infraApi.SchemaClaim{
-				ObjectMeta: metav1.ObjectMeta{Name: "sc-bad-schema-length", Namespace: ns},
-				Spec: infraApi.SchemaClaimSpec{
-					Provider: infraApi.ProviderRef{Name: "p"},
-					Schema:   tooLong.String(),
-				},
-			}
-			g.Expect(cli.Create(ctx, obj)).NotTo(Succeed())
-		})
-
-		t.Run("accepts-valid-and-schema-is-immutable", func(t *testing.T) {
-			g := NewWithT(t)
-			obj := &infraApi.SchemaClaim{
-				ObjectMeta: metav1.ObjectMeta{Name: "sc-valid", Namespace: ns},
-				Spec: infraApi.SchemaClaimSpec{
-					Provider: infraApi.ProviderRef{Name: "p"},
-					Schema:   "my_schema",
-				},
-			}
-			g.Expect(cli.Create(ctx, obj)).To(Succeed())
-			t.Cleanup(func() { _ = cli.Delete(ctx, obj) })
-
-			obj.Spec.Schema = "a_different_schema"
-			g.Expect(cli.Update(ctx, obj)).To(HaveOccurred())
-		})
-	})
-
-	t.Run("DatabaseClaim", func(t *testing.T) {
-		selector := &metav1.LabelSelector{MatchLabels: map[string]string{"k": "v"}}
-
-		t.Run("rejects-provider-both-set", func(t *testing.T) {
-			g := NewWithT(t)
-			obj := &infraApi.DatabaseClaim{
-				ObjectMeta: metav1.ObjectMeta{Name: "dc-both", Namespace: ns},
-				Spec: infraApi.DatabaseClaimSpec{
-					Provider: infraApi.ProviderRef{Name: "p", Selector: selector},
-					Database: "somedb",
-				},
-			}
-			g.Expect(cli.Create(ctx, obj)).To(HaveOccurred())
-		})
-
-		t.Run("rejects-provider-neither-set", func(t *testing.T) {
-			g := NewWithT(t)
-			obj := &infraApi.DatabaseClaim{
-				ObjectMeta: metav1.ObjectMeta{Name: "dc-neither", Namespace: ns},
-				Spec:       infraApi.DatabaseClaimSpec{Database: "somedb"},
-			}
-			g.Expect(cli.Create(ctx, obj)).To(HaveOccurred())
-		})
-
-		t.Run("rejects-missing-database", func(t *testing.T) {
-			g := NewWithT(t)
-			obj := &infraApi.DatabaseClaim{
-				ObjectMeta: metav1.ObjectMeta{Name: "dc-missing-db", Namespace: ns},
-				Spec:       infraApi.DatabaseClaimSpec{Provider: infraApi.ProviderRef{Name: "p"}},
-			}
-			g.Expect(cli.Create(ctx, obj)).To(HaveOccurred())
-		})
-
-		t.Run("accepts-valid-and-database-is-immutable", func(t *testing.T) {
-			g := NewWithT(t)
-			obj := &infraApi.DatabaseClaim{
-				ObjectMeta: metav1.ObjectMeta{Name: "dc-valid", Namespace: ns},
-				Spec: infraApi.DatabaseClaimSpec{
-					Provider: infraApi.ProviderRef{Name: "p"},
-					Database: "ai_pipelines",
-				},
-			}
-			g.Expect(cli.Create(ctx, obj)).To(Succeed())
-			t.Cleanup(func() { _ = cli.Delete(ctx, obj) })
-
-			obj.Spec.Database = "a_different_database"
-			g.Expect(cli.Update(ctx, obj)).To(HaveOccurred())
 		})
 	})
 }

@@ -24,17 +24,23 @@ import (
 	k8sm "github.com/lburgazzoli/gomega-matchers/pkg/matchers/k8s"
 	. "github.com/onsi/gomega"
 	"github.com/rs/xid"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	infraApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/api/infrastructure/v1alpha1"
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/pkg/postgres"
 )
 
 func TestSchemaClaim(t *testing.T) {
-	suite := &schemaClaimSuite{env: newIntegrationEnv(t)}
+	g := NewWithT(t)
+
+	suite, err := newSchemaClaimSuite(t)
+	g.Expect(err).ToNot(HaveOccurred())
+
 	t.Run("schema claim suite", suite.Run)
 }
 
 func (st *schemaClaimSuite) Run(t *testing.T) {
+	t.Run("crd validation", st.testCRDValidation)
 	t.Run("provisioning", st.testProvisioning)
 	t.Run("explicit schema", st.testExplicitSchema)
 	t.Run("idempotency", st.testIdempotency)
@@ -61,6 +67,7 @@ func (st *schemaClaimSuite) testProvisioning(t *testing.T) {
 
 	credCfg, err := postgres.ParseSecret(secret.Data)
 	g.Expect(err).NotTo(HaveOccurred())
+	g.Expect(credCfg.DBName).To(Equal(st.databaseName))
 	g.Expect(postgres.Ping(ctx, credCfg)).To(Succeed())
 }
 
@@ -115,4 +122,97 @@ func (st *schemaClaimSuite) testProviderNotFound(t *testing.T) {
 
 	st.waitProvisioningFailure(t, claim, "ProviderNotFound")
 	st.expectNoCredentialsSecret(t, name)
+}
+
+func (st *schemaClaimSuite) testCRDValidation(t *testing.T) {
+	ctx := t.Context()
+	cli := st.env.Client
+	ns := st.env.Namespace
+	selector := &metav1.LabelSelector{MatchLabels: map[string]string{"k": "v"}}
+
+	t.Run("rejects-provider-both-set", func(t *testing.T) {
+		g := NewWithT(t)
+		obj := &infraApi.SchemaClaim{
+			ObjectMeta: metav1.ObjectMeta{Name: "sc-both", Namespace: ns},
+			Spec:       infraApi.SchemaClaimSpec{Provider: infraApi.ProviderRef{Name: "p", Selector: selector}},
+		}
+		g.Expect(cli.Create(ctx, obj)).To(HaveOccurred())
+	})
+
+	t.Run("rejects-provider-neither-set", func(t *testing.T) {
+		g := NewWithT(t)
+		obj := &infraApi.SchemaClaim{
+			ObjectMeta: metav1.ObjectMeta{Name: "sc-neither", Namespace: ns},
+			Spec:       infraApi.SchemaClaimSpec{},
+		}
+		g.Expect(cli.Create(ctx, obj)).To(HaveOccurred())
+	})
+
+	t.Run("rejects-invalid-access", func(t *testing.T) {
+		g := NewWithT(t)
+		obj := &infraApi.SchemaClaim{
+			ObjectMeta: metav1.ObjectMeta{Name: "sc-bad-access", Namespace: ns},
+			Spec: infraApi.SchemaClaimSpec{
+				Provider: infraApi.ProviderRef{Name: "p"},
+				Access:   "NotAValidAccessMode",
+			},
+		}
+		g.Expect(cli.Create(ctx, obj)).To(HaveOccurred())
+	})
+
+	t.Run("rejects-invalid-deletion-policy", func(t *testing.T) {
+		g := NewWithT(t)
+		obj := &infraApi.SchemaClaim{
+			ObjectMeta: metav1.ObjectMeta{Name: "sc-bad-deletion-policy", Namespace: ns},
+			Spec: infraApi.SchemaClaimSpec{
+				Provider:       infraApi.ProviderRef{Name: "p"},
+				DeletionPolicy: "NotAValidPolicy",
+			},
+		}
+		g.Expect(cli.Create(ctx, obj)).To(HaveOccurred())
+	})
+
+	t.Run("rejects-schema-pattern-violation", func(t *testing.T) {
+		g := NewWithT(t)
+		obj := &infraApi.SchemaClaim{
+			ObjectMeta: metav1.ObjectMeta{Name: "sc-bad-schema-pattern", Namespace: ns},
+			Spec: infraApi.SchemaClaimSpec{
+				Provider: infraApi.ProviderRef{Name: "p"},
+				Schema:   "1-not-a-valid-identifier",
+			},
+		}
+		g.Expect(cli.Create(ctx, obj)).To(HaveOccurred())
+	})
+
+	t.Run("rejects-schema-too-long", func(t *testing.T) {
+		g := NewWithT(t)
+		var tooLong strings.Builder
+		for range 64 {
+			tooLong.WriteString("a")
+		}
+		obj := &infraApi.SchemaClaim{
+			ObjectMeta: metav1.ObjectMeta{Name: "sc-bad-schema-length", Namespace: ns},
+			Spec: infraApi.SchemaClaimSpec{
+				Provider: infraApi.ProviderRef{Name: "p"},
+				Schema:   tooLong.String(),
+			},
+		}
+		g.Expect(cli.Create(ctx, obj)).To(HaveOccurred())
+	})
+
+	t.Run("accepts-valid-and-schema-is-immutable", func(t *testing.T) {
+		g := NewWithT(t)
+		obj := &infraApi.SchemaClaim{
+			ObjectMeta: metav1.ObjectMeta{Name: "sc-valid", Namespace: ns},
+			Spec: infraApi.SchemaClaimSpec{
+				Provider: infraApi.ProviderRef{Name: "p"},
+				Schema:   "my_schema",
+			},
+		}
+		g.Expect(cli.Create(ctx, obj)).To(Succeed())
+		t.Cleanup(func() { _ = cli.Delete(ctx, obj) })
+
+		obj.Spec.Schema = "a_different_schema"
+		g.Expect(cli.Update(ctx, obj)).To(HaveOccurred())
+	})
 }

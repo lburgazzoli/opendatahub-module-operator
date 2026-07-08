@@ -69,6 +69,9 @@ func (m *Controller) provisionAction(ctx context.Context, rr *odhtypes.Reconcili
 	if err != nil {
 		rr.Conditions.Mark(ConditionProvisioned, metav1.ConditionFalse,
 			conditions.WithError(err))
+		if retryErr := dbcontroller.StopWithQuickRetryIfConnectionRefused(err); retryErr != nil {
+			return retryErr
+		}
 		return odherrors.NewStopErrorW(err)
 	}
 	defer pool.Close()
@@ -76,7 +79,11 @@ func (m *Controller) provisionAction(ctx context.Context, rr *odhtypes.Reconcili
 	// 3. Verify database exists -- DatabaseClaim never creates a database.
 	dbExists, err := postgres.DatabaseExists(ctx, pool, obj.Spec.Database)
 	if err != nil {
-		return fmt.Errorf("checking database existence: %w", err)
+		err = fmt.Errorf("checking database existence: %w", err)
+		if retryErr := dbcontroller.StopWithQuickRetryIfConnectionRefused(err); retryErr != nil {
+			return retryErr
+		}
+		return err
 	}
 	if !dbExists {
 		rr.Conditions.Mark(ConditionProvisioned, metav1.ConditionFalse,
@@ -90,7 +97,11 @@ func (m *Controller) provisionAction(ctx context.Context, rr *odhtypes.Reconcili
 	role := roleNameFor(obj)
 	roleExists, err := postgres.RoleExists(ctx, pool, role)
 	if err != nil {
-		return fmt.Errorf("checking role existence: %w", err)
+		err = fmt.Errorf("checking role existence: %w", err)
+		if retryErr := dbcontroller.StopWithQuickRetryIfConnectionRefused(err); retryErr != nil {
+			return retryErr
+		}
+		return err
 	}
 	secretExists, err := credentialsSecretExists(ctx, rr.Client, obj)
 	if err != nil {
@@ -103,15 +114,23 @@ func (m *Controller) provisionAction(ctx context.Context, rr *odhtypes.Reconcili
 			return fmt.Errorf("generating password: %w", err)
 		}
 		if err := postgres.CreateRole(ctx, pool, role, pw); err != nil {
-			return fmt.Errorf("creating role: %w", err)
+			err = fmt.Errorf("creating role: %w", err)
+			if retryErr := dbcontroller.StopWithQuickRetryIfConnectionRefused(err); retryErr != nil {
+				return retryErr
+			}
+			return err
 		}
 		if err := postgres.GrantDatabasePrivileges(ctx, pool, obj.Spec.Database, role); err != nil {
-			return fmt.Errorf("granting database privileges: %w", err)
+			err = fmt.Errorf("granting database privileges: %w", err)
+			if retryErr := dbcontroller.StopWithQuickRetryIfConnectionRefused(err); retryErr != nil {
+				return retryErr
+			}
+			return err
 		}
 
 		// 5. Add credentials Secret to rr.Resources for deploy.NewAction (SSA).
 		// opendatahub.io/managed=false so gc action doesn't delete it as an orphan.
-		secret := buildCredentialsSecret(obj, claimConfig(cfg, role, pw))
+		secret := buildCredentialsSecret(obj, claimConfig(cfg, obj.Spec.Database, role, pw))
 		if err := ctrl.SetControllerReference(obj, secret, rr.Client.Scheme()); err != nil {
 			return fmt.Errorf("setting owner reference: %w", err)
 		}
@@ -163,6 +182,10 @@ func (m *Controller) cleanupAction(ctx context.Context, rr *odhtypes.Reconciliat
 				return fmt.Errorf("opening pool for provider %q: %w", provider.Name, err)
 			}
 			defer pool.Close()
+
+			if err := postgres.RevokeDatabasePrivileges(ctx, pool, obj.Spec.Database, role); err != nil {
+				return fmt.Errorf("revoking privileges from role %q on database %q: %w", role, obj.Spec.Database, err)
+			}
 
 			// Drop only the role. NEVER issue DROP DATABASE.
 			if err := postgres.DropRole(ctx, pool, role); err != nil {
