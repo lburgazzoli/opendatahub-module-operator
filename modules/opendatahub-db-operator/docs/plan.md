@@ -17,7 +17,7 @@ source of implementation progress:
 | 05 | PostgreSQL DDL layer (`pkg/postgres`) | `pgxpool` management, identifier/literal quoting, password generation, schema/role/grant/drop statement builders | Done |
 | 06 | `SchemaClaim` reconciler | Idempotent schema+user provisioning, SSA Secret write, `Retain`/`Delete` finalizer logic, conditions/status | Done |
 | 07 | `DatabaseClaim` reconciler | Dedicated-user provisioning against a pre-existing database, SSA Secret write, always-Retain finalizer, conditions/status | Done |
-| 08 | `DatabaseProvider` — `Embedded` (focus task) | Image mapping via config keys, templated StatefulSet/PVC/Service/`initdb`-ConfigMap/NetworkPolicy, admin-secret get-or-create, readiness, capability labels, idle cleanup | Pending |
+| 08 | `DatabaseProvider` — `Embedded` (focus task) | Image mapping via config keys, templated StatefulSet/PVC/Service/`initdb`-ConfigMap/NetworkPolicy, admin-secret get-or-create, readiness, capability labels, idle cleanup, configurable embedded target namespace | Pending |
 | 09 | RBAC, packaging, Helm chart | Kubebuilder RBAC markers, `make manifests generate helm`, module descriptor + `component_metadata.yaml`, consumer-facing RBAC examples | Pending |
 | 10 | Tests | Cross-cutting, whole-module integration scenarios not owned by any single task; cleanup scripts | Pending |
 | 11 | Docs, verification & adversarial review | README/CRD examples, full verification gate, adversarial review vs. spec.md, root `CLAUDE.md` module-list update | Pending |
@@ -375,10 +375,11 @@ surroundings belong to the admin, not this operator):
 - **Always the Service's cluster-DNS name, never a pod IP.** A claim's `status.connection.host`
   and Secret must resolve to the `Embedded` provider's headless `Service` (§7.3) by its stable
   in-cluster DNS name (`<service>.<namespace>.svc`), computed deterministically from the
-  provider's name and the module operator's own namespace — never the StatefulSet pod's IP,
-  which isn't stable across pod restarts/rescheduling. This falls out naturally from routing
-  through the Service at all rather than the pod directly; call it out explicitly here so no
-  implementation shortcut (e.g. reading `pod.status.podIP` because it's "simpler") defeats it.
+  provider's name and the effective embedded target namespace — `spec.embedded.namespace` when set,
+  otherwise the module operator namespace — never the StatefulSet pod's IP, which isn't stable
+  across pod restarts/rescheduling. This falls out naturally from routing through the Service at
+  all rather than the pod directly; call it out explicitly here so no implementation shortcut
+  (e.g. reading `pod.status.podIP` because it's "simpler") defeats it.
 - **`NetworkPolicy` scoping access to the `Embedded` instance's pod** — least-privilege network
   access, which the Module Operator Contract itself calls for ("implement NetworkPolicies for
   both control plane and workload controllers"). Concrete design: default-deny ingress on the
@@ -480,8 +481,8 @@ all (only `External` has one, because it points at infrastructure the admin alre
 controller must generate it:
 
 1. A custom action, first in the `Embedded` pipeline (before manifest staging), does a
-   get-or-create on an admin Secret named `<providerName>-admin` in the module operator's own
-   namespace (`DatabaseProvider` is cluster-scoped, so there's no claim namespace to use).
+   get-or-create on an admin Secret named `<providerName>-admin` in the effective embedded target
+   namespace: `spec.embedded.namespace` when set, otherwise the module operator namespace.
 2. If the Secret is absent or lacks a password key: generate one via `crypto/rand` (the same
    generator used by the claim DDL layer, §8 — one implementation) and SSA-create/update the
    Secret with keys named to match Postgres's own env vars (`POSTGRES_USER` /
@@ -513,6 +514,9 @@ controller must generate it:
   script under `/docker-entrypoint-initdb.d/` automatically on first boot (empty data directory),
   so extensions are enabled with **no custom execution code, no `psql`, no `batchv1.Job`, no
   `pgx` connection from the controller** for this step.
+
+All of the above are created in the effective embedded target namespace:
+`spec.embedded.namespace` when set, otherwise the operator namespace.
 
 A small custom action stages these onto `rr.Templates` (mirrors how `modelregistry`'s
 `customizeManifests` stages `rr.Templates`/`rr.Manifests`); `fwtemplate.NewAction` renders them;

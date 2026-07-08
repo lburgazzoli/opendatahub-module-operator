@@ -1,0 +1,10 @@
+apiVersion: infrastructure.opendatahub.io/v1alpha1
+kind: DatabaseClaim
+metadata:
+  name: sample-database
+  namespace: team-a
+spec:
+  provider:
+    name: sample-external
+  database: mlmd
+  access: ReadWrite

@@ -1,0 +1,10 @@
+apiVersion: infrastructure.opendatahub.io/v1alpha1
+kind: SchemaClaim
+metadata:
+  name: sample-schema
+  namespace: team-a
+spec:
+  provider:
+    name: sample-embedded
+  access: ReadWrite
+  deletionPolicy: Retain

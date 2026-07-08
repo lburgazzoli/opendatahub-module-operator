@@ -1,0 +1,10 @@
+apiVersion: infrastructure.opendatahub.io/v1alpha1
+kind: DatabaseProvider
+metadata:
+  name: sample-external
+spec:
+  type: External
+  external:
+    connectionSecretRef:
+      name: external-postgres-admin
+      namespace: db-admin

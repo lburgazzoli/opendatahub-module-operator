@@ -69,7 +69,8 @@ the CRD; that distinction is what keeps this consistent with "no image override 
 `internal/controller/databaseprovider/adminsecret.go`, first action in the `Embedded` pipeline,
 before any manifest staging:
 
-1. `Get` Secret `<providerName>-admin` in the module operator's own namespace.
+1. `Get` Secret `<providerName>-admin` in the effective embedded target namespace:
+   `spec.embedded.namespace` when set, otherwise the module operator namespace.
 2. If not found, or found but missing a password key: generate via
    `pkg/postgres.GeneratePassword` (task-05's implementation — do not reimplement), SSA-write
    the Secret with keys `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB` (names chosen to match
@@ -104,7 +105,9 @@ resources:
   controller for this step.**
 
 Template data: `.Component` (the `DatabaseProvider` instance, injected automatically by
-`fwtemplate.NewAction`) plus the resolved image from the `WithDataFn` in §1.
+`fwtemplate.NewAction`) plus the resolved image from the `WithDataFn` in §1. All templated
+resources are applied in the effective embedded target namespace: `spec.embedded.namespace` when
+set, otherwise the operator namespace.
 
 **Documented, tested limitation**: if `spec.embedded.extensions` changes after the instance
 already exists (detected by comparing desired extensions against the capability labels already
@@ -115,12 +118,12 @@ exact behavior; do not silently ignore the mismatch.
 ### 3b. Connection host and `NetworkPolicy` (`docs/plan.md` §6 "Required for v1")
 
 - **Deterministic Service DNS name, never a pod IP.** The claim reconcilers (task-06/07) need a
-  host for this provider; compute it as `<providerName>-postgres.<operatorNamespace>.svc`
-  (matching the `service.yaml.tmpl` name from §3) rather than reading anything off the
-  StatefulSet's pod(s) — there is no code path in this task or in the claim reconcilers that
-  reads `pod.status.podIP` for this purpose. `<operatorNamespace>` is available from `pkg/config`
-  (the module's own running namespace), the same value `DatabaseService` module status already
-  uses.
+  host for this provider; compute it as
+  `<providerName>-postgres.<effectiveEmbeddedNamespace>.svc` (matching the `service.yaml.tmpl`
+  name from §3) rather than reading anything off the StatefulSet's pod(s). The effective embedded
+  namespace is `spec.embedded.namespace` when set, otherwise the operator namespace from
+  `pkg/config`. There is no code path in this task or in the claim reconcilers that reads
+  `pod.status.podIP` for this purpose.
 - `networkpolicy.yaml.tmpl` — a fifth manifest alongside `statefulset`/`pvc`/`service`/
   `initdb-configmap`: default-deny ingress on the `Embedded` pod except the Postgres port,
   allowed only from namespaces holding a `Provisioned: True` `SchemaClaim`/`DatabaseClaim`
@@ -187,6 +190,9 @@ cadence for every successful reconcile.
   `vector` extension is actually installed (verify via a query, not just the init script having
   run), capability labels `capability-pgvector`/derived stock labels present on the
   `DatabaseProvider` object, `Reachable: True`.
+- Integration test: setting `spec.embedded.namespace` places the StatefulSet/Service/PVC/admin
+  Secret/NetworkPolicy in that namespace, and claim-side host resolution uses the matching Service
+  DNS name.
 - Integration test: unmapped extension (e.g. `some-nonexistent-ext`) → `Reachable: False,
   reason: ImageUnmapped`, no StatefulSet created.
 - Integration test: admin secret get-or-create is idempotent across two reconciles — assert

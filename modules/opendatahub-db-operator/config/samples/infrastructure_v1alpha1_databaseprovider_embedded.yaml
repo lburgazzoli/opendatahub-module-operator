@@ -1,0 +1,14 @@
+apiVersion: infrastructure.opendatahub.io/v1alpha1
+kind: DatabaseProvider
+metadata:
+  name: sample-embedded
+spec:
+  type: Embedded
+  embedded:
+    namespace: odh-db-runtime
+    deletionPolicy: Retain
+    storage:
+      size: 10Gi
+    extensions:
+    - vector
+    - pg_trgm

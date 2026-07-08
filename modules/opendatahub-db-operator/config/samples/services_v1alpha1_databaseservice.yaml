@@ -1,0 +1,5 @@
+apiVersion: services.platform.opendatahub.io/v1alpha1
+kind: DatabaseService
+metadata:
+  name: default-db-operator
+spec: {}
