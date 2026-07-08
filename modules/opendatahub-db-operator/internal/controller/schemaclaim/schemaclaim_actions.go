@@ -61,8 +61,8 @@ func (m *Controller) provisionAction(ctx context.Context, rr *odhtypes.Reconcili
 	if err != nil {
 		if notFound, ok := errors.AsType[dbcontroller.ErrNotFound](err); ok {
 			rr.Conditions.Mark(ConditionProvisioned, metav1.ConditionFalse,
-				conditions.WithReason("ProviderNotFound"),
-				conditions.WithError(notFound))
+				conditions.WithError(notFound),
+				conditions.WithReason("ProviderNotFound"))
 			return odherrors.NewStopErrorW(err)
 		}
 		return fmt.Errorf("resolving provider: %w", err)

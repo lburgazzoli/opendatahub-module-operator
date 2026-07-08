@@ -23,6 +23,8 @@ should have already covered.
   an `Embedded` provider backing both a `SchemaClaim` and a `DatabaseClaim` simultaneously).
 - `test/e2e/` — e2e suite per `.agents/skills/odh-module-test` conventions.
 - `hack/scripts/cleanup-integration.sh`, `cleanup-e2e.sh`.
+- `go.mod` — add `github.com/lburgazzoli/gomega-matchers`, matching the other module operators in
+  this repo that already use its `k8s` / `condition` / `jq` matchers.
 
 ## Steps
 
@@ -39,13 +41,24 @@ should have already covered.
      `Embedded` extensions, deleted admin secret post-provisioning, deleted claim secret
      post-provisioning (confirm the documented "no recovery, delete and recreate the claim" path
      actually works end-to-end).
-3. `hack/scripts/cleanup-integration.sh` / `cleanup-e2e.sh`: delete all claim CRs and `DatabaseService`
+3. Refactor the integration/e2e test foundation to match repo precedent before the suite grows
+   further:
+   - add `github.com/lburgazzoli/gomega-matchers`,
+   - prefer semantic `k8s` / `condition` / `jq` matcher assertions where they improve signal over
+     manual fetch-and-field-check code,
+   - replace package-level live-object globals with a suite/env struct plus controller-specific
+     harness structs that hold config/identifiers (for example `providerName`, not a shared
+     `*DatabaseProvider`),
+   - make `TestMain` authoritative for shared setup (cluster client, shared Postgres, manager,
+     shared provider) and fail fast on setup failure instead of using `requireSharedSetup()` to
+     skip individual tests.
+4. `hack/scripts/cleanup-integration.sh` / `cleanup-e2e.sh`: delete all claim CRs and `DatabaseService`
    CR first, wait for finalizer-driven DDL cleanup to complete (poll `SchemaClaim`/`DatabaseClaim`
    list until empty), only then delete the module CRDs — mirrors every other module's cleanup
    ordering (`.agents/skills/odh-module-migrate` step 7).
-4. Integration CRDs installed via `make` targets, not from Go test code — tests should fail fast
+5. Integration CRDs installed via `make` targets, not from Go test code — tests should fail fast
    with a clear message if the expected CRDs are missing rather than hanging.
-5. Wire `Makefile` composite targets: `test-integration` (setup + run), `test-e2e` (cleanup +
+6. Wire `Makefile` composite targets: `test-integration` (setup + run), `test-e2e` (cleanup +
    deploy + run), matching every other module's target names exactly.
 
 ## Acceptance criteria
@@ -55,3 +68,6 @@ should have already covered.
 - Cleanup scripts leave the cluster in a state where re-running the same test suite immediately
   after also passes (no leaked CRs, Secrets, StatefulSets, or PVCs).
 - Negative-path matrix from step 2 is fully covered, not just the happy path.
+- The suite foundation no longer relies on `requireSharedSetup()`-style skips or package-level live
+  object globals, and uses `gomega-matchers` consistently where it improves Kubernetes/object
+  assertions.

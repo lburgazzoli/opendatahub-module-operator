@@ -9,6 +9,10 @@ Task-02 (CRD types), Task-03 (scaffolding), Task-05 (for the shared `crypto/rand
 generator only — this task does **not** use `pkg/postgres`'s DDL/connection code at all; see
 "What this task deliberately does not use" below).
 
+This task is also the right time to firm up the integration-test foundation the remaining provider
+work depends on: the suite should follow the same `gomega-matchers`/harness pattern other modules
+in this repo already use, rather than expanding the current package-global/skip-based setup.
+
 ## Reference
 
 `.context/repos/opendatahub-io/model-registry-operator@main` — clone this first if not already
@@ -209,3 +213,10 @@ cadence for every successful reconcile.
   `NetworkPolicy`'s allow list.
 - No `NetworkPolicy` is created for `External` providers (task-04) — assert this directly rather
   than only by omission.
+- As part of landing these tests, the integration suite foundation is refactored to:
+  - add `github.com/lburgazzoli/gomega-matchers` and prefer its `k8s` / `condition` / `jq`
+    matchers where they improve readability,
+  - fail in `TestMain` when shared integration prerequisites cannot be established, instead of
+    keeping nil globals and skipping tests via `requireSharedSetup()`,
+  - use suite/env and controller-specific harness structs that hold reusable config/identifiers
+    (client, namespace, provider name, postgres config), but not live Kubernetes object pointers.

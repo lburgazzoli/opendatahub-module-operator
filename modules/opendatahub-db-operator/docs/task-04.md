@@ -19,6 +19,8 @@ interface task-05 finalizes and be revisited once task-05 lands).
 - `internal/controller/databaseprovider/external.go` — connectivity-check action.
 - `pkg/postgres/connect.go` — thin `pgxpool.New`-based "can we connect" helper, shared with
   the claim reconcilers' connection-pool cache (`docs/plan.md` §8).
+- `test/integration/` foundation files — align this suite with the matcher/harness pattern used by
+  other modules in this repo before adding more provider tests (see `docs/plan.md` §11).
 
 ## Steps
 
@@ -42,6 +44,11 @@ interface task-05 finalizes and be revisited once task-05 lands).
    reconciler on that cadence for every successful reconcile, so a previously-unreachable
    `External` provider is re-checked and can recover to `Reachable: True` without needing an
    unrelated event.
+7. As part of adding/expanding these integration tests, bring `test/integration` in line with repo
+   precedent: add `github.com/lburgazzoli/gomega-matchers`, prefer semantic `k8s`/`condition`/`jq`
+   matchers where they improve readability, remove `requireSharedSetup()`-style per-test skipping,
+   and move shared state into a suite/env struct that stores identifiers/config (for example
+   `providerName`, not a live `*DatabaseProvider` object).
 
 ## Acceptance criteria
 
@@ -59,3 +66,6 @@ interface task-05 finalizes and be revisited once task-05 lands).
   the helper's result into the CR's actual status.
 - No connection pool is left open after the check (verify via testcontainers connection-count
   query, or by asserting the helper's `Close()` is always called, including on error paths).
+- The new/updated integration assertions use `gomega-matchers` where it materially improves signal
+  (for example condition/state checks on live Kubernetes objects), rather than growing more manual
+  fetch-and-field-check boilerplate in `test/integration`.

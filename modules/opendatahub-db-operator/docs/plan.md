@@ -643,6 +643,21 @@ catch-all for coverage any earlier task skipped.
 - **e2e**: per `odh-module-test` conventions, plus negative-path coverage (missing provider,
   unreachable provider, unmapped extension combination, deleted admin secret) — not just the
   happy path, per this repo's convention of covering dependency-gated preconditions explicitly.
+- **Matcher/style baseline for the remaining test work**: follow the same pattern other modules
+  in this repo already use by adding `github.com/lburgazzoli/gomega-matchers` and preferring its
+  semantic `k8s` / `condition` / `jq` matchers where they improve signal over manual fetch +
+  field-by-field assertions. This is especially relevant for live-object status checks, error-path
+  assertions, and JSON/object-shape validation in integration/e2e tests.
+- **Fail-fast integration bootstrap, not skip-on-missing-shared-state**: `TestMain` is the source
+  of truth for shared integration prerequisites (cluster client, shared Postgres, shared provider,
+  manager startup). If that setup cannot be established, the suite should fail immediately rather
+  than leaving package-level globals nil and having individual tests call `requireSharedSetup()` to
+  skip. A missing integration prerequisite is an environment failure, not a successful skip.
+- **Shared test harness objects should hold configuration/identifiers, not live Kubernetes
+  objects**: introduce a suite/env struct for shared test state (e.g. `client`, namespace,
+  provider name, postgres config, loaded module config), then layer controller-specific harness
+  structs on top of it for helper methods. Do not keep mutable live objects such as a shared
+  `*DatabaseProvider` in package globals; fetch fresh objects by name when current state matters.
 - Cleanup scripts (`cleanup-integration.sh`/`cleanup-e2e.sh`) must delete claims and wait for
   finalizer-driven DDL cleanup before deleting the module CRDs, mirroring every other module's
   cleanup ordering.
