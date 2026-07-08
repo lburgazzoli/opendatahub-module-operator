@@ -16,7 +16,7 @@ source of implementation progress:
 | 04 | `DatabaseProvider` — `External` | Connectivity-check action, `Reachable` condition, admin-secret parsing | Pending |
 | 05 | PostgreSQL DDL layer (`pkg/postgres`) | `pgxpool` management, identifier/literal quoting, password generation, schema/role/grant/drop statement builders | Done |
 | 06 | `SchemaClaim` reconciler | Idempotent schema+user provisioning, SSA Secret write, `Retain`/`Delete` finalizer logic, conditions/status | Done |
-| 07 | `DatabaseClaim` reconciler | Dedicated-user provisioning against a pre-existing database, SSA Secret write, always-Retain finalizer, conditions/status | Pending |
+| 07 | `DatabaseClaim` reconciler | Dedicated-user provisioning against a pre-existing database, SSA Secret write, always-Retain finalizer, conditions/status | Done |
 | 08 | `DatabaseProvider` — `Embedded` (focus task) | Image mapping via config keys, templated StatefulSet/PVC/Service/`initdb`-ConfigMap/NetworkPolicy, admin-secret get-or-create, readiness, capability labels, idle cleanup | Pending |
 | 09 | RBAC, packaging, Helm chart | Kubebuilder RBAC markers, `make manifests generate helm`, module descriptor + `component_metadata.yaml`, consumer-facing RBAC examples | Pending |
 | 10 | Tests | Cross-cutting, whole-module integration scenarios not owned by any single task; cleanup scripts | Pending |

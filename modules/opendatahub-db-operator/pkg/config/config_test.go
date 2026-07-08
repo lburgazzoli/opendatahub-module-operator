@@ -142,8 +142,8 @@ func TestLoadFromFS_EmbeddedImages_ConfigMapOverride(t *testing.T) {
 	g := NewWithT(t)
 
 	cfg, err := config.LoadFromFS(fstest.MapFS{
-		config.KeyPostgresImage:           {Data: []byte("registry.redhat.io/rhel9/postgresql-16")},
-		config.KeyGracePeriod: {Data: []byte("15m")},
+		config.KeyPostgresImage: {Data: []byte("registry.redhat.io/rhel9/postgresql-16")},
+		config.KeyGracePeriod:   {Data: []byte("15m")},
 	})
 	g.Expect(err).NotTo(HaveOccurred())
 

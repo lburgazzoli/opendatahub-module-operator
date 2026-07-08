@@ -19,25 +19,26 @@ package databaseclaim
 import (
 	"context"
 
-	infraApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/api/infrastructure/v1alpha1"
-	dbcontroller "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/pkg/controller"
-	"github.com/opendatahub-io/odh-platform-utilities/framework/controller/reconciler"
 	corev1 "k8s.io/api/core/v1"
 	ctrl "sigs.k8s.io/controller-runtime"
 
+	infraApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/api/infrastructure/v1alpha1"
 	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/pkg/config"
+	dbcontroller "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/pkg/controller"
+	"github.com/opendatahub-io/odh-platform-utilities/framework/controller/actions/deploy"
+	"github.com/opendatahub-io/odh-platform-utilities/framework/controller/reconciler"
 )
 
 // Module holds process-lifetime state for this controller.
 // It embeds Options so that task-specific dependencies can be added via
 // With* constructors without changing the Module type. cfg and platformRelease
 // live in Options but are not user-configurable (docs/framework.md).
-type Module struct {
+type Controller struct {
 	Options
 }
 
-func NewModule(cfg *moduleconfig.Config, fns ...Option) *Module {
-	r := &Module{
+func NewController(cfg *moduleconfig.Config, fns ...Option) *Controller {
+	r := &Controller{
 		Options: Options{
 			cfg:             cfg,
 			platformRelease: cfg.PlatformRelease(),
@@ -62,15 +63,26 @@ func NewReconciler(
 	mgr ctrl.Manager,
 	cfg *moduleconfig.Config,
 ) error {
-	m := NewModule(cfg)
+	m := NewController(cfg, Options{
+		Recorder: mgr.GetEventRecorderFor(infraApi.DatabaseClaimResource),
+	})
 
 	_, err := reconciler.ReconcilerFor(mgr, &infraApi.DatabaseClaim{}).
 		Owns(&corev1.Secret{}).
 		WithReconcilerOpts(
 			reconciler.WithRelease(m.platformRelease),
 			reconciler.WithDefaultRequeueAfter(cfg.DatabaseClaim.RetryInterval),
+			reconciler.WithFinalizerName(FinalizerName),
 		).
+		WithFinalizer(m.cleanupAction).
 		WithAction(dbcontroller.UpgradeIfNeeded()).
+		WithAction(m.provisionAction).
+		WithAction(deploy.NewAction(
+			deploy.WithCache(),
+			deploy.WithApplyOrder(),
+			deploy.WithLabel("app.opendatahub.io/db-operator", "true"),
+		)).
+		WithConditions(ConditionProvisioned).
 		Build(ctx)
 
 	return err

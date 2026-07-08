@@ -23,7 +23,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -48,7 +47,7 @@ import (
 //     - Otherwise generate a new password, (re)create the role and Secret.
 //  6. Writes the credentials Secret via rr.Resources → deploy.NewAction (SSA).
 //  7. Updates status.
-func (m *Module) provisionAction(ctx context.Context, rr *odhtypes.ReconciliationRequest) error {
+func (m *Controller) provisionAction(ctx context.Context, rr *odhtypes.ReconciliationRequest) error {
 	obj, ok := rr.Instance.(*infraApi.SchemaClaim)
 	if !ok {
 		return fmt.Errorf("instance is not a SchemaClaim")
@@ -150,7 +149,11 @@ func (m *Module) provisionAction(ctx context.Context, rr *odhtypes.Reconciliatio
 }
 
 // cleanupAction is registered as the WithFinalizer action and runs on deletion.
-func (m *Module) cleanupAction(ctx context.Context, rr *odhtypes.ReconciliationRequest) error {
+// The entire body is wrapped in controller.CleanupWithGrace so that transient
+// errors (provider temporarily down, DDL failure) are retried within
+// cfg.GracePeriod; after the grace window a Warning event is emitted and the
+// finalizer is removed without DDL cleanup.
+func (m *Controller) cleanupAction(ctx context.Context, rr *odhtypes.ReconciliationRequest) error {
 	obj, ok := rr.Instance.(*infraApi.SchemaClaim)
 	if !ok {
 		return fmt.Errorf("instance is not a SchemaClaim")
@@ -159,46 +162,34 @@ func (m *Module) cleanupAction(ctx context.Context, rr *odhtypes.ReconciliationR
 	schema := resolveSchema(obj.Namespace, obj.Name, obj.Spec.Schema)
 	role := roleNameFor(obj)
 
-	provider, err := dbcontroller.Resolve(ctx, rr.Client, obj.Spec.Provider)
-	if err != nil {
-		// Provider not found -- allow finalizer removal since there's nothing to
-		// clean up (documented accepted edge case in task-06 step 8).
-		return nil
-	}
+	return m.withGrace(ctx, obj,
+		func(ctx context.Context) error {
+			provider, err := dbcontroller.Resolve(ctx, rr.Client, obj.Spec.Provider)
+			if err != nil {
+				// Provider permanently gone -- signal CleanupWithGrace to allow removal
+				// by returning nil (not an error). This is not transient.
+				return nil
+			}
 
-	_, pool, err := openPool(ctx, rr.Client, provider)
-	if err != nil {
-		// Connection failure may be transient (provider temporarily down). Retry
-		// until the grace window elapses, then allow finalizer removal to avoid
-		// indefinite blocking on a provider that will never come back.
-		if obj.DeletionTimestamp != nil && time.Since(obj.DeletionTimestamp.Time) > m.cfg.GracePeriod {
-			m.Recorder.Eventf(obj, corev1.EventTypeWarning, "CleanupGracePeriodExpired",
-				"Could not connect to provider %q after %s; allowing finalizer removal without DDL cleanup: %v",
-				provider.Name,
-				m.cfg.GracePeriod,
-				err,
-			)
+			_, pool, err := openPool(ctx, rr.Client, provider)
+			if err != nil {
+				return fmt.Errorf("opening pool for provider %q: %w", provider.Name, err)
+			}
+			defer pool.Close()
 
+			switch obj.Spec.DeletionPolicy {
+			case infraApi.DeletionPolicyDelete:
+				if err := postgres.DropSchemaCascade(ctx, pool, schema); err != nil {
+					return fmt.Errorf("dropping schema %q: %w", schema, err)
+				}
+				if err := postgres.DropRole(ctx, pool, role); err != nil {
+					return fmt.Errorf("dropping role %q: %w", role, err)
+				}
+			default: // Retain
+				if err := postgres.DropRole(ctx, pool, role); err != nil {
+					return fmt.Errorf("dropping role %q: %w", role, err)
+				}
+			}
 			return nil
-		}
-
-		return fmt.Errorf("connecting to provider for cleanup (will retry within grace period): %w", err)
-	}
-	defer pool.Close()
-
-	switch obj.Spec.DeletionPolicy {
-	case infraApi.DeletionPolicyDelete:
-		if err := postgres.DropSchemaCascade(ctx, pool, schema); err != nil {
-			return fmt.Errorf("dropping schema %q: %w", schema, err)
-		}
-		if err := postgres.DropRole(ctx, pool, role); err != nil {
-			return fmt.Errorf("dropping role %q: %w", role, err)
-		}
-	default: // Retain
-		if err := postgres.DropRole(ctx, pool, role); err != nil {
-			return fmt.Errorf("dropping role %q: %w", role, err)
-		}
-	}
-
-	return nil
+		})
 }

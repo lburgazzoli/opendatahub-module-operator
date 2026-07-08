@@ -33,12 +33,12 @@ import (
 // It embeds Options so that task-specific dependencies can be added via
 // With* constructors without changing the Module type. cfg and platformRelease
 // live in Options but are not user-configurable (docs/framework.md).
-type Module struct {
+type Controller struct {
 	Options
 }
 
-func NewModule(cfg *moduleconfig.Config, fns ...Option) *Module {
-	r := &Module{
+func NewController(cfg *moduleconfig.Config, fns ...Option) *Controller {
+	r := &Controller{
 		Options: Options{
 			cfg:             cfg,
 			platformRelease: cfg.PlatformRelease(),
@@ -63,8 +63,8 @@ func NewReconciler(
 	mgr ctrl.Manager,
 	cfg *moduleconfig.Config,
 ) error {
-	m := NewModule(cfg, Options{
-		Recorder: mgr.GetEventRecorderFor(infraApi.SchemaClaimResource),
+	m := NewController(cfg, Options{
+		Recorder: mgr.GetEventRecorderFor(infraApi.DatabaseClaimResource),
 	})
 
 	_, err := reconciler.ReconcilerFor(mgr, &infraApi.SchemaClaim{}).
