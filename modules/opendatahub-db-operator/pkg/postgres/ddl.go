@@ -33,10 +33,12 @@ const (
 	sqlDropRole                = "DROP ROLE IF EXISTS %s"
 	sqlGrantUsageOnSchema      = "GRANT USAGE ON SCHEMA %s TO %s"
 
-	sqlGrantSelectOnTables       = "GRANT SELECT ON ALL TABLES IN SCHEMA %s TO %s"
-	sqlDefaultPrivGrantSelect    = "ALTER DEFAULT PRIVILEGES IN SCHEMA %s GRANT SELECT ON TABLES TO %s"
-	sqlGrantDMLOnTables          = "GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA %s TO %s"
-	sqlDefaultPrivGrantDML       = "ALTER DEFAULT PRIVILEGES IN SCHEMA %s GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO %s"
+	sqlGrantSelectOnTables    = "GRANT SELECT ON ALL TABLES IN SCHEMA %s TO %s"
+	sqlDefaultPrivGrantSelect = "ALTER DEFAULT PRIVILEGES IN SCHEMA %s GRANT SELECT ON TABLES TO %s"
+	sqlGrantDMLOnTables       = "GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA %s TO %s"
+	sqlDefaultPrivGrantDML    = "" +
+		"ALTER DEFAULT PRIVILEGES IN SCHEMA %s " +
+		"GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO %s"
 	sqlDefaultPrivRevokeOnTables = "ALTER DEFAULT PRIVILEGES IN SCHEMA %s REVOKE ALL ON TABLES FROM %s"
 	sqlRevokeAllOnTables         = "REVOKE ALL ON ALL TABLES IN SCHEMA %s FROM %s"
 	sqlRevokeAllOnSchema         = "REVOKE ALL ON SCHEMA %s FROM %s"

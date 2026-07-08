@@ -18,7 +18,7 @@ limitations under the License.
 package databaseclaim
 
 import (
-	"k8s.io/client-go/tools/record"
+	"k8s.io/client-go/tools/events"
 
 	fwapi "github.com/opendatahub-io/odh-platform-utilities/framework/api"
 
@@ -39,7 +39,7 @@ type Option interface {
 type Options struct {
 	cfg             *moduleconfig.Config
 	platformRelease fwapi.Release
-	Recorder        record.EventRecorder
+	Recorder        events.EventRecorder
 }
 
 func (o Options) applyOption(target *Options) {
@@ -53,7 +53,3 @@ func (o Options) applyOption(target *Options) {
 		target.Recorder = o.Recorder
 	}
 }
-
-type optionFunc func(*Options)
-
-func (f optionFunc) applyOption(o *Options) { f(o) }

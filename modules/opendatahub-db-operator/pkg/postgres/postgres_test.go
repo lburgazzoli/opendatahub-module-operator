@@ -64,7 +64,12 @@ func TestParseSecret_MissingKeys(t *testing.T) {
 		postgres.SecretKeyDatabase: []byte("postgres"),
 	}
 
-	for _, omit := range []string{postgres.SecretKeyHost, postgres.SecretKeyUser, postgres.SecretKeyPassword, postgres.SecretKeyDatabase} {
+	for _, omit := range []string{
+		postgres.SecretKeyHost,
+		postgres.SecretKeyUser,
+		postgres.SecretKeyPassword,
+		postgres.SecretKeyDatabase,
+	} {
 		t.Run("missing-"+omit, func(t *testing.T) {
 			g := NewWithT(t)
 			data := make(map[string][]byte)

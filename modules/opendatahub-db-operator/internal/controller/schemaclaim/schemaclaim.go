@@ -64,7 +64,7 @@ func NewReconciler(
 	cfg *moduleconfig.Config,
 ) error {
 	m := NewController(cfg, Options{
-		Recorder: mgr.GetEventRecorderFor(infraApi.DatabaseClaimResource),
+		Recorder: mgr.GetEventRecorder(infraApi.SchemaClaimResource),
 	})
 
 	_, err := reconciler.ReconcilerFor(mgr, &infraApi.SchemaClaim{}).

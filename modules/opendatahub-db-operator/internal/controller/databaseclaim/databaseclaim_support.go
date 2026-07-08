@@ -139,9 +139,16 @@ func (c *Controller) withGrace(ctx context.Context, obj client.Object, fn func(c
 	case err == nil:
 		return nil
 	case obj.GetDeletionTimestamp() != nil && time.Since(obj.GetDeletionTimestamp().Time) > c.cfg.GracePeriod:
-		c.Recorder.Eventf(obj, corev1.EventTypeWarning, "CleanupGracePeriodExpired",
+		c.Recorder.Eventf(
+			obj,
+			nil,
+			corev1.EventTypeWarning,
+			"CleanupGracePeriodExpired",
+			"FinalizerCleanup",
 			"Cleanup failed after %s grace period; allowing finalizer removal: %v",
-			c.cfg.GracePeriod, err)
+			c.cfg.GracePeriod,
+			err,
+		)
 		return nil
 	default:
 		return fmt.Errorf("cleanup failed (will retry within grace period): %w", err)

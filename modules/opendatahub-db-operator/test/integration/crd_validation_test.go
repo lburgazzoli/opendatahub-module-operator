@@ -18,6 +18,7 @@ package integration
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	. "github.com/onsi/gomega"
@@ -56,10 +57,29 @@ func TestCRDValidation(t *testing.T) {
 			name string
 			spec infraApi.DatabaseProviderSpec
 		}{
-			{"both-set", infraApi.DatabaseProviderSpec{Type: infraApi.ProviderTypeExternal, External: &externalSpec, Embedded: &embeddedSpec}},
+			{
+				"both-set",
+				infraApi.DatabaseProviderSpec{
+					Type:     infraApi.ProviderTypeExternal,
+					External: &externalSpec,
+					Embedded: &embeddedSpec,
+				},
+			},
 			{"neither-set", infraApi.DatabaseProviderSpec{Type: infraApi.ProviderTypeExternal}},
-			{"type-mismatch-external", infraApi.DatabaseProviderSpec{Type: infraApi.ProviderTypeExternal, Embedded: &embeddedSpec}},
-			{"type-mismatch-embedded", infraApi.DatabaseProviderSpec{Type: infraApi.ProviderTypeEmbedded, External: &externalSpec}},
+			{
+				"type-mismatch-external",
+				infraApi.DatabaseProviderSpec{
+					Type:     infraApi.ProviderTypeExternal,
+					Embedded: &embeddedSpec,
+				},
+			},
+			{
+				"type-mismatch-embedded",
+				infraApi.DatabaseProviderSpec{
+					Type:     infraApi.ProviderTypeEmbedded,
+					External: &externalSpec,
+				},
+			},
 		}
 		for _, tc := range cases {
 			t.Run("rejects-"+tc.name, func(t *testing.T) {
@@ -68,7 +88,7 @@ func TestCRDValidation(t *testing.T) {
 					ObjectMeta: metav1.ObjectMeta{Name: "dbp-" + tc.name},
 					Spec:       tc.spec,
 				}
-				g.Expect(cli.Create(ctx, obj)).NotTo(Succeed())
+				g.Expect(cli.Create(ctx, obj)).To(HaveOccurred())
 			})
 		}
 
@@ -100,7 +120,7 @@ func TestCRDValidation(t *testing.T) {
 				ObjectMeta: metav1.ObjectMeta{Name: "dbp-bad-extension"},
 				Spec:       infraApi.DatabaseProviderSpec{Type: infraApi.ProviderTypeEmbedded, Embedded: &bad},
 			}
-			g.Expect(cli.Create(ctx, obj)).NotTo(Succeed())
+			g.Expect(cli.Create(ctx, obj)).To(HaveOccurred())
 		})
 	})
 
@@ -113,7 +133,7 @@ func TestCRDValidation(t *testing.T) {
 				ObjectMeta: metav1.ObjectMeta{Name: "sc-both", Namespace: ns},
 				Spec:       infraApi.SchemaClaimSpec{Provider: infraApi.ProviderRef{Name: "p", Selector: selector}},
 			}
-			g.Expect(cli.Create(ctx, obj)).NotTo(Succeed())
+			g.Expect(cli.Create(ctx, obj)).To(HaveOccurred())
 		})
 
 		t.Run("rejects-provider-neither-set", func(t *testing.T) {
@@ -122,7 +142,7 @@ func TestCRDValidation(t *testing.T) {
 				ObjectMeta: metav1.ObjectMeta{Name: "sc-neither", Namespace: ns},
 				Spec:       infraApi.SchemaClaimSpec{},
 			}
-			g.Expect(cli.Create(ctx, obj)).NotTo(Succeed())
+			g.Expect(cli.Create(ctx, obj)).To(HaveOccurred())
 		})
 
 		t.Run("rejects-invalid-access", func(t *testing.T) {
@@ -134,7 +154,7 @@ func TestCRDValidation(t *testing.T) {
 					Access:   "NotAValidAccessMode",
 				},
 			}
-			g.Expect(cli.Create(ctx, obj)).NotTo(Succeed())
+			g.Expect(cli.Create(ctx, obj)).To(HaveOccurred())
 		})
 
 		t.Run("rejects-invalid-deletion-policy", func(t *testing.T) {
@@ -146,7 +166,7 @@ func TestCRDValidation(t *testing.T) {
 					DeletionPolicy: "NotAValidPolicy",
 				},
 			}
-			g.Expect(cli.Create(ctx, obj)).NotTo(Succeed())
+			g.Expect(cli.Create(ctx, obj)).To(HaveOccurred())
 		})
 
 		t.Run("rejects-schema-pattern-violation", func(t *testing.T) {
@@ -158,20 +178,20 @@ func TestCRDValidation(t *testing.T) {
 					Schema:   "1-not-a-valid-identifier",
 				},
 			}
-			g.Expect(cli.Create(ctx, obj)).NotTo(Succeed())
+			g.Expect(cli.Create(ctx, obj)).To(HaveOccurred())
 		})
 
 		t.Run("rejects-schema-too-long", func(t *testing.T) {
 			g := NewWithT(t)
-			tooLong := ""
+			var tooLong strings.Builder
 			for range 64 {
-				tooLong += "a"
+				tooLong.WriteString("a")
 			}
 			obj := &infraApi.SchemaClaim{
 				ObjectMeta: metav1.ObjectMeta{Name: "sc-bad-schema-length", Namespace: ns},
 				Spec: infraApi.SchemaClaimSpec{
 					Provider: infraApi.ProviderRef{Name: "p"},
-					Schema:   tooLong,
+					Schema:   tooLong.String(),
 				},
 			}
 			g.Expect(cli.Create(ctx, obj)).NotTo(Succeed())
@@ -190,7 +210,7 @@ func TestCRDValidation(t *testing.T) {
 			t.Cleanup(func() { _ = cli.Delete(ctx, obj) })
 
 			obj.Spec.Schema = "a_different_schema"
-			g.Expect(cli.Update(ctx, obj)).NotTo(Succeed())
+			g.Expect(cli.Update(ctx, obj)).To(HaveOccurred())
 		})
 	})
 
@@ -206,7 +226,7 @@ func TestCRDValidation(t *testing.T) {
 					Database: "somedb",
 				},
 			}
-			g.Expect(cli.Create(ctx, obj)).NotTo(Succeed())
+			g.Expect(cli.Create(ctx, obj)).To(HaveOccurred())
 		})
 
 		t.Run("rejects-provider-neither-set", func(t *testing.T) {
@@ -215,7 +235,7 @@ func TestCRDValidation(t *testing.T) {
 				ObjectMeta: metav1.ObjectMeta{Name: "dc-neither", Namespace: ns},
 				Spec:       infraApi.DatabaseClaimSpec{Database: "somedb"},
 			}
-			g.Expect(cli.Create(ctx, obj)).NotTo(Succeed())
+			g.Expect(cli.Create(ctx, obj)).To(HaveOccurred())
 		})
 
 		t.Run("rejects-missing-database", func(t *testing.T) {
@@ -224,7 +244,7 @@ func TestCRDValidation(t *testing.T) {
 				ObjectMeta: metav1.ObjectMeta{Name: "dc-missing-db", Namespace: ns},
 				Spec:       infraApi.DatabaseClaimSpec{Provider: infraApi.ProviderRef{Name: "p"}},
 			}
-			g.Expect(cli.Create(ctx, obj)).NotTo(Succeed())
+			g.Expect(cli.Create(ctx, obj)).To(HaveOccurred())
 		})
 
 		t.Run("accepts-valid-and-database-is-immutable", func(t *testing.T) {
@@ -240,7 +260,7 @@ func TestCRDValidation(t *testing.T) {
 			t.Cleanup(func() { _ = cli.Delete(ctx, obj) })
 
 			obj.Spec.Database = "a_different_database"
-			g.Expect(cli.Update(ctx, obj)).NotTo(Succeed())
+			g.Expect(cli.Update(ctx, obj)).To(HaveOccurred())
 		})
 	})
 }

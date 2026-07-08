@@ -51,7 +51,3 @@ func (o Options) applyOption(target *Options) {
 	}
 	// Add field-by-field assignments here as Options grows with task-specific fields.
 }
-
-type optionFunc func(*Options)
-
-func (f optionFunc) applyOption(o *Options) { f(o) }

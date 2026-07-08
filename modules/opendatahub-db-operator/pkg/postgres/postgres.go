@@ -53,19 +53,21 @@ type Config struct {
 	Schema   string `mapstructure:"pg.schema"`
 }
 
+type secretField struct {
+	value string
+	key   string
+}
+
 // Validate checks that all required Config fields are set and the port is valid.
 func (c Config) Validate() error {
-	for _, pair := range [...]struct {
-		val string
-		key string
-	}{
+	for _, field := range [...]secretField{
 		{c.Host, SecretKeyHost},
 		{c.User, SecretKeyUser},
 		{c.Password, SecretKeyPassword},
 		{c.DBName, SecretKeyDatabase},
 	} {
-		if pair.val == "" {
-			return fmt.Errorf("missing or empty key %q in Secret", pair.key)
+		if field.value == "" {
+			return fmt.Errorf("missing or empty key %q in Secret", field.key)
 		}
 	}
 	if c.Port <= 0 || c.Port > 65535 {
@@ -113,11 +115,11 @@ func ConfigFromDSN(dsn string) (Config, error) {
 		return Config{}, fmt.Errorf("parsing DSN: %w", err)
 	}
 	return Config{
-		Host:     pcfg.ConnConfig.Config.Host,
-		Port:     int(pcfg.ConnConfig.Config.Port),
-		User:     pcfg.ConnConfig.Config.User,
-		Password: pcfg.ConnConfig.Config.Password,
-		DBName:   pcfg.ConnConfig.Config.Database,
+		Host:     pcfg.ConnConfig.Host,
+		Port:     int(pcfg.ConnConfig.Port),
+		User:     pcfg.ConnConfig.User,
+		Password: pcfg.ConnConfig.Password,
+		DBName:   pcfg.ConnConfig.Database,
 	}, nil
 }
 

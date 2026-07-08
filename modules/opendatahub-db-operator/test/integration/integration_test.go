@@ -21,11 +21,10 @@ package integration
 import (
 	"context"
 	"fmt"
-	"net/http"
 	"os"
 	"testing"
-	"time"
 
+	k8sm "github.com/lburgazzoli/gomega-matchers/pkg/matchers/k8s"
 	. "github.com/onsi/gomega"
 	tcpostgres "github.com/testcontainers/testcontainers-go/modules/postgres"
 	corev1 "k8s.io/api/core/v1"
@@ -44,61 +43,69 @@ import (
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/test/support"
 )
 
-// Package-level shared state initialised once in TestMain.
-var (
-	sharedClient   client.Client
-	sharedProvider *infraApi.DatabaseProvider // External provider pointing at the shared postgres
-	sharedPgCfg    postgres.Config            // direct connection info for assertion helpers
-	sharedCfg      *moduleconfig.Config
-)
+const sharedProviderName = "shared-external"
+
+type integrationEnv struct {
+	Client       client.Client
+	Namespace    string
+	ProviderName string
+	PGCfg        postgres.Config
+	Config       *moduleconfig.Config
+}
 
 func TestMain(m *testing.M) {
-	ctx := context.Background()
-	g := NewGomegaWithT(&testing.T{})
+	os.Exit(runTestMain(m))
+}
 
+func runTestMain(m *testing.M) int {
 	gomegaCfg, err := support.LoadGomegaConfig()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to load test config: %v\n", err)
-		os.Exit(1)
+		return 1
 	}
 	SetDefaultEventuallyTimeout(gomegaCfg.EventuallyTimeout)
 	SetDefaultEventuallyPollingInterval(gomegaCfg.EventuallyPollingInterval)
 	SetDefaultConsistentlyPollingInterval(gomegaCfg.ConsistentlyPollingInterval)
 
+	return m.Run()
+}
+
+func newIntegrationEnv(t *testing.T) *integrationEnv {
+	t.Helper()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+
 	ctrl.SetLogger(zap.New(zap.UseDevMode(true)))
+
+	g := NewWithT(t)
 
 	restCfg, err := config.GetConfig()
 	g.Expect(err).NotTo(HaveOccurred())
 
-	sharedCfg, err = moduleconfig.LoadFromFS(nil)
+	moduleCfg, err := moduleconfig.LoadFromFS(nil)
 	g.Expect(err).NotTo(HaveOccurred())
-	sharedCfg.Controller.LeaderElection.Enabled = false
-	sharedCfg.Controller.Metrics.BindAddress = "0"
-	sharedCfg.Controller.Health.BindAddress = "0"
-	sharedCfg.Controller.Pprof.BindAddress = "0"
-	sharedCfg.ApplicationsNamespace = support.IntegrationTestNamespace()
+	moduleCfg.Controller.LeaderElection.Enabled = false
+	moduleCfg.Controller.Metrics.BindAddress = "0"
+	moduleCfg.Controller.Health.BindAddress = "0"
+	moduleCfg.Controller.Pprof.BindAddress = "0"
+	moduleCfg.ApplicationsNamespace = support.IntegrationTestNamespace()
 
-	// ------------------------------------------------------------------
-	// Shared postgres (testcontainers). Skipped gracefully if Docker is
-	// unavailable -- only the claim tests that depend on it will fail.
-	// ------------------------------------------------------------------
-	pgCfg, cleanupPg := startSharedPostgres(ctx)
-	defer cleanupPg()
+	pgCfg, cleanupPg, err := startSharedPostgres(ctx)
+	g.Expect(err).NotTo(HaveOccurred())
+	t.Cleanup(cleanupPg)
 
-	// ------------------------------------------------------------------
-	// Shared claim manager -- registers only SchemaClaim + DatabaseClaim
-	// reconcilers, not the full module manager. SkipNameValidation so
-	// sequential tests can reuse the same controller name across restarts.
-	// ------------------------------------------------------------------
-	sharedClient, sharedProvider = setupClaimsManager(ctx, restCfg, sharedCfg, pgCfg)
-	sharedPgCfg = pgCfg
-
-	os.Exit(m.Run())
+	env, err := setupIntegrationEnv(ctx, restCfg, moduleCfg, pgCfg)
+	g.Expect(err).NotTo(HaveOccurred())
+	return env
 }
 
 // startSharedPostgres spins up a postgres:16 container shared across all claim
-// tests. Returns the Config and a cleanup func.
-func startSharedPostgres(ctx context.Context) (postgres.Config, func()) {
+// tests. Returns the Config and a cleanup func. Docker/testcontainers are a
+// required prerequisite for this suite: if the shared database cannot be
+// established, TestMain fails fast rather than leaving nil globals for
+// individual tests to skip around.
+func startSharedPostgres(ctx context.Context) (postgres.Config, func(), error) {
 	ctr, err := tcpostgres.Run(ctx, "postgres:16",
 		tcpostgres.WithDatabase("testdb"),
 		tcpostgres.WithUsername("admin"),
@@ -106,41 +113,34 @@ func startSharedPostgres(ctx context.Context) (postgres.Config, func()) {
 		tcpostgres.BasicWaitStrategies(),
 	)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "WARNING: cannot start Postgres container (Docker not available?): %v\n", err)
-		return postgres.Config{}, func() {}
+		return postgres.Config{}, func() {}, fmt.Errorf("starting shared postgres container: %w", err)
 	}
 	connStr, err := ctr.ConnectionString(ctx, "sslmode=disable")
 	if err != nil {
 		_ = ctr.Terminate(ctx)
-		fmt.Fprintf(os.Stderr, "getting connection string: %v\n", err)
-		return postgres.Config{}, func() {}
+		return postgres.Config{}, func() {}, fmt.Errorf("getting shared postgres connection string: %w", err)
 	}
 	cfg, err := postgres.ConfigFromDSN(connStr)
 	if err != nil {
 		_ = ctr.Terminate(ctx)
-		fmt.Fprintf(os.Stderr, "parsing DSN: %v\n", err)
-		return postgres.Config{}, func() {}
+		return postgres.Config{}, func() {}, fmt.Errorf("parsing shared postgres DSN: %w", err)
 	}
-	return cfg, func() { _ = ctr.Terminate(ctx) }
+	return cfg, func() { _ = ctr.Terminate(ctx) }, nil
 }
 
-// setupClaimsManager starts the full module manager (all reconcilers), creates
-// the shared External DatabaseProvider pointing at the testcontainers postgres,
-// and returns the client and provider for use by claim tests.
-func setupClaimsManager(
+// setupIntegrationEnv starts the full module manager, creates the shared
+// External DatabaseProvider pointing at the testcontainers postgres, and
+// returns the immutable-ish suite environment used by individual test groups.
+func setupIntegrationEnv(
 	ctx context.Context,
 	restCfg *rest.Config,
 	cfg *moduleconfig.Config,
 	pgCfg postgres.Config,
-) (client.Client, *infraApi.DatabaseProvider) {
-	if pgCfg.Host == "" {
-		return nil, nil // docker unavailable -- claim tests will skip
-	}
-
-	mgr, err := modulemanager.New(ctx, restCfg, cfg)
+	opts ...modulemanager.Option,
+) (*integrationEnv, error) {
+	mgr, err := modulemanager.New(ctx, restCfg, cfg, opts...)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "creating manager: %v\n", err)
-		return nil, nil
+		return nil, fmt.Errorf("creating manager: %w", err)
 	}
 
 	go func() {
@@ -150,15 +150,13 @@ func setupClaimsManager(
 	}()
 
 	if !mgr.GetCache().WaitForCacheSync(ctx) {
-		fmt.Fprintf(os.Stderr, "cache failed to sync\n")
-		return nil, nil
+		return nil, fmt.Errorf("cache failed to sync")
 	}
 
 	cli := mgr.GetClient()
 	ns := support.IntegrationTestNamespace()
 	if err := support.EnsureNamespace(ctx, cli, ns); err != nil {
-		fmt.Fprintf(os.Stderr, "creating namespace: %v\n", err)
-		return cli, nil
+		return nil, fmt.Errorf("creating namespace %q: %w", ns, err)
 	}
 
 	// Create the shared admin Secret and External DatabaseProvider.
@@ -174,13 +172,12 @@ func setupClaimsManager(
 	}
 	_ = cli.Delete(ctx, adminSecret) // delete stale from previous run
 	if err := cli.Create(ctx, adminSecret); err != nil {
-		fmt.Fprintf(os.Stderr, "creating admin secret: %v\n", err)
-		return cli, nil
+		return nil, fmt.Errorf("creating shared admin secret: %w", err)
 	}
 
 	provider := &infraApi.DatabaseProvider{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: "shared-external",
+			Name: sharedProviderName,
 			Annotations: map[string]string{
 				"db.infrastructure.opendatahub.io/operator-namespace": ns,
 			},
@@ -197,23 +194,28 @@ func setupClaimsManager(
 	}
 	_ = cli.Delete(ctx, provider)
 	if err := cli.Create(ctx, provider); err != nil {
-		fmt.Fprintf(os.Stderr, "creating shared provider: %v\n", err)
-		return cli, nil
+		return nil, fmt.Errorf("creating shared provider: %w", err)
 	}
 
-	return cli, provider
+	return &integrationEnv{
+		Client:       cli,
+		Namespace:    ns,
+		ProviderName: provider.Name,
+		PGCfg:        pgCfg,
+		Config:       cfg,
+	}, nil
 }
 
 // deleteAndWait deletes obj (stripping its finalizers first if needed) and
 // waits until it is fully gone from the API server. Safe to call when obj
 // does not yet exist. Resets ResourceVersion/UID on obj so it can be
 // re-created immediately after this call.
-func deleteAndWait(ctx context.Context, cli client.Client, obj client.Object) {
-	g := NewWithT(&testing.T{})
+func (env *integrationEnv) deleteAndWait(ctx context.Context, t *testing.T, obj client.Object) {
+	g := NewWithT(t)
 	key := client.ObjectKeyFromObject(obj)
 
 	// Read current state so we have the right resourceVersion / finalizers.
-	if err := cli.Get(ctx, key, obj); err != nil {
+	if err := env.Client.Get(ctx, key, obj); err != nil {
 		if apierrors.IsNotFound(err) {
 			return
 		}
@@ -224,62 +226,16 @@ func deleteAndWait(ctx context.Context, cli client.Client, obj client.Object) {
 	if len(obj.GetFinalizers()) > 0 {
 		patch := client.MergeFrom(obj.DeepCopyObject().(client.Object))
 		obj.SetFinalizers(nil)
-		_ = cli.Patch(ctx, obj, patch)
+		_ = env.Client.Patch(ctx, obj, patch)
 	}
-	_ = cli.Delete(ctx, obj)
+	_ = env.Client.Delete(ctx, obj)
 
 	// Wait for the object to disappear (up to EventuallyTimeout).
-	g.Eventually(func() bool {
-		err := cli.Get(ctx, key, obj)
-		return apierrors.IsNotFound(err)
-	}).Should(BeTrue(), "waiting for %s to be deleted", key)
+	g.Eventually(ctx, k8sm.NotFound(env.Client, obj)).Should(BeTrue(), "waiting for %s to be deleted", key)
 
 	// Clear server-assigned fields so the caller can re-create without conflict.
 	obj.SetResourceVersion("")
 	obj.SetUID("")
 	obj.SetDeletionTimestamp(nil)
 	obj.SetFinalizers(nil)
-}
-
-// ---- legacy smoke test (task-01) ----------------------------------------
-
-// TestManagerStartup verifies the full manager reaches a healthy state.
-// Skipped when the shared manager (started in TestMain for claim tests) is
-// already running -- starting a second manager would conflict on controller names.
-func TestManagerStartup(t *testing.T) {
-	if sharedClient != nil {
-		t.Skip("shared manager already running (skipping duplicate startup test)")
-	}
-	g := NewWithT(t)
-
-	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
-	defer cancel()
-
-	restCfg, err := config.GetConfig()
-	g.Expect(err).NotTo(HaveOccurred())
-
-	moduleCfg, err := moduleconfig.LoadFromFS(nil)
-	g.Expect(err).NotTo(HaveOccurred())
-	moduleCfg.ApplicationsNamespace = support.IntegrationTestNamespace()
-	moduleCfg.Controller.Metrics.BindAddress = "0"
-	moduleCfg.Controller.Health.BindAddress = "127.0.0.1:18081"
-	moduleCfg.Controller.LeaderElection.Enabled = false
-	moduleCfg.Controller.Pprof.BindAddress = "0"
-
-	mgr, err := modulemanager.New(ctx, restCfg, moduleCfg)
-	g.Expect(err).NotTo(HaveOccurred())
-
-	mgrDone := make(chan error, 1)
-	go func() { mgrDone <- mgr.Start(ctx) }()
-	g.Expect(mgr.GetCache().WaitForCacheSync(ctx)).To(BeTrue())
-
-	g.Eventually(func() (*http.Response, error) {
-		return http.Get("http://127.0.0.1:18081/healthz")
-	}).Should(HaveHTTPStatus(http.StatusOK))
-	g.Eventually(func() (*http.Response, error) {
-		return http.Get("http://127.0.0.1:18081/readyz")
-	}).Should(HaveHTTPStatus(http.StatusOK))
-
-	cancel()
-	g.Eventually(mgrDone).Should(Receive())
 }
