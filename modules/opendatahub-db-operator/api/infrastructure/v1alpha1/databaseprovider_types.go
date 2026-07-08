@@ -82,6 +82,11 @@ type StorageSpec struct {
 // image reopens supply-chain and support-surface problems; the image is
 // resolved from Extensions via pkg/config compiled defaults (task-08).
 type EmbeddedProviderSpec struct {
+	// Namespace overrides where the embedded PostgreSQL resources are created.
+	// When unset, the operator namespace is used.
+	// +optional
+	Namespace string `json:"namespace,omitempty"`
+
 	// DeletionPolicy governs the instance's lifecycle when zero claims
 	// reference this provider (docs/plan.md §7.7) -- distinct from a claim's
 	// own per-schema/database deletionPolicy.

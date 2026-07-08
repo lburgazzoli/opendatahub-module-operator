@@ -62,46 +62,33 @@ func TestDatabaseProviderEmbedded(t *testing.T) {
 
 func (st *embeddedDatabaseProviderSuite) Run(t *testing.T) {
 	t.Run("creates embedded postgres resources", st.testProvisioning)
+	t.Run("creates embedded postgres resources in configured namespace", st.testProvisioningCustomNamespace)
 	t.Run("rejects unmapped extensions", st.testImageUnmapped)
 	t.Run("rejects extension changes after provisioning", st.testExtensionChangeRequiresRecreate)
 }
 
 func (st *embeddedDatabaseProviderSuite) testProvisioning(t *testing.T) {
-	g := NewWithT(t)
 	provider := st.createEmbeddedProvider(t, "embedded-"+xid.New().String(), []string{"vector", "pg_trgm"})
 
-	st.waitReachable(t, provider)
+	st.expectProvisionedInNamespace(t, provider, st.env.Config.OperatorNamespace)
+}
 
-	statefulSet := &appsv1.StatefulSet{
-		ObjectMeta: metav1.ObjectMeta{
-			Namespace: st.env.Config.OperatorNamespace,
-			Name:      dbcontroller.EmbeddedServiceName(provider.Name),
-		},
-	}
-	g.Eventually(t.Context(), k8sm.Lookup(st.env.Client, statefulSet)).To(Succeed())
-	g.Expect(statefulSet.Status.ReadyReplicas).To(Equal(int32(1)))
+func (st *embeddedDatabaseProviderSuite) testProvisioningCustomNamespace(t *testing.T) {
+	namespace := "embedded-" + xid.New().String()
+	ns := &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: namespace}}
+	NewWithT(t).Expect(st.env.Client.Create(t.Context(), ns)).To(Succeed())
+	t.Cleanup(func() {
+		st.env.deleteAndWait(context.Background(), t, ns)
+	})
 
-	adminSecret := &corev1.Secret{
-		ObjectMeta: metav1.ObjectMeta{
-			Namespace: st.env.Config.OperatorNamespace,
-			Name:      dbcontroller.EmbeddedAdminSecretName(provider.Name),
-		},
-	}
-	g.Eventually(t.Context(), k8sm.Lookup(st.env.Client, adminSecret)).To(Succeed())
-	g.Expect(adminSecret.Data).To(HaveKey(dbcontroller.EmbeddedAdminSecretPasswordKey))
+	provider := st.createEmbeddedProvider(
+		t,
+		"embedded-"+xid.New().String(),
+		[]string{"vector", "pg_trgm"},
+		withEmbeddedNamespace(namespace),
+	)
 
-	networkPolicy := &networkingv1.NetworkPolicy{
-		ObjectMeta: metav1.ObjectMeta{
-			Namespace: st.env.Config.OperatorNamespace,
-			Name:      dbcontroller.EmbeddedServiceName(provider.Name),
-		},
-	}
-	g.Eventually(t.Context(), k8sm.Lookup(st.env.Client, networkPolicy)).To(Succeed())
-
-	current := &infraApi.DatabaseProvider{ObjectMeta: metav1.ObjectMeta{Name: provider.Name}}
-	g.Eventually(t.Context(), k8sm.Lookup(st.env.Client, current)).To(Succeed())
-	g.Expect(current.Labels).To(HaveKeyWithValue("db.infrastructure.opendatahub.io/capability-pgvector", "true"))
-	g.Expect(current.Labels).To(HaveKeyWithValue("db.infrastructure.opendatahub.io/capability-pg_trgm", "true"))
+	st.expectProvisionedInNamespace(t, provider, namespace)
 }
 
 func (st *embeddedDatabaseProviderSuite) testImageUnmapped(t *testing.T) {
@@ -118,7 +105,7 @@ func (st *embeddedDatabaseProviderSuite) testImageUnmapped(t *testing.T) {
 
 	statefulSet := &appsv1.StatefulSet{
 		ObjectMeta: metav1.ObjectMeta{
-			Namespace: st.env.Config.OperatorNamespace,
+			Namespace: dbcontroller.EmbeddedNamespace(provider, st.env.Config),
 			Name:      dbcontroller.EmbeddedServiceName(provider.Name),
 		},
 	}
@@ -148,6 +135,7 @@ func (st *embeddedDatabaseProviderSuite) createEmbeddedProvider(
 	t *testing.T,
 	name string,
 	extensions []string,
+	opts ...func(*infraApi.DatabaseProvider),
 ) *infraApi.DatabaseProvider {
 	t.Helper()
 
@@ -164,6 +152,9 @@ func (st *embeddedDatabaseProviderSuite) createEmbeddedProvider(
 			},
 		},
 	}
+	for _, opt := range opts {
+		opt(provider)
+	}
 
 	NewWithT(t).Expect(st.env.Client.Create(t.Context(), provider)).To(Succeed())
 	t.Cleanup(func() {
@@ -171,6 +162,54 @@ func (st *embeddedDatabaseProviderSuite) createEmbeddedProvider(
 	})
 
 	return provider
+}
+
+func (st *embeddedDatabaseProviderSuite) expectProvisionedInNamespace(
+	t *testing.T,
+	provider *infraApi.DatabaseProvider,
+	namespace string,
+) {
+	t.Helper()
+
+	g := NewWithT(t)
+	st.waitReachable(t, provider)
+
+	statefulSet := &appsv1.StatefulSet{
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace: namespace,
+			Name:      dbcontroller.EmbeddedServiceName(provider.Name),
+		},
+	}
+	g.Eventually(t.Context(), k8sm.Lookup(st.env.Client, statefulSet)).To(Succeed())
+	g.Expect(statefulSet.Status.ReadyReplicas).To(Equal(int32(1)))
+
+	adminSecret := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace: namespace,
+			Name:      dbcontroller.EmbeddedAdminSecretName(provider.Name),
+		},
+	}
+	g.Eventually(t.Context(), k8sm.Lookup(st.env.Client, adminSecret)).To(Succeed())
+	g.Expect(adminSecret.Data).To(HaveKey(dbcontroller.EmbeddedAdminSecretPasswordKey))
+
+	networkPolicy := &networkingv1.NetworkPolicy{
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace: namespace,
+			Name:      dbcontroller.EmbeddedServiceName(provider.Name),
+		},
+	}
+	g.Eventually(t.Context(), k8sm.Lookup(st.env.Client, networkPolicy)).To(Succeed())
+
+	current := &infraApi.DatabaseProvider{ObjectMeta: metav1.ObjectMeta{Name: provider.Name}}
+	g.Eventually(t.Context(), k8sm.Lookup(st.env.Client, current)).To(Succeed())
+	g.Expect(current.Labels).To(HaveKeyWithValue("db.infrastructure.opendatahub.io/capability-pgvector", "true"))
+	g.Expect(current.Labels).To(HaveKeyWithValue("db.infrastructure.opendatahub.io/capability-pg_trgm", "true"))
+}
+
+func withEmbeddedNamespace(namespace string) func(*infraApi.DatabaseProvider) {
+	return func(provider *infraApi.DatabaseProvider) {
+		provider.Spec.Embedded.Namespace = namespace
+	}
 }
 
 func (st *embeddedDatabaseProviderSuite) waitReachable(t *testing.T, provider *infraApi.DatabaseProvider) {

@@ -1,2 +1,5 @@
 resources:
-# CRD bases are added here by `make manifests` once the CRD types exist (task-02).
+- bases/infrastructure.opendatahub.io_databaseclaims.yaml
+- bases/infrastructure.opendatahub.io_databaseproviders.yaml
+- bases/infrastructure.opendatahub.io_schemaclaims.yaml
+- bases/services.platform.opendatahub.io_databaseservices.yaml

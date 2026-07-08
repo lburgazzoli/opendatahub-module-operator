@@ -95,7 +95,16 @@ func NewReconciler(
 		WithAction(m.reconcileExternalAction).
 		WithAction(m.reconcileEmbeddedAction).
 		WithAction(fwtemplate.NewAction(
-			fwtemplate.WithNamespaceFn(moduleconfig.OperatorNamespaceGetter(cfg)),
+			fwtemplate.WithNamespaceFn(func(
+				_ context.Context,
+				rr *odhtypes.ReconciliationRequest,
+			) (string, error) {
+				obj, ok := rr.Instance.(*infraApi.DatabaseProvider)
+				if !ok {
+					return dbcontroller.OperatorNamespace(cfg), nil
+				}
+				return dbcontroller.EmbeddedNamespace(obj, cfg), nil
+			}),
 			fwtemplate.WithDataFn(func(ctx context.Context, rr *odhtypes.ReconciliationRequest) (map[string]any, error) {
 				return embeddedTemplateData(ctx, rr, cfg)
 			}),

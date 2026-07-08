@@ -133,3 +133,21 @@ func TestEnsureEmbeddedAdminSecret_Idempotent(t *testing.T) {
 	g.Expect(err).NotTo(HaveOccurred())
 	g.Expect(stored.Data).To(Equal(original))
 }
+
+func TestEmbeddedNamespace_UsesOverride(t *testing.T) {
+	g := NewWithT(t)
+
+	cfg := &moduleconfig.Config{OperatorNamespace: "operator-ns"}
+	provider := &infraApi.DatabaseProvider{
+		ObjectMeta: metav1.ObjectMeta{Name: "embedded"},
+		Spec: infraApi.DatabaseProviderSpec{
+			Type: infraApi.ProviderTypeEmbedded,
+			Embedded: &infraApi.EmbeddedProviderSpec{
+				Namespace: "custom-ns",
+			},
+		},
+	}
+
+	g.Expect(dbcontroller.EmbeddedNamespace(provider, cfg)).To(Equal("custom-ns"))
+	g.Expect(dbcontroller.EmbeddedServiceHost(provider, cfg)).To(Equal("embedded-postgres.custom-ns.svc"))
+}

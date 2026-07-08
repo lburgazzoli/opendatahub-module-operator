@@ -73,6 +73,11 @@ spec:
                       pattern: ^[a-z][a-z0-9_]*$
                       type: string
                     type: array
+                  namespace:
+                    description: |-
+                      Namespace overrides where the embedded PostgreSQL resources are created.
+                      When unset, the operator namespace is used.
+                    type: string
                   resources:
                     description: Resources are applied to the Postgres container.
                     properties:

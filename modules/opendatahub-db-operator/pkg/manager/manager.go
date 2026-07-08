@@ -85,6 +85,7 @@ func New(
 		PprofBindAddress:              cfg.Controller.Pprof.BindAddress,
 		LeaderElection:                cfg.Controller.LeaderElection.Enabled,
 		LeaderElectionID:              cfg.Controller.LeaderElection.ID,
+		LeaderElectionNamespace:       cfg.OperatorNamespace,
 		LeaderElectionReleaseOnCancel: true,
 		Cache: cache.Options{
 			DefaultTransform:            libcache.StripUnusedFields(),

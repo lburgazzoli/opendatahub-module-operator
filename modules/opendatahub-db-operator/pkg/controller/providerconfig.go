@@ -52,8 +52,15 @@ func EmbeddedInitDBConfigMapName(providerName string) string {
 	return providerName + "-postgres-initdb"
 }
 
-func EmbeddedServiceHost(providerName string, cfg *moduleconfig.Config) string {
-	return fmt.Sprintf("%s.%s.svc", EmbeddedServiceName(providerName), OperatorNamespace(cfg))
+func EmbeddedNamespace(provider *infraApi.DatabaseProvider, cfg *moduleconfig.Config) string {
+	if provider != nil && provider.Spec.Embedded != nil && provider.Spec.Embedded.Namespace != "" {
+		return provider.Spec.Embedded.Namespace
+	}
+	return OperatorNamespace(cfg)
+}
+
+func EmbeddedServiceHost(provider *infraApi.DatabaseProvider, cfg *moduleconfig.Config) string {
+	return fmt.Sprintf("%s.%s.svc", EmbeddedServiceName(provider.Name), EmbeddedNamespace(provider, cfg))
 }
 
 func OperatorNamespace(cfg *moduleconfig.Config) string {
@@ -71,7 +78,7 @@ func ProviderAdminSecretRef(provider *infraApi.DatabaseProvider, cfg *moduleconf
 		return provider.Spec.External.ConnectionSecretRef
 	}
 	return corev1.SecretReference{
-		Namespace: OperatorNamespace(cfg),
+		Namespace: EmbeddedNamespace(provider, cfg),
 		Name:      EmbeddedAdminSecretName(provider.Name),
 	}
 }
@@ -96,16 +103,14 @@ func LoadProviderConfig(
 		return parsed, nil
 	}
 
-	user := string(secret.Data[EmbeddedAdminSecretUserKey])
-	password := string(secret.Data[EmbeddedAdminSecretPasswordKey])
-	database := string(secret.Data[EmbeddedAdminSecretDBKey])
 	parsed := postgres.Config{
-		Host:     EmbeddedServiceHost(provider.Name, cfg),
+		Host:     EmbeddedServiceHost(provider, cfg),
 		Port:     postgres.DefaultPort,
-		User:     user,
-		Password: password,
-		DBName:   database,
+		User:     string(secret.Data[EmbeddedAdminSecretUserKey]),
+		Password: string(secret.Data[EmbeddedAdminSecretPasswordKey]),
+		DBName:   string(secret.Data[EmbeddedAdminSecretDBKey]),
 	}
+
 	if err := parsed.Validate(); err != nil {
 		return postgres.Config{}, fmt.Errorf("parsing embedded admin Secret: %w", err)
 	}

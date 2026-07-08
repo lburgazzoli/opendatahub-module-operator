@@ -135,7 +135,7 @@ func ensureEmbeddedAdminSecret(
 ) (*corev1.Secret, error) {
 	secret := &corev1.Secret{}
 	key := types.NamespacedName{
-		Namespace: dbcontroller.OperatorNamespace(cfg),
+		Namespace: dbcontroller.EmbeddedNamespace(provider, cfg),
 		Name:      dbcontroller.EmbeddedAdminSecretName(provider.Name),
 	}
 	if err := cli.Get(ctx, key, secret); err != nil {
@@ -292,13 +292,13 @@ func claimReferencesProvider(
 
 func embeddedStatefulSetKey(provider *infraApi.DatabaseProvider, cfg *moduleconfig.Config) types.NamespacedName {
 	return types.NamespacedName{
-		Namespace: dbcontroller.OperatorNamespace(cfg),
+		Namespace: dbcontroller.EmbeddedNamespace(provider, cfg),
 		Name:      dbcontroller.EmbeddedServiceName(provider.Name),
 	}
 }
 
 func embeddedChildResources(provider *infraApi.DatabaseProvider, cfg *moduleconfig.Config) []client.Object {
-	namespace := dbcontroller.OperatorNamespace(cfg)
+	namespace := dbcontroller.EmbeddedNamespace(provider, cfg)
 	return []client.Object{
 		&appsv1.StatefulSet{ObjectMeta: metav1.ObjectMeta{Namespace: namespace, Name: dbcontroller.EmbeddedServiceName(provider.Name)}},
 		&corev1.PersistentVolumeClaim{ObjectMeta: metav1.ObjectMeta{Namespace: namespace, Name: dbcontroller.EmbeddedPVCName(provider.Name)}},
