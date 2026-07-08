@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{.InitDBConfigMapName}}
+  namespace: {{.AppNamespace}}
+  labels:
+    app.kubernetes.io/name: {{.ServiceName}}
+    app.kubernetes.io/component: databaseprovider
+    db.infrastructure.opendatahub.io/provider: {{.Component.Name}}
+data:
+  00-init-extensions.sql: |
+{{- range .Component.Spec.Embedded.Extensions }}
+    CREATE EXTENSION IF NOT EXISTS {{ . }};
+{{- end }}

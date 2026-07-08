@@ -88,6 +88,7 @@ func runTestMain(m *testing.M) int {
 	moduleCfg.Controller.Health.BindAddress = "0"
 	moduleCfg.Controller.Pprof.BindAddress = "0"
 	moduleCfg.ApplicationsNamespace = support.IntegrationTestNamespace()
+	moduleCfg.OperatorNamespace = support.IntegrationTestNamespace()
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -123,6 +124,7 @@ func newIntegrationEnv(t *testing.T) (*integrationEnv, error) {
 		return nil, fmt.Errorf("loading module config: %w", err)
 	}
 	moduleCfg.ApplicationsNamespace = support.IntegrationTestNamespace()
+	moduleCfg.OperatorNamespace = support.IntegrationTestNamespace()
 
 	return &integrationEnv{
 		Client:    cli,
@@ -144,18 +146,26 @@ func startDatabase(ctx context.Context) (*testDatabase, error) {
 	}
 	connStr, err := ctr.ConnectionString(ctx, "sslmode=disable")
 	if err != nil {
-		_ = ctr.Terminate(ctx)
+		if ctr != nil {
+			_ = ctr.Terminate(ctx)
+		}
 		return nil, fmt.Errorf("getting postgres connection string: %w", err)
 	}
 	cfg, err := postgres.ConfigFromDSN(connStr)
 	if err != nil {
-		_ = ctr.Terminate(ctx)
+		if ctr != nil {
+			_ = ctr.Terminate(ctx)
+		}
 		return nil, fmt.Errorf("parsing postgres DSN: %w", err)
 	}
 
 	return &testDatabase{
 		cfg: cfg,
 		terminate: func(ctx context.Context) error {
+			if ctr == nil {
+				return nil
+			}
+
 			return ctr.Terminate(ctx)
 		},
 	}, nil

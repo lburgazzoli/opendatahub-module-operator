@@ -20,10 +20,16 @@ import (
 	"context"
 
 	infraApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/api/infrastructure/v1alpha1"
+	"github.com/opendatahub-io/odh-platform-utilities/framework/controller/actions/deploy"
+	fwtemplate "github.com/opendatahub-io/odh-platform-utilities/framework/controller/actions/render/template"
+	fwpredicates "github.com/opendatahub-io/odh-platform-utilities/framework/controller/predicates"
+	resourcespredicates "github.com/opendatahub-io/odh-platform-utilities/framework/controller/predicates/resources"
+	odhtypes "github.com/opendatahub-io/odh-platform-utilities/framework/controller/types"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
 	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/pkg/config"
 	dbcontroller "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/pkg/controller"
@@ -72,7 +78,10 @@ func NewReconciler(
 	m := NewController(cfg)
 
 	_, err := reconciler.ReconcilerFor(mgr, &infraApi.DatabaseProvider{}).
-		Owns(&appsv1.StatefulSet{}).
+		Owns(&appsv1.StatefulSet{}, reconciler.WithPredicates(predicate.Or(
+			fwpredicates.DefaultPredicate,
+			resourcespredicates.StatusChanged(),
+		))).
 		Owns(&corev1.PersistentVolumeClaim{}).
 		Owns(&corev1.Service{}).
 		Owns(&corev1.ConfigMap{}).
@@ -85,6 +94,19 @@ func NewReconciler(
 		WithAction(dbcontroller.UpgradeIfNeeded()).
 		WithAction(m.reconcileExternalAction).
 		WithAction(m.reconcileEmbeddedAction).
+		WithAction(fwtemplate.NewAction(
+			fwtemplate.WithNamespaceFn(moduleconfig.OperatorNamespaceGetter(cfg)),
+			fwtemplate.WithDataFn(func(ctx context.Context, rr *odhtypes.ReconciliationRequest) (map[string]any, error) {
+				return embeddedTemplateData(ctx, rr, cfg)
+			}),
+		)).
+		WithAction(deploy.NewAction(
+			deploy.WithCache(),
+			deploy.WithApplyOrder(),
+		)).
+		WithAction(m.embeddedReadinessAction).
+		WithAction(m.embeddedCapabilityLabelsAction).
+		WithAction(m.embeddedIdleCleanupAction).
 		WithConditions(ConditionReachable).
 		Build(ctx)
 

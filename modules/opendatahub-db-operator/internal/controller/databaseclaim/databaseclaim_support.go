@@ -30,6 +30,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	infraApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/api/infrastructure/v1alpha1"
+	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/pkg/config"
+	dbcontroller "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/pkg/controller"
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/pkg/postgres"
 )
 
@@ -69,32 +71,17 @@ func openPool(
 	ctx context.Context,
 	cli client.Client,
 	provider *infraApi.DatabaseProvider,
+	cfg *moduleconfig.Config,
 ) (postgres.Config, *pgxpool.Pool, error) {
-	ref := adminSecretRef(provider)
-	secret := &corev1.Secret{}
-	if err := cli.Get(ctx, client.ObjectKey{Namespace: ref.Namespace, Name: ref.Name}, secret); err != nil {
-		return postgres.Config{}, nil, fmt.Errorf("reading admin Secret %s/%s: %w", ref.Namespace, ref.Name, err)
-	}
-	cfg, err := postgres.ParseSecret(secret.Data)
+	providerCfg, err := dbcontroller.LoadProviderConfig(ctx, cli, provider, cfg)
 	if err != nil {
-		return postgres.Config{}, nil, fmt.Errorf("parsing admin Secret: %w", err)
+		return postgres.Config{}, nil, err
 	}
-	pool, err := pgxpool.New(ctx, cfg.DSN())
+	pool, err := pgxpool.New(ctx, providerCfg.DSN())
 	if err != nil {
 		return postgres.Config{}, nil, fmt.Errorf("opening pool: %w", err)
 	}
-	return cfg, pool, nil
-}
-
-// adminSecretRef returns the reference to the provider's admin Secret.
-func adminSecretRef(provider *infraApi.DatabaseProvider) corev1.SecretReference {
-	if provider.Spec.Type == infraApi.ProviderTypeExternal {
-		return provider.Spec.External.ConnectionSecretRef
-	}
-	return corev1.SecretReference{
-		Namespace: provider.Annotations["db.infrastructure.opendatahub.io/operator-namespace"],
-		Name:      provider.Name + "-admin",
-	}
+	return providerCfg, pool, nil
 }
 
 // claimConfig builds a postgres.Config for the claim user from the admin config.

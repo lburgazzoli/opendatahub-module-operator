@@ -34,6 +34,7 @@ func TestLoadFromFS_Defaults(t *testing.T) {
 	g.Expect(cfg.PlatformType).To(Equal(config.DefaultPlatformType))
 	g.Expect(cfg.PlatformVersion.String()).To(Equal("0.0.0"))
 	g.Expect(cfg.ApplicationsNamespace).To(Equal(config.DefaultApplicationsNS))
+	g.Expect(cfg.OperatorNamespace).To(Equal(config.DefaultOperatorNS))
 }
 
 func TestLoadFromFS_ParsesPlatformVersion(t *testing.T) {

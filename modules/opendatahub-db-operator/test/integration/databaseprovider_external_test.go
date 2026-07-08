@@ -106,7 +106,13 @@ func (st *databaseProviderSuite) testAuthFailure(t *testing.T) {
 	secret := st.createConnectionSecret(t, "provider-secret-"+xid.New().String(), cfg)
 	provider := st.createExternalProvider(t, "provider-"+xid.New().String(), secret)
 
-	st.waitUnreachable(t, provider, "ConnectionCheckFailed", "password authentication failed")
+	expectDatabaseProviderUnreachable(
+		t,
+		st.env,
+		provider,
+		"ConnectionCheckFailed",
+		"password authentication failed",
+	)
 
 	msg := st.reachableConditionMessage(t, provider)
 	NewWithT(t).Expect(msg).NotTo(ContainSubstring(cfg.Password))
@@ -176,39 +182,6 @@ func (st *databaseProviderSuite) waitReachable(t *testing.T, provider *infraApi.
 		WithTransform(k8sm.ConditionsOf[metav1.Condition](),
 			ContainElement(condition.Is(databaseprovider.ConditionReachable, metav1.ConditionTrue))),
 	)
-}
-
-func (st *databaseProviderSuite) waitUnreachable(
-	t *testing.T,
-	provider *infraApi.DatabaseProvider,
-	reason string,
-	messageSubstring string,
-) {
-	t.Helper()
-
-	NewWithT(t).Eventually(t.Context(), k8sm.Get(st.env.Client, provider)).Should(
-		WithTransform(k8sm.ConditionsOf[metav1.Condition](), ContainElement(
-			SatisfyAll(
-				HaveField("Type", Equal(databaseprovider.ConditionReachable)),
-				HaveField("Status", Equal(metav1.ConditionFalse)),
-			),
-		)),
-	)
-
-	current := &infraApi.DatabaseProvider{ObjectMeta: metav1.ObjectMeta{Name: provider.Name}}
-	NewWithT(t).Eventually(t.Context(), k8sm.Lookup(st.env.Client, current)).To(Succeed())
-
-	for _, cond := range current.Status.Conditions {
-		if cond.Type != databaseprovider.ConditionReachable {
-			continue
-		}
-
-		NewWithT(t).Expect(cond.Reason).To(Equal(reason))
-		NewWithT(t).Expect(cond.Message).To(ContainSubstring(messageSubstring))
-		return
-	}
-
-	t.Fatalf("reachable condition not found for provider %q", provider.Name)
 }
 
 func (st *databaseProviderSuite) reachableConditionMessage(

@@ -57,6 +57,7 @@ func (v *PlatformVersion) UnmarshalText(text []byte) error {
 
 const (
 	KeyApplicationsNS  = "applications-namespace"
+	KeyOperatorNS      = "operator-namespace"
 	KeyPlatformType    = "platformType"
 	KeyPlatformVersion = "platformVersion"
 
@@ -106,6 +107,7 @@ const (
 	PlatformTypeManagedRhoai     = "ManagedRhoai"
 
 	DefaultApplicationsNS  = "opendatahub"
+	DefaultOperatorNS      = "odh-db-operator-system"
 	DefaultPlatformType    = PlatformTypeOpenDataHub
 	DefaultPlatformVersion = ""
 
@@ -159,6 +161,7 @@ const (
 // the "controller." prefix (e.g. "controller.leader-election.enabled").
 type Config struct {
 	ApplicationsNamespace string           `mapstructure:"applications-namespace"`
+	OperatorNamespace     string           `mapstructure:"operator-namespace"`
 	PlatformType          string           `mapstructure:"platformType"`
 	PlatformVersion       PlatformVersion  `mapstructure:"platformVersion"`
 	Controller            ControllerConfig `mapstructure:"controller"`
@@ -242,6 +245,12 @@ func (c *Config) PlatformRelease() fwapi.Release {
 func ApplicationsNamespaceGetter(cfg *Config) fwactions.Getter[string] {
 	return func(_ context.Context, _ *fwtypes.ReconciliationRequest) (string, error) {
 		return cfg.ApplicationsNamespace, nil
+	}
+}
+
+func OperatorNamespaceGetter(cfg *Config) fwactions.Getter[string] {
+	return func(_ context.Context, _ *fwtypes.ReconciliationRequest) (string, error) {
+		return cfg.OperatorNamespace, nil
 	}
 }
 

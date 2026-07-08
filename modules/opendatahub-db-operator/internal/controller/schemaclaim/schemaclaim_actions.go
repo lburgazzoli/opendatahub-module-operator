@@ -72,7 +72,7 @@ func (m *Controller) provisionAction(ctx context.Context, rr *odhtypes.Reconcili
 	}
 
 	// 3. Open connection to provider.
-	cfg, pool, err := openPool(ctx, rr.Client, provider)
+	cfg, pool, err := openPool(ctx, rr.Client, provider, m.cfg)
 	if err != nil {
 		rr.Conditions.Mark(ConditionProvisioned, metav1.ConditionFalse,
 			conditions.WithError(err))
@@ -190,7 +190,7 @@ func (m *Controller) cleanupAction(ctx context.Context, rr *odhtypes.Reconciliat
 				return nil
 			}
 
-			_, pool, err := openPool(ctx, rr.Client, provider)
+			_, pool, err := openPool(ctx, rr.Client, provider, m.cfg)
 			if err != nil {
 				return fmt.Errorf("opening pool for provider %q: %w", provider.Name, err)
 			}

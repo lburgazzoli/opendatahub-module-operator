@@ -1,0 +1,30 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{.ServiceName}}
+  namespace: {{.AppNamespace}}
+  labels:
+    app.kubernetes.io/name: {{.ServiceName}}
+    app.kubernetes.io/component: databaseprovider
+    db.infrastructure.opendatahub.io/provider: {{.Component.Name}}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: {{.ServiceName}}
+  policyTypes:
+    - Ingress
+  ingress:
+    - ports:
+        - port: 5432
+          protocol: TCP
+{{- if gt (len .AllowedNamespaces) 0 }}
+      from:
+        - namespaceSelector:
+            matchExpressions:
+              - key: kubernetes.io/metadata.name
+                operator: In
+                values:
+{{- range .AllowedNamespaces }}
+                  - {{ . }}
+{{- end }}
+{{- end }}

@@ -21,12 +21,18 @@ package databaseprovider
 import (
 	"context"
 	"fmt"
+	"maps"
 
+	appsv1 "k8s.io/api/apps/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	infraApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/api/infrastructure/v1alpha1"
+	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/assets"
 	dbcontroller "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/pkg/controller"
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/pkg/postgres"
+	odherrors "github.com/opendatahub-io/odh-platform-utilities/framework/controller/actions/errors"
 	"github.com/opendatahub-io/odh-platform-utilities/framework/controller/conditions"
 	odhtypes "github.com/opendatahub-io/odh-platform-utilities/framework/controller/types"
 )
@@ -69,7 +75,7 @@ func (m *Controller) reconcileExternalAction(
 }
 
 func (m *Controller) reconcileEmbeddedAction(
-	_ context.Context,
+	ctx context.Context,
 	rr *odhtypes.ReconciliationRequest,
 ) error {
 	obj, ok := rr.Instance.(*infraApi.DatabaseProvider)
@@ -78,6 +84,152 @@ func (m *Controller) reconcileEmbeddedAction(
 	}
 	if obj.Spec.Type != infraApi.ProviderTypeEmbedded {
 		return nil
+	}
+
+	if _, err := resolveEmbeddedImage(obj, m.cfg); err != nil {
+		rr.Conditions.Mark(ConditionReachable, metav1.ConditionFalse,
+			conditions.WithReason(reasonImageUnmapped),
+			conditions.WithMessage("%s", err.Error()))
+		return odherrors.NewStopErrorW(err)
+	}
+
+	sts := &appsv1.StatefulSet{}
+	stsKey := embeddedStatefulSetKey(obj, m.cfg)
+	if err := rr.Client.Get(ctx, stsKey, sts); err == nil && hasExtensionChange(obj) {
+		err := fmt.Errorf("embedded extensions changed for an existing instance; recreate the provider to apply them")
+		rr.Conditions.Mark(ConditionReachable, metav1.ConditionFalse,
+			conditions.WithReason(reasonExtensionChangeRequiresRecreate),
+			conditions.WithMessage("%s", err.Error()))
+		return odherrors.NewStopErrorW(err)
+	} else if client.IgnoreNotFound(err) != nil {
+		return fmt.Errorf("reading embedded StatefulSet: %w", err)
+	}
+
+	if _, err := ensureEmbeddedAdminSecret(ctx, rr.Client, obj, m.cfg); err != nil {
+		rr.Conditions.Mark(ConditionReachable, metav1.ConditionFalse,
+			conditions.WithReason(reasonAdminSecretUnavailable),
+			conditions.WithMessage("%s", err.Error()))
+		return fmt.Errorf("ensuring embedded admin Secret: %w", err)
+	}
+
+	rr.Templates = []odhtypes.TemplateInfo{
+		{FS: assets.Manifests, Path: "manifests/embedded/pvc.yaml.tmpl"},
+		{FS: assets.Manifests, Path: "manifests/embedded/service.yaml.tmpl"},
+		{FS: assets.Manifests, Path: "manifests/embedded/initdb-configmap.yaml.tmpl"},
+		{FS: assets.Manifests, Path: "manifests/embedded/statefulset.yaml.tmpl"},
+		{FS: assets.Manifests, Path: "manifests/embedded/networkpolicy.yaml.tmpl"},
+	}
+
+	return nil
+}
+
+func (m *Controller) embeddedReadinessAction(
+	ctx context.Context,
+	rr *odhtypes.ReconciliationRequest,
+) error {
+	obj, ok := rr.Instance.(*infraApi.DatabaseProvider)
+	if !ok {
+		return fmt.Errorf("instance is not a DatabaseProvider")
+	}
+	if obj.Spec.Type != infraApi.ProviderTypeEmbedded {
+		return nil
+	}
+
+	sts := &appsv1.StatefulSet{}
+	if err := rr.Client.Get(ctx, embeddedStatefulSetKey(obj, m.cfg), sts); err != nil {
+		if apierrors.IsNotFound(err) {
+			rr.Conditions.Mark(ConditionReachable, metav1.ConditionFalse,
+				conditions.WithReason(reasonProvisioning),
+				conditions.WithMessage("Waiting for embedded PostgreSQL resources"))
+			return nil
+		}
+		return fmt.Errorf("reading embedded StatefulSet: %w", err)
+	}
+
+	if sts.Status.ReadyReplicas != 1 {
+		rr.Conditions.Mark(ConditionReachable, metav1.ConditionFalse,
+			conditions.WithReason(reasonProvisioning),
+			conditions.WithMessage("Waiting for embedded PostgreSQL StatefulSet to become ready"))
+		return nil
+	}
+
+	return nil
+}
+
+func (m *Controller) embeddedCapabilityLabelsAction(
+	ctx context.Context,
+	rr *odhtypes.ReconciliationRequest,
+) error {
+	obj, ok := rr.Instance.(*infraApi.DatabaseProvider)
+	if !ok {
+		return fmt.Errorf("instance is not a DatabaseProvider")
+	}
+	if obj.Spec.Type != infraApi.ProviderTypeEmbedded {
+		return nil
+	}
+
+	sts := &appsv1.StatefulSet{}
+	if err := rr.Client.Get(ctx, embeddedStatefulSetKey(obj, m.cfg), sts); err != nil {
+		return client.IgnoreNotFound(err)
+	}
+	if sts.Status.ReadyReplicas != 1 {
+		return nil
+	}
+
+	desired := desiredCapabilityLabels(obj)
+	base := obj.DeepCopy()
+	if obj.Labels == nil {
+		obj.Labels = map[string]string{}
+	}
+	for key := range currentManagedCapabilityLabels(obj) {
+		delete(obj.Labels, key)
+	}
+	maps.Copy(obj.Labels, desired)
+	if err := rr.Client.Patch(ctx, obj, client.MergeFrom(base)); err != nil {
+		return fmt.Errorf("patching capability labels: %w", err)
+	}
+
+	rr.Conditions.Mark(ConditionReachable, metav1.ConditionTrue,
+		conditions.WithReason(reasonInstanceRunning),
+		conditions.WithMessage("Embedded PostgreSQL instance is ready"))
+
+	return nil
+}
+
+func (m *Controller) embeddedIdleCleanupAction(
+	ctx context.Context,
+	rr *odhtypes.ReconciliationRequest,
+) error {
+	obj, ok := rr.Instance.(*infraApi.DatabaseProvider)
+	if !ok {
+		return fmt.Errorf("instance is not a DatabaseProvider")
+	}
+	if obj.Spec.Type != infraApi.ProviderTypeEmbedded || !wantsIdleDeletion(obj) {
+		return nil
+	}
+
+	sts := &appsv1.StatefulSet{}
+	if err := rr.Client.Get(ctx, embeddedStatefulSetKey(obj, m.cfg), sts); err != nil {
+		return client.IgnoreNotFound(err)
+	}
+
+	namespaces, err := referencedClaimNamespaces(ctx, rr.Client, obj)
+	if err != nil {
+		return fmt.Errorf("listing referenced claim namespaces: %w", err)
+	}
+	if len(namespaces) != 0 {
+		return nil
+	}
+
+	rr.Conditions.Mark(ConditionReachable, metav1.ConditionFalse,
+		conditions.WithReason(reasonIdle),
+		conditions.WithMessage("Embedded PostgreSQL instance is idle"))
+	if !shouldTearDownIdleInstance(obj, m.cfg.GracePeriod) {
+		return nil
+	}
+
+	if err := deleteEmbeddedChildResources(ctx, rr.Client, obj, m.cfg); err != nil {
+		return fmt.Errorf("deleting idle embedded resources: %w", err)
 	}
 
 	return nil
