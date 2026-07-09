@@ -21,8 +21,8 @@ This module manages PostgreSQL access through:
 - Keep embedded-provider behavior split clearly from external-provider behavior.
 - Prefer shared helpers in `pkg/controller` or `pkg/postgres` over duplicating
   provider or connection logic in controllers.
-- Claims write connection Secrets in the claim namespace, with the claim name as
-  the Secret name.
+- Claims write connection Secrets in the claim namespace. The Secret name
+  defaults to the claim name but may be overridden via `spec.secretName`.
 - Embedded resources default to the operator namespace unless
   `spec.embedded.namespace` overrides it.
 

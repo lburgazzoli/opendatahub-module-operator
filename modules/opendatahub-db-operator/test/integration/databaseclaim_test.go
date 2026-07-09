@@ -42,6 +42,7 @@ func TestDatabaseClaim(t *testing.T) {
 func (st *databaseClaimSuite) Run(t *testing.T) {
 	t.Run("crd validation", st.testCRDValidation)
 	t.Run("provisioning", st.testProvisioning)
+	t.Run("secret name override", st.testSecretNameOverride)
 	t.Run("idempotency", st.testIdempotency)
 	t.Run("secret deletion rotates credentials", st.testSecretDeletionRecovery)
 	t.Run("role deletion rotates credentials", st.testRoleDeletionRecovery)
@@ -69,6 +70,34 @@ func (st *databaseClaimSuite) testProvisioning(t *testing.T) {
 	)
 
 	secret := st.waitCredentialsSecret(t, name, database)
+	credCfg, err := postgres.ParseSecret(secret.Data)
+	g.Expect(err).NotTo(HaveOccurred())
+	g.Expect(credCfg.DBName).To(Equal(database))
+	g.Expect(postgres.Ping(ctx, credCfg)).To(Succeed())
+}
+
+func (st *databaseClaimSuite) testSecretNameOverride(t *testing.T) {
+	g := NewWithT(t)
+	ctx := t.Context()
+
+	database := "app_" + xid.New().String()
+	st.createDatabase(t, database)
+
+	name := "dc-" + xid.New().String()
+	secretName := name + "-credentials"
+	claim := st.newClaim(name, database)
+	claim.Spec.SecretName = secretName
+	st.createClaim(t, claim)
+
+	st.waitProvisioned(t, claim)
+
+	g.Eventually(ctx, k8sm.Get(st.env.Client, claim)).Should(
+		jq.Matchf(`.status.connection.secretRef.name == %q`, secretName),
+	)
+
+	secret := st.waitCredentialsSecret(t, secretName, database)
+	st.expectNoCredentialsSecret(t, name)
+
 	credCfg, err := postgres.ParseSecret(secret.Data)
 	g.Expect(err).NotTo(HaveOccurred())
 	g.Expect(credCfg.DBName).To(Equal(database))

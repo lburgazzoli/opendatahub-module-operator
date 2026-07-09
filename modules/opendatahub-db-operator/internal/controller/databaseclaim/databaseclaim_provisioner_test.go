@@ -24,7 +24,9 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	. "github.com/onsi/gomega"
 	tcpostgres "github.com/testcontainers/testcontainers-go/modules/postgres"
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
 	infraApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/api/infrastructure/v1alpha1"
@@ -104,6 +106,8 @@ func TestDatabaseProvisioner_Ensure(t *testing.T) {
 	g.Expect(err).NotTo(HaveOccurred())
 	status := provisioner.ConnectionStatus()
 	g.Expect(status.Database).To(Equal(cfg.DBName))
+	g.Expect(status.SecretRef.Name).To(Equal(claim.Name))
+	g.Expect(secret.Name).To(Equal(claim.Name))
 	g.Expect(secret.Data).To(HaveKeyWithValue(postgres.SecretKeyDatabase, []byte(cfg.DBName)))
 
 	claimCfg, err := postgres.ParseSecret(secret.Data)
@@ -116,6 +120,52 @@ func TestDatabaseProvisioner_Ensure(t *testing.T) {
 	g.Expect(err).NotTo(HaveOccurred())
 	g.Expect(provisioner.ConnectionStatus()).To(Equal(status))
 	g.Expect(secondSecret.Data[postgres.SecretKeyPassword]).To(Equal(secret.Data[postgres.SecretKeyPassword]))
+}
+
+func TestDatabaseProvisioner_Ensure_UsesSecretNameOverride(t *testing.T) {
+	g := NewWithT(t)
+	cfg := startPostgres(t)
+	pool := openPool(t, cfg)
+
+	claim := &infraApi.DatabaseClaim{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "example",
+			Namespace: "test-ns",
+		},
+		Spec: infraApi.DatabaseClaimSpec{
+			Database:   cfg.DBName,
+			SecretName: "projected-creds",
+		},
+	}
+	cli := newFakeClient(t).Build()
+
+	provisioner := databaseclaim.DatabaseProvisioner{
+		Client: cli,
+		Claim:  claim,
+		Pool:   pool,
+		Config: cfg,
+	}
+
+	secret, err := provisioner.Ensure(t.Context())
+	g.Expect(err).NotTo(HaveOccurred())
+	g.Expect(secret.Name).To(Equal("projected-creds"))
+	g.Expect(provisioner.ConnectionStatus().SecretRef.Name).To(Equal("projected-creds"))
+	g.Expect(cli.Create(t.Context(), secret.DeepCopy())).To(Succeed())
+
+	secondSecret, err := provisioner.Ensure(t.Context())
+	g.Expect(err).NotTo(HaveOccurred())
+	g.Expect(secondSecret.Name).To(Equal("projected-creds"))
+	g.Expect(secondSecret.Data[postgres.SecretKeyPassword]).To(Equal(secret.Data[postgres.SecretKeyPassword]))
+
+	overrideSecret := &corev1.Secret{}
+	overrideSecret.Name = "projected-creds"
+	overrideSecret.Namespace = claim.Namespace
+	g.Expect(cli.Get(t.Context(), client.ObjectKeyFromObject(overrideSecret), overrideSecret)).To(Succeed())
+
+	defaultSecret := &corev1.Secret{}
+	defaultSecret.Name = claim.Name
+	defaultSecret.Namespace = claim.Namespace
+	g.Expect(cli.Get(t.Context(), client.ObjectKeyFromObject(defaultSecret), defaultSecret)).ToNot(Succeed())
 }
 
 func TestDatabaseProvisioner_Ensure_DatabaseMissing(t *testing.T) {

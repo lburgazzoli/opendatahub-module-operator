@@ -43,6 +43,7 @@ func TestSchemaClaim(t *testing.T) {
 func (st *schemaClaimSuite) Run(t *testing.T) {
 	t.Run("crd validation", st.testCRDValidation)
 	t.Run("provisioning", st.testProvisioning)
+	t.Run("secret name override", st.testSecretNameOverride)
 	t.Run("explicit schema", st.testExplicitSchema)
 	t.Run("idempotency", st.testIdempotency)
 	t.Run("secret deletion rotates credentials", st.testSecretDeletionRecovery)
@@ -69,6 +70,31 @@ func (st *schemaClaimSuite) testProvisioning(t *testing.T) {
 	)
 
 	secret := st.waitCredentialsSecret(t, name)
+
+	credCfg, err := postgres.ParseSecret(secret.Data)
+	g.Expect(err).NotTo(HaveOccurred())
+	g.Expect(credCfg.DBName).To(Equal(st.databaseName))
+	g.Expect(postgres.Ping(ctx, credCfg)).To(Succeed())
+}
+
+func (st *schemaClaimSuite) testSecretNameOverride(t *testing.T) {
+	g := NewWithT(t)
+	ctx := t.Context()
+
+	name := "sc-" + xid.New().String()
+	secretName := name + "-credentials"
+	claim := st.newClaim(name)
+	claim.Spec.SecretName = secretName
+	st.createClaim(t, claim)
+
+	st.waitProvisioned(t, claim)
+
+	g.Eventually(ctx, k8sm.Get(st.env.Client, claim)).Should(
+		jq.Matchf(`.status.connection.secretRef.name == %q`, secretName),
+	)
+
+	secret := st.waitCredentialsSecret(t, secretName)
+	st.expectNoCredentialsSecret(t, name)
 
 	credCfg, err := postgres.ParseSecret(secret.Data)
 	g.Expect(err).NotTo(HaveOccurred())

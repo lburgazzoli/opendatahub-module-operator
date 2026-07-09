@@ -26,6 +26,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	infraApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/api/infrastructure/v1alpha1"
+	dbcontroller "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/pkg/controller"
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/pkg/postgres"
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/pkg/resources/gvk"
 )
@@ -47,7 +48,7 @@ func (p SchemaProvisioner) Schema() string {
 func (p SchemaProvisioner) ConnectionStatus(schema string) infraApi.SchemaConnectionStatus {
 	return infraApi.SchemaConnectionStatus{
 		ConnectionStatus: infraApi.ConnectionStatus{
-			SecretRef: corev1.LocalObjectReference{Name: p.Claim.Name},
+			SecretRef: corev1.LocalObjectReference{Name: dbcontroller.SecretNameForSchemaClaim(p.Claim)},
 			Host:      p.Config.Host,
 			Port:      int32(p.Config.Port),
 		},
@@ -84,7 +85,7 @@ func (p SchemaProvisioner) Ensure(
 	}
 
 	secret := &corev1.Secret{}
-	secret.Name = p.Claim.Name
+	secret.Name = dbcontroller.SecretNameForSchemaClaim(p.Claim)
 	secret.Namespace = p.Claim.Namespace
 	if err := p.Client.Get(ctx, client.ObjectKeyFromObject(secret), secret); client.IgnoreNotFound(err) != nil {
 		return nil, fmt.Errorf("checking credentials Secret existence: %w", err)
@@ -117,7 +118,7 @@ func (p SchemaProvisioner) buildCredentialsSecret(
 	schema string,
 ) {
 	secret.SetGroupVersionKind(gvk.Secret)
-	secret.Name = p.Claim.Name
+	secret.Name = dbcontroller.SecretNameForSchemaClaim(p.Claim)
 	secret.Namespace = p.Claim.Namespace
 	secret.Type = corev1.SecretTypeOpaque
 	secret.Data = map[string][]byte{

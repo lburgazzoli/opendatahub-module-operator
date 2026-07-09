@@ -32,7 +32,8 @@ must be done before this task's tests can pass**, even though it isn't a code de
 3. Add finalizer before DDL.
 4. Generate a password, `pkg/postgres.CreateDatabaseUser` — a dedicated user with broader
    privileges (`CREATE SCHEMA` on the target database) per `spec.access`.
-5. SSA-write the credentials Secret (same shape/conventions as task-06 step 6).
+5. SSA-write the credentials Secret (same shape/conventions as task-06 step 6,
+   including `spec.secretName` override support).
 6. Set `status.database` (echoes `spec.database` exactly — no defaulting logic, unlike
    `SchemaClaim.status.schema`), `Provisioned: True, reason: UserProvisioned`.
 7. Deletion: no `deletionPolicy` field exists on this CRD — always drop only the provisioned user

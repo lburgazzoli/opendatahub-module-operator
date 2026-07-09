@@ -75,8 +75,9 @@ type ProviderRef struct {
 // legitimately be empty -- they're written atomically by the reconciler when
 // it sets Provisioned: True, never partially.
 type ConnectionStatus struct {
-	// SecretRef always equals the claim's own metadata.name and lives in the
-	// claim's own namespace -- no independent naming scheme to look up.
+	// SecretRef names the credentials Secret in the claim's own namespace.
+	// When spec.secretName is set, it matches that value; otherwise it falls
+	// back to the claim's own metadata.name.
 	// +kubebuilder:validation:Required
 	SecretRef corev1.LocalObjectReference `json:"secretRef"`
 

@@ -56,6 +56,16 @@ type SchemaClaimSpec struct {
 	// +kubebuilder:validation:Required
 	Provider ProviderRef `json:"provider"`
 
+	// SecretName overrides the name of the credentials Secret projected in the
+	// claim namespace. If omitted, the claim name is used. Immutable once set so
+	// updates never strand credentials under an old Secret name.
+	//
+	// +optional
+	// +kubebuilder:validation:MaxLength=253
+	// +kubebuilder:validation:Pattern=`^[a-z0-9]([-a-z0-9.]*[a-z0-9])?$`
+	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="secretName is immutable once set"
+	SecretName string `json:"secretName,omitempty"`
+
 	// Schema is an optional override for the schema name. If omitted, it
 	// defaults to "${namespace}_${name}", sanitized to a valid PostgreSQL
 	// identifier (task-06). Immutable once set: changing it mid-life implies
@@ -92,7 +102,8 @@ type SchemaClaimStatus struct {
 	// from spec.schema or the "${namespace}_${name}" default.
 	Schema string `json:"schema,omitempty"`
 
-	// Connection is the resolved connection surface once Provisioned.
+	// Connection is the resolved connection surface once Provisioned,
+	// including the effective credentials Secret name.
 	// +optional
 	Connection SchemaConnectionStatus `json:"connection,omitempty"`
 

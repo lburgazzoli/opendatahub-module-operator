@@ -36,9 +36,10 @@ to actually run).
    for this schema or a second one reusing it per spec.md's multi-tenant-reuse behavior).
 5. Generate a password (`pkg/postgres.GeneratePassword`), `pkg/postgres.CreateSchemaUser`
    scoped to the resolved schema with `spec.access` privileges.
-6. SSA-write the credentials Secret: name `== claim.Name`, claim's own namespace, no owner
-   reference to the `SchemaClaim`, keys for host/port/database/schema/user/password (exact key
-   names should match spec.md's `status.connection` shape so consumers don't need a translation
+6. SSA-write the credentials Secret: name `== spec.secretName` when set, else `claim.Name`,
+   claim's own namespace, no owner reference to the `SchemaClaim`, keys for
+   host/port/database/schema/user/password (exact key names should match
+   spec.md's `status.connection` shape so consumers don't need a translation
    layer).
 7. Set `status.connection` (host/port/database/schema + `secretRef`), `status.provider` (from
    step 2, only when a selector was used), `Provisioned: True, reason: SchemaReady`. Do not set a

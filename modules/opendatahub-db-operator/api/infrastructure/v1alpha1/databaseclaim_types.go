@@ -42,8 +42,9 @@ var _ common.PlatformObject = (*DatabaseClaim)(nil)
 // "schema" key under connection at all, so this is its own, smaller type
 // rather than a shared type with an always-empty field.
 type DatabaseConnectionStatus struct {
-	// SecretRef always equals the claim's own metadata.name and lives in the
-	// claim's own namespace -- no independent naming scheme to look up.
+	// SecretRef names the credentials Secret in the claim's own namespace.
+	// When spec.secretName is set, it matches that value; otherwise it falls
+	// back to the claim's own metadata.name.
 	SecretRef corev1.LocalObjectReference `json:"secretRef,omitempty"`
 	Host      string                      `json:"host,omitempty"`
 	Port      int32                       `json:"port,omitempty"`
@@ -55,6 +56,16 @@ type DatabaseClaimSpec struct {
 	// Provider selects the DatabaseProvider to provision against.
 	// +kubebuilder:validation:Required
 	Provider ProviderRef `json:"provider"`
+
+	// SecretName overrides the name of the credentials Secret projected in the
+	// claim namespace. If omitted, the claim name is used. Immutable once set so
+	// updates never strand credentials under an old Secret name.
+	//
+	// +optional
+	// +kubebuilder:validation:MaxLength=253
+	// +kubebuilder:validation:Pattern=`^[a-z0-9]([-a-z0-9.]*[a-z0-9])?$`
+	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="secretName is immutable once set"
+	SecretName string `json:"secretName,omitempty"`
 
 	// Database names a pre-existing database on the provider's backend.
 	// Required, always -- unlike SchemaClaim.spec.schema, there is no
@@ -88,7 +99,8 @@ type DatabaseClaimStatus struct {
 	// to resolve here (unlike SchemaClaim.status.schema).
 	Database string `json:"database,omitempty"`
 
-	// Connection is the resolved connection surface once Provisioned.
+	// Connection is the resolved connection surface once Provisioned,
+	// including the effective credentials Secret name.
 	// +optional
 	Connection DatabaseConnectionStatus `json:"connection,omitempty"`
 

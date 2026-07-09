@@ -6,5 +6,6 @@ metadata:
 spec:
   provider:
     name: sample-external
+  secretName: sample-database-credentials
   database: mlmd
   access: ReadWrite

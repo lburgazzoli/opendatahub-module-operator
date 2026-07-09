@@ -228,7 +228,7 @@ itself. Task-02 enumerates the specific schema/CEL rules for each CRD.
 | `spec.access` | `ReadWrite` (default) \| `ReadOnly` |
 | `spec.deletionPolicy` | `Retain` (default) \| `Delete` |
 | `status.schema` | always populated, whether from `spec.schema` or the default |
-| `status.connection.secretRef` | `corev1.LocalObjectReference`, `.name == metadata.name`, no namespace field (always claim's own namespace) |
+| `status.connection.secretRef` | `corev1.LocalObjectReference`, `.name == spec.secretName` when set, else `metadata.name`; no namespace field (always claim's own namespace) |
 | `status.provider` | the single `DatabaseProvider` ultimately selected when resolution happened by selector (task-02: singular, not a list — a claim binds to exactly one provider, so there's nothing to gain from also surfacing the candidates that lost) |
 
 ### `DatabaseClaim` (namespace-scoped)
@@ -317,7 +317,7 @@ needed.
 
 **`SchemaClaim` reconcile** (task-06): resolve provider → idempotent schema+user DDL (create
 schema if absent, else provision an *additional* user against the existing schema — supports
-multi-tenant reuse) → SSA-write credentials Secret (name `== claim.Name`) →
+multi-tenant reuse) → SSA-write credentials Secret (name `== spec.secretName` when set, else `claim.Name`) →
 `Provisioned: True` with `status.connection` populated. Deletion: `Retain` drops only the
 provisioned user + Secret (schema/data persist); `Delete` drops the schema
 (`DROP SCHEMA ... CASCADE`) and all its data, then the user + Secret. Both paths use a finalizer

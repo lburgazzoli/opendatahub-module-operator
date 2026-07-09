@@ -137,6 +137,8 @@ Claims reconcile the database-side state they own:
 
 Claim credentials Secrets are ordinary resources in the claim namespace. They
 are managed by reconcile/deploy, but are not owner-referenced to the claim.
+Their names default to the claim name, but `spec.secretName` can override the
+projected Secret name.
 
 ## Local Verification
 

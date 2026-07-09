@@ -57,10 +57,11 @@ The following diagram illustrates how cluster-scoped database providers reconcil
                │ (Reconciled by          │ (Reconciled by
                │  the Operator)          │  the Operator)
                ▼                         ▼
-        ┌─────────────┐           ┌─────────────┐
-        │   Secret    │           │   Secret    │  ◄─── [ Credentials ]
-        │(claim-name) │           │(claim-name) │
-        └─────────────┘           └─────────────┘
+       ┌─────────────┐           ┌─────────────┐
+       │   Secret    │           │   Secret    │  ◄─── [ Credentials ]
+       │(configured  │           │(configured  │
+       │or default)  │           │or default)  │
+       └─────────────┘           └─────────────┘
 ```
 
 ### Claims
@@ -75,7 +76,8 @@ Both claims:
 - keep the current provider for selector-based claims while it still matches
 - wait until a single reachable provider is resolved
 - provision PostgreSQL roles and grants through the controller
-- publish connection details in a Secret named after the claim
+- publish connection details in a Secret in the claim namespace, using
+  `spec.secretName` when set or the claim name otherwise
 - repair missing claim credentials in place; `SchemaClaim` also recreates a
   missing schema
 - surface the selected provider in `status.provider` when selection happened by
@@ -145,6 +147,7 @@ Because `DatabaseProvider` is cluster-scoped and claims are namespace-scoped, se
 Key fields:
 
 - `spec.provider`
+- `spec.secretName` optional override for the projected credentials Secret name
 - `spec.schema` optional, immutable
 - `spec.access`: `ReadWrite` or `ReadOnly`
 - `spec.deletionPolicy`: `Retain` or `Delete`
@@ -161,6 +164,7 @@ Status highlights:
 Key fields:
 
 - `spec.provider`
+- `spec.secretName` optional override for the projected credentials Secret name
 - `spec.database` required, immutable
 - `spec.access`: `ReadWrite` or `ReadOnly`
 
@@ -259,12 +263,13 @@ metadata:
 spec:
   provider:
     name: shared-embedded
+  secretName: notebooks-credentials
   access: ReadWrite
   deletionPolicy: Retain
 ```
 
-After reconciliation, the Secret `team-a/notebooks` contains the connection
-information for the provisioned schema user.
+After reconciliation, the Secret `team-a/notebooks-credentials` contains the
+connection information for the provisioned schema user.
 
 ### DatabaseClaim
 
@@ -277,12 +282,13 @@ metadata:
 spec:
   provider:
     name: shared-external
+  secretName: ml-metadata-credentials
   database: mlmd
   access: ReadWrite
 ```
 
-After reconciliation, the Secret `team-a/ml-metadata` contains the connection
-information for the provisioned database user.
+After reconciliation, the Secret `team-a/ml-metadata-credentials` contains the
+connection information for the provisioned database user.
 
 ## Typical Usage
 
@@ -326,7 +332,8 @@ the standard PostgreSQL keys used by this module:
 
 - `pg.schema`
 
-The Secret name matches the claim name.
+The Secret name defaults to the claim name, but `spec.secretName` can override
+it.
 
 More operational details, including resource ownership and embedded namespace
 resolution, are in `docs/operations.md`.

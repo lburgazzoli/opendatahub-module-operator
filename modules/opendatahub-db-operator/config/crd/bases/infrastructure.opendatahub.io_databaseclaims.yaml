@@ -130,6 +130,17 @@ spec:
                 - message: exactly one of name or selector must be set
                   rule: '(has(self.name) ? 1 : 0) + (has(self.selector) ? 1 : 0) ==
                     1'
+              secretName:
+                description: |-
+                  SecretName overrides the name of the credentials Secret projected in the
+                  claim namespace. If omitted, the claim name is used. Immutable once set so
+                  updates never strand credentials under an old Secret name.
+                maxLength: 253
+                pattern: ^[a-z0-9]([-a-z0-9.]*[a-z0-9])?$
+                type: string
+                x-kubernetes-validations:
+                - message: secretName is immutable once set
+                  rule: self == oldSelf
             required:
             - database
             - provider
@@ -207,7 +218,9 @@ spec:
                 type: array
                 x-kubernetes-list-type: atomic
               connection:
-                description: Connection is the resolved connection surface once Provisioned.
+                description: |-
+                  Connection is the resolved connection surface once Provisioned,
+                  including the effective credentials Secret name.
                 properties:
                   database:
                     type: string
@@ -218,8 +231,9 @@ spec:
                     type: integer
                   secretRef:
                     description: |-
-                      SecretRef always equals the claim's own metadata.name and lives in the
-                      claim's own namespace -- no independent naming scheme to look up.
+                      SecretRef names the credentials Secret in the claim's own namespace.
+                      When spec.secretName is set, it matches that value; otherwise it falls
+                      back to the claim's own metadata.name.
                     properties:
                       name:
                         default: ""

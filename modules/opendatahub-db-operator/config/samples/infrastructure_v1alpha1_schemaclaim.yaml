@@ -6,5 +6,6 @@ metadata:
 spec:
   provider:
     name: sample-embedded
+  secretName: sample-schema-credentials
   access: ReadWrite
   deletionPolicy: Retain

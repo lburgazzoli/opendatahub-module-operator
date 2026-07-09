@@ -23,7 +23,9 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	. "github.com/onsi/gomega"
 	tcpostgres "github.com/testcontainers/testcontainers-go/modules/postgres"
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
 	infraApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/api/infrastructure/v1alpha1"
@@ -105,6 +107,8 @@ func TestSchemaProvisioner_Ensure(t *testing.T) {
 	status := provisioner.ConnectionStatus(schema)
 	g.Expect(status.Schema).To(Equal("test_ns_example"))
 	g.Expect(status.Database).To(Equal(cfg.DBName))
+	g.Expect(status.SecretRef.Name).To(Equal(claim.Name))
+	g.Expect(secret.Name).To(Equal(claim.Name))
 	g.Expect(secret.Data).To(HaveKeyWithValue(postgres.SecretKeySchema, []byte(status.Schema)))
 	g.Expect(secret.Data).To(HaveKeyWithValue(postgres.SecretKeyDatabase, []byte(cfg.DBName)))
 
@@ -123,4 +127,51 @@ func TestSchemaProvisioner_Ensure(t *testing.T) {
 	g.Expect(err).NotTo(HaveOccurred())
 	g.Expect(provisioner.ConnectionStatus(schema)).To(Equal(status))
 	g.Expect(secondSecret.Data[postgres.SecretKeyPassword]).To(Equal(secret.Data[postgres.SecretKeyPassword]))
+}
+
+func TestSchemaProvisioner_Ensure_UsesSecretNameOverride(t *testing.T) {
+	g := NewWithT(t)
+	cfg := startPostgres(t)
+	pool := openPool(t, cfg)
+
+	claim := &infraApi.SchemaClaim{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "example",
+			Namespace: "test-ns",
+		},
+		Spec: infraApi.SchemaClaimSpec{
+			Access:     infraApi.AccessModeReadWrite,
+			SecretName: "projected-creds",
+		},
+	}
+	cli := newFakeClient(t).Build()
+
+	provisioner := schemaclaim.SchemaProvisioner{
+		Client: cli,
+		Claim:  claim,
+		Pool:   pool,
+		Config: cfg,
+	}
+
+	schema := provisioner.Schema()
+	secret, err := provisioner.Ensure(t.Context())
+	g.Expect(err).NotTo(HaveOccurred())
+	g.Expect(secret.Name).To(Equal("projected-creds"))
+	g.Expect(provisioner.ConnectionStatus(schema).SecretRef.Name).To(Equal("projected-creds"))
+	g.Expect(cli.Create(t.Context(), secret.DeepCopy())).To(Succeed())
+
+	secondSecret, err := provisioner.Ensure(t.Context())
+	g.Expect(err).NotTo(HaveOccurred())
+	g.Expect(secondSecret.Name).To(Equal("projected-creds"))
+	g.Expect(secondSecret.Data[postgres.SecretKeyPassword]).To(Equal(secret.Data[postgres.SecretKeyPassword]))
+
+	overrideSecret := &corev1.Secret{}
+	overrideSecret.Name = "projected-creds"
+	overrideSecret.Namespace = claim.Namespace
+	g.Expect(cli.Get(t.Context(), client.ObjectKeyFromObject(overrideSecret), overrideSecret)).To(Succeed())
+
+	defaultSecret := &corev1.Secret{}
+	defaultSecret.Name = claim.Name
+	defaultSecret.Namespace = claim.Namespace
+	g.Expect(cli.Get(t.Context(), client.ObjectKeyFromObject(defaultSecret), defaultSecret)).ToNot(Succeed())
 }
