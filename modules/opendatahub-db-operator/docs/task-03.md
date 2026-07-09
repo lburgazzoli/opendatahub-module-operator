@@ -51,8 +51,8 @@ Task-02 (CRD types).
      `metadata.name`; return the winner only. The caller writes its name to `status.provider`
      (task-02's singular field, not spec.md's literal `matchedProviders` list — `docs/plan.md`
      §6 records this as a deliberate, disclosed divergence).
-   - Neither set → `List` all providers, filter to
-     `db.infrastructure.opendatahub.io/is-default-provider: "true"`; none → typed error.
+   - Claim-side validation now requires exactly one of `name` or `selector`, so there is no
+     claim reconcile fallback for "neither set".
    - Caller (task-06/07) is responsible for checking the resolved provider's `Reachable`
      condition and propagating it.
 3. `internal/controller/upgrade/upgrade.go`: `NeedsUpgrade(obj client.Object) bool` (true when

@@ -37,10 +37,14 @@ should have already covered.
    - Provider selector matching across multiple `DatabaseProvider`s with different capability
      labels and priorities, exercised through an actual `SchemaClaim` (not just the
      `providerresolve` unit test from task-03).
+   - Provider-triggered claim wakeups: create a claim that references a missing provider, then
+     create the provider later and verify the claim provisions without mutating the claim.
+   - Selector stickiness: once a selector-based claim has bound to a matching provider, creating a
+     new higher-priority matching provider should not force rebinding while the current provider
+     still exists and still matches.
    - Full negative-path matrix: missing provider, unreachable `External` provider, unmapped
-     `Embedded` extensions, deleted admin secret post-provisioning, deleted claim secret
-     post-provisioning (confirm the documented "no recovery, delete and recreate the claim" path
-     actually works end-to-end).
+     `Embedded` extensions, deleted admin secret post-provisioning, and claim drift scenarios
+     (missing claim secret / role / schema) repaired by normal reconciliation.
 3. Refactor the integration/e2e test foundation to match repo precedent before the suite grows
    further:
    - add `github.com/lburgazzoli/gomega-matchers`,

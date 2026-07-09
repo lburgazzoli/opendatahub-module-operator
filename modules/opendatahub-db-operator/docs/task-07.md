@@ -37,7 +37,8 @@ must be done before this task's tests can pass**, even though it isn't a code de
    `SchemaClaim.status.schema`), `Provisioned: True, reason: UserProvisioned`.
 7. Deletion: no `deletionPolicy` field exists on this CRD — always drop only the provisioned user
    (`pkg/postgres.DropRole`); the database itself is never touched, since other
-   claims/components may also hold users against it. Secret GC via owner reference as in task-06.
+   claims/components may also hold users against it. The claim Secret is managed in place, without
+   an owner reference, as in task-06.
 8. Do not remove or bypass the `upgradeIfNeeded` action task-03 already wired ahead of this
    reconciler's real logic, same as task-06 step 9 — leave it as the no-op task-03 built unless a
    concrete migration need is identified while implementing this task.

@@ -44,10 +44,16 @@ exists and the operator only validates connectivity and provisions access.
 Both claims:
 
 - select a provider by exact name or by label selector
+- requeue when `DatabaseProvider` objects change, so late provider creation and
+  selector changes are observed without touching the claim
+- keep the current provider for selector-based claims while it still matches
 - wait until a single reachable provider is resolved
 - provision PostgreSQL roles and grants through the controller
 - publish connection details in a Secret named after the claim
-- surface the selected provider in `status.provider`
+- repair missing claim credentials in place; `SchemaClaim` also recreates a
+  missing schema
+- surface the selected provider in `status.provider` when selection happened by
+  label selector
 - use `status.conditions[type=Provisioned]` as the main machine-readable signal
 
 Use `SchemaClaim` when the consumer needs its own schema. Use `DatabaseClaim`
@@ -86,7 +92,7 @@ The embedded provider defaults to creating these resources in the operator
 namespace, but `spec.embedded.namespace` can override that. Claim connections
 still resolve through the embedded Service DNS name:
 
-`<provider-name>-postgres.<target-namespace>.svc`
+`<provider-name>.<target-namespace>.svc`
 
 This is a convenience backend, not a full database service:
 
@@ -114,7 +120,7 @@ Status highlights:
 
 - `status.schema`
 - `status.connection`
-- `status.provider`
+- `status.provider` when the claim resolved a provider by selector
 - `status.conditions[type=Provisioned]`
 
 ### DatabaseClaim
@@ -129,7 +135,7 @@ Status highlights:
 
 - `status.database`
 - `status.connection`
-- `status.provider`
+- `status.provider` when the claim resolved a provider by selector
 - `status.conditions[type=Provisioned]`
 
 ### DatabaseProvider
@@ -305,8 +311,19 @@ When a selector matches more than one provider, the operator picks:
    `db.infrastructure.opendatahub.io/selection-priority` annotation
 2. alphabetical name order as a tie-breaker
 
-If no provider is specified, the operator can fall back to a provider annotated
-with `db.infrastructure.opendatahub.io/is-default-provider: "true"`.
+Once a selector-based claim has picked a provider, the controller keeps that
+provider while it still exists and still matches the selector. A newly created
+or higher-priority match does not force rebinding of an already-bound claim.
+
+## Drift Recovery
+
+Claims repair the resources they own when drift is detected:
+
+- `SchemaClaim` recreates a missing schema, role, or credentials Secret
+- `DatabaseClaim` recreates a missing role or credentials Secret
+
+Repairs amend the existing claim Secret in place when possible. Credentials only
+rotate when the controller has to reprovision the missing database-side state.
 
 ## Local Development
 

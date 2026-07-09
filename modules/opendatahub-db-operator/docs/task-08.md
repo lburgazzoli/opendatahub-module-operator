@@ -119,7 +119,7 @@ exact behavior; do not silently ignore the mismatch.
 
 - **Deterministic Service DNS name, never a pod IP.** The claim reconcilers (task-06/07) need a
   host for this provider; compute it as
-  `<providerName>-postgres.<effectiveEmbeddedNamespace>.svc` (matching the `service.yaml.tmpl`
+  `<providerName>.<effectiveEmbeddedNamespace>.svc` (matching the `service.yaml.tmpl`
   name from §3) rather than reading anything off the StatefulSet's pod(s). The effective embedded
   namespace is `spec.embedded.namespace` when set, otherwise the operator namespace from
   `pkg/config`. There is no code path in this task or in the claim reconcilers that reads

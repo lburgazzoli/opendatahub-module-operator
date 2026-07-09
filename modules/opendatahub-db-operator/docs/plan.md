@@ -13,11 +13,11 @@ source of implementation progress:
 | 01 | Module scaffold | Directory layout, Makefile/Containerfile, `cmd/`, `pkg/config` (incl. image and retry-interval config keys), `pkg/manager`, `pkg/resources/gvk`, `config/{crd,rbac,manager,default}`, module descriptor skeleton, `go.mod` additions (`pgx/v5`) | Done |
 | 02 | CRD API types | `SchemaClaim`, `DatabaseClaim`, `DatabaseProvider` (`External`+`Embedded`) types, schema/CEL validation, status/condition wiring, deepcopy, generated CRD YAML | Done |
 | 03 | Shared reconciler scaffolding & module enablement CR | `reconciler.ReconcilerFor` wiring for all 3 kinds; provider-resolution helper; `upgradeIfNeeded`/periodic-retry wiring; the `DatabaseService` module-enablement CR | Done |
-| 04 | `DatabaseProvider` — `External` | Connectivity-check action, `Reachable` condition, admin-secret parsing | Pending |
+| 04 | `DatabaseProvider` — `External` | Connectivity-check action, `Reachable` condition, admin-secret parsing | Done |
 | 05 | PostgreSQL DDL layer (`pkg/postgres`) | `pgxpool` management, identifier/literal quoting, password generation, schema/role/grant/drop statement builders | Done |
 | 06 | `SchemaClaim` reconciler | Idempotent schema+user provisioning, SSA Secret write, `Retain`/`Delete` finalizer logic, conditions/status | Done |
 | 07 | `DatabaseClaim` reconciler | Dedicated-user provisioning against a pre-existing database, SSA Secret write, always-Retain finalizer, conditions/status | Done |
-| 08 | `DatabaseProvider` — `Embedded` (focus task) | Image mapping via config keys, templated StatefulSet/PVC/Service/`initdb`-ConfigMap/NetworkPolicy, admin-secret get-or-create, readiness, capability labels, idle cleanup, configurable embedded target namespace | Pending |
+| 08 | `DatabaseProvider` — `Embedded` (focus task) | Image mapping via config keys, templated StatefulSet/PVC/Service/`initdb`-ConfigMap/NetworkPolicy, admin-secret get-or-create, readiness, capability labels, idle cleanup, configurable embedded target namespace | Done |
 | 09 | RBAC, packaging, Helm chart | Kubebuilder RBAC markers, `make manifests generate helm`, module descriptor + `component_metadata.yaml`, consumer-facing RBAC examples | Pending |
 | 10 | Tests | Cross-cutting, whole-module integration scenarios not owned by any single task; cleanup scripts | Pending |
 | 11 | Docs, verification & adversarial review | README/CRD examples, full verification gate, adversarial review vs. spec.md, root `CLAUDE.md` module-list update | Pending |
@@ -50,10 +50,11 @@ surfaced in status, never injected into the requester's Deployment/ConfigMap/env
 - **Components with genuinely per-component database requirements keep their own config** —
   this service targets the common case (schema-or-database + user + credentials), not every
   possible per-component need.
-- **Out of scope for this plan**: credential rotation (spec.md marks this out of scope entirely —
-  the only recovery path for a lost credentials Secret is deleting and recreating the claim),
-  connection pooling (PgBouncer, if ever needed, is a future `DatabaseProvider` concern), and
-  cross-component schema migration on upgrade.
+- **Out of scope for this plan**: scheduled or user-requested credential rotation,
+  connection pooling (PgBouncer, if ever needed, is a future `DatabaseProvider`
+  concern), and cross-component schema migration on upgrade. The controller
+  does repair missing claim-owned secrets and database-side objects during
+  normal reconciliation, but it does not offer an explicit rotation workflow.
 - **Not a design question here**: multi-tenancy isolation (GPUaaS-style tenant schema separation)
   and the DSPO MariaDB→PostgreSQL migration are advanced cases already covered by the existing
   mechanism — a tenant or component with those needs uses an `External` provider or keeps its own
@@ -228,7 +229,7 @@ itself. Task-02 enumerates the specific schema/CEL rules for each CRD.
 | `spec.deletionPolicy` | `Retain` (default) \| `Delete` |
 | `status.schema` | always populated, whether from `spec.schema` or the default |
 | `status.connection.secretRef` | `corev1.LocalObjectReference`, `.name == metadata.name`, no namespace field (always claim's own namespace) |
-| `status.provider` | the single `DatabaseProvider` ultimately selected; populated when `spec.provider.selector` is used (task-02: singular, not a list — a claim binds to exactly one provider, so there's nothing to gain from also surfacing the candidates that lost) |
+| `status.provider` | the single `DatabaseProvider` ultimately selected when resolution happened by selector (task-02: singular, not a list — a claim binds to exactly one provider, so there's nothing to gain from also surfacing the candidates that lost) |
 
 ### `DatabaseClaim` (namespace-scoped)
 
@@ -240,7 +241,7 @@ itself. Task-02 enumerates the specific schema/CEL rules for each CRD.
 | (no `deletionPolicy`) | always `Retain` semantics — the database pre-exists and isn't exclusively owned by this claim |
 | `status.database` | echoes `spec.database` |
 | `status.connection.secretRef` | same shape as `SchemaClaim` |
-| `status.provider` | same as `SchemaClaim.status.provider` |
+| `status.provider` | same as `SchemaClaim.status.provider` — surfaced for selector-based resolution |
 
 ### `DatabaseProvider` (cluster-scoped)
 
@@ -248,10 +249,11 @@ itself. Task-02 enumerates the specific schema/CEL rules for each CRD.
 (`db.infrastructure.opendatahub.io/capability-*`) advertise what a provider supports; claims
 select a provider by `spec.provider.name` (exact) or `spec.provider.selector` (label match).
 Multiple matches are resolved by highest `db.infrastructure.opendatahub.io/selection-priority`
-annotation, ties broken alphabetically by name — `status.provider` on the claim names the winner
-(task-02: a single field, not a list of every candidate — a claim binds to exactly one provider).
-No `spec.provider` at all falls back to whichever provider is annotated
-`db.infrastructure.opendatahub.io/is-default-provider: "true"`.
+annotation, ties broken alphabetically by name. Once a selector-based claim has
+already selected a provider, that provider is kept while it still exists and
+still matches; a newly appearing or higher-priority provider does not force a
+rebind. `status.provider` on the claim names the winner (task-02: a single
+field, not a list of every candidate — a claim binds to exactly one provider).
 
 `status.conditions[Reachable]` is common to both types; everything else is type-specific (§6, §7).
 
@@ -308,13 +310,14 @@ needed.
    here**: spec.md shows `matchedProviders: ["platform-shared"]` (a list of every candidate that
    matched), but a claim only ever binds to one provider, so a list of also-rans has no consumer
    — `status.provider` (singular) is simpler and loses nothing a real caller needs.
-3. Neither set → use the provider annotated `is-default-provider: "true"`; none exists → `Pending`
-   with actionable message.
+3. Claim-side validation requires exactly one of `spec.provider.name` or
+   `spec.provider.selector`, so there is no claim reconcile fallback path for
+   "neither set".
 4. Resolved provider not `Reachable` → propagate as the claim's condition message.
 
 **`SchemaClaim` reconcile** (task-06): resolve provider → idempotent schema+user DDL (create
 schema if absent, else provision an *additional* user against the existing schema — supports
-multi-tenant reuse) → SSA-write credentials Secret (owner-referenced, name `== claim.Name`) →
+multi-tenant reuse) → SSA-write credentials Secret (name `== claim.Name`) →
 `Provisioned: True` with `status.connection` populated. Deletion: `Retain` drops only the
 provisioned user + Secret (schema/data persist); `Delete` drops the schema
 (`DROP SCHEMA ... CASCADE`) and all its data, then the user + Secret. Both paths use a finalizer
@@ -595,10 +598,10 @@ generator) is what task-08's acceptance criteria verify by code review.
 
 ## 9. Secret Management
 
-SSA-written, owner-referenced Secret named `== claim.Name`, no `namespace` field (Secret always
-lives in the claim's own namespace), garbage-collected via Kubernetes owner references — reusing
-the same `controllerutil.SetControllerReference` + SSA pattern already implicit in the
-framework's `deploy` action, applied here directly since claims aren't manifest-based resources.
+SSA-written Secret named `== claim.Name`, no `namespace` field (Secret always
+lives in the claim's own namespace). Claim secrets are ordinary namespaced
+resources managed by reconcile/deploy; they are intentionally not owner-
+referenced to the claim.
 
 ## 10. RBAC & Packaging
 
@@ -691,8 +694,9 @@ follows existing precedent exactly:
 
 Scoped down to what's actually relevant at this stage: connection pooling and cross-component
 schema migration on upgrade remain open (future concerns, not blocking this implementation);
-credential rotation is explicitly out of scope (no scheduled/on-demand rotation, no automatic
-recovery from a deleted Secret — deleting and recreating the claim is the only path). CRD/API
+credential rotation is explicitly out of scope (no scheduled/on-demand rotation
+workflow). Missing claim-owned secrets and database-side objects are repaired by
+normal reconciliation. CRD/API
 group (`infrastructure.opendatahub.io/v1alpha1`) and claim CRD names (`SchemaClaim`,
 `DatabaseClaim`) are already confirmed by spec.md, not open. Multi-tenancy isolation and the DSPO
 MariaDB→PostgreSQL migration are explicitly **not** design questions for this module — see §2.

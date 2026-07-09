@@ -30,11 +30,11 @@ It does not create:
 
 It creates:
 
-- `<provider>-postgres` `StatefulSet`
-- `<provider>-postgres` `PersistentVolumeClaim`
-- `<provider>-postgres` headless `Service`
-- `<provider>-postgres-initdb` `ConfigMap`
-- `<provider>-postgres` `NetworkPolicy`
+- `<provider>` `StatefulSet`
+- `<provider>` `PersistentVolumeClaim`
+- `<provider>` headless `Service`
+- `<provider>-initdb` `ConfigMap`
+- `<provider>` `NetworkPolicy`
 - `<provider>-admin` admin Secret
 
 Those resources are created in:
@@ -47,7 +47,7 @@ Those resources are created in:
 Claim credentials for an embedded-backed claim always use the Service DNS name,
 never a pod IP:
 
-`<provider>-postgres.<effective-embedded-namespace>.svc`
+`<provider>.<effective-embedded-namespace>.svc`
 
 where effective embedded namespace means:
 
@@ -93,7 +93,8 @@ environment variables:
 
 Primary conditions to watch:
 
-- claims: `Provisioned`
+- claims: `Provisioned` for claim-specific success, `Ready` for aggregate
+  top-level status
 - providers: `Reachable`
 - module CR: `Ready`
 
@@ -113,14 +114,29 @@ Claims can select providers by:
 - exact name
 - label selector
 
+Exactly one of those two modes must be set.
+
 For selector matches:
 
 1. highest `db.infrastructure.opendatahub.io/selection-priority` wins
 2. alphabetical provider name breaks ties
 
-A provider can also be marked as the default with:
+If a selector-based claim already has a selected provider in `status.provider`
+and that provider still matches, the controller keeps it instead of rebinding to
+a newly appearing match.
 
-`db.infrastructure.opendatahub.io/is-default-provider: "true"`
+Provider changes are also watched directly, so creating or updating a provider
+can wake pending claims without annotating the claim itself.
+
+## Claim Drift Recovery
+
+Claims reconcile the database-side state they own:
+
+- `SchemaClaim` recreates missing schemas, roles, and credentials Secrets
+- `DatabaseClaim` recreates missing roles and credentials Secrets
+
+Claim credentials Secrets are ordinary resources in the claim namespace. They
+are managed by reconcile/deploy, but are not owner-referenced to the claim.
 
 ## Local Verification
 
