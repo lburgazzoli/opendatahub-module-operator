@@ -40,26 +40,27 @@ exists and the operator only validates connectivity and provisions access.
 The following diagram illustrates how cluster-scoped database providers reconcile with namespaced database or schema claims:
 
 ```text
-                  +-------------------------+
-                  |    DatabaseProvider     | (Cluster-scoped supply)
-                  |  (Embedded / External)  |
-                  +-------------------------+
-                               ^
-                               | (References via spec.provider)
-                               |
-  +----------------------------+----------------------------+
-  |                                                         |
-  v                                                         v
-+------------------------+                                +------------------------+
-|      SchemaClaim       | (Namespaced)                   |     DatabaseClaim      | (Namespaced)
-|                        |                                |                        |
-+------------------------+                                +------------------------+
-  |                                                         |
-  | (Provisions schema & role)                              | (Provisions role)
-  v                                                         v
-+------------------------+                                +------------------------+
-|    Secret (claim-name) | <--- Connection details ------> |    Secret (claim-name) |
-+------------------------+                                +------------------------+
+            ┌───────────────────────────────┐
+            │   DatabaseProvider (Supply)   │  ◄─── [ Cluster-scoped ]
+            │    (Embedded or External)     │
+            └───────────────┬───────────────┘
+                            ▲
+                            │ (References via spec.provider)
+                            │
+               ┌────────────┴────────────┐
+               │                         │
+               ▼                         ▼
+        ┌─────────────┐           ┌─────────────┐
+        │ SchemaClaim │           │DatabaseClaim│  ◄─── [ Namespaced ]
+        └──────┬──────┘           └──────┬──────┘
+               │                         │
+               │ (Reconciled by          │ (Reconciled by
+               │  the Operator)          │  the Operator)
+               ▼                         ▼
+        ┌─────────────┐           ┌─────────────┐
+        │   Secret    │           │   Secret    │  ◄─── [ Credentials ]
+        │(claim-name) │           │(claim-name) │
+        └─────────────┘           └─────────────┘
 ```
 
 ### Claims
