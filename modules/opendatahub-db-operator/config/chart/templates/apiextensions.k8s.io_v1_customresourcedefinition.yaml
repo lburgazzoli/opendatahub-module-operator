@@ -1,0 +1,1086 @@
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.20.1
+  name: databaseclaims.infrastructure.opendatahub.io
+spec:
+  group: infrastructure.opendatahub.io
+  names:
+    kind: DatabaseClaim
+    listKind: DatabaseClaimList
+    plural: databaseclaims
+    singular: databaseclaim
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - description: Database
+      jsonPath: .status.database
+      name: Database
+      type: string
+    - description: Provisioned
+      jsonPath: .status.conditions[?(@.type=="Provisioned")].status
+      name: Provisioned
+      type: string
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: DatabaseClaim is the Schema for the databaseclaims API.
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: DatabaseClaimSpec defines the desired state of DatabaseClaim.
+            properties:
+              access:
+                default: ReadWrite
+                description: Access is the privilege level granted to the provisioned
+                  user.
+                enum:
+                - ReadWrite
+                - ReadOnly
+                type: string
+              database:
+                description: |-
+                  Database names a pre-existing database on the provider's backend.
+                  Required, always -- unlike SchemaClaim.spec.schema, there is no
+                  "${namespace}_${name}" fallback: the caller must always know and name
+                  the exact pre-existing database. Immutable once set, for the same
+                  reason SchemaClaim.spec.schema is: changing it mid-life implies a
+                  different claim, not an update to this one.
+                minLength: 1
+                type: string
+                x-kubernetes-validations:
+                - message: database is immutable once set
+                  rule: self == oldSelf
+              provider:
+                description: Provider selects the DatabaseProvider to provision against.
+                properties:
+                  name:
+                    description: Name is the exact DatabaseProvider name to bind to.
+                    type: string
+                  selector:
+                    description: |-
+                      Selector matches against DatabaseProvider capability labels. When
+                      multiple providers match, the one with the highest
+                      db.infrastructure.opendatahub.io/selection-priority annotation wins,
+                      ties broken alphabetically by name (docs/plan.md §6).
+                    properties:
+                      matchExpressions:
+                        description: matchExpressions is a list of label selector
+                          requirements. The requirements are ANDed.
+                        items:
+                          description: |-
+                            A label selector requirement is a selector that contains values, a key, and an operator that
+                            relates the key and values.
+                          properties:
+                            key:
+                              description: key is the label key that the selector
+                                applies to.
+                              type: string
+                            operator:
+                              description: |-
+                                operator represents a key's relationship to a set of values.
+                                Valid operators are In, NotIn, Exists and DoesNotExist.
+                              type: string
+                            values:
+                              description: |-
+                                values is an array of string values. If the operator is In or NotIn,
+                                the values array must be non-empty. If the operator is Exists or DoesNotExist,
+                                the values array must be empty. This array is replaced during a strategic
+                                merge patch.
+                              items:
+                                type: string
+                              type: array
+                              x-kubernetes-list-type: atomic
+                          required:
+                          - key
+                          - operator
+                          type: object
+                        type: array
+                        x-kubernetes-list-type: atomic
+                      matchLabels:
+                        additionalProperties:
+                          type: string
+                        description: |-
+                          matchLabels is a map of {key,value} pairs. A single {key,value} in the matchLabels
+                          map is equivalent to an element of matchExpressions, whose key field is "key", the
+                          operator is "In", and the values array contains only "value". The requirements are ANDed.
+                        type: object
+                    type: object
+                    x-kubernetes-map-type: atomic
+                type: object
+                x-kubernetes-validations:
+                - message: exactly one of name or selector must be set
+                  rule: '(has(self.name) ? 1 : 0) + (has(self.selector) ? 1 : 0) ==
+                    1'
+            required:
+            - database
+            - provider
+            type: object
+          status:
+            description: |-
+              DatabaseClaimStatus defines the observed state of DatabaseClaim. There is
+              no deletionPolicy field on the spec, so there is no corresponding status
+              concern either -- always-Retain semantics (docs/plan.md §5). Phase (human-
+              readable summary only -- consumers must gate on conditions[type=Provisioned],
+              never on Phase) comes from the embedded common.Status, not a redundant
+              field here.
+            properties:
+              conditions:
+                description: Conditions is the set of condition observations for this
+                  module.
+                items:
+                  description: |-
+                    Condition represents an observation of a module's state at a point in time.
+                    Module controllers set conditions to communicate health signals to the
+                    orchestrator and to human operators.
+                  properties:
+                    lastHeartbeatTime:
+                      description: |-
+                        Deprecated: LastHeartbeatTime is present only for backward
+                        compatibility with existing CRDs. New code should not set this field.
+                      format: date-time
+                      type: string
+                    lastTransitionTime:
+                      description: |-
+                        lastTransitionTime is the last time the condition transitioned from
+                        one status to another.
+                      format: date-time
+                      type: string
+                    message:
+                      description: |-
+                        message is a human-readable message indicating details about the
+                        transition.
+                      type: string
+                    observedGeneration:
+                      description: |-
+                        observedGeneration represents the .metadata.generation that the
+                        condition was set based upon. If this does not match the resource's
+                        current generation, the condition is likely stale.
+                      format: int64
+                      minimum: 0
+                      type: integer
+                    reason:
+                      description: |-
+                        reason contains a programmatic identifier indicating the reason for
+                        the condition's last transition. The value should be a CamelCase
+                        string.
+                      type: string
+                    severity:
+                      description: |-
+                        Severity indicates whether this condition represents an error or is
+                        purely informational. Empty string (default) indicates error severity.
+                      type: string
+                    status:
+                      description: status of the condition, one of True, False, Unknown.
+                      enum:
+                      - "True"
+                      - "False"
+                      - Unknown
+                      type: string
+                    type:
+                      description: type of condition in CamelCase or in foo.example.com/CamelCase.
+                      maxLength: 316
+                      pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
+                      type: string
+                  required:
+                  - status
+                  - type
+                  type: object
+                type: array
+                x-kubernetes-list-type: atomic
+              connection:
+                description: Connection is the resolved connection surface once Provisioned.
+                properties:
+                  database:
+                    type: string
+                  host:
+                    type: string
+                  port:
+                    format: int32
+                    type: integer
+                  secretRef:
+                    description: |-
+                      SecretRef always equals the claim's own metadata.name and lives in the
+                      claim's own namespace -- no independent naming scheme to look up.
+                    properties:
+                      name:
+                        default: ""
+                        description: |-
+                          Name of the referent.
+                          This field is effectively required, but due to backwards compatibility is
+                          allowed to be empty. Instances of this type with an empty value here are
+                          almost certainly wrong.
+                          More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                        type: string
+                    type: object
+                    x-kubernetes-map-type: atomic
+                type: object
+              database:
+                description: |-
+                  Database echoes spec.database exactly -- always identical, no default
+                  to resolve here (unlike SchemaClaim.status.schema).
+                type: string
+              observedGeneration:
+                description: |-
+                  ObservedGeneration is the most recent .metadata.generation observed
+                  by the controller. It allows consumers to determine whether the
+                  controller has processed the latest spec changes.
+                format: int64
+                type: integer
+              phase:
+                description: Phase is the top-level lifecycle phase of the module.
+                type: string
+              provider:
+                description: |-
+                  Provider is the single DatabaseProvider ultimately selected when
+                  spec.provider.selector matched more than one candidate (highest
+                  selection-priority annotation, ties broken alphabetically by name --
+                  docs/plan.md §6). Only the winner is surfaced: a claim binds to exactly
+                  one provider, so there's nothing to gain from also listing the
+                  candidates that lost.
+                type: string
+              releases:
+                description: Releases is the list of deployed component releases.
+                items:
+                  description: ComponentRelease describes a single software component's
+                    release metadata.
+                  properties:
+                    name:
+                      description: Name is the component name, used as the merge key
+                        in lists.
+                      type: string
+                    repoUrl:
+                      description: RepoURL is the source repository URL for this component
+                        release.
+                      type: string
+                    version:
+                      description: Version is the semantic version of the component.
+                      type: string
+                  required:
+                  - name
+                  type: object
+                type: array
+                x-kubernetes-list-map-keys:
+                - name
+                x-kubernetes-list-type: map
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.20.1
+  name: databaseproviders.infrastructure.opendatahub.io
+spec:
+  group: infrastructure.opendatahub.io
+  names:
+    kind: DatabaseProvider
+    listKind: DatabaseProviderList
+    plural: databaseproviders
+    singular: databaseprovider
+  scope: Cluster
+  versions:
+  - additionalPrinterColumns:
+    - description: Provider type
+      jsonPath: .spec.type
+      name: Type
+      type: string
+    - description: Resolved host
+      jsonPath: .status.connection.host
+      name: Host
+      type: string
+    - description: Resolved admin database
+      jsonPath: .status.connection.database
+      name: Database
+      type: string
+    - description: Reachable
+      jsonPath: .status.conditions[?(@.type=="Reachable")].status
+      name: Reachable
+      type: string
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: DatabaseProvider is the Schema for the databaseproviders API.
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: DatabaseProviderSpec defines the desired state of DatabaseProvider.
+            properties:
+              embedded:
+                description: |-
+                  Embedded configures a controller-owned instance. Mutually exclusive
+                  with External.
+                properties:
+                  deletionPolicy:
+                    default: Retain
+                    description: |-
+                      DeletionPolicy governs the instance's lifecycle when zero claims
+                      reference this provider (docs/plan.md §7.7) -- distinct from a claim's
+                      own per-schema/database deletionPolicy.
+                    enum:
+                    - Retain
+                    - Delete
+                    type: string
+                  extensions:
+                    description: |-
+                      Extensions lists PostgreSQL extension names to make available,
+                      mapped to a built-in container image (task-08 §1) -- an unmapped
+                      combination fails reconciliation with an actionable condition rather
+                      than silently ignoring the request.
+                    items:
+                      pattern: ^[a-z][a-z0-9_]*$
+                      type: string
+                    type: array
+                  namespace:
+                    description: |-
+                      Namespace overrides where the embedded PostgreSQL resources are created.
+                      When unset, the operator namespace is used.
+                    type: string
+                  resources:
+                    description: Resources are applied to the Postgres container.
+                    properties:
+                      claims:
+                        description: |-
+                          Claims lists the names of resources, defined in spec.resourceClaims,
+                          that are used by this container.
+
+                          This field depends on the
+                          DynamicResourceAllocation feature gate.
+
+                          This field is immutable. It can only be set for containers.
+                        items:
+                          description: ResourceClaim references one entry in PodSpec.ResourceClaims.
+                          properties:
+                            name:
+                              description: |-
+                                Name must match the name of one entry in pod.spec.resourceClaims of
+                                the Pod where this field is used. It makes that resource available
+                                inside a container.
+                              type: string
+                            request:
+                              description: |-
+                                Request is the name chosen for a request in the referenced claim.
+                                If empty, everything from the claim is made available, otherwise
+                                only the result of this request.
+                              type: string
+                          required:
+                          - name
+                          type: object
+                        type: array
+                        x-kubernetes-list-map-keys:
+                        - name
+                        x-kubernetes-list-type: map
+                      limits:
+                        additionalProperties:
+                          anyOf:
+                          - type: integer
+                          - type: string
+                          pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                          x-kubernetes-int-or-string: true
+                        description: |-
+                          Limits describes the maximum amount of compute resources allowed.
+                          More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
+                        type: object
+                      requests:
+                        additionalProperties:
+                          anyOf:
+                          - type: integer
+                          - type: string
+                          pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                          x-kubernetes-int-or-string: true
+                        description: |-
+                          Requests describes the minimum amount of compute resources required.
+                          If Requests is omitted for a container, it defaults to Limits if that is explicitly specified,
+                          otherwise to an implementation-defined value. Requests cannot exceed Limits.
+                          More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
+                        type: object
+                    type: object
+                  storage:
+                    description: Storage configures the instance's PersistentVolumeClaim.
+                    properties:
+                      size:
+                        anyOf:
+                        - type: integer
+                        - type: string
+                        description: Size is the requested PVC storage size.
+                        pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                        x-kubernetes-int-or-string: true
+                      storageClassName:
+                        description: StorageClassName is passed through to the PVC
+                          verbatim when set.
+                        type: string
+                    required:
+                    - size
+                    type: object
+                required:
+                - storage
+                type: object
+              external:
+                description: |-
+                  External configures a provider pointing at an admin-managed instance.
+                  Mutually exclusive with Embedded.
+                properties:
+                  connectionSecretRef:
+                    description: |-
+                      ConnectionSecretRef points at a Secret holding admin-level connection
+                      info, which may live in a different namespace than any claim (unlike
+                      claim credential Secrets, which always live in the claim's own
+                      namespace).
+                    properties:
+                      name:
+                        description: name is unique within a namespace to reference
+                          a secret resource.
+                        type: string
+                      namespace:
+                        description: namespace defines the space within which the
+                          secret name must be unique.
+                        type: string
+                    type: object
+                    x-kubernetes-map-type: atomic
+                required:
+                - connectionSecretRef
+                type: object
+              type:
+                description: Type selects which of External/Embedded below is populated.
+                enum:
+                - External
+                - Embedded
+                type: string
+            required:
+            - type
+            type: object
+            x-kubernetes-validations:
+            - message: exactly one of external or embedded must be set
+              rule: '(has(self.external) ? 1 : 0) + (has(self.embedded) ? 1 : 0) ==
+                1'
+            - message: spec.type must match the set provider type
+              rule: 'self.type == ''External'' ? has(self.external) : has(self.embedded)'
+          status:
+            description: |-
+              DatabaseProviderStatus defines the observed state of DatabaseProvider.
+              Unlike the two claim kinds, spec.md's status example has no phase field --
+              common.Status's own Phase/Conditions/ObservedGeneration are sufficient.
+            properties:
+              conditions:
+                description: Conditions is the set of condition observations for this
+                  module.
+                items:
+                  description: |-
+                    Condition represents an observation of a module's state at a point in time.
+                    Module controllers set conditions to communicate health signals to the
+                    orchestrator and to human operators.
+                  properties:
+                    lastHeartbeatTime:
+                      description: |-
+                        Deprecated: LastHeartbeatTime is present only for backward
+                        compatibility with existing CRDs. New code should not set this field.
+                      format: date-time
+                      type: string
+                    lastTransitionTime:
+                      description: |-
+                        lastTransitionTime is the last time the condition transitioned from
+                        one status to another.
+                      format: date-time
+                      type: string
+                    message:
+                      description: |-
+                        message is a human-readable message indicating details about the
+                        transition.
+                      type: string
+                    observedGeneration:
+                      description: |-
+                        observedGeneration represents the .metadata.generation that the
+                        condition was set based upon. If this does not match the resource's
+                        current generation, the condition is likely stale.
+                      format: int64
+                      minimum: 0
+                      type: integer
+                    reason:
+                      description: |-
+                        reason contains a programmatic identifier indicating the reason for
+                        the condition's last transition. The value should be a CamelCase
+                        string.
+                      type: string
+                    severity:
+                      description: |-
+                        Severity indicates whether this condition represents an error or is
+                        purely informational. Empty string (default) indicates error severity.
+                      type: string
+                    status:
+                      description: status of the condition, one of True, False, Unknown.
+                      enum:
+                      - "True"
+                      - "False"
+                      - Unknown
+                      type: string
+                    type:
+                      description: type of condition in CamelCase or in foo.example.com/CamelCase.
+                      maxLength: 316
+                      pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
+                      type: string
+                  required:
+                  - status
+                  - type
+                  type: object
+                type: array
+                x-kubernetes-list-type: atomic
+              connection:
+                description: Connection is the non-secret connection surface for the
+                  provider.
+                properties:
+                  database:
+                    type: string
+                  host:
+                    type: string
+                  port:
+                    format: int32
+                    type: integer
+                type: object
+              observedGeneration:
+                description: |-
+                  ObservedGeneration is the most recent .metadata.generation observed
+                  by the controller. It allows consumers to determine whether the
+                  controller has processed the latest spec changes.
+                format: int64
+                type: integer
+              phase:
+                description: Phase is the top-level lifecycle phase of the module.
+                type: string
+              releases:
+                description: Releases is the list of deployed component releases.
+                items:
+                  description: ComponentRelease describes a single software component's
+                    release metadata.
+                  properties:
+                    name:
+                      description: Name is the component name, used as the merge key
+                        in lists.
+                      type: string
+                    repoUrl:
+                      description: RepoURL is the source repository URL for this component
+                        release.
+                      type: string
+                    version:
+                      description: Version is the semantic version of the component.
+                      type: string
+                  required:
+                  - name
+                  type: object
+                type: array
+                x-kubernetes-list-map-keys:
+                - name
+                x-kubernetes-list-type: map
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.20.1
+  name: databaseservices.services.platform.opendatahub.io
+spec:
+  group: services.platform.opendatahub.io
+  names:
+    kind: DatabaseService
+    listKind: DatabaseServiceList
+    plural: databaseservices
+    singular: databaseservice
+  scope: Cluster
+  versions:
+  - additionalPrinterColumns:
+    - description: Ready
+      jsonPath: .status.conditions[?(@.type=="Ready")].status
+      name: Ready
+      type: string
+    - description: Reason
+      jsonPath: .status.conditions[?(@.type=="Ready")].reason
+      name: Reason
+      type: string
+    - description: Module Version
+      jsonPath: .status.releases[?(@.name=="platform")].version
+      name: Version
+      type: string
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: DatabaseService is the Schema for the databaseservices API.
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: |-
+              DatabaseServiceSpec defines the desired state of DatabaseService. No
+              custom fields: this CR's only job is to let the ODH Operator enable/gate
+              on this module like any other (docs/plan.md §4) -- it does not deploy a
+              separate third-party operand the way other modules' Module CRs do.
+            type: object
+          status:
+            description: DatabaseServiceStatus defines the observed state of DatabaseService.
+            properties:
+              conditions:
+                description: Conditions is the set of condition observations for this
+                  module.
+                items:
+                  description: |-
+                    Condition represents an observation of a module's state at a point in time.
+                    Module controllers set conditions to communicate health signals to the
+                    orchestrator and to human operators.
+                  properties:
+                    lastHeartbeatTime:
+                      description: |-
+                        Deprecated: LastHeartbeatTime is present only for backward
+                        compatibility with existing CRDs. New code should not set this field.
+                      format: date-time
+                      type: string
+                    lastTransitionTime:
+                      description: |-
+                        lastTransitionTime is the last time the condition transitioned from
+                        one status to another.
+                      format: date-time
+                      type: string
+                    message:
+                      description: |-
+                        message is a human-readable message indicating details about the
+                        transition.
+                      type: string
+                    observedGeneration:
+                      description: |-
+                        observedGeneration represents the .metadata.generation that the
+                        condition was set based upon. If this does not match the resource's
+                        current generation, the condition is likely stale.
+                      format: int64
+                      minimum: 0
+                      type: integer
+                    reason:
+                      description: |-
+                        reason contains a programmatic identifier indicating the reason for
+                        the condition's last transition. The value should be a CamelCase
+                        string.
+                      type: string
+                    severity:
+                      description: |-
+                        Severity indicates whether this condition represents an error or is
+                        purely informational. Empty string (default) indicates error severity.
+                      type: string
+                    status:
+                      description: status of the condition, one of True, False, Unknown.
+                      enum:
+                      - "True"
+                      - "False"
+                      - Unknown
+                      type: string
+                    type:
+                      description: type of condition in CamelCase or in foo.example.com/CamelCase.
+                      maxLength: 316
+                      pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
+                      type: string
+                  required:
+                  - status
+                  - type
+                  type: object
+                type: array
+                x-kubernetes-list-type: atomic
+              observedGeneration:
+                description: |-
+                  ObservedGeneration is the most recent .metadata.generation observed
+                  by the controller. It allows consumers to determine whether the
+                  controller has processed the latest spec changes.
+                format: int64
+                type: integer
+              phase:
+                description: Phase is the top-level lifecycle phase of the module.
+                type: string
+              releases:
+                description: Releases is the list of deployed component releases.
+                items:
+                  description: ComponentRelease describes a single software component's
+                    release metadata.
+                  properties:
+                    name:
+                      description: Name is the component name, used as the merge key
+                        in lists.
+                      type: string
+                    repoUrl:
+                      description: RepoURL is the source repository URL for this component
+                        release.
+                      type: string
+                    version:
+                      description: Version is the semantic version of the component.
+                      type: string
+                  required:
+                  - name
+                  type: object
+                type: array
+                x-kubernetes-list-map-keys:
+                - name
+                x-kubernetes-list-type: map
+            type: object
+        type: object
+        x-kubernetes-validations:
+        - message: DatabaseService name must be default-db-operator
+          rule: self.metadata.name == 'default-db-operator'
+    served: true
+    storage: true
+    subresources:
+      status: {}
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.20.1
+  name: schemaclaims.infrastructure.opendatahub.io
+spec:
+  group: infrastructure.opendatahub.io
+  names:
+    kind: SchemaClaim
+    listKind: SchemaClaimList
+    plural: schemaclaims
+    singular: schemaclaim
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - description: Resolved schema
+      jsonPath: .status.schema
+      name: Schema
+      type: string
+    - description: Provisioned
+      jsonPath: .status.conditions[?(@.type=="Provisioned")].status
+      name: Provisioned
+      type: string
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: SchemaClaim is the Schema for the schemaclaims API.
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: SchemaClaimSpec defines the desired state of SchemaClaim.
+            properties:
+              access:
+                default: ReadWrite
+                description: Access is the privilege level granted to the provisioned
+                  user.
+                enum:
+                - ReadWrite
+                - ReadOnly
+                type: string
+              deletionPolicy:
+                default: Retain
+                description: DeletionPolicy governs schema+data lifecycle on claim
+                  deletion.
+                enum:
+                - Retain
+                - Delete
+                type: string
+              provider:
+                description: Provider selects the DatabaseProvider to provision against.
+                properties:
+                  name:
+                    description: Name is the exact DatabaseProvider name to bind to.
+                    type: string
+                  selector:
+                    description: |-
+                      Selector matches against DatabaseProvider capability labels. When
+                      multiple providers match, the one with the highest
+                      db.infrastructure.opendatahub.io/selection-priority annotation wins,
+                      ties broken alphabetically by name (docs/plan.md §6).
+                    properties:
+                      matchExpressions:
+                        description: matchExpressions is a list of label selector
+                          requirements. The requirements are ANDed.
+                        items:
+                          description: |-
+                            A label selector requirement is a selector that contains values, a key, and an operator that
+                            relates the key and values.
+                          properties:
+                            key:
+                              description: key is the label key that the selector
+                                applies to.
+                              type: string
+                            operator:
+                              description: |-
+                                operator represents a key's relationship to a set of values.
+                                Valid operators are In, NotIn, Exists and DoesNotExist.
+                              type: string
+                            values:
+                              description: |-
+                                values is an array of string values. If the operator is In or NotIn,
+                                the values array must be non-empty. If the operator is Exists or DoesNotExist,
+                                the values array must be empty. This array is replaced during a strategic
+                                merge patch.
+                              items:
+                                type: string
+                              type: array
+                              x-kubernetes-list-type: atomic
+                          required:
+                          - key
+                          - operator
+                          type: object
+                        type: array
+                        x-kubernetes-list-type: atomic
+                      matchLabels:
+                        additionalProperties:
+                          type: string
+                        description: |-
+                          matchLabels is a map of {key,value} pairs. A single {key,value} in the matchLabels
+                          map is equivalent to an element of matchExpressions, whose key field is "key", the
+                          operator is "In", and the values array contains only "value". The requirements are ANDed.
+                        type: object
+                    type: object
+                    x-kubernetes-map-type: atomic
+                type: object
+                x-kubernetes-validations:
+                - message: exactly one of name or selector must be set
+                  rule: '(has(self.name) ? 1 : 0) + (has(self.selector) ? 1 : 0) ==
+                    1'
+              schema:
+                description: |-
+                  Schema is an optional override for the schema name. If omitted, it
+                  defaults to "${namespace}_${name}", sanitized to a valid PostgreSQL
+                  identifier (task-06). Immutable once set: changing it mid-life implies
+                  a different claim, not an update to this one -- if this proves too
+                  strict for a legitimate day-2 use case, revisit rather than silently
+                  dropping the rule.
+                maxLength: 63
+                pattern: ^[a-z][a-z0-9_]*$
+                type: string
+                x-kubernetes-validations:
+                - message: schema is immutable once set
+                  rule: self == oldSelf
+            required:
+            - provider
+            type: object
+          status:
+            description: |-
+              SchemaClaimStatus defines the observed state of SchemaClaim. Phase (human-
+              readable summary only -- consumers must gate on conditions[type=Provisioned],
+              never on Phase) comes from the embedded common.Status, not a redundant
+              field here.
+            properties:
+              conditions:
+                description: Conditions is the set of condition observations for this
+                  module.
+                items:
+                  description: |-
+                    Condition represents an observation of a module's state at a point in time.
+                    Module controllers set conditions to communicate health signals to the
+                    orchestrator and to human operators.
+                  properties:
+                    lastHeartbeatTime:
+                      description: |-
+                        Deprecated: LastHeartbeatTime is present only for backward
+                        compatibility with existing CRDs. New code should not set this field.
+                      format: date-time
+                      type: string
+                    lastTransitionTime:
+                      description: |-
+                        lastTransitionTime is the last time the condition transitioned from
+                        one status to another.
+                      format: date-time
+                      type: string
+                    message:
+                      description: |-
+                        message is a human-readable message indicating details about the
+                        transition.
+                      type: string
+                    observedGeneration:
+                      description: |-
+                        observedGeneration represents the .metadata.generation that the
+                        condition was set based upon. If this does not match the resource's
+                        current generation, the condition is likely stale.
+                      format: int64
+                      minimum: 0
+                      type: integer
+                    reason:
+                      description: |-
+                        reason contains a programmatic identifier indicating the reason for
+                        the condition's last transition. The value should be a CamelCase
+                        string.
+                      type: string
+                    severity:
+                      description: |-
+                        Severity indicates whether this condition represents an error or is
+                        purely informational. Empty string (default) indicates error severity.
+                      type: string
+                    status:
+                      description: status of the condition, one of True, False, Unknown.
+                      enum:
+                      - "True"
+                      - "False"
+                      - Unknown
+                      type: string
+                    type:
+                      description: type of condition in CamelCase or in foo.example.com/CamelCase.
+                      maxLength: 316
+                      pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
+                      type: string
+                  required:
+                  - status
+                  - type
+                  type: object
+                type: array
+                x-kubernetes-list-type: atomic
+              connection:
+                description: Connection is the resolved connection surface once Provisioned.
+                properties:
+                  database:
+                    type: string
+                  host:
+                    type: string
+                  port:
+                    format: int32
+                    type: integer
+                  schema:
+                    type: string
+                  secretRef:
+                    description: |-
+                      SecretRef always equals the claim's own metadata.name and lives in the
+                      claim's own namespace -- no independent naming scheme to look up.
+                    properties:
+                      name:
+                        default: ""
+                        description: |-
+                          Name of the referent.
+                          This field is effectively required, but due to backwards compatibility is
+                          allowed to be empty. Instances of this type with an empty value here are
+                          almost certainly wrong.
+                          More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                        type: string
+                    type: object
+                    x-kubernetes-map-type: atomic
+                required:
+                - database
+                - host
+                - port
+                - schema
+                - secretRef
+                type: object
+              observedGeneration:
+                description: |-
+                  ObservedGeneration is the most recent .metadata.generation observed
+                  by the controller. It allows consumers to determine whether the
+                  controller has processed the latest spec changes.
+                format: int64
+                type: integer
+              phase:
+                description: Phase is the top-level lifecycle phase of the module.
+                type: string
+              provider:
+                description: |-
+                  Provider is the single DatabaseProvider ultimately selected when
+                  spec.provider.selector matched more than one candidate (highest
+                  selection-priority annotation, ties broken alphabetically by name --
+                  docs/plan.md §6). Only the winner is surfaced: a claim binds to exactly
+                  one provider, so there's nothing to gain from also listing the
+                  candidates that lost.
+                type: string
+              releases:
+                description: Releases is the list of deployed component releases.
+                items:
+                  description: ComponentRelease describes a single software component's
+                    release metadata.
+                  properties:
+                    name:
+                      description: Name is the component name, used as the merge key
+                        in lists.
+                      type: string
+                    repoUrl:
+                      description: RepoURL is the source repository URL for this component
+                        release.
+                      type: string
+                    version:
+                      description: Version is the semantic version of the component.
+                      type: string
+                  required:
+                  - name
+                  type: object
+                type: array
+                x-kubernetes-list-map-keys:
+                - name
+                x-kubernetes-list-type: map
+              schema:
+                description: |-
+                  Schema is the actual resolved schema name -- always populated, whether
+                  from spec.schema or the "${namespace}_${name}" default.
+                type: string
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}

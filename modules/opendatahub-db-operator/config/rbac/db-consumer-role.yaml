@@ -1,0 +1,20 @@
+---
+# Reference manifest only: bind this ClusterRole with a namespaced RoleBinding
+# for platform components that should create and observe both SchemaClaims and
+# DatabaseClaims. This operator does not apply or own the lifecycle of this
+# role automatically.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: db-consumer
+rules:
+- apiGroups:
+  - infrastructure.opendatahub.io
+  resources:
+  - schemaclaims
+  - databaseclaims
+  verbs:
+  - create
+  - get
+  - list
+  - watch
