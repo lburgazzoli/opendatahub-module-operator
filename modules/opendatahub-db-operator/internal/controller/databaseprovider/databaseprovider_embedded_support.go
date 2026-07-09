@@ -145,6 +145,14 @@ func ensureEmbeddedAdminSecret(
 			return nil, err
 		}
 
+		exists, existsErr := embeddedInstanceExists(ctx, cli, provider, cfg)
+		if existsErr != nil {
+			return nil, existsErr
+		}
+		if exists {
+			return nil, fmt.Errorf("embedded admin Secret %s/%s not found for an existing instance", key.Namespace, key.Name)
+		}
+
 		password, pwErr := postgres.GeneratePassword(24)
 		if pwErr != nil {
 			return nil, fmt.Errorf("generating admin password: %w", pwErr)
@@ -160,8 +168,16 @@ func ensureEmbeddedAdminSecret(
 		return secret, nil
 	}
 
-	if len(secret.Data[dbcontroller.EmbeddedAdminSecretPasswordKey]) != 0 {
+	if embeddedAdminSecretComplete(secret) {
 		return secret, nil
+	}
+
+	exists, err := embeddedInstanceExists(ctx, cli, provider, cfg)
+	if err != nil {
+		return nil, err
+	}
+	if exists {
+		return nil, fmt.Errorf("embedded admin Secret %s/%s is incomplete for an existing instance", key.Namespace, key.Name)
 	}
 
 	password, err := postgres.GeneratePassword(24)
@@ -183,6 +199,16 @@ func ensureEmbeddedAdminSecret(
 		return nil, err
 	}
 	return secret, nil
+}
+
+func embeddedAdminSecretComplete(secret *corev1.Secret) bool {
+	if secret == nil {
+		return false
+	}
+
+	return len(secret.Data[dbcontroller.EmbeddedAdminSecretUserKey]) != 0 &&
+		len(secret.Data[dbcontroller.EmbeddedAdminSecretPasswordKey]) != 0 &&
+		len(secret.Data[dbcontroller.EmbeddedAdminSecretDBKey]) != 0
 }
 
 func buildEmbeddedAdminSecret(key types.NamespacedName, password string) *corev1.Secret {
@@ -298,6 +324,22 @@ func embeddedStatefulSetKey(provider *infraApi.DatabaseProvider, cfg *moduleconf
 		Namespace: dbcontroller.EmbeddedNamespace(provider, operatorNamespace),
 		Name:      dbcontroller.EmbeddedServiceName(provider.Name),
 	}
+}
+
+func embeddedInstanceExists(
+	ctx context.Context,
+	cli client.Client,
+	provider *infraApi.DatabaseProvider,
+	cfg *moduleconfig.Config,
+) (bool, error) {
+	sts := &appsv1.StatefulSet{}
+	if err := cli.Get(ctx, embeddedStatefulSetKey(provider, cfg), sts); err != nil {
+		if apierrors.IsNotFound(err) {
+			return false, nil
+		}
+		return false, err
+	}
+	return true, nil
 }
 
 func embeddedChildResources(provider *infraApi.DatabaseProvider, cfg *moduleconfig.Config) []client.Object {

@@ -60,7 +60,11 @@ func EmbeddedNamespace(provider *infraApi.DatabaseProvider, operatorNamespace st
 }
 
 func EmbeddedServiceHost(provider *infraApi.DatabaseProvider, operatorNamespace string) string {
-	return fmt.Sprintf("%s.%s.svc.cluster.local", EmbeddedServiceName(provider.Name), EmbeddedNamespace(provider, operatorNamespace))
+	return fmt.Sprintf(
+		"%s.%s.svc.cluster.local",
+		EmbeddedServiceName(provider.Name),
+		EmbeddedNamespace(provider, operatorNamespace),
+	)
 }
 
 func OperatorNamespace(cfg *moduleconfig.Config) string {

@@ -74,6 +74,7 @@ type ProviderConnectionStatus struct {
 
 // StorageSpec configures the Embedded provider's PersistentVolumeClaim
 // (docs/plan.md §7.3).
+// +kubebuilder:validation:XValidation:rule="quantity(self.size).isGreaterThan(quantity('0'))",message="storage.size must be greater than zero"
 type StorageSpec struct {
 	// Size is the requested PVC storage size.
 	// +kubebuilder:validation:Required

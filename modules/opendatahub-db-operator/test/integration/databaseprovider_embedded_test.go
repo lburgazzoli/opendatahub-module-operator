@@ -61,10 +61,76 @@ func TestDatabaseProviderEmbedded(t *testing.T) {
 }
 
 func (st *embeddedDatabaseProviderSuite) Run(t *testing.T) {
+	t.Run("crd validation", st.testCRDValidation)
 	t.Run("creates embedded postgres resources", st.testProvisioning)
 	t.Run("creates embedded postgres resources in configured namespace", st.testProvisioningCustomNamespace)
+	t.Run("deleted admin secret is surfaced", st.testAdminSecretDeleted)
 	t.Run("rejects unmapped extensions", st.testImageUnmapped)
 	t.Run("rejects extension changes after provisioning", st.testExtensionChangeRequiresRecreate)
+}
+
+func (st *embeddedDatabaseProviderSuite) testCRDValidation(t *testing.T) {
+	ctx := t.Context()
+	cli := st.env.Client
+	externalSpec := infraApi.ExternalProviderSpec{
+		ConnectionSecretRef: corev1.SecretReference{Name: "admin-secret", Namespace: st.env.Namespace},
+	}
+	embeddedSpec := infraApi.EmbeddedProviderSpec{
+		Storage: infraApi.StorageSpec{Size: resource.MustParse("1Gi")},
+	}
+
+	t.Run("rejects-type-mismatch-embedded", func(t *testing.T) {
+		g := NewWithT(t)
+		obj := &infraApi.DatabaseProvider{
+			ObjectMeta: metav1.ObjectMeta{Name: "dbp-type-mismatch-embedded"},
+			Spec: infraApi.DatabaseProviderSpec{
+				Type:     infraApi.ProviderTypeEmbedded,
+				External: &externalSpec,
+			},
+		}
+		g.Expect(cli.Create(ctx, obj)).To(HaveOccurred())
+	})
+
+	t.Run("accepts-valid-embedded", func(t *testing.T) {
+		g := NewWithT(t)
+		obj := &infraApi.DatabaseProvider{
+			ObjectMeta: metav1.ObjectMeta{Name: "dbp-valid-embedded"},
+			Spec: infraApi.DatabaseProviderSpec{
+				Type:     infraApi.ProviderTypeEmbedded,
+				Embedded: &embeddedSpec,
+			},
+		}
+		g.Expect(cli.Create(ctx, obj)).To(Succeed())
+		t.Cleanup(func() { _ = cli.Delete(ctx, obj) })
+	})
+
+	t.Run("rejects-invalid-extension-name", func(t *testing.T) {
+		g := NewWithT(t)
+		bad := embeddedSpec
+		bad.Extensions = []string{"Not-Valid!"}
+		obj := &infraApi.DatabaseProvider{
+			ObjectMeta: metav1.ObjectMeta{Name: "dbp-bad-extension"},
+			Spec: infraApi.DatabaseProviderSpec{
+				Type:     infraApi.ProviderTypeEmbedded,
+				Embedded: &bad,
+			},
+		}
+		g.Expect(cli.Create(ctx, obj)).To(HaveOccurred())
+	})
+
+	t.Run("rejects-zero-storage-size", func(t *testing.T) {
+		g := NewWithT(t)
+		bad := embeddedSpec
+		bad.Storage.Size = resource.MustParse("0")
+		obj := &infraApi.DatabaseProvider{
+			ObjectMeta: metav1.ObjectMeta{Name: "dbp-zero-storage"},
+			Spec: infraApi.DatabaseProviderSpec{
+				Type:     infraApi.ProviderTypeEmbedded,
+				Embedded: &bad,
+			},
+		}
+		g.Expect(cli.Create(ctx, obj)).To(HaveOccurred())
+	})
 }
 
 func (st *embeddedDatabaseProviderSuite) testProvisioning(t *testing.T) {
@@ -89,6 +155,28 @@ func (st *embeddedDatabaseProviderSuite) testProvisioningCustomNamespace(t *test
 	)
 
 	st.expectProvisionedInNamespace(t, provider, namespace)
+}
+
+func (st *embeddedDatabaseProviderSuite) testAdminSecretDeleted(t *testing.T) {
+	provider := st.createEmbeddedProvider(t, "embedded-"+xid.New().String(), []string{"pg_trgm"})
+
+	st.waitReachable(t, provider)
+
+	adminSecret := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace: st.env.Config.OperatorNamespace,
+			Name:      dbcontroller.EmbeddedAdminSecretName(provider.Name),
+		},
+	}
+	st.env.deleteAndWait(t.Context(), t, adminSecret)
+
+	expectDatabaseProviderUnreachable(
+		t,
+		st.env,
+		provider,
+		"AdminSecretUnavailable",
+		adminSecret.Name,
+	)
 }
 
 func (st *embeddedDatabaseProviderSuite) testImageUnmapped(t *testing.T) {

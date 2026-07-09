@@ -26,6 +26,7 @@ import (
 	. "github.com/onsi/gomega"
 	"github.com/rs/xid"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	infraApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/api/infrastructure/v1alpha1"
@@ -78,8 +79,69 @@ func TestDatabaseProviderExternal(t *testing.T) {
 }
 
 func (st *databaseProviderSuite) Run(t *testing.T) {
+	t.Run("crd validation", st.testCRDValidation)
 	t.Run("reachable", st.testReachable)
 	t.Run("auth failure is surfaced", st.testAuthFailure)
+}
+
+func (st *databaseProviderSuite) testCRDValidation(t *testing.T) {
+	ctx := t.Context()
+	cli := st.env.Client
+	externalSpec := infraApi.ExternalProviderSpec{
+		ConnectionSecretRef: corev1.SecretReference{Name: "admin-secret", Namespace: st.env.Namespace},
+	}
+	embeddedSpec := infraApi.EmbeddedProviderSpec{
+		Storage: infraApi.StorageSpec{Size: resource.MustParse("1Gi")},
+	}
+
+	cases := []struct {
+		name string
+		spec infraApi.DatabaseProviderSpec
+	}{
+		{
+			name: "both-set",
+			spec: infraApi.DatabaseProviderSpec{
+				Type:     infraApi.ProviderTypeExternal,
+				External: &externalSpec,
+				Embedded: &embeddedSpec,
+			},
+		},
+		{
+			name: "neither-set",
+			spec: infraApi.DatabaseProviderSpec{Type: infraApi.ProviderTypeExternal},
+		},
+		{
+			name: "type-mismatch-external",
+			spec: infraApi.DatabaseProviderSpec{
+				Type:     infraApi.ProviderTypeExternal,
+				Embedded: &embeddedSpec,
+			},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run("rejects-"+tc.name, func(t *testing.T) {
+			g := NewWithT(t)
+			obj := &infraApi.DatabaseProvider{
+				ObjectMeta: metav1.ObjectMeta{Name: "dbp-" + tc.name},
+				Spec:       tc.spec,
+			}
+			g.Expect(cli.Create(ctx, obj)).To(HaveOccurred())
+		})
+	}
+
+	t.Run("accepts-valid-external", func(t *testing.T) {
+		g := NewWithT(t)
+		obj := &infraApi.DatabaseProvider{
+			ObjectMeta: metav1.ObjectMeta{Name: "dbp-valid-external"},
+			Spec: infraApi.DatabaseProviderSpec{
+				Type:     infraApi.ProviderTypeExternal,
+				External: &externalSpec,
+			},
+		}
+		g.Expect(cli.Create(ctx, obj)).To(Succeed())
+		t.Cleanup(func() { _ = cli.Delete(ctx, obj) })
+	})
 }
 
 func (st *databaseProviderSuite) testReachable(t *testing.T) {

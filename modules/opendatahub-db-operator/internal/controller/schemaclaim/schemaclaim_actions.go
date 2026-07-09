@@ -135,6 +135,10 @@ func (m *Controller) cleanupAction(ctx context.Context, rr *odhtypes.Reconciliat
 			}
 			defer pool.Close()
 
+			if err := postgres.RevokeSchemaPrivileges(ctx, pool, schema, role); err != nil {
+				return fmt.Errorf("revoking schema privileges for role %q: %w", role, err)
+			}
+
 			switch obj.Spec.DeletionPolicy {
 			case infraApi.DeletionPolicyDelete:
 				if err := postgres.DropSchemaCascade(ctx, pool, schema); err != nil {

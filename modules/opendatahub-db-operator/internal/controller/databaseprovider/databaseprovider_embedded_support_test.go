@@ -21,6 +21,7 @@ import (
 	"testing"
 
 	. "github.com/onsi/gomega"
+	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -95,6 +96,7 @@ func TestEnsureEmbeddedAdminSecret_Idempotent(t *testing.T) {
 	ctx := context.Background()
 
 	scheme := runtime.NewScheme()
+	g.Expect(appsv1.AddToScheme(scheme)).To(Succeed())
 	g.Expect(corev1.AddToScheme(scheme)).To(Succeed())
 	g.Expect(infraApi.AddToScheme(scheme)).To(Succeed())
 
@@ -132,6 +134,83 @@ func TestEnsureEmbeddedAdminSecret_Idempotent(t *testing.T) {
 	}, stored)
 	g.Expect(err).NotTo(HaveOccurred())
 	g.Expect(stored.Data).To(Equal(original))
+}
+
+func TestEnsureEmbeddedAdminSecret_DoesNotRecoverMissingSecretForExistingInstance(t *testing.T) {
+	g := NewWithT(t)
+	ctx := context.Background()
+
+	scheme := runtime.NewScheme()
+	g.Expect(appsv1.AddToScheme(scheme)).To(Succeed())
+	g.Expect(corev1.AddToScheme(scheme)).To(Succeed())
+	g.Expect(infraApi.AddToScheme(scheme)).To(Succeed())
+
+	cfg := &moduleconfig.Config{OperatorNamespace: "operator-ns"}
+	provider := &infraApi.DatabaseProvider{
+		ObjectMeta: metav1.ObjectMeta{Name: "embedded"},
+		Spec: infraApi.DatabaseProviderSpec{
+			Type:     infraApi.ProviderTypeEmbedded,
+			Embedded: &infraApi.EmbeddedProviderSpec{},
+		},
+	}
+	sts := &appsv1.StatefulSet{
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace: cfg.OperatorNamespace,
+			Name:      dbcontroller.EmbeddedServiceName(provider.Name),
+		},
+	}
+
+	cli := fake.NewClientBuilder().
+		WithScheme(scheme).
+		WithRuntimeObjects(provider, sts).
+		Build()
+
+	secret, err := ensureEmbeddedAdminSecret(ctx, cli, provider, cfg)
+	g.Expect(err).To(MatchError(ContainSubstring("not found for an existing instance")))
+	g.Expect(secret).To(BeNil())
+}
+
+func TestEnsureEmbeddedAdminSecret_DoesNotRecoverIncompleteSecretForExistingInstance(t *testing.T) {
+	g := NewWithT(t)
+	ctx := context.Background()
+
+	scheme := runtime.NewScheme()
+	g.Expect(appsv1.AddToScheme(scheme)).To(Succeed())
+	g.Expect(corev1.AddToScheme(scheme)).To(Succeed())
+	g.Expect(infraApi.AddToScheme(scheme)).To(Succeed())
+
+	cfg := &moduleconfig.Config{OperatorNamespace: "operator-ns"}
+	provider := &infraApi.DatabaseProvider{
+		ObjectMeta: metav1.ObjectMeta{Name: "embedded"},
+		Spec: infraApi.DatabaseProviderSpec{
+			Type:     infraApi.ProviderTypeEmbedded,
+			Embedded: &infraApi.EmbeddedProviderSpec{},
+		},
+	}
+	sts := &appsv1.StatefulSet{
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace: cfg.OperatorNamespace,
+			Name:      dbcontroller.EmbeddedServiceName(provider.Name),
+		},
+	}
+	secret := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace: cfg.OperatorNamespace,
+			Name:      dbcontroller.EmbeddedAdminSecretName(provider.Name),
+		},
+		Data: map[string][]byte{
+			dbcontroller.EmbeddedAdminSecretUserKey: []byte("postgres"),
+		},
+	}
+
+	cli := fake.NewClientBuilder().
+		WithScheme(scheme).
+		WithRuntimeObjects(provider, sts, secret).
+		Build()
+
+	current, err := ensureEmbeddedAdminSecret(ctx, cli, provider, cfg)
+	g.Expect(err).To(MatchError(ContainSubstring("is incomplete for an existing instance")))
+	g.Expect(current).To(BeNil())
 }
 
 func TestEmbeddedNamespace_UsesOverride(t *testing.T) {

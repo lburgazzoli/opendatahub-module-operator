@@ -162,6 +162,9 @@ spec:
                     required:
                     - size
                     type: object
+                    x-kubernetes-validations:
+                    - message: storage.size must be greater than zero
+                      rule: quantity(self.size).isGreaterThan(quantity('0'))
                 required:
                 - storage
                 type: object
