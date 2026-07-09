@@ -20,10 +20,12 @@ package controller
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sort"
 	"strconv"
 
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -36,10 +38,6 @@ const (
 	// that breaks ties when multiple providers match a selector. Higher integer
 	// wins; missing or invalid values are treated as 0.
 	AnnotationSelectionPriority = "db.infrastructure.opendatahub.io/selection-priority"
-
-	// AnnotationIsDefault marks a DatabaseProvider as the fallback when a
-	// claim specifies neither spec.provider.name nor spec.provider.selector.
-	AnnotationIsDefault = "db.infrastructure.opendatahub.io/is-default-provider"
 )
 
 // ErrNotFound is returned when no matching DatabaseProvider exists.
@@ -56,7 +54,6 @@ func (e ErrNotFound) Error() string { return e.Message }
 // Resolution order (docs/plan.md §6):
 //  1. ref.Name set → exact Get
 //  2. ref.Selector set → List + priority/name sort → winner
-//  3. neither set → List + filter is-default-provider annotation
 func Resolve(
 	ctx context.Context,
 	cli client.Client,
@@ -79,16 +76,22 @@ func ResolveForCurrent(
 	case ref.Selector != nil:
 		return resolveBySelector(ctx, cli, ref.Selector, currentProvider)
 	default:
-		return resolveDefault(ctx, cli)
+		return nil, fmt.Errorf("provider reference must set either name or selector")
 	}
 }
 
 func resolveByName(ctx context.Context, cli client.Client, name string) (*infraApi.DatabaseProvider, error) {
-	p := &infraApi.DatabaseProvider{}
-	if err := cli.Get(ctx, client.ObjectKey{Name: name}, p); err != nil {
-		return nil, ErrNotFound{Message: fmt.Sprintf("DatabaseProvider %q not found: %v", name, err)}
+	provider := &infraApi.DatabaseProvider{}
+	err := cli.Get(ctx, client.ObjectKey{Name: name}, provider)
+
+	switch {
+	case err == nil:
+		return provider, nil
+	case apierrors.IsNotFound(err):
+		return nil, ErrNotFound{Message: fmt.Sprintf("DatabaseProvider %q not found", name)}
+	default:
+		return nil, fmt.Errorf("getting DatabaseProvider %q: %w", name, err)
 	}
-	return p, nil
 }
 
 func resolveBySelector(
@@ -128,27 +131,9 @@ func resolveBySelector(
 		}
 	}
 	if len(matches) == 0 {
-		return nil, ErrNotFound{Message: fmt.Sprintf("no DatabaseProvider matches selector %v", selector.MatchLabels)}
+		return nil, ErrNotFound{Message: fmt.Sprintf("no DatabaseProvider matches selector %v", selector)}
 	}
 	return pickBest(matches), nil
-}
-
-func resolveDefault(ctx context.Context, cli client.Client) (*infraApi.DatabaseProvider, error) {
-	list := &infraApi.DatabaseProviderList{}
-	if err := cli.List(ctx, list); err != nil {
-		return nil, fmt.Errorf("listing DatabaseProviders: %w", err)
-	}
-
-	var defaults []infraApi.DatabaseProvider
-	for _, p := range list.Items {
-		if p.Annotations[AnnotationIsDefault] == "true" {
-			defaults = append(defaults, p)
-		}
-	}
-	if len(defaults) == 0 {
-		return nil, ErrNotFound{Message: "no DatabaseProvider is annotated as the default"}
-	}
-	return pickBest(defaults), nil
 }
 
 // pickBest returns the provider with the highest selection-priority annotation
@@ -175,6 +160,6 @@ func priority(p infraApi.DatabaseProvider) int {
 }
 
 func isNotFound(err error) bool {
-	_, ok := err.(ErrNotFound)
-	return ok
+	var notFound ErrNotFound
+	return errors.As(err, &notFound)
 }

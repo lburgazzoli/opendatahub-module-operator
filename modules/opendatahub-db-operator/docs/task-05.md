@@ -38,11 +38,18 @@ Task-01 (go.mod has `jackc/pgx/v5`).
    - `CreateSchema(ctx, pool, schema string) error` — `CREATE SCHEMA IF NOT EXISTS <schema>`.
    - `CreateSchemaUser(ctx, pool, schema, user, password string, access AccessMode) error` —
      `CREATE ROLE <user> WITH LOGIN PASSWORD '<password>'` then
-     `GRANT USAGE, [SELECT | SELECT,INSERT,UPDATE,DELETE] ON SCHEMA <schema> TO <user>` (exact
-     grant set per `ReadOnly`/`ReadWrite`; `ReadWrite` also needs default-privilege grants for
-     future tables in the schema — spell out the full statement set here, don't hand-wave it).
+     grant privileges according to the effective schema contract:
+     - `ReadOnly`: `USAGE ON SCHEMA`, `SELECT ON ALL TABLES IN SCHEMA`, and matching default
+       privileges for future tables.
+     - `ReadWrite`: schema-local administration within that schema only: `USAGE ON SCHEMA`,
+       `CREATE ON SCHEMA`, `SELECT,INSERT,UPDATE,DELETE ON ALL TABLES IN SCHEMA`, and matching
+       default privileges for future tables.
+     Spell out the full statement set here, don't hand-wave it.
    - `CreateDatabaseUser(ctx, pool, database, user, password string, access AccessMode) error` —
-     dedicated user with `CREATE SCHEMA` privilege on the target database (`DatabaseClaim`).
+     dedicated user with privileges according to the effective database contract:
+     - `ReadOnly`: `CONNECT` only.
+     - `ReadWrite`: `CONNECT` plus `CREATE` on the target database, which allows `CREATE SCHEMA`
+       there (`DatabaseClaim`).
    - `DropSchemaCascade(ctx, pool, schema string) error` — `DROP SCHEMA IF EXISTS <schema>
      CASCADE`.
    - `DropRole(ctx, pool, user string) error`.
@@ -59,8 +66,11 @@ Task-01 (go.mod has `jackc/pgx/v5`).
   semicolons, or SQL keywords are safely escaped (classic SQL-injection-via-identifier test
   cases).
 - Integration tests (testcontainers Postgres) for every `ddl.go` function: idempotent re-run
-  produces no error; `ReadOnly` vs `ReadWrite` grants are actually enforced (attempt a write as a
-  `ReadOnly` user and expect it to fail).
+  produces no error; `ReadOnly` vs `ReadWrite` grants are actually enforced:
+  - `SchemaClaim`-style `ReadWrite` user can `CREATE TABLE` in its schema.
+  - `SchemaClaim`-style `ReadOnly` user cannot `CREATE TABLE` in its schema.
+  - `DatabaseClaim`-style `ReadWrite` user can `CREATE SCHEMA` in its database.
+  - `DatabaseClaim`-style `ReadOnly` user cannot `CREATE SCHEMA` in its database.
 - `password.go` generates passwords with sufficient entropy (length + charset asserted in a
   test) and never repeats across N generations in a statistical sanity check.
 - No test or log output anywhere contains a literal generated password.

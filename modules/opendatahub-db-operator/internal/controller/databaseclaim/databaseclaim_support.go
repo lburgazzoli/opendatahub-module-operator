@@ -65,7 +65,10 @@ func openPool(
 	}
 	pool, err := pgxpool.New(ctx, providerCfg.DSN())
 	if err != nil {
-		return postgres.Config{}, nil, fmt.Errorf("opening pool: %w", err)
+		return postgres.Config{}, nil, fmt.Errorf(
+			"opening pool: %w",
+			postgres.SanitizeError(err, providerCfg.Password),
+		)
 	}
 	return providerCfg, pool, nil
 }

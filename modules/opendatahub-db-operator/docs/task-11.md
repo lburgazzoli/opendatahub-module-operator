@@ -89,6 +89,9 @@ Fixed during closeout:
 
 - `DatabaseClaim.spec.access` now controls granted database privileges, so
   `ReadOnly` claims no longer receive `CREATE`.
+- `SchemaClaim` `ReadWrite` credentials now behave as schema-local admins:
+  they receive `CREATE ON SCHEMA` in addition to table DML, and the tests now
+  verify they can create tables while `ReadOnly` credentials cannot.
 - `postgres.Config.DSN()` now uses an escaped PostgreSQL URL instead of raw
   keyword-string concatenation, which makes passwords and usernames with
   special characters safe to parse.

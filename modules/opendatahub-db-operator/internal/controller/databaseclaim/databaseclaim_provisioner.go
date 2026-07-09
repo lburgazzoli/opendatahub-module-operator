@@ -104,12 +104,17 @@ func (p DatabaseProvisioner) Ensure(
 		if err := postgres.CreateRole(ctx, p.Pool, role, pw); err != nil {
 			return nil, wrapQuickRetry("creating role", err)
 		}
-		if err := postgres.GrantDatabasePrivileges(ctx, p.Pool, p.Claim.Spec.Database, role, p.Claim.Spec.Access); err != nil {
-			return nil, wrapQuickRetry("granting database privileges", err)
-		}
 
 		p.buildCredentialsSecret(secret, role, pw)
 	}
+
+	if err := postgres.RevokeDatabasePrivileges(ctx, p.Pool, p.Claim.Spec.Database, role); err != nil {
+		return nil, wrapQuickRetry("revoking database privileges", err)
+	}
+	if err := postgres.GrantDatabasePrivileges(ctx, p.Pool, p.Claim.Spec.Database, role, p.Claim.Spec.Access); err != nil {
+		return nil, wrapQuickRetry("granting database privileges", err)
+	}
+	secret.SetGroupVersionKind(gvk.Secret)
 
 	return secret, nil
 }

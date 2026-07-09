@@ -35,7 +35,10 @@ to actually run).
 4. `pkg/postgres.CreateSchema` (idempotent — succeeds whether this is the first `SchemaClaim`
    for this schema or a second one reusing it per spec.md's multi-tenant-reuse behavior).
 5. Generate a password (`pkg/postgres.GeneratePassword`), `pkg/postgres.CreateSchemaUser`
-   scoped to the resolved schema with `spec.access` privileges.
+   scoped to the resolved schema with `spec.access` privileges:
+   - `ReadOnly`: usable for reads only.
+   - `ReadWrite`: effectively admin within that schema, including `CREATE TABLE` and normal DML,
+     but not broader database-level administration outside the schema.
 6. SSA-write the credentials Secret: name `== spec.secretName` when set, else `claim.Name`,
    claim's own namespace, no owner reference to the `SchemaClaim`, keys for
    host/port/database/schema/user/password (exact key names should match
@@ -47,10 +50,10 @@ to actually run).
    reconciler only ever sets conditions.
 8. Deletion (finalizer logic):
    - `deletionPolicy: Retain` (default): drop only the provisioned user
-     (`pkg/postgres.DropRole`); the Secret is garbage-collected automatically via its owner
-     reference — no explicit delete step needed for it. Schema/data untouched.
+     (`pkg/postgres.DropRole`) and remove the claim Secret explicitly; the Secret is not
+     owner-referenced to the claim. Schema/data untouched.
    - `deletionPolicy: Delete`: `pkg/postgres.DropSchemaCascade` first, then `DropRole`, then
-     remove the finalizer (Secret GC as above).
+     remove the claim Secret explicitly, then remove the finalizer.
    - Either path: if the resolved provider no longer exists or is unreachable at deletion time,
      do not block finalizer removal indefinitely — log and remove the finalizer after a bounded
      number of retries, since a provider that's gone means the schema/user are already
@@ -80,6 +83,8 @@ task's own tests to task-10; they belong here.
 - Integration test: create a `SchemaClaim` against an `Embedded` provider (task-08) end-to-end →
   `Provisioned: True`, Secret exists with working credentials, `status.schema` populated
   correctly for both explicit and defaulted `spec.schema`.
+- Integration test: access modes are enforced with the real provisioned credentials:
+  `ReadWrite` can `CREATE TABLE` inside its schema, while `ReadOnly` cannot.
 - Integration test: two `SchemaClaim`s targeting the same resolved schema name both succeed, each
   getting its own user (multi-tenant reuse).
 - Integration test: `deletionPolicy: Retain` leaves schema/data intact after claim deletion,

@@ -65,7 +65,7 @@ func (m *Controller) provisionAction(ctx context.Context, rr *odhtypes.Reconcili
 		obj.Status.Provider = provider.Name
 	}
 
-	// 3. Open connection to provider.
+	// 2. Open connection to provider.
 	cfg, pool, err := openPool(ctx, rr.Client, provider, m.cfg)
 	if err != nil {
 		rr.Conditions.Mark(ConditionProvisioned, metav1.ConditionFalse,
@@ -124,9 +124,13 @@ func (m *Controller) cleanupAction(ctx context.Context, rr *odhtypes.Reconciliat
 		func(ctx context.Context) error {
 			provider, err := dbcontroller.ResolveForCurrent(ctx, rr.Client, obj.Spec.Provider, obj.Status.Provider)
 			if err != nil {
-				// Provider permanently gone -- signal CleanupWithGrace to allow removal
-				// by returning nil (not an error). This is not transient.
-				return nil
+				var notFound dbcontroller.ErrNotFound
+				if errors.As(err, &notFound) {
+					// Provider permanently gone -- signal CleanupWithGrace to allow
+					// removal by returning nil (not an error). This is not transient.
+					return nil
+				}
+				return err
 			}
 
 			_, pool, err := openPool(ctx, rr.Client, provider, m.cfg)

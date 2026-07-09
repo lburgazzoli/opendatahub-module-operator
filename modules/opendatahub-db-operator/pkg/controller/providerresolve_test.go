@@ -26,6 +26,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
 	infraApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/api/infrastructure/v1alpha1"
@@ -54,6 +55,20 @@ func makeProvider(name string, labels map[string]string, annotations map[string]
 	}
 }
 
+type getFailingClient struct {
+	client.Client
+	err error
+}
+
+func (c getFailingClient) Get(
+	ctx context.Context,
+	key client.ObjectKey,
+	obj client.Object,
+	opts ...client.GetOption,
+) error {
+	return c.err
+}
+
 func TestResolveByName_Found(t *testing.T) {
 	g := NewWithT(t)
 	p := makeProvider("my-provider", nil, nil)
@@ -73,6 +88,22 @@ func TestResolveByName_NotFound(t *testing.T) {
 
 	var notFound controller.ErrNotFound
 	g.Expect(errors.As(err, &notFound)).To(BeTrue())
+}
+
+func TestResolveByName_GetError(t *testing.T) {
+	g := NewWithT(t)
+	ref := infraApi.ProviderRef{Name: "broken"}
+	cli := getFailingClient{
+		Client: fake.NewClientBuilder().WithScheme(newScheme()).Build(),
+		err:    errors.New("boom"),
+	}
+
+	_, err := controller.Resolve(context.Background(), cli, ref)
+	g.Expect(err).To(HaveOccurred())
+	g.Expect(err.Error()).To(ContainSubstring("getting DatabaseProvider \"broken\": boom"))
+
+	var notFound controller.ErrNotFound
+	g.Expect(errors.As(err, &notFound)).To(BeFalse())
 }
 
 func TestResolveBySelector_SingleMatch(t *testing.T) {
@@ -186,30 +217,10 @@ func TestResolveForCurrentBySelector_RepicksWhenCurrentNoLongerMatches(t *testin
 	g.Expect(got.Name).To(Equal("match"))
 }
 
-func TestResolveDefault_Found(t *testing.T) {
-	g := NewWithT(t)
-	p := makeProvider("default-provider", nil, map[string]string{
-		controller.AnnotationIsDefault: "true",
-	})
-	cli := fake.NewClientBuilder().WithScheme(newScheme()).WithObjects(&p).Build()
-	got, err := controller.Resolve(context.Background(), cli, infraApi.ProviderRef{})
-	g.Expect(err).NotTo(HaveOccurred())
-	g.Expect(got.Name).To(Equal("default-provider"))
-}
-
-func TestResolveDefault_NoDefault(t *testing.T) {
-	g := NewWithT(t)
-	p := makeProvider("not-default", nil, nil)
-	cli := fake.NewClientBuilder().WithScheme(newScheme()).WithObjects(&p).Build()
-	_, err := controller.Resolve(context.Background(), cli, infraApi.ProviderRef{})
-	g.Expect(err).To(HaveOccurred())
-	var notFound controller.ErrNotFound
-	g.Expect(errors.As(err, &notFound)).To(BeTrue())
-}
-
-func TestResolveDefault_NoneAtAll(t *testing.T) {
+func TestResolve_EmptyProviderRef(t *testing.T) {
 	g := NewWithT(t)
 	cli := fake.NewClientBuilder().WithScheme(newScheme()).Build()
 	_, err := controller.Resolve(context.Background(), cli, infraApi.ProviderRef{})
 	g.Expect(err).To(HaveOccurred())
+	g.Expect(err.Error()).To(Equal("provider reference must set either name or selector"))
 }

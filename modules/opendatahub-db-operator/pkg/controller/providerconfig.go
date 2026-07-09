@@ -21,6 +21,7 @@ import (
 	"fmt"
 
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	infraApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/api/infrastructure/v1alpha1"
@@ -36,37 +37,6 @@ const (
 	EmbeddedAdminSecretDBKey       = "POSTGRES_DB"
 )
 
-func EmbeddedAdminSecretName(providerName string) string {
-	return providerName + "-admin"
-}
-
-func EmbeddedServiceName(providerName string) string {
-	return providerName
-}
-
-func EmbeddedPVCName(providerName string) string {
-	return providerName
-}
-
-func EmbeddedInitDBConfigMapName(providerName string) string {
-	return providerName + "-initdb"
-}
-
-func EmbeddedNamespace(provider *infraApi.DatabaseProvider, operatorNamespace string) string {
-	if provider != nil && provider.Spec.Embedded != nil && provider.Spec.Embedded.Namespace != "" {
-		return provider.Spec.Embedded.Namespace
-	}
-	return operatorNamespace
-}
-
-func EmbeddedServiceHost(provider *infraApi.DatabaseProvider, operatorNamespace string) string {
-	return fmt.Sprintf(
-		"%s.%s.svc.cluster.local",
-		EmbeddedServiceName(provider.Name),
-		EmbeddedNamespace(provider, operatorNamespace),
-	)
-}
-
 func OperatorNamespace(cfg *moduleconfig.Config) string {
 	if cfg == nil {
 		return ""
@@ -80,30 +50,54 @@ func LoadProviderConfig(
 	provider *infraApi.DatabaseProvider,
 	operatorNamespace string,
 ) (postgres.Config, error) {
-	ref := corev1.SecretReference{}
-	if provider.Spec.Type == infraApi.ProviderTypeExternal {
-		if provider.Spec.External == nil {
-			return postgres.Config{}, fmt.Errorf("spec.external is required for External providers")
-		}
-		ref = provider.Spec.External.ConnectionSecretRef
-	} else {
-		ref = corev1.SecretReference{
-			Namespace: EmbeddedNamespace(provider, operatorNamespace),
-			Name:      EmbeddedAdminSecretName(provider.Name),
-		}
+	switch provider.Spec.Type {
+	case infraApi.ProviderTypeExternal:
+		return loadExternalProviderConfig(ctx, cli, provider)
+	case infraApi.ProviderTypeEmbedded:
+		return loadEmbeddedProviderConfig(ctx, cli, provider, operatorNamespace)
+	default:
+		return postgres.Config{}, fmt.Errorf("unsupported provider type %q", provider.Spec.Type)
 	}
+}
 
-	secret := &corev1.Secret{}
-	if err := cli.Get(ctx, client.ObjectKey{Namespace: ref.Namespace, Name: ref.Name}, secret); err != nil {
-		return postgres.Config{}, fmt.Errorf("reading admin Secret %s/%s: %w", ref.Namespace, ref.Name, err)
-	}
+func loadExternalProviderConfig(
+	ctx context.Context,
+	cli client.Client,
+	provider *infraApi.DatabaseProvider,
+) (postgres.Config, error) {
+	switch ref := provider.Spec.External; {
+	case ref == nil:
+		return postgres.Config{}, fmt.Errorf("spec.external is required for External providers")
+	case ref.ConnectionSecretRef.Namespace == "":
+		return postgres.Config{}, fmt.Errorf("spec.external.connectionSecretRef.namespace is required for External providers")
+	default:
+		secret, err := readSecretRef(ctx, cli, ref.ConnectionSecretRef)
+		if err != nil {
+			return postgres.Config{}, err
+		}
 
-	if provider.Spec.Type == infraApi.ProviderTypeExternal {
-		parsed, err := postgres.ParseSecret(secret.Data)
+		cfg, err := postgres.ParseSecret(secret.Data)
 		if err != nil {
 			return postgres.Config{}, fmt.Errorf("parsing admin Secret: %w", err)
 		}
-		return parsed, nil
+
+		return cfg, nil
+	}
+}
+
+func loadEmbeddedProviderConfig(
+	ctx context.Context,
+	cli client.Client,
+	provider *infraApi.DatabaseProvider,
+	operatorNamespace string,
+) (postgres.Config, error) {
+	ref := corev1.SecretReference{
+		Namespace: EmbeddedNamespace(provider, operatorNamespace),
+		Name:      EmbeddedAdminSecretName(provider.Name),
+	}
+	secret, err := readSecretRef(ctx, cli, ref)
+	if err != nil {
+		return postgres.Config{}, err
 	}
 
 	parsed := postgres.Config{
@@ -119,4 +113,21 @@ func LoadProviderConfig(
 	}
 
 	return parsed, nil
+}
+
+func readSecretRef(
+	ctx context.Context,
+	cli client.Client,
+	ref corev1.SecretReference,
+) (*corev1.Secret, error) {
+	secret := &corev1.Secret{}
+	err := cli.Get(ctx, client.ObjectKey{Namespace: ref.Namespace, Name: ref.Name}, secret)
+	switch {
+	case err == nil:
+		return secret, nil
+	case apierrors.IsNotFound(err):
+		return nil, fmt.Errorf("admin Secret %s/%s not found", ref.Namespace, ref.Name)
+	default:
+		return nil, fmt.Errorf("reading admin Secret %s/%s: %w", ref.Namespace, ref.Name, err)
+	}
 }

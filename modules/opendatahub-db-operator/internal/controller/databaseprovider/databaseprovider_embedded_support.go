@@ -18,8 +18,8 @@ package databaseprovider
 
 import (
 	"context"
+	"errors"
 	"fmt"
-	"maps"
 	"sort"
 	"time"
 
@@ -52,7 +52,6 @@ const (
 	reasonInstanceRunning                 = "InstanceRunning"
 	reasonProvisioning                    = "Provisioning"
 	reasonIdle                            = "Idle"
-	capabilityLabelPrefix                 = "db.infrastructure.opendatahub.io/capability-"
 	defaultEmbeddedAdminUser              = "postgres"
 	defaultEmbeddedAdminDatabase          = "postgres"
 )
@@ -62,12 +61,6 @@ var (
 		"pg_trgm":   {},
 		"uuid_ossp": {},
 		"pgcrypto":  {},
-	}
-	capabilityLabelByExtension = map[string]string{
-		"vector":    capabilityLabelPrefix + "pgvector",
-		"pg_trgm":   capabilityLabelPrefix + "pg_trgm",
-		"uuid_ossp": capabilityLabelPrefix + "uuid_ossp",
-		"pgcrypto":  capabilityLabelPrefix + "pgcrypto",
 	}
 )
 
@@ -230,25 +223,27 @@ func buildEmbeddedAdminSecret(key types.NamespacedName, password string) *corev1
 	}
 }
 
-func desiredCapabilityLabels(provider *infraApi.DatabaseProvider) map[string]string {
-	labels := map[string]string{}
-	for _, extension := range provider.Spec.Embedded.Extensions {
-		label, ok := capabilityLabelByExtension[extension]
-		if ok {
-			labels[label] = "true"
-		}
+func embeddedImageChanged(
+	sts *appsv1.StatefulSet,
+	provider *infraApi.DatabaseProvider,
+	cfg *moduleconfig.Config,
+) bool {
+	if sts == nil {
+		return false
 	}
-	return labels
-}
 
-func currentManagedCapabilityLabels(provider *infraApi.DatabaseProvider) map[string]string {
-	labels := map[string]string{}
-	for key, value := range provider.Labels {
-		if len(key) >= len(capabilityLabelPrefix) && key[:len(capabilityLabelPrefix)] == capabilityLabelPrefix {
-			labels[key] = value
+	desiredImage, err := resolveEmbeddedImage(provider, cfg)
+	if err != nil {
+		return false
+	}
+
+	for _, container := range sts.Spec.Template.Spec.Containers {
+		if container.Name == "postgres" {
+			return container.Image != desiredImage
 		}
 	}
-	return labels
+
+	return false
 }
 
 func referencedClaimNamespaces(
@@ -267,7 +262,13 @@ func referencedClaimNamespaces(
 		if !isConditionTrue(claim.Status.Conditions, schemaclaimcontroller.ConditionProvisioned) {
 			continue
 		}
-		matched, err := claimReferencesProvider(ctx, cli, claim.Spec.Provider, provider.Name)
+		matched, err := claimReferencesProvider(
+			ctx,
+			cli,
+			claim.Spec.Provider,
+			claim.Status.Provider,
+			provider.Name,
+		)
 		if err != nil {
 			return nil, err
 		}
@@ -285,7 +286,13 @@ func referencedClaimNamespaces(
 		if !isConditionTrue(claim.Status.Conditions, dbclaimcontroller.ConditionProvisioned) {
 			continue
 		}
-		matched, err := claimReferencesProvider(ctx, cli, claim.Spec.Provider, provider.Name)
+		matched, err := claimReferencesProvider(
+			ctx,
+			cli,
+			claim.Spec.Provider,
+			claim.Status.Provider,
+			provider.Name,
+		)
 		if err != nil {
 			return nil, err
 		}
@@ -306,11 +313,13 @@ func claimReferencesProvider(
 	ctx context.Context,
 	cli client.Client,
 	ref infraApi.ProviderRef,
+	currentProvider string,
 	providerName string,
 ) (bool, error) {
-	resolved, err := dbcontroller.Resolve(ctx, cli, ref)
+	resolved, err := dbcontroller.ResolveForCurrent(ctx, cli, ref, currentProvider)
 	if err != nil {
-		if _, ok := err.(dbcontroller.ErrNotFound); ok {
+		var notFound dbcontroller.ErrNotFound
+		if errors.As(err, &notFound) {
 			return false, nil
 		}
 		return false, err
@@ -386,12 +395,6 @@ func shouldTearDownIdleInstance(provider *infraApi.DatabaseProvider, gracePeriod
 		return false
 	}
 	return time.Since(condition.LastTransitionTime.Time) >= gracePeriod
-}
-
-func hasExtensionChange(provider *infraApi.DatabaseProvider) bool {
-	current := currentManagedCapabilityLabels(provider)
-	desired := desiredCapabilityLabels(provider)
-	return len(current) != 0 && !maps.Equal(current, desired)
 }
 
 func wantsIdleDeletion(provider *infraApi.DatabaseProvider) bool {

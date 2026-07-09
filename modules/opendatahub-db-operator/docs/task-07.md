@@ -31,7 +31,9 @@ must be done before this task's tests can pass**, even though it isn't a code de
    new database, only a user against an existing one.
 3. Add finalizer before DDL.
 4. Generate a password, `pkg/postgres.CreateDatabaseUser` — a dedicated user with broader
-   privileges (`CREATE SCHEMA` on the target database) per `spec.access`.
+   privileges per `spec.access`:
+   - `ReadOnly`: `CONNECT` only.
+   - `ReadWrite`: `CONNECT` plus the ability to `CREATE SCHEMA` on the target database.
 5. SSA-write the credentials Secret (same shape/conventions as task-06 step 6,
    including `spec.secretName` override support).
 6. Set `status.database` (echoes `spec.database` exactly — no defaulting logic, unlike
@@ -51,6 +53,8 @@ must be done before this task's tests can pass**, even though it isn't a code de
 
 - Integration test: `DatabaseClaim` targeting a pre-existing database on an `Embedded` provider
   succeeds end-to-end, `status.database == spec.database` exactly.
+- Integration test: access modes are enforced with the real provisioned credentials:
+  `ReadWrite` can `CREATE SCHEMA` in the target database, while `ReadOnly` cannot.
 - Integration test: `spec.database` naming a non-existent database → `Pending` with a message
   naming that database, no DDL attempted.
 - Integration test: two `DatabaseClaim`s against the same database each get independent users;

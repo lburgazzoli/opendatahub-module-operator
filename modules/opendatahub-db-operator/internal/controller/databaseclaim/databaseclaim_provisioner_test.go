@@ -19,6 +19,7 @@ package databaseclaim_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -197,4 +198,55 @@ func TestDatabaseProvisioner_Ensure_DatabaseMissing(t *testing.T) {
 	var notFound databaseclaim.ErrDatabaseNotFound
 	g.Expect(errors.As(err, &notFound)).To(BeTrue())
 	g.Expect(notFound.Database).To(Equal("missingdb"))
+}
+
+func TestDatabaseProvisioner_Ensure_ReconcilesAccessChanges(t *testing.T) {
+	g := NewWithT(t)
+	cfg := startPostgres(t)
+	pool := openPool(t, cfg)
+
+	claim := &infraApi.DatabaseClaim{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "example",
+			Namespace: "test-ns",
+		},
+		Spec: infraApi.DatabaseClaimSpec{
+			Database: cfg.DBName,
+			Access:   infraApi.AccessModeReadOnly,
+		},
+	}
+	cli := newFakeClient(t).Build()
+
+	provisioner := databaseclaim.DatabaseProvisioner{
+		Client: cli,
+		Claim:  claim,
+		Pool:   pool,
+		Config: cfg,
+	}
+
+	secret, err := provisioner.Ensure(t.Context())
+	g.Expect(err).NotTo(HaveOccurred())
+	g.Expect(cli.Create(t.Context(), secret.DeepCopy())).To(Succeed())
+
+	claimCfg, err := postgres.ParseSecret(secret.Data)
+	g.Expect(err).NotTo(HaveOccurred())
+	rolePool := openPool(t, claimCfg)
+
+	_, err = rolePool.Exec(
+		t.Context(),
+		fmt.Sprintf("CREATE SCHEMA %s", postgres.QuoteIdentifier("readonly_blocked")),
+	)
+	g.Expect(err).To(HaveOccurred())
+
+	claim.Spec.Access = infraApi.AccessModeReadWrite
+	_, err = provisioner.Ensure(t.Context())
+	g.Expect(err).NotTo(HaveOccurred())
+
+	schemaName := "readwrite_allowed"
+	_, err = rolePool.Exec(
+		t.Context(),
+		fmt.Sprintf("CREATE SCHEMA %s", postgres.QuoteIdentifier(schemaName)),
+	)
+	g.Expect(err).NotTo(HaveOccurred())
+	t.Cleanup(func() { _ = postgres.DropSchemaCascade(context.Background(), pool, schemaName) })
 }

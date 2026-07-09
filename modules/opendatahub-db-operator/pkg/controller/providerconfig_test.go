@@ -79,10 +79,116 @@ func TestLoadProviderConfig_EmbeddedUsesGeneratedAdminSecret(t *testing.T) {
 	)
 	g.Expect(err).NotTo(HaveOccurred())
 	g.Expect(cfg).To(Equal(postgres.Config{
-		Host:     "sample-embedded.opendatahub-db.svc.cluster.local",
+		Host:     "sample-embedded.opendatahub-db.svc",
 		Port:     postgres.DefaultPort,
 		User:     "postgres",
 		Password: "postgres",
 		DBName:   "postgres",
 	}))
+}
+
+func TestLoadProviderConfig_ExternalUsesConnectionSecretRef(t *testing.T) {
+	g := NewWithT(t)
+
+	provider := &infraApi.DatabaseProvider{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "sample-external",
+		},
+		Spec: infraApi.DatabaseProviderSpec{
+			Type: infraApi.ProviderTypeExternal,
+			External: &infraApi.ExternalProviderSpec{
+				ConnectionSecretRef: corev1.SecretReference{
+					Namespace: "db-admin",
+					Name:      "external-admin",
+				},
+			},
+		},
+	}
+
+	secret := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "external-admin",
+			Namespace: "db-admin",
+		},
+		Data: map[string][]byte{
+			postgres.SecretKeyHost:     []byte("postgres.db-admin.svc"),
+			postgres.SecretKeyPort:     []byte("5432"),
+			postgres.SecretKeyUser:     []byte("postgres"),
+			postgres.SecretKeyPassword: []byte("secret"),
+			postgres.SecretKeyDatabase: []byte("postgres"),
+		},
+	}
+
+	cli := fake.NewClientBuilder().
+		WithScheme(providerConfigScheme()).
+		WithObjects(secret).
+		Build()
+
+	cfg, err := controller.LoadProviderConfig(
+		context.Background(),
+		cli,
+		provider,
+		"odh-db-operator-system",
+	)
+	g.Expect(err).NotTo(HaveOccurred())
+	g.Expect(cfg).To(Equal(postgres.Config{
+		Host:     "postgres.db-admin.svc",
+		Port:     postgres.DefaultPort,
+		User:     "postgres",
+		Password: "secret",
+		DBName:   "postgres",
+	}))
+}
+
+func TestLoadProviderConfig_ExternalRequiresSecretNamespace(t *testing.T) {
+	g := NewWithT(t)
+
+	provider := &infraApi.DatabaseProvider{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "sample-external",
+		},
+		Spec: infraApi.DatabaseProviderSpec{
+			Type: infraApi.ProviderTypeExternal,
+			External: &infraApi.ExternalProviderSpec{
+				ConnectionSecretRef: corev1.SecretReference{
+					Name: "external-admin",
+				},
+			},
+		},
+	}
+
+	_, err := controller.LoadProviderConfig(
+		context.Background(),
+		fake.NewClientBuilder().WithScheme(providerConfigScheme()).Build(),
+		provider,
+		"odh-db-operator-system",
+	)
+	g.Expect(err).To(MatchError(ContainSubstring("spec.external.connectionSecretRef.namespace is required")))
+}
+
+func TestLoadProviderConfig_ExternalSecretNotFound(t *testing.T) {
+	g := NewWithT(t)
+
+	provider := &infraApi.DatabaseProvider{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "sample-external",
+		},
+		Spec: infraApi.DatabaseProviderSpec{
+			Type: infraApi.ProviderTypeExternal,
+			External: &infraApi.ExternalProviderSpec{
+				ConnectionSecretRef: corev1.SecretReference{
+					Namespace: "db-admin",
+					Name:      "missing-admin",
+				},
+			},
+		},
+	}
+
+	_, err := controller.LoadProviderConfig(
+		context.Background(),
+		fake.NewClientBuilder().WithScheme(providerConfigScheme()).Build(),
+		provider,
+		"odh-db-operator-system",
+	)
+	g.Expect(err).To(MatchError("admin Secret db-admin/missing-admin not found"))
 }

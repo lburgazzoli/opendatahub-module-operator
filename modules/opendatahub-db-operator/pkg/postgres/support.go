@@ -82,3 +82,9 @@ func sanitize(err error, password string) error {
 	safe := strings.ReplaceAll(err.Error(), password, "[redacted]")
 	return fmt.Errorf("%s", safe) //nolint:goerr113 // error is sanitized, not wrapped
 }
+
+// SanitizeError removes the password literal from an error before surfacing it
+// outside the postgres package.
+func SanitizeError(err error, password string) error {
+	return sanitize(err, password)
+}

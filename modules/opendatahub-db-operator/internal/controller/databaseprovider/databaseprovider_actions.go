@@ -21,7 +21,6 @@ package databaseprovider
 import (
 	"context"
 	"fmt"
-	"maps"
 
 	appsv1 "k8s.io/api/apps/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -98,13 +97,15 @@ func (m *Controller) reconcileEmbeddedAction(
 
 	sts := &appsv1.StatefulSet{}
 	stsKey := embeddedStatefulSetKey(obj, m.cfg)
-	if err := rr.Client.Get(ctx, stsKey, sts); err == nil && hasExtensionChange(obj) {
+	err := rr.Client.Get(ctx, stsKey, sts)
+	switch {
+	case err == nil && embeddedImageChanged(sts, obj, m.cfg):
 		err := fmt.Errorf("embedded extensions changed for an existing instance; recreate the provider to apply them")
 		rr.Conditions.Mark(ConditionReachable, metav1.ConditionFalse,
 			conditions.WithReason(reasonExtensionChangeRequiresRecreate),
 			conditions.WithMessage("%s", err.Error()))
 		return odherrors.NewStopErrorW(err)
-	} else if client.IgnoreNotFound(err) != nil {
+	case client.IgnoreNotFound(err) != nil:
 		return fmt.Errorf("reading embedded StatefulSet: %w", err)
 	}
 
@@ -162,42 +163,6 @@ func (m *Controller) embeddedReadinessAction(
 		return nil
 	}
 
-	return nil
-}
-
-func (m *Controller) embeddedCapabilityLabelsAction(
-	ctx context.Context,
-	rr *odhtypes.ReconciliationRequest,
-) error {
-	obj, ok := rr.Instance.(*infraApi.DatabaseProvider)
-	if !ok {
-		return fmt.Errorf("instance is not a DatabaseProvider")
-	}
-	if obj.Spec.Type != infraApi.ProviderTypeEmbedded {
-		return nil
-	}
-
-	sts := &appsv1.StatefulSet{}
-	if err := rr.Client.Get(ctx, embeddedStatefulSetKey(obj, m.cfg), sts); err != nil {
-		return client.IgnoreNotFound(err)
-	}
-	if sts.Status.ReadyReplicas != 1 {
-		return nil
-	}
-
-	desired := desiredCapabilityLabels(obj)
-	base := obj.DeepCopy()
-	if obj.Labels == nil {
-		obj.Labels = map[string]string{}
-	}
-	for key := range currentManagedCapabilityLabels(obj) {
-		delete(obj.Labels, key)
-	}
-	maps.Copy(obj.Labels, desired)
-	if err := rr.Client.Patch(ctx, obj, client.MergeFrom(base)); err != nil {
-		return fmt.Errorf("patching capability labels: %w", err)
-	}
-
 	rr.Conditions.Mark(ConditionReachable, metav1.ConditionTrue,
 		conditions.WithReason(reasonInstanceRunning),
 		conditions.WithMessage("Embedded PostgreSQL instance is ready"))
@@ -232,7 +197,7 @@ func (m *Controller) embeddedIdleCleanupAction(
 
 	rr.Conditions.Mark(ConditionReachable, metav1.ConditionFalse,
 		conditions.WithReason(reasonIdle),
-		conditions.WithMessage("Embedded PostgreSQL instance is idle"))
+		conditions.WithMessage("No claims currently reference this embedded provider"))
 	if !shouldTearDownIdleInstance(obj, m.cfg.GracePeriod) {
 		return nil
 	}

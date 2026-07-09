@@ -123,7 +123,11 @@ func (m *Controller) cleanupAction(ctx context.Context, rr *odhtypes.Reconciliat
 		func(ctx context.Context) error {
 			provider, err := dbcontroller.ResolveForCurrent(ctx, rr.Client, obj.Spec.Provider, obj.Status.Provider)
 			if err != nil {
-				return nil // provider permanently gone -- allow removal
+				var notFound dbcontroller.ErrNotFound
+				if errors.As(err, &notFound) {
+					return nil // provider permanently gone -- allow removal
+				}
+				return err
 			}
 
 			_, pool, err := openPool(ctx, rr.Client, provider, m.cfg)

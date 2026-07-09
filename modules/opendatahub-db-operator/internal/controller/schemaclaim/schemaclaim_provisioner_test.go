@@ -18,6 +18,7 @@ package schemaclaim_test
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -174,4 +175,53 @@ func TestSchemaProvisioner_Ensure_UsesSecretNameOverride(t *testing.T) {
 	defaultSecret.Name = claim.Name
 	defaultSecret.Namespace = claim.Namespace
 	g.Expect(cli.Get(t.Context(), client.ObjectKeyFromObject(defaultSecret), defaultSecret)).ToNot(Succeed())
+}
+
+func TestSchemaProvisioner_Ensure_ReconcilesAccessChanges(t *testing.T) {
+	g := NewWithT(t)
+	cfg := startPostgres(t)
+	pool := openPool(t, cfg)
+
+	claim := &infraApi.SchemaClaim{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "example",
+			Namespace: "test-ns",
+		},
+		Spec: infraApi.SchemaClaimSpec{
+			Access: infraApi.AccessModeReadWrite,
+		},
+	}
+	cli := newFakeClient(t).Build()
+
+	provisioner := schemaclaim.SchemaProvisioner{
+		Client: cli,
+		Claim:  claim,
+		Pool:   pool,
+		Config: cfg,
+	}
+
+	secret, err := provisioner.Ensure(t.Context())
+	g.Expect(err).NotTo(HaveOccurred())
+	g.Expect(cli.Create(t.Context(), secret.DeepCopy())).To(Succeed())
+
+	claimCfg, err := postgres.ParseSecret(secret.Data)
+	g.Expect(err).NotTo(HaveOccurred())
+	rolePool := openPool(t, claimCfg)
+
+	schema := provisioner.Schema()
+	_, err = rolePool.Exec(
+		t.Context(),
+		fmt.Sprintf("CREATE TABLE %s.access_rw (id int)", postgres.QuoteIdentifier(schema)),
+	)
+	g.Expect(err).NotTo(HaveOccurred())
+
+	claim.Spec.Access = infraApi.AccessModeReadOnly
+	_, err = provisioner.Ensure(t.Context())
+	g.Expect(err).NotTo(HaveOccurred())
+
+	_, err = rolePool.Exec(
+		t.Context(),
+		fmt.Sprintf("CREATE TABLE %s.access_ro (id int)", postgres.QuoteIdentifier(schema)),
+	)
+	g.Expect(err).To(HaveOccurred())
 }

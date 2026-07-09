@@ -52,8 +52,20 @@ func UpgradeIfNeeded(fns ...MigrateFn) actions.Fn {
 			return fmt.Errorf("resource instance does not implement WithReleases")
 		}
 
+		status := withReleases.GetReleaseStatus()
+		prev := common.ComponentRelease{}
+		if status != nil {
+			for _, release := range status.Releases {
+				if release.Name == moduleconfig.ReleasePlatform {
+					prev = release
+					break
+				}
+			}
+		}
+
 		var prevVersion semver.Version
-		if prev := lookupPlatformRelease(withReleases.GetReleaseStatus()); prev.Version != "" {
+
+		if prev.Version != "" {
 			var err error
 			if prevVersion, err = semver.ParseTolerant(prev.Version); err != nil {
 				return fmt.Errorf("parsing previous platform version %q: %w", prev.Version, err)
@@ -72,16 +84,4 @@ func UpgradeIfNeeded(fns ...MigrateFn) actions.Fn {
 
 		return nil
 	}
-}
-
-func lookupPlatformRelease(status *common.ComponentReleaseStatus) common.ComponentRelease {
-	if status == nil {
-		return common.ComponentRelease{}
-	}
-	for _, r := range status.Releases {
-		if r.Name == moduleconfig.ReleasePlatform {
-			return r
-		}
-	}
-	return common.ComponentRelease{}
 }

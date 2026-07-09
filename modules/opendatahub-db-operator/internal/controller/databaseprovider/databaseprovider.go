@@ -115,7 +115,6 @@ func NewReconciler(
 			deploy.WithApplyOrder(),
 		)).
 		WithAction(m.embeddedReadinessAction).
-		WithAction(m.embeddedCapabilityLabelsAction).
 		WithAction(m.embeddedIdleCleanupAction).
 		WithConditions(ConditionReachable).
 		Build(ctx)

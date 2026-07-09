@@ -31,6 +31,7 @@ import (
 	infraApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/api/infrastructure/v1alpha1"
 	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/pkg/config"
 	dbcontroller "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/pkg/controller"
+	common "github.com/opendatahub-io/odh-platform-utilities/api/common"
 )
 
 func TestResolveEmbeddedImage(t *testing.T) {
@@ -262,5 +263,125 @@ func TestEmbeddedNamespace_UsesOverride(t *testing.T) {
 	}
 
 	g.Expect(dbcontroller.EmbeddedNamespace(provider, cfg.OperatorNamespace)).To(Equal("custom-ns"))
-	g.Expect(dbcontroller.EmbeddedServiceHost(provider, cfg.OperatorNamespace)).To(Equal("embedded.custom-ns.svc.cluster.local"))
+	g.Expect(dbcontroller.EmbeddedServiceHost(provider, cfg.OperatorNamespace)).To(Equal("embedded.custom-ns.svc"))
+}
+
+func TestEmbeddedImageChanged_MatchesCurrentStatefulSetImage(t *testing.T) {
+	g := NewWithT(t)
+
+	cfg := &moduleconfig.Config{
+		Embedded: moduleconfig.EmbeddedConfig{
+			PostgresImage: "postgres:test",
+			PgvectorImage: "pgvector:test",
+		},
+	}
+	provider := &infraApi.DatabaseProvider{
+		ObjectMeta: metav1.ObjectMeta{Name: "embedded"},
+		Spec: infraApi.DatabaseProviderSpec{
+			Type: infraApi.ProviderTypeEmbedded,
+			Embedded: &infraApi.EmbeddedProviderSpec{
+				Extensions: []string{"vector"},
+			},
+		},
+	}
+	sts := &appsv1.StatefulSet{
+		Spec: appsv1.StatefulSetSpec{
+			Template: corev1.PodTemplateSpec{
+				Spec: corev1.PodSpec{
+					Containers: []corev1.Container{
+						{Name: "postgres", Image: "pgvector:test"},
+					},
+				},
+			},
+		},
+	}
+
+	g.Expect(embeddedImageChanged(sts, provider, cfg)).To(BeFalse())
+}
+
+func TestEmbeddedImageChanged_DetectsDrift(t *testing.T) {
+	g := NewWithT(t)
+
+	cfg := &moduleconfig.Config{
+		Embedded: moduleconfig.EmbeddedConfig{
+			PostgresImage: "postgres:test",
+			PgvectorImage: "pgvector:test",
+		},
+	}
+	provider := &infraApi.DatabaseProvider{
+		ObjectMeta: metav1.ObjectMeta{Name: "embedded"},
+		Spec: infraApi.DatabaseProviderSpec{
+			Type: infraApi.ProviderTypeEmbedded,
+			Embedded: &infraApi.EmbeddedProviderSpec{
+				Extensions: []string{"vector"},
+			},
+		},
+	}
+	sts := &appsv1.StatefulSet{
+		Spec: appsv1.StatefulSetSpec{
+			Template: corev1.PodTemplateSpec{
+				Spec: corev1.PodSpec{
+					Containers: []corev1.Container{
+						{Name: "postgres", Image: "postgres:test"},
+					},
+				},
+			},
+		},
+	}
+
+	g.Expect(embeddedImageChanged(sts, provider, cfg)).To(BeTrue())
+}
+
+func TestReferencedClaimNamespaces_UsesPinnedProvider(t *testing.T) {
+	g := NewWithT(t)
+	ctx := context.Background()
+
+	scheme := runtime.NewScheme()
+	g.Expect(infraApi.AddToScheme(scheme)).To(Succeed())
+
+	alpha := &infraApi.DatabaseProvider{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:   "alpha",
+			Labels: map[string]string{"cap": "vec"},
+		},
+	}
+	bravo := &infraApi.DatabaseProvider{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:   "bravo",
+			Labels: map[string]string{"cap": "vec"},
+		},
+	}
+	claim := &infraApi.SchemaClaim{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "claim",
+			Namespace: "workloads",
+		},
+		Spec: infraApi.SchemaClaimSpec{
+			Provider: infraApi.ProviderRef{
+				Selector: &metav1.LabelSelector{
+					MatchLabels: map[string]string{"cap": "vec"},
+				},
+			},
+		},
+		Status: infraApi.SchemaClaimStatus{
+			Status: common.Status{
+				Conditions: []common.Condition{
+					{
+						Type:   "Provisioned",
+						Status: metav1.ConditionTrue,
+					},
+				},
+			},
+			Provider: "bravo",
+		},
+	}
+
+	cli := fake.NewClientBuilder().
+		WithScheme(scheme).
+		WithRuntimeObjects(alpha, bravo, claim).
+		Build()
+
+	namespaces, err := referencedClaimNamespaces(ctx, cli, bravo)
+	g.Expect(err).NotTo(HaveOccurred())
+	g.Expect(namespaces).To(Equal([]string{"workloads"}))
 }
