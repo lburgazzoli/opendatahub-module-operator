@@ -26,6 +26,7 @@ import (
 	. "github.com/onsi/gomega"
 	appsv1 "k8s.io/api/apps/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/test/support"
 )
@@ -33,6 +34,7 @@ import (
 const (
 	operatorDeploymentName = "odh-db-operator-operator"
 	operatorConfigMapName  = "odh-db-operator-config"
+	defaultE2ETestNamespace = "odh-db-operator-e2e"
 )
 
 func TestMain(m *testing.M) {
@@ -53,7 +55,7 @@ func runTestMain(m *testing.M) int {
 	return m.Run()
 }
 
-func TestDatabaseOperatorE2E(t *testing.T) {
+func newE2ESuite(t *testing.T) *e2eSuite {
 	cli, err := support.NewClient()
 	if err != nil {
 		t.Fatalf("failed to create client: %v", err)
@@ -69,11 +71,15 @@ func TestDatabaseOperatorE2E(t *testing.T) {
 		jq.Match(`.status.readyReplicas >= 1`),
 	)
 
-	suite := &e2eSuite{
+	return &e2eSuite{
 		Client:            cli,
 		operatorNamespace: support.OperatorNamespace(),
 		workloadNamespace: e2eTestNamespace(),
 	}
-	t.Run("foundation", suite.testFoundation)
-	t.Run("workflows", suite.testWorkflows)
+}
+
+type e2eSuite struct {
+	Client            client.Client
+	operatorNamespace string
+	workloadNamespace string
 }
