@@ -41,55 +41,49 @@ func EmbeddedAdminSecretName(providerName string) string {
 }
 
 func EmbeddedServiceName(providerName string) string {
-	return providerName + "-postgres"
+	return providerName
 }
 
 func EmbeddedPVCName(providerName string) string {
-	return providerName + "-postgres"
+	return providerName
 }
 
 func EmbeddedInitDBConfigMapName(providerName string) string {
-	return providerName + "-postgres-initdb"
+	return providerName + "-initdb"
 }
 
-func EmbeddedNamespace(provider *infraApi.DatabaseProvider, cfg *moduleconfig.Config) string {
+func EmbeddedNamespace(provider *infraApi.DatabaseProvider, operatorNamespace string) string {
 	if provider != nil && provider.Spec.Embedded != nil && provider.Spec.Embedded.Namespace != "" {
 		return provider.Spec.Embedded.Namespace
 	}
-	return OperatorNamespace(cfg)
+	return operatorNamespace
 }
 
-func EmbeddedServiceHost(provider *infraApi.DatabaseProvider, cfg *moduleconfig.Config) string {
-	return fmt.Sprintf("%s.%s.svc", EmbeddedServiceName(provider.Name), EmbeddedNamespace(provider, cfg))
+func EmbeddedServiceHost(provider *infraApi.DatabaseProvider, operatorNamespace string) string {
+	return fmt.Sprintf("%s.%s.svc", EmbeddedServiceName(provider.Name), EmbeddedNamespace(provider, operatorNamespace))
 }
 
 func OperatorNamespace(cfg *moduleconfig.Config) string {
 	if cfg == nil {
 		return ""
 	}
-	if cfg.OperatorNamespace != "" {
-		return cfg.OperatorNamespace
-	}
-	return cfg.ApplicationsNamespace
-}
-
-func ProviderAdminSecretRef(provider *infraApi.DatabaseProvider, cfg *moduleconfig.Config) corev1.SecretReference {
-	if provider.Spec.Type == infraApi.ProviderTypeExternal {
-		return provider.Spec.External.ConnectionSecretRef
-	}
-	return corev1.SecretReference{
-		Namespace: EmbeddedNamespace(provider, cfg),
-		Name:      EmbeddedAdminSecretName(provider.Name),
-	}
+	return cfg.OperatorNamespace
 }
 
 func LoadProviderConfig(
 	ctx context.Context,
 	cli client.Client,
 	provider *infraApi.DatabaseProvider,
-	cfg *moduleconfig.Config,
+	operatorNamespace string,
 ) (postgres.Config, error) {
-	ref := ProviderAdminSecretRef(provider, cfg)
+	ref := provider.Spec.External.ConnectionSecretRef
+	if provider.Spec.Type != infraApi.ProviderTypeExternal {
+		ref = corev1.SecretReference{
+			Namespace: EmbeddedNamespace(provider, operatorNamespace),
+			Name:      EmbeddedAdminSecretName(provider.Name),
+		}
+	}
+
 	secret := &corev1.Secret{}
 	if err := cli.Get(ctx, client.ObjectKey{Namespace: ref.Namespace, Name: ref.Name}, secret); err != nil {
 		return postgres.Config{}, fmt.Errorf("reading admin Secret %s/%s: %w", ref.Namespace, ref.Name, err)
@@ -104,7 +98,7 @@ func LoadProviderConfig(
 	}
 
 	parsed := postgres.Config{
-		Host:     EmbeddedServiceHost(provider, cfg),
+		Host:     EmbeddedServiceHost(provider, operatorNamespace),
 		Port:     postgres.DefaultPort,
 		User:     string(secret.Data[EmbeddedAdminSecretUserKey]),
 		Password: string(secret.Data[EmbeddedAdminSecretPasswordKey]),

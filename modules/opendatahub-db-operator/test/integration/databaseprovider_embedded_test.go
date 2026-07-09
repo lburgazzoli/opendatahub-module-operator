@@ -105,7 +105,7 @@ func (st *embeddedDatabaseProviderSuite) testImageUnmapped(t *testing.T) {
 
 	statefulSet := &appsv1.StatefulSet{
 		ObjectMeta: metav1.ObjectMeta{
-			Namespace: dbcontroller.EmbeddedNamespace(provider, st.env.Config),
+			Namespace: dbcontroller.EmbeddedNamespace(provider, st.env.Config.OperatorNamespace),
 			Name:      dbcontroller.EmbeddedServiceName(provider.Name),
 		},
 	}

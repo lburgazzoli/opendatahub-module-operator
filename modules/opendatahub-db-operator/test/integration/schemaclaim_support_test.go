@@ -19,8 +19,10 @@ package integration
 import (
 	"context"
 	"fmt"
+	"maps"
 	"testing"
 
+	"github.com/jackc/pgx/v5/pgxpool"
 	k8sm "github.com/lburgazzoli/gomega-matchers/pkg/matchers/k8s"
 	"github.com/lburgazzoli/gomega-matchers/pkg/matchers/k8s/condition"
 	infraApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/api/infrastructure/v1alpha1"
@@ -30,6 +32,7 @@ import (
 	"github.com/rs/xid"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 type schemaClaimSuite struct {
@@ -91,22 +94,50 @@ func (st *schemaClaimSuite) createDatabase(t *testing.T, name string) {
 	g.Expect(err).NotTo(HaveOccurred())
 }
 
+func (st *schemaClaimSuite) openProviderAdminPool(ctx context.Context) (*pgxpool.Pool, error) {
+	cfg := st.db.cfg
+	cfg.DBName = st.databaseName
+
+	pool, err := pgxpool.New(ctx, cfg.DSN())
+	if err != nil {
+		return nil, fmt.Errorf("opening provider admin pool: %w", err)
+	}
+
+	return pool, nil
+}
+
 func (st *schemaClaimSuite) createProvider(t *testing.T) {
+	st.createExternalProvider(t, st.providerName, st.db.cfg, st.databaseName, nil, nil)
+}
+
+func (st *schemaClaimSuite) createExternalProvider(
+	t *testing.T,
+	name string,
+	cfg postgres.Config,
+	database string,
+	labels map[string]string,
+	annotations map[string]string,
+) {
 	t.Helper()
 
 	g := NewWithT(t)
 
+	mergedAnnotations := map[string]string{
+		"db.infrastructure.opendatahub.io/operator-namespace": st.env.Namespace,
+	}
+	maps.Copy(mergedAnnotations, annotations)
+
 	adminSecret := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      st.providerName + "-admin",
+			Name:      name + "-admin",
 			Namespace: st.env.Namespace,
 		},
 		StringData: map[string]string{
-			postgres.SecretKeyHost:     st.db.cfg.Host,
-			postgres.SecretKeyPort:     fmt.Sprintf("%d", st.db.cfg.Port),
-			postgres.SecretKeyUser:     st.db.cfg.User,
-			postgres.SecretKeyPassword: st.db.cfg.Password,
-			postgres.SecretKeyDatabase: st.databaseName,
+			postgres.SecretKeyHost:     cfg.Host,
+			postgres.SecretKeyPort:     fmt.Sprintf("%d", cfg.Port),
+			postgres.SecretKeyUser:     cfg.User,
+			postgres.SecretKeyPassword: cfg.Password,
+			postgres.SecretKeyDatabase: database,
 		},
 	}
 	g.Expect(st.env.Client.Create(t.Context(), adminSecret)).To(Succeed())
@@ -116,10 +147,9 @@ func (st *schemaClaimSuite) createProvider(t *testing.T) {
 
 	provider := &infraApi.DatabaseProvider{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: st.providerName,
-			Annotations: map[string]string{
-				"db.infrastructure.opendatahub.io/operator-namespace": st.env.Namespace,
-			},
+			Name:        name,
+			Labels:      labels,
+			Annotations: mergedAnnotations,
 		},
 		Spec: infraApi.DatabaseProviderSpec{
 			Type: infraApi.ProviderTypeExternal,
@@ -151,6 +181,20 @@ func (st *schemaClaimSuite) newClaim(name string) *infraApi.SchemaClaim {
 	}
 }
 
+func (st *schemaClaimSuite) newSelectorClaim(name string, selector map[string]string) *infraApi.SchemaClaim {
+	return &infraApi.SchemaClaim{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: st.env.Namespace,
+		},
+		Spec: infraApi.SchemaClaimSpec{
+			Provider: infraApi.ProviderRef{
+				Selector: &metav1.LabelSelector{MatchLabels: selector},
+			},
+		},
+	}
+}
+
 func (st *schemaClaimSuite) createClaim(t *testing.T, claim *infraApi.SchemaClaim) {
 	t.Helper()
 	g := NewWithT(t)
@@ -166,6 +210,19 @@ func (st *schemaClaimSuite) waitProvisioned(t *testing.T, claim *infraApi.Schema
 	NewWithT(t).Eventually(t.Context(), k8sm.Get(st.env.Client, claim)).Should(
 		WithTransform(k8sm.ConditionsOf[metav1.Condition](),
 			ContainElement(condition.Is(schemaclaim.ConditionProvisioned, metav1.ConditionTrue))),
+	)
+}
+
+func (st *schemaClaimSuite) waitSelectedProvider(
+	t *testing.T,
+	claim *infraApi.SchemaClaim,
+	provider string,
+) {
+	t.Helper()
+	NewWithT(t).Eventually(t.Context(), k8sm.Get(st.env.Client, claim)).Should(
+		WithTransform(func(obj *infraApi.SchemaClaim) string {
+			return obj.Status.Provider
+		}, Equal(provider)),
 	)
 }
 
@@ -223,4 +280,67 @@ func (st *schemaClaimSuite) expectNoCredentialsSecret(t *testing.T, name string)
 
 	g.Consistently(t.Context(), k8sm.NotFound(st.env.Client, secret), "2s", "200ms").Should(BeTrue())
 	g.Eventually(t.Context(), k8sm.Absent(st.env.Client, secret), "2s", "200ms").Should(BeTrue())
+}
+
+func (st *schemaClaimSuite) roleExists(t *testing.T, role string) bool {
+	t.Helper()
+
+	g := NewWithT(t)
+	pool, err := st.db.openAdminPool(t.Context())
+	g.Expect(err).NotTo(HaveOccurred())
+	t.Cleanup(pool.Close)
+
+	exists, err := postgres.RoleExists(t.Context(), pool, role)
+	g.Expect(err).NotTo(HaveOccurred())
+	return exists
+}
+
+func (st *schemaClaimSuite) schemaExists(t *testing.T, schema string) bool {
+	t.Helper()
+
+	g := NewWithT(t)
+	pool, err := st.openProviderAdminPool(t.Context())
+	g.Expect(err).NotTo(HaveOccurred())
+	t.Cleanup(pool.Close)
+
+	exists, err := postgres.SchemaExists(t.Context(), pool, schema)
+	g.Expect(err).NotTo(HaveOccurred())
+	return exists
+}
+
+func (st *schemaClaimSuite) dropRole(t *testing.T, role string, schema string) {
+	t.Helper()
+
+	g := NewWithT(t)
+	pool, err := st.openProviderAdminPool(t.Context())
+	g.Expect(err).NotTo(HaveOccurred())
+	t.Cleanup(pool.Close)
+
+	g.Expect(postgres.RevokeSchemaPrivileges(t.Context(), pool, schema, role)).To(Succeed())
+	g.Expect(postgres.DropRole(t.Context(), pool, role)).To(Succeed())
+}
+
+func (st *schemaClaimSuite) dropSchema(t *testing.T, schema string) {
+	t.Helper()
+
+	g := NewWithT(t)
+	pool, err := st.openProviderAdminPool(t.Context())
+	g.Expect(err).NotTo(HaveOccurred())
+	t.Cleanup(pool.Close)
+
+	g.Expect(postgres.DropSchemaCascade(t.Context(), pool, schema)).To(Succeed())
+}
+
+func (st *schemaClaimSuite) triggerReconcile(t *testing.T, claim *infraApi.SchemaClaim) {
+	t.Helper()
+
+	g := NewWithT(t)
+	current := &infraApi.SchemaClaim{}
+	g.Expect(st.env.Client.Get(t.Context(), client.ObjectKeyFromObject(claim), current)).To(Succeed())
+
+	if current.Annotations == nil {
+		current.Annotations = map[string]string{}
+	}
+	current.Annotations["test/trigger"] = xid.New().String()
+	g.Expect(st.env.Client.Update(t.Context(), current)).To(Succeed())
 }

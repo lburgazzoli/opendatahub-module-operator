@@ -148,6 +148,6 @@ func TestEmbeddedNamespace_UsesOverride(t *testing.T) {
 		},
 	}
 
-	g.Expect(dbcontroller.EmbeddedNamespace(provider, cfg)).To(Equal("custom-ns"))
-	g.Expect(dbcontroller.EmbeddedServiceHost(provider, cfg)).To(Equal("embedded-postgres.custom-ns.svc"))
+	g.Expect(dbcontroller.EmbeddedNamespace(provider, cfg.OperatorNamespace)).To(Equal("custom-ns"))
+	g.Expect(dbcontroller.EmbeddedServiceHost(provider, cfg.OperatorNamespace)).To(Equal("embedded.custom-ns.svc"))
 }

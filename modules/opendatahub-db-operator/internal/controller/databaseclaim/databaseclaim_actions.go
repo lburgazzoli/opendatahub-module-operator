@@ -23,14 +23,11 @@ import (
 	"errors"
 	"fmt"
 
-	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	ctrl "sigs.k8s.io/controller-runtime"
 
 	infraApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/api/infrastructure/v1alpha1"
 	dbcontroller "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/pkg/controller"
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/pkg/postgres"
-	"github.com/opendatahub-io/odh-platform-utilities/framework/controller/actions/deploy"
 	odherrors "github.com/opendatahub-io/odh-platform-utilities/framework/controller/actions/errors"
 	"github.com/opendatahub-io/odh-platform-utilities/framework/controller/conditions"
 	odhtypes "github.com/opendatahub-io/odh-platform-utilities/framework/controller/types"
@@ -50,7 +47,7 @@ func (m *Controller) provisionAction(ctx context.Context, rr *odhtypes.Reconcili
 	}
 
 	// 1. Resolve provider.
-	provider, err := dbcontroller.Resolve(ctx, rr.Client, obj.Spec.Provider)
+	provider, err := dbcontroller.ResolveForCurrent(ctx, rr.Client, obj.Spec.Provider, obj.Status.Provider)
 	if err != nil {
 		if notFound, ok := errors.AsType[dbcontroller.ErrNotFound](err); ok {
 			rr.Conditions.Mark(ConditionProvisioned, metav1.ConditionFalse,
@@ -76,84 +73,36 @@ func (m *Controller) provisionAction(ctx context.Context, rr *odhtypes.Reconcili
 	}
 	defer pool.Close()
 
-	// 3. Verify database exists -- DatabaseClaim never creates a database.
-	dbExists, err := postgres.DatabaseExists(ctx, pool, obj.Spec.Database)
-	if err != nil {
-		err = fmt.Errorf("checking database existence: %w", err)
-		if retryErr := dbcontroller.StopWithQuickRetryIfConnectionRefused(err); retryErr != nil {
-			return retryErr
-		}
-		return err
+	// 3. Ensure claim credentials and connection details.
+	provisioner := DatabaseProvisioner{
+		Client: rr.Client,
+		Claim:  obj,
+		Pool:   pool,
+		Config: cfg,
 	}
-	if !dbExists {
+	secret, err := provisioner.Ensure(ctx)
+	if notFound, ok := errors.AsType[ErrDatabaseNotFound](err); ok {
 		rr.Conditions.Mark(ConditionProvisioned, metav1.ConditionFalse,
 			conditions.WithReason("DatabaseNotFound"),
-			conditions.WithMessage("database %q does not exist on provider %q", obj.Spec.Database, provider.Name))
-		return odherrors.NewStopError("database %q not found", obj.Spec.Database)
+			conditions.WithMessage("database %q does not exist on provider %q", notFound.Database, provider.Name))
+		return odherrors.NewStopError("%s", notFound.Error())
 	}
-
-	// 4. Role + credentials -- same idempotency pattern as SchemaClaim:
-	//    if both role and Secret exist, nothing to do.
-	role := roleNameFor(obj)
-	roleExists, err := postgres.RoleExists(ctx, pool, role)
 	if err != nil {
-		err = fmt.Errorf("checking role existence: %w", err)
-		if retryErr := dbcontroller.StopWithQuickRetryIfConnectionRefused(err); retryErr != nil {
-			return retryErr
-		}
 		return err
 	}
-	secretExists, err := credentialsSecretExists(ctx, rr.Client, obj)
-	if err != nil {
-		return fmt.Errorf("checking credentials Secret existence: %w", err)
+
+	// 4. Add credentials Secret to rr.Resources so deploy.NewAction amends it.
+	if err := rr.AddResources(secret); err != nil {
+		return fmt.Errorf("adding credentials Secret to resources: %w", err)
 	}
 
-	if !roleExists || !secretExists {
-		pw, err := postgres.GeneratePassword(24)
-		if err != nil {
-			return fmt.Errorf("generating password: %w", err)
-		}
-		if err := postgres.CreateRole(ctx, pool, role, pw); err != nil {
-			err = fmt.Errorf("creating role: %w", err)
-			if retryErr := dbcontroller.StopWithQuickRetryIfConnectionRefused(err); retryErr != nil {
-				return retryErr
-			}
-			return err
-		}
-		if err := postgres.GrantDatabasePrivileges(ctx, pool, obj.Spec.Database, role); err != nil {
-			err = fmt.Errorf("granting database privileges: %w", err)
-			if retryErr := dbcontroller.StopWithQuickRetryIfConnectionRefused(err); retryErr != nil {
-				return retryErr
-			}
-			return err
-		}
-
-		// 5. Add credentials Secret to rr.Resources for deploy.NewAction (SSA).
-		// opendatahub.io/managed=false so gc action doesn't delete it as an orphan.
-		secret := buildCredentialsSecret(obj, claimConfig(cfg, obj.Spec.Database, role, pw))
-		if err := ctrl.SetControllerReference(obj, secret, rr.Client.Scheme()); err != nil {
-			return fmt.Errorf("setting owner reference: %w", err)
-		}
-		if secret.Annotations == nil {
-			secret.Annotations = make(map[string]string)
-		}
-		secret.Annotations[deploy.DefaultManagedByAnnotation] = "false"
-		if err := rr.AddResources(secret); err != nil {
-			return fmt.Errorf("adding credentials Secret to resources: %w", err)
-		}
-	}
-
-	// 6. Update status -- status.database echoes spec.database exactly, no defaulting.
-	obj.Status.Database = obj.Spec.Database
-	obj.Status.Connection = infraApi.DatabaseConnectionStatus{
-		SecretRef: corev1.LocalObjectReference{Name: obj.Name},
-		Host:      cfg.Host,
-		Port:      int32(cfg.Port),
-		Database:  obj.Spec.Database,
-	}
+	// 5. Update status -- status.database echoes spec.database exactly, no defaulting.
+	connection := provisioner.ConnectionStatus()
+	obj.Status.Database = connection.Database
+	obj.Status.Connection = connection
 	rr.Conditions.Mark(ConditionProvisioned, metav1.ConditionTrue,
 		conditions.WithReason("UserProvisioned"),
-		conditions.WithMessage("User provisioned on database %q (provider %q)", obj.Spec.Database, provider.Name))
+		conditions.WithMessage("User provisioned on database %q (provider %q)", connection.Database, provider.Name))
 
 	return nil
 }
@@ -172,7 +121,7 @@ func (m *Controller) cleanupAction(ctx context.Context, rr *odhtypes.Reconciliat
 
 	return m.withGrace(ctx, obj,
 		func(ctx context.Context) error {
-			provider, err := dbcontroller.Resolve(ctx, rr.Client, obj.Spec.Provider)
+			provider, err := dbcontroller.ResolveForCurrent(ctx, rr.Client, obj.Spec.Provider, obj.Status.Provider)
 			if err != nil {
 				return nil // provider permanently gone -- allow removal
 			}

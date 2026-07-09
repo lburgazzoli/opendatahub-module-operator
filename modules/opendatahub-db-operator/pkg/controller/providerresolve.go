@@ -25,6 +25,7 @@ import (
 	"strconv"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	infraApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/api/infrastructure/v1alpha1"
@@ -61,11 +62,22 @@ func Resolve(
 	cli client.Client,
 	ref infraApi.ProviderRef,
 ) (*infraApi.DatabaseProvider, error) {
+	return ResolveForCurrent(ctx, cli, ref, "")
+}
+
+// ResolveForCurrent resolves a provider like Resolve, but for selector-based
+// references it keeps the currently selected provider when it still matches.
+func ResolveForCurrent(
+	ctx context.Context,
+	cli client.Client,
+	ref infraApi.ProviderRef,
+	currentProvider string,
+) (*infraApi.DatabaseProvider, error) {
 	switch {
 	case ref.Name != "":
 		return resolveByName(ctx, cli, ref.Name)
 	case ref.Selector != nil:
-		return resolveBySelector(ctx, cli, ref.Selector)
+		return resolveBySelector(ctx, cli, ref.Selector, currentProvider)
 	default:
 		return resolveDefault(ctx, cli)
 	}
@@ -83,15 +95,42 @@ func resolveBySelector(
 	ctx context.Context,
 	cli client.Client,
 	selector *metav1.LabelSelector,
+	currentProvider string,
 ) (*infraApi.DatabaseProvider, error) {
+	labelSelector, err := metav1.LabelSelectorAsSelector(selector)
+	if err != nil {
+		return nil, fmt.Errorf("building label selector: %w", err)
+	}
+
+	if currentProvider != "" {
+		current, err := resolveByName(ctx, cli, currentProvider)
+		switch {
+		case err == nil && labelSelector.Matches(labels.Set(current.Labels)):
+			return current, nil
+		case err == nil:
+			// Current provider still exists but no longer matches; fall through.
+		case isNotFound(err):
+			// Current provider disappeared; fall through.
+		default:
+			return nil, err
+		}
+	}
+
 	list := &infraApi.DatabaseProviderList{}
-	if err := cli.List(ctx, list, client.MatchingLabels(selector.MatchLabels)); err != nil {
+	if err := cli.List(ctx, list); err != nil {
 		return nil, fmt.Errorf("listing DatabaseProviders by selector: %w", err)
 	}
-	if len(list.Items) == 0 {
+
+	matches := make([]infraApi.DatabaseProvider, 0, len(list.Items))
+	for _, provider := range list.Items {
+		if labelSelector.Matches(labels.Set(provider.Labels)) {
+			matches = append(matches, provider)
+		}
+	}
+	if len(matches) == 0 {
 		return nil, ErrNotFound{Message: fmt.Sprintf("no DatabaseProvider matches selector %v", selector.MatchLabels)}
 	}
-	return pickBest(list.Items), nil
+	return pickBest(matches), nil
 }
 
 func resolveDefault(ctx context.Context, cli client.Client) (*infraApi.DatabaseProvider, error) {
@@ -133,4 +172,9 @@ func priority(p infraApi.DatabaseProvider) int {
 		return 0
 	}
 	return v
+}
+
+func isNotFound(err error) bool {
+	_, ok := err.(ErrNotFound)
+	return ok
 }

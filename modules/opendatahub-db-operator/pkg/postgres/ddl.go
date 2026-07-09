@@ -21,6 +21,8 @@ import (
 	"fmt"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	infraApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/api/infrastructure/v1alpha1"
 )
 
 // SQL statement templates. Each uses %s placeholders for already-quoted
@@ -51,6 +53,7 @@ const (
 	sqlCreateExtensionIfNotExists = "CREATE EXTENSION IF NOT EXISTS %s"
 
 	sqlDatabaseExists = "SELECT EXISTS(SELECT 1 FROM pg_database WHERE datname = $1)"
+	sqlSchemaExists   = "SELECT EXISTS(SELECT 1 FROM pg_namespace WHERE nspname = $1)"
 )
 
 // sqlCreateOrUpdateRole is a PL/pgSQL DO block because CREATE ROLE has no
@@ -98,10 +101,17 @@ func DropRole(ctx context.Context, pool *pgxpool.Pool, role string) error {
 	return err
 }
 
-// GrantSchemaPrivileges grants privileges to a role on a schema. For ReadWrite,
-// it grants USAGE and all DML. For ReadOnly, it grants USAGE and SELECT only.
-// It also sets default privileges so future tables are covered.
-func GrantSchemaPrivileges(ctx context.Context, pool *pgxpool.Pool, schema, role string, readOnly bool) error {
+// GrantSchemaPrivileges grants privileges to a role on a schema according to
+// the claim access mode. ReadWrite grants USAGE and all DML. ReadOnly grants
+// USAGE and SELECT only. It also sets default privileges so future tables are
+// covered.
+func GrantSchemaPrivileges(
+	ctx context.Context,
+	pool *pgxpool.Pool,
+	schema string,
+	role string,
+	accessMode infraApi.AccessMode,
+) error {
 	q := QuoteIdentifier
 
 	if _, err := pool.Exec(ctx, fmt.Sprintf(sqlGrantUsageOnSchema, q(schema), q(role))); err != nil {
@@ -109,7 +119,7 @@ func GrantSchemaPrivileges(ctx context.Context, pool *pgxpool.Pool, schema, role
 	}
 
 	var tableGrant, defaultPriv string
-	if readOnly {
+	if accessMode == infraApi.AccessModeReadOnly {
 		tableGrant = sqlGrantSelectOnTables
 		defaultPriv = sqlDefaultPrivGrantSelect
 	} else {
@@ -184,6 +194,13 @@ func RevokeSchemaPrivileges(ctx context.Context, pool *pgxpool.Pool, schema, rol
 func DatabaseExists(ctx context.Context, pool *pgxpool.Pool, name string) (bool, error) {
 	var exists bool
 	err := pool.QueryRow(ctx, sqlDatabaseExists, name).Scan(&exists)
+	return exists, err
+}
+
+// SchemaExists returns true if a schema with the given name exists.
+func SchemaExists(ctx context.Context, pool *pgxpool.Pool, name string) (bool, error) {
+	var exists bool
+	err := pool.QueryRow(ctx, sqlSchemaExists, name).Scan(&exists)
 	return exists, err
 }
 

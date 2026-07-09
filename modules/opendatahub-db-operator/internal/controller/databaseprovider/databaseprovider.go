@@ -76,6 +76,7 @@ func NewReconciler(
 	cfg *moduleconfig.Config,
 ) error {
 	m := NewController(cfg)
+	operatorNamespace := cfg.OperatorNamespace
 
 	_, err := reconciler.ReconcilerFor(mgr, &infraApi.DatabaseProvider{}).
 		Owns(&appsv1.StatefulSet{}, reconciler.WithPredicates(predicate.Or(
@@ -101,9 +102,9 @@ func NewReconciler(
 			) (string, error) {
 				obj, ok := rr.Instance.(*infraApi.DatabaseProvider)
 				if !ok {
-					return dbcontroller.OperatorNamespace(cfg), nil
+					return operatorNamespace, nil
 				}
-				return dbcontroller.EmbeddedNamespace(obj, cfg), nil
+				return dbcontroller.EmbeddedNamespace(obj, operatorNamespace), nil
 			}),
 			fwtemplate.WithDataFn(func(ctx context.Context, rr *odhtypes.ReconciliationRequest) (map[string]any, error) {
 				return embeddedTemplateData(ctx, rr, cfg)

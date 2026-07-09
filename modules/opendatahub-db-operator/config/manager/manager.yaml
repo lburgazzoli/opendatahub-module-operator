@@ -100,11 +100,7 @@ spec:
         env:
         - name: ODH_MODULE_OPERATOR_CONFIGURATION_PATH
           value: /etc/controller/config
-        - name: ODH_MODULE_OPERATOR_NAMESPACE
-          valueFrom:
-            fieldRef:
-              fieldPath: metadata.namespace
-        - name: ODH_MODULE_OPERATOR_APPLICATIONS_NAMESPACE
+        - name: ODH_MODULE_OPERATOR_OPERATOR_NAMESPACE
           valueFrom:
             fieldRef:
               fieldPath: metadata.namespace

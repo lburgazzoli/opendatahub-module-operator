@@ -43,9 +43,12 @@ func (st *databaseClaimSuite) Run(t *testing.T) {
 	t.Run("crd validation", st.testCRDValidation)
 	t.Run("provisioning", st.testProvisioning)
 	t.Run("idempotency", st.testIdempotency)
+	t.Run("secret deletion rotates credentials", st.testSecretDeletionRecovery)
+	t.Run("role deletion rotates credentials", st.testRoleDeletionRecovery)
 	t.Run("database not found", st.testDatabaseNotFound)
 	t.Run("deletion keeps peer user and database", st.testDeletionKeepsPeerUserAndDatabase)
 	t.Run("provider not found", st.testProviderNotFound)
+	t.Run("provider creation wakes pending claim", st.testProviderCreationWakesPendingClaim)
 }
 
 func (st *databaseClaimSuite) testProvisioning(t *testing.T) {
@@ -97,6 +100,69 @@ func (st *databaseClaimSuite) testIdempotency(t *testing.T) {
 	g.Consistently(t.Context(), k8sm.Get(st.env.Client, secret), "5s", "500ms").Should(
 		WithTransform(k8sm.Data(), HaveKeyWithValue(postgres.SecretKeyPassword, []byte(firstPw))),
 	)
+}
+
+func (st *databaseClaimSuite) testSecretDeletionRecovery(t *testing.T) {
+	g := NewWithT(t)
+	ctx := t.Context()
+
+	database := "app_" + xid.New().String()
+	st.createDatabase(t, database)
+
+	name := "dc-" + xid.New().String()
+	claim := st.newClaim(name, database)
+	st.createClaim(t, claim)
+	st.waitProvisioned(t, claim)
+
+	secret := st.waitCredentialsSecret(t, name, database)
+	oldCfg, err := postgres.ParseSecret(secret.Data)
+	g.Expect(err).NotTo(HaveOccurred())
+	oldPassword := string(secret.Data[postgres.SecretKeyPassword])
+
+	st.env.deleteAndWait(ctx, t, secret)
+	st.triggerReconcile(t, claim)
+
+	recovered := st.waitCredentialsSecret(t, name, database)
+	g.Expect(string(recovered.Data[postgres.SecretKeyPassword])).NotTo(Equal(oldPassword))
+
+	newCfg, err := postgres.ParseSecret(recovered.Data)
+	g.Expect(err).NotTo(HaveOccurred())
+	g.Expect(postgres.Ping(ctx, newCfg)).To(Succeed())
+	g.Expect(postgres.Ping(ctx, oldCfg)).To(HaveOccurred())
+}
+
+func (st *databaseClaimSuite) testRoleDeletionRecovery(t *testing.T) {
+	g := NewWithT(t)
+	ctx := t.Context()
+
+	database := "app_" + xid.New().String()
+	st.createDatabase(t, database)
+
+	name := "dc-" + xid.New().String()
+	claim := st.newClaim(name, database)
+	st.createClaim(t, claim)
+	st.waitProvisioned(t, claim)
+
+	secret := st.waitCredentialsSecret(t, name, database)
+	oldCfg, err := postgres.ParseSecret(secret.Data)
+	g.Expect(err).NotTo(HaveOccurred())
+	oldPassword := string(secret.Data[postgres.SecretKeyPassword])
+
+	st.dropRole(t, oldCfg.User, database)
+	g.Expect(st.roleExists(t, oldCfg.User)).To(BeFalse())
+
+	st.triggerReconcile(t, claim)
+
+	g.Eventually(ctx, func() string {
+		fresh := st.waitCredentialsSecret(t, name, database)
+		return string(fresh.Data[postgres.SecretKeyPassword])
+	}).ShouldNot(Equal(oldPassword))
+	recovered := st.waitCredentialsSecret(t, name, database)
+
+	newCfg, err := postgres.ParseSecret(recovered.Data)
+	g.Expect(err).NotTo(HaveOccurred())
+	g.Expect(postgres.Ping(ctx, newCfg)).To(Succeed())
+	g.Expect(postgres.Ping(ctx, oldCfg)).To(HaveOccurred())
 }
 
 func (st *databaseClaimSuite) testDatabaseNotFound(t *testing.T) {
@@ -165,6 +231,37 @@ func (st *databaseClaimSuite) testProviderNotFound(t *testing.T) {
 
 	st.waitProvisioningFailure(t, claim, "ProviderNotFound", "does-not-exist")
 	st.expectNoCredentialsSecret(t, name)
+}
+
+func (st *databaseClaimSuite) testProviderCreationWakesPendingClaim(t *testing.T) {
+	g := NewWithT(t)
+
+	database := "app_" + xid.New().String()
+	st.createDatabase(t, database)
+
+	providerName := "provider-" + xid.New().String()
+	name := "dc-" + xid.New().String()
+	claim := st.newClaim(name, database)
+	claim.Spec.Provider = infraApi.ProviderRef{Name: providerName}
+	st.createClaim(t, claim)
+
+	st.waitProvisioningFailure(t, claim, "ProviderNotFound", providerName)
+	st.expectNoCredentialsSecret(t, name)
+
+	err := st.createExternalProvider(t, providerName, st.db.cfg, nil, nil)
+	g.Expect(err).NotTo(HaveOccurred())
+
+	st.waitProvisioned(t, claim)
+	g.Eventually(t.Context(), k8sm.Get(st.env.Client, claim)).Should(
+		WithTransform(k8sm.ConditionsOf[metav1.Condition](), ContainElement(
+			SatisfyAll(
+				HaveField("Type", Equal("Provisioned")),
+				HaveField("Status", Equal(metav1.ConditionTrue)),
+				HaveField("Message", ContainSubstring(providerName)),
+			),
+		)),
+	)
+	st.waitCredentialsSecret(t, name, database)
 }
 
 func (st *databaseClaimSuite) testCRDValidation(t *testing.T) {

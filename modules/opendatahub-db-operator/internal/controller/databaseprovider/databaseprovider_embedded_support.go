@@ -38,6 +38,7 @@ import (
 	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/pkg/config"
 	dbcontroller "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/pkg/controller"
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/pkg/postgres"
+	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/pkg/resources/gvk"
 	common "github.com/opendatahub-io/odh-platform-utilities/api/common"
 	odhtypes "github.com/opendatahub-io/odh-platform-utilities/framework/controller/types"
 )
@@ -133,9 +134,10 @@ func ensureEmbeddedAdminSecret(
 	provider *infraApi.DatabaseProvider,
 	cfg *moduleconfig.Config,
 ) (*corev1.Secret, error) {
+	operatorNamespace := cfg.OperatorNamespace
 	secret := &corev1.Secret{}
 	key := types.NamespacedName{
-		Namespace: dbcontroller.EmbeddedNamespace(provider, cfg),
+		Namespace: dbcontroller.EmbeddedNamespace(provider, operatorNamespace),
 		Name:      dbcontroller.EmbeddedAdminSecretName(provider.Name),
 	}
 	if err := cli.Get(ctx, key, secret); err != nil {
@@ -186,8 +188,8 @@ func ensureEmbeddedAdminSecret(
 func buildEmbeddedAdminSecret(key types.NamespacedName, password string) *corev1.Secret {
 	return &corev1.Secret{
 		TypeMeta: metav1.TypeMeta{
-			Kind:       "Secret",
-			APIVersion: "v1",
+			Kind:       gvk.Secret.Kind,
+			APIVersion: gvk.Secret.GroupVersion().String(),
 		},
 		ObjectMeta: metav1.ObjectMeta{
 			Namespace: key.Namespace,
@@ -291,14 +293,15 @@ func claimReferencesProvider(
 }
 
 func embeddedStatefulSetKey(provider *infraApi.DatabaseProvider, cfg *moduleconfig.Config) types.NamespacedName {
+	operatorNamespace := cfg.OperatorNamespace
 	return types.NamespacedName{
-		Namespace: dbcontroller.EmbeddedNamespace(provider, cfg),
+		Namespace: dbcontroller.EmbeddedNamespace(provider, operatorNamespace),
 		Name:      dbcontroller.EmbeddedServiceName(provider.Name),
 	}
 }
 
 func embeddedChildResources(provider *infraApi.DatabaseProvider, cfg *moduleconfig.Config) []client.Object {
-	namespace := dbcontroller.EmbeddedNamespace(provider, cfg)
+	namespace := dbcontroller.EmbeddedNamespace(provider, cfg.OperatorNamespace)
 	return []client.Object{
 		&appsv1.StatefulSet{ObjectMeta: metav1.ObjectMeta{Namespace: namespace, Name: dbcontroller.EmbeddedServiceName(provider.Name)}},
 		&corev1.PersistentVolumeClaim{ObjectMeta: metav1.ObjectMeta{Namespace: namespace, Name: dbcontroller.EmbeddedPVCName(provider.Name)}},

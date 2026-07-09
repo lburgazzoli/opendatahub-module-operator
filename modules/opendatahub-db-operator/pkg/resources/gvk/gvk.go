@@ -34,6 +34,7 @@ var (
 	MutatingWebhookConfiguration   = fwgvk.MutatingWebhookConfiguration
 	ValidatingWebhookConfiguration = fwgvk.ValidatingWebhookConfiguration
 	CertManagerCertificate         = fwgvk.CertManagerCertificate
+	Secret                         = fwgvk.Secret
 )
 
 // Module-specific GVKs (SchemaClaim, DatabaseClaim, DatabaseProvider, StatefulSet,

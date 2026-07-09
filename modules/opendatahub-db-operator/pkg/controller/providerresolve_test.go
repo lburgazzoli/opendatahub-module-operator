@@ -139,6 +139,53 @@ func TestResolveBySelector_MultiMatch_AlphabeticTieBreak(t *testing.T) {
 	g.Expect(got.Name).To(Equal("alpha"))
 }
 
+func TestResolveForCurrentBySelector_KeepsCurrentMatch(t *testing.T) {
+	g := NewWithT(t)
+
+	current := makeProvider("current", map[string]string{"cap": "vec"}, nil)
+	higher := makeProvider("higher", map[string]string{"cap": "vec"}, map[string]string{
+		controller.AnnotationSelectionPriority: "100",
+	})
+
+	cli := fake.NewClientBuilder().WithScheme(newScheme()).WithObjects(&current, &higher).Build()
+	ref := infraApi.ProviderRef{
+		Selector: &metav1.LabelSelector{MatchLabels: map[string]string{"cap": "vec"}},
+	}
+
+	got, err := controller.ResolveForCurrent(context.Background(), cli, ref, "current")
+	g.Expect(err).NotTo(HaveOccurred())
+	g.Expect(got.Name).To(Equal("current"))
+}
+
+func TestResolveForCurrentBySelector_RepicksWhenCurrentMissing(t *testing.T) {
+	g := NewWithT(t)
+
+	replacement := makeProvider("replacement", map[string]string{"cap": "vec"}, nil)
+	cli := fake.NewClientBuilder().WithScheme(newScheme()).WithObjects(&replacement).Build()
+	ref := infraApi.ProviderRef{
+		Selector: &metav1.LabelSelector{MatchLabels: map[string]string{"cap": "vec"}},
+	}
+
+	got, err := controller.ResolveForCurrent(context.Background(), cli, ref, "missing")
+	g.Expect(err).NotTo(HaveOccurred())
+	g.Expect(got.Name).To(Equal("replacement"))
+}
+
+func TestResolveForCurrentBySelector_RepicksWhenCurrentNoLongerMatches(t *testing.T) {
+	g := NewWithT(t)
+
+	current := makeProvider("current", map[string]string{"cap": "other"}, nil)
+	match := makeProvider("match", map[string]string{"cap": "vec"}, nil)
+	cli := fake.NewClientBuilder().WithScheme(newScheme()).WithObjects(&current, &match).Build()
+	ref := infraApi.ProviderRef{
+		Selector: &metav1.LabelSelector{MatchLabels: map[string]string{"cap": "vec"}},
+	}
+
+	got, err := controller.ResolveForCurrent(context.Background(), cli, ref, "current")
+	g.Expect(err).NotTo(HaveOccurred())
+	g.Expect(got.Name).To(Equal("match"))
+}
+
 func TestResolveDefault_Found(t *testing.T) {
 	g := NewWithT(t)
 	p := makeProvider("default-provider", nil, map[string]string{

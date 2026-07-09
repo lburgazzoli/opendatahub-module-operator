@@ -25,8 +25,6 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	corev1 "k8s.io/api/core/v1"
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	infraApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/api/infrastructure/v1alpha1"
@@ -54,18 +52,6 @@ func roleNameFor(obj *infraApi.DatabaseClaim) string {
 	return safe
 }
 
-// credentialsSecretExists returns true when the claim's credentials Secret exists.
-func credentialsSecretExists(ctx context.Context, cli client.Client, obj *infraApi.DatabaseClaim) (bool, error) {
-	secret := &corev1.Secret{}
-	if err := cli.Get(ctx, client.ObjectKey{Namespace: obj.Namespace, Name: obj.Name}, secret); err != nil {
-		if apierrors.IsNotFound(err) {
-			return false, nil
-		}
-		return false, err
-	}
-	return true, nil
-}
-
 // openPool reads the provider's admin Secret and opens a pgxpool.Pool.
 func openPool(
 	ctx context.Context,
@@ -73,7 +59,7 @@ func openPool(
 	provider *infraApi.DatabaseProvider,
 	cfg *moduleconfig.Config,
 ) (postgres.Config, *pgxpool.Pool, error) {
-	providerCfg, err := dbcontroller.LoadProviderConfig(ctx, cli, provider, cfg)
+	providerCfg, err := dbcontroller.LoadProviderConfig(ctx, cli, provider, cfg.OperatorNamespace)
 	if err != nil {
 		return postgres.Config{}, nil, err
 	}
@@ -84,37 +70,15 @@ func openPool(
 	return providerCfg, pool, nil
 }
 
-// claimConfig builds a postgres.Config for the claim user from the admin config.
-func claimConfig(adminCfg postgres.Config, database, role, password string) postgres.Config {
-	return postgres.Config{
-		Host:     adminCfg.Host,
-		Port:     adminCfg.Port,
-		User:     role,
-		Password: password,
-		DBName:   database,
-		// DatabaseClaim has no schema -- Schema field left empty
+func wrapQuickRetry(op string, err error) error {
+	if err == nil {
+		return nil
 	}
-}
-
-// buildCredentialsSecret constructs the SSA-ready credentials Secret.
-func buildCredentialsSecret(obj *infraApi.DatabaseClaim, cfg postgres.Config) *corev1.Secret {
-	return &corev1.Secret{
-		TypeMeta: metav1.TypeMeta{
-			Kind:       "Secret",
-			APIVersion: "v1",
-		},
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      obj.Name,
-			Namespace: obj.Namespace,
-		},
-		StringData: map[string]string{
-			postgres.SecretKeyHost:     cfg.Host,
-			postgres.SecretKeyPort:     fmt.Sprintf("%d", cfg.Port),
-			postgres.SecretKeyUser:     cfg.User,
-			postgres.SecretKeyPassword: cfg.Password,
-			postgres.SecretKeyDatabase: cfg.DBName,
-		},
+	wrapped := fmt.Errorf("%s: %w", op, err)
+	if retryErr := dbcontroller.StopWithQuickRetryIfConnectionRefused(wrapped); retryErr != nil {
+		return retryErr
 	}
+	return wrapped
 }
 
 // withGrace wraps a cleanup function with the controller's grace-period policy.

@@ -26,8 +26,6 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	corev1 "k8s.io/api/core/v1"
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	infraApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/api/infrastructure/v1alpha1"
@@ -51,19 +49,6 @@ const (
 
 var nonIdentRe = regexp.MustCompile(`[^a-z0-9_]`)
 
-// credentialsSecretExists returns true when the claim's credentials Secret
-// already exists in the cluster.
-func credentialsSecretExists(ctx context.Context, cli client.Client, obj *infraApi.SchemaClaim) (bool, error) {
-	existing := &corev1.Secret{}
-	if err := cli.Get(ctx, client.ObjectKey{Namespace: obj.Namespace, Name: obj.Name}, existing); err != nil {
-		if apierrors.IsNotFound(err) {
-			return false, nil
-		}
-		return false, err
-	}
-	return true, nil
-}
-
 // openPool reads the provider's admin Secret and opens a pgxpool.Pool.
 func openPool(
 	ctx context.Context,
@@ -71,7 +56,7 @@ func openPool(
 	provider *infraApi.DatabaseProvider,
 	cfg *moduleconfig.Config,
 ) (postgres.Config, *pgxpool.Pool, error) {
-	providerCfg, err := dbcontroller.LoadProviderConfig(ctx, cli, provider, cfg)
+	providerCfg, err := dbcontroller.LoadProviderConfig(ctx, cli, provider, cfg.OperatorNamespace)
 	if err != nil {
 		return postgres.Config{}, nil, err
 	}
@@ -93,48 +78,28 @@ func roleNameFor(obj *infraApi.SchemaClaim) string {
 	return safe
 }
 
-// claimConfig builds a postgres.Config for the claim user from the admin
-// connection config, replacing the admin credentials with the claim role, its
-// generated password, and the resolved schema. This is the self-contained
-// credentials struct passed to buildCredentialsSecret.
-func claimConfig(adminCfg postgres.Config, role, password, schema string) postgres.Config {
-	return postgres.Config{
-		Host:     adminCfg.Host,
-		Port:     adminCfg.Port,
-		User:     role,
-		Password: password,
-		DBName:   adminCfg.DBName,
-		Schema:   schema,
+func wrapQuickRetry(op string, err error) error {
+	if err == nil {
+		return nil
 	}
+	wrapped := fmt.Errorf("%s: %w", op, err)
+	if retryErr := dbcontroller.StopWithQuickRetryIfConnectionRefused(wrapped); retryErr != nil {
+		return retryErr
+	}
+	return wrapped
 }
 
-// buildCredentialsSecret constructs the SSA-ready credentials Secret from the
-// claim-scoped Config (which already carries host/port/user/password/dbname/schema).
-func buildCredentialsSecret(
-	obj *infraApi.SchemaClaim,
-	cfg postgres.Config,
-) *corev1.Secret {
-	data := map[string]string{
-		postgres.SecretKeyHost:     cfg.Host,
-		postgres.SecretKeyPort:     fmt.Sprintf("%d", cfg.Port),
-		postgres.SecretKeyUser:     cfg.User,
-		postgres.SecretKeyPassword: cfg.Password,
-		postgres.SecretKeyDatabase: cfg.DBName,
+// ensureSchema creates the schema if needed and reports whether it already
+// existed before this reconciliation.
+func ensureSchema(ctx context.Context, pool *pgxpool.Pool, schema string) (bool, error) {
+	schemaExists, err := postgres.SchemaExists(ctx, pool, schema)
+	if err != nil {
+		return false, wrapQuickRetry("checking schema existence", err)
 	}
-	if cfg.Schema != "" {
-		data[postgres.SecretKeySchema] = cfg.Schema
+	if err := postgres.CreateSchema(ctx, pool, schema); err != nil {
+		return false, wrapQuickRetry("creating schema", err)
 	}
-	return &corev1.Secret{
-		TypeMeta: metav1.TypeMeta{
-			Kind:       "Secret",
-			APIVersion: "v1",
-		},
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      obj.Name,
-			Namespace: obj.Namespace,
-		},
-		StringData: data,
-	}
+	return schemaExists, nil
 }
 
 // resolveSchema returns the schema name to use for a claim. If spec.schema is

@@ -27,6 +27,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	infraApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/api/infrastructure/v1alpha1"
+	dbcontroller "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/pkg/controller"
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/pkg/postgres"
 )
 
@@ -44,7 +45,11 @@ func (st *schemaClaimSuite) Run(t *testing.T) {
 	t.Run("provisioning", st.testProvisioning)
 	t.Run("explicit schema", st.testExplicitSchema)
 	t.Run("idempotency", st.testIdempotency)
+	t.Run("secret deletion rotates credentials", st.testSecretDeletionRecovery)
+	t.Run("role deletion rotates credentials", st.testRoleDeletionRecovery)
+	t.Run("schema deletion rotates credentials", st.testSchemaDeletionRecovery)
 	t.Run("provider not found", st.testProviderNotFound)
+	t.Run("selector keeps current provider when better match appears", st.testSelectorKeepsCurrentProvider)
 }
 
 // testProvisioning exercises the full happy path.
@@ -113,6 +118,99 @@ func (st *schemaClaimSuite) testIdempotency(t *testing.T) {
 	)
 }
 
+func (st *schemaClaimSuite) testSecretDeletionRecovery(t *testing.T) {
+	g := NewWithT(t)
+
+	name := "sc-" + xid.New().String()
+	claim := st.newClaim(name)
+	st.createClaim(t, claim)
+	st.waitProvisioned(t, claim)
+
+	secret := st.waitCredentialsSecret(t, name)
+	oldCfg, err := postgres.ParseSecret(secret.Data)
+	g.Expect(err).NotTo(HaveOccurred())
+	oldPassword := string(secret.Data[postgres.SecretKeyPassword])
+
+	st.env.deleteAndWait(t.Context(), t, secret)
+	st.triggerReconcile(t, claim)
+
+	recovered := st.waitCredentialsSecret(t, name)
+	g.Expect(string(recovered.Data[postgres.SecretKeyPassword])).NotTo(Equal(oldPassword))
+
+	newCfg, err := postgres.ParseSecret(recovered.Data)
+	g.Expect(err).NotTo(HaveOccurred())
+	g.Expect(postgres.Ping(t.Context(), newCfg)).To(Succeed())
+	g.Expect(postgres.Ping(t.Context(), oldCfg)).To(HaveOccurred())
+}
+
+func (st *schemaClaimSuite) testRoleDeletionRecovery(t *testing.T) {
+	g := NewWithT(t)
+
+	name := "sc-" + xid.New().String()
+	claim := st.newClaim(name)
+	st.createClaim(t, claim)
+	st.waitProvisioned(t, claim)
+
+	secret := st.waitCredentialsSecret(t, name)
+	oldCfg, err := postgres.ParseSecret(secret.Data)
+	g.Expect(err).NotTo(HaveOccurred())
+	oldPassword := string(secret.Data[postgres.SecretKeyPassword])
+
+	g.Expect(oldCfg.Schema).NotTo(BeEmpty())
+	st.dropRole(t, oldCfg.User, oldCfg.Schema)
+	g.Expect(st.roleExists(t, oldCfg.User)).To(BeFalse())
+
+	st.triggerReconcile(t, claim)
+
+	g.Eventually(t.Context(), func() string {
+		fresh := st.waitCredentialsSecret(t, name)
+		return string(fresh.Data[postgres.SecretKeyPassword])
+	}).ShouldNot(Equal(oldPassword))
+	recovered := st.waitCredentialsSecret(t, name)
+
+	newCfg, err := postgres.ParseSecret(recovered.Data)
+	g.Expect(err).NotTo(HaveOccurred())
+	g.Expect(postgres.Ping(t.Context(), newCfg)).To(Succeed())
+	g.Expect(postgres.Ping(t.Context(), oldCfg)).To(HaveOccurred())
+}
+
+func (st *schemaClaimSuite) testSchemaDeletionRecovery(t *testing.T) {
+	g := NewWithT(t)
+	ctx := t.Context()
+
+	name := "sc-" + xid.New().String()
+	claim := st.newClaim(name)
+	st.createClaim(t, claim)
+	st.waitProvisioned(t, claim)
+
+	secret := st.waitCredentialsSecret(t, name)
+	oldCfg, err := postgres.ParseSecret(secret.Data)
+	g.Expect(err).NotTo(HaveOccurred())
+	oldPassword := string(secret.Data[postgres.SecretKeyPassword])
+	current := &infraApi.SchemaClaim{ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: st.env.Namespace}}
+	g.Eventually(ctx, k8sm.Lookup(st.env.Client, current)).To(Succeed())
+	schemaName := current.Status.Schema
+	g.Expect(schemaName).NotTo(BeEmpty())
+
+	st.dropSchema(t, schemaName)
+	g.Expect(st.schemaExists(t, schemaName)).To(BeFalse())
+
+	st.triggerReconcile(t, claim)
+	st.waitProvisioned(t, claim)
+
+	g.Eventually(ctx, func() string {
+		fresh := st.waitCredentialsSecret(t, name)
+		return string(fresh.Data[postgres.SecretKeyPassword])
+	}).ShouldNot(Equal(oldPassword))
+	recovered := st.waitCredentialsSecret(t, name)
+
+	newCfg, err := postgres.ParseSecret(recovered.Data)
+	g.Expect(err).NotTo(HaveOccurred())
+	g.Expect(postgres.Ping(ctx, newCfg)).To(Succeed())
+	g.Expect(postgres.Ping(ctx, oldCfg)).To(HaveOccurred())
+	g.Expect(st.schemaExists(t, schemaName)).To(BeTrue())
+}
+
 // testProviderNotFound verifies Provisioned: False when the provider is missing.
 func (st *schemaClaimSuite) testProviderNotFound(t *testing.T) {
 	name := "sc-" + xid.New().String()
@@ -122,6 +220,45 @@ func (st *schemaClaimSuite) testProviderNotFound(t *testing.T) {
 
 	st.waitProvisioningFailure(t, claim, "ProviderNotFound")
 	st.expectNoCredentialsSecret(t, name)
+}
+
+func (st *schemaClaimSuite) testSelectorKeepsCurrentProvider(t *testing.T) {
+	g := NewWithT(t)
+
+	selector := map[string]string{"cap": "sticky-" + xid.New().String()}
+	name := "sc-" + xid.New().String()
+	claim := st.newSelectorClaim(name, selector)
+
+	currentProvider := "provider-" + xid.New().String()
+	st.createExternalProvider(t, currentProvider, st.db.cfg, st.databaseName, selector, map[string]string{
+		dbcontroller.AnnotationSelectionPriority: "0",
+	})
+
+	st.createClaim(t, claim)
+	st.waitProvisioned(t, claim)
+	st.waitSelectedProvider(t, claim, currentProvider)
+
+	secret := st.waitCredentialsSecret(t, name)
+	credCfg, err := postgres.ParseSecret(secret.Data)
+	g.Expect(err).NotTo(HaveOccurred())
+	g.Expect(credCfg.DBName).To(Equal(st.databaseName))
+
+	otherDB := "schema_" + xid.New().String()
+	st.createDatabase(t, otherDB)
+	betterProvider := "provider-" + xid.New().String()
+	st.createExternalProvider(t, betterProvider, st.db.cfg, otherDB, selector, map[string]string{
+		dbcontroller.AnnotationSelectionPriority: "100",
+	})
+
+	st.waitProvisioned(t, claim)
+	st.waitSelectedProvider(t, claim, currentProvider)
+
+	g.Consistently(t.Context(), k8sm.Get(st.env.Client, claim), "5s", "500ms").Should(
+		jq.Matchf(`.status.provider == %q`, currentProvider),
+	)
+	g.Consistently(t.Context(), k8sm.Get(st.env.Client, secret), "5s", "500ms").Should(
+		WithTransform(k8sm.Data(), HaveKeyWithValue(postgres.SecretKeyDatabase, []byte(st.databaseName))),
+	)
 }
 
 func (st *schemaClaimSuite) testCRDValidation(t *testing.T) {

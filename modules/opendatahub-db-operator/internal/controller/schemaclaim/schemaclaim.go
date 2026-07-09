@@ -69,6 +69,9 @@ func NewReconciler(
 
 	_, err := reconciler.ReconcilerFor(mgr, &infraApi.SchemaClaim{}).
 		Owns(&corev1.Secret{}).
+		Watches(&infraApi.DatabaseProvider{}, reconciler.WithEventMapper(
+			dbcontroller.BroadcastListMapper(mgr.GetClient(), &infraApi.SchemaClaimList{}),
+		)).
 		WithReconcilerOpts(
 			reconciler.WithRelease(m.platformRelease),
 			reconciler.WithDefaultRequeueAfter(cfg.SchemaClaim.RetryInterval),

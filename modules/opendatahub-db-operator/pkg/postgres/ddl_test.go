@@ -23,6 +23,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	. "github.com/onsi/gomega"
 
+	infraApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/api/infrastructure/v1alpha1"
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/pkg/postgres"
 )
 
@@ -97,12 +98,12 @@ func TestDDL_GrantSchemaPrivileges(t *testing.T) {
 	pw, _ := postgres.GeneratePassword(24)
 
 	for _, tc := range []struct {
-		name     string
-		readOnly bool
-		canWrite bool
+		name       string
+		accessMode infraApi.AccessMode
+		canWrite   bool
 	}{
-		{"readwrite", false, true},
-		{"readonly", true, false},
+		{"readwrite", infraApi.AccessModeReadWrite, true},
+		{"readonly", infraApi.AccessModeReadOnly, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			g := NewWithT(t)
@@ -119,7 +120,7 @@ func TestDDL_GrantSchemaPrivileges(t *testing.T) {
 			g.Expect(err).NotTo(HaveOccurred())
 
 			g.Expect(postgres.CreateRole(ctx, pool, role, pw)).To(Succeed())
-			g.Expect(postgres.GrantSchemaPrivileges(ctx, pool, schema, role, tc.readOnly)).To(Succeed())
+			g.Expect(postgres.GrantSchemaPrivileges(ctx, pool, schema, role, tc.accessMode)).To(Succeed())
 			t.Cleanup(func() { _ = postgres.DropRole(ctx, pool, role) })
 
 			roleCfg := postgres.Config{

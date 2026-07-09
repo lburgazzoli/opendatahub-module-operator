@@ -334,7 +334,6 @@ Configuration is loaded from:
 
 Important keys:
 
-- `applications-namespace`
 - `operator-namespace`
 - `embedded.postgres-image`
 - `embedded.pgvector-image`

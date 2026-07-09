@@ -17,7 +17,6 @@ limitations under the License.
 package config
 
 import (
-	"context"
 	"fmt"
 	"io/fs"
 	"os"
@@ -29,8 +28,6 @@ import (
 
 	common "github.com/opendatahub-io/odh-platform-utilities/api/common"
 	fwapi "github.com/opendatahub-io/odh-platform-utilities/framework/api"
-	fwactions "github.com/opendatahub-io/odh-platform-utilities/framework/controller/actions"
-	fwtypes "github.com/opendatahub-io/odh-platform-utilities/framework/controller/types"
 )
 
 // PlatformVersion wraps semver.Version and implements encoding.TextUnmarshaler
@@ -56,7 +53,6 @@ func (v *PlatformVersion) UnmarshalText(text []byte) error {
 }
 
 const (
-	KeyApplicationsNS  = "applications-namespace"
 	KeyOperatorNS      = "operator-namespace"
 	KeyPlatformType    = "platformType"
 	KeyPlatformVersion = "platformVersion"
@@ -106,7 +102,6 @@ const (
 	PlatformTypeSelfManagedRhoai = "SelfManagedRhoai"
 	PlatformTypeManagedRhoai     = "ManagedRhoai"
 
-	DefaultApplicationsNS  = "opendatahub"
 	DefaultOperatorNS      = "odh-db-operator-system"
 	DefaultPlatformType    = PlatformTypeOpenDataHub
 	DefaultPlatformVersion = ""
@@ -160,16 +155,15 @@ const (
 // Controller-runtime fields use dot-separated ConfigMap keys under
 // the "controller." prefix (e.g. "controller.leader-election.enabled").
 type Config struct {
-	ApplicationsNamespace string           `mapstructure:"applications-namespace"`
-	OperatorNamespace     string           `mapstructure:"operator-namespace"`
-	PlatformType          string           `mapstructure:"platformType"`
-	PlatformVersion       PlatformVersion  `mapstructure:"platformVersion"`
-	Controller            ControllerConfig `mapstructure:"controller"`
-	Embedded              EmbeddedConfig   `mapstructure:"embedded"`
-	SchemaClaim           RetryConfig      `mapstructure:"schemaclaim"`
-	DatabaseClaim         RetryConfig      `mapstructure:"databaseclaim"`
-	DatabaseProvider      RetryConfig      `mapstructure:"databaseprovider"`
-	DatabaseService       RetryConfig      `mapstructure:"databaseservice"`
+	OperatorNamespace string           `mapstructure:"operator-namespace"`
+	PlatformType      string           `mapstructure:"platformType"`
+	PlatformVersion   PlatformVersion  `mapstructure:"platformVersion"`
+	Controller        ControllerConfig `mapstructure:"controller"`
+	Embedded          EmbeddedConfig   `mapstructure:"embedded"`
+	SchemaClaim       RetryConfig      `mapstructure:"schemaclaim"`
+	DatabaseClaim     RetryConfig      `mapstructure:"databaseclaim"`
+	DatabaseProvider  RetryConfig      `mapstructure:"databaseprovider"`
+	DatabaseService   RetryConfig      `mapstructure:"databaseservice"`
 	// GracePeriod is a generic operator-wide timeout used wherever a destructive
 	// action should be deferred: Embedded provider idle teardown, claim cleanup
 	// retry ceiling, etc. Defaults to DefaultGracePeriod.
@@ -239,18 +233,6 @@ func (c *Config) PlatformRelease() fwapi.Release {
 	return fwapi.Release{
 		Name:    fwapi.Platform(c.PlatformType),
 		Version: c.PlatformVersion.Version, // semver.Version embedded in PlatformVersion
-	}
-}
-
-func ApplicationsNamespaceGetter(cfg *Config) fwactions.Getter[string] {
-	return func(_ context.Context, _ *fwtypes.ReconciliationRequest) (string, error) {
-		return cfg.ApplicationsNamespace, nil
-	}
-}
-
-func OperatorNamespaceGetter(cfg *Config) fwactions.Getter[string] {
-	return func(_ context.Context, _ *fwtypes.ReconciliationRequest) (string, error) {
-		return cfg.OperatorNamespace, nil
 	}
 }
 

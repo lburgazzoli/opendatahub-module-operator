@@ -24,14 +24,11 @@ import (
 	"errors"
 	"fmt"
 
-	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	ctrl "sigs.k8s.io/controller-runtime"
 
 	infraApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/api/infrastructure/v1alpha1"
 	dbcontroller "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/pkg/controller"
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/pkg/postgres"
-	"github.com/opendatahub-io/odh-platform-utilities/framework/controller/actions/deploy"
 	odherrors "github.com/opendatahub-io/odh-platform-utilities/framework/controller/actions/errors"
 	"github.com/opendatahub-io/odh-platform-utilities/framework/controller/conditions"
 	odhtypes "github.com/opendatahub-io/odh-platform-utilities/framework/controller/types"
@@ -43,7 +40,7 @@ import (
 //  3. Opens a connection to the provider's backend.
 //  4. Idempotently creates the schema.
 //  5. Idempotently provisions role + credentials:
-//     - If both the role and credentials Secret already exist → no-op.
+//     - If schema, role, and credentials Secret already exist → no-op.
 //     - Otherwise generate a new password, (re)create the role and Secret.
 //  6. Writes the credentials Secret via rr.Resources → deploy.NewAction (SSA).
 //  7. Updates status.
@@ -53,11 +50,8 @@ func (m *Controller) provisionAction(ctx context.Context, rr *odhtypes.Reconcili
 		return fmt.Errorf("instance is not a SchemaClaim")
 	}
 
-	// 1. Resolve schema name.
-	schema := resolveSchema(obj.Namespace, obj.Name, obj.Spec.Schema)
-
-	// 2. Resolve provider.
-	provider, err := dbcontroller.Resolve(ctx, rr.Client, obj.Spec.Provider)
+	// 1. Resolve provider.
+	provider, err := dbcontroller.ResolveForCurrent(ctx, rr.Client, obj.Spec.Provider, obj.Status.Provider)
 	if err != nil {
 		if notFound, ok := errors.AsType[dbcontroller.ErrNotFound](err); ok {
 			rr.Conditions.Mark(ConditionProvisioned, metav1.ConditionFalse,
@@ -83,86 +77,31 @@ func (m *Controller) provisionAction(ctx context.Context, rr *odhtypes.Reconcili
 	}
 	defer pool.Close()
 
-	// 4. Idempotent schema creation.
-	if err := postgres.CreateSchema(ctx, pool, schema); err != nil {
-		err = fmt.Errorf("creating schema: %w", err)
-		if retryErr := dbcontroller.StopWithQuickRetryIfConnectionRefused(err); retryErr != nil {
-			return retryErr
-		}
+	// 3. Ensure claim credentials and connection details.
+	provisioner := SchemaProvisioner{
+		Client: rr.Client,
+		Claim:  obj,
+		Pool:   pool,
+		Config: cfg,
+	}
+	schema := provisioner.Schema()
+	secret, err := provisioner.Ensure(ctx)
+	if err != nil {
 		return err
 	}
 
-	// 5. Role + credentials:
-	//    - role exists AND Secret exists → both are in sync, nothing to do.
-	//    - role missing OR Secret missing → generate a new password, (re)create
-	//      the role, and (re)create the Secret. This covers first-time provisioning
-	//      and accidental Secret deletion (the only recovery from a missing password
-	//      per docs/plan.md §2 is to re-provision with a fresh one).
-	role := roleNameFor(obj)
-	roleExists, err := postgres.RoleExists(ctx, pool, role)
-	if err != nil {
-		err = fmt.Errorf("checking role existence: %w", err)
-		if retryErr := dbcontroller.StopWithQuickRetryIfConnectionRefused(err); retryErr != nil {
-			return retryErr
-		}
-		return err
-	}
-	secretExists, err := credentialsSecretExists(ctx, rr.Client, obj)
-	if err != nil {
-		return fmt.Errorf("checking credentials Secret existence: %w", err)
+	// 4. Add the credentials Secret to rr.Resources so deploy.NewAction amends it.
+	if err := rr.AddResources(secret); err != nil {
+		return fmt.Errorf("adding credentials Secret to resources: %w", err)
 	}
 
-	if !roleExists || !secretExists {
-		pw, err := postgres.GeneratePassword(24)
-		if err != nil {
-			return fmt.Errorf("generating password: %w", err)
-		}
-		if err := postgres.CreateRole(ctx, pool, role, pw); err != nil {
-			err = fmt.Errorf("creating role: %w", err)
-			if retryErr := dbcontroller.StopWithQuickRetryIfConnectionRefused(err); retryErr != nil {
-				return retryErr
-			}
-			return err
-		}
-		readOnly := obj.Spec.Access == infraApi.AccessModeReadOnly
-		if err := postgres.GrantSchemaPrivileges(ctx, pool, schema, role, readOnly); err != nil {
-			err = fmt.Errorf("granting schema privileges: %w", err)
-			if retryErr := dbcontroller.StopWithQuickRetryIfConnectionRefused(err); retryErr != nil {
-				return retryErr
-			}
-			return err
-		}
-
-		// 6. Add the credentials Secret to rr.Resources so deploy.NewAction applies
-		// it via SSA. opendatahub.io/managed=false prevents the gc action from treating
-		// it as an orphan -- lifecycle is governed by the SchemaClaim owner reference.
-		secret := buildCredentialsSecret(obj, claimConfig(cfg, role, pw, schema))
-		if err := ctrl.SetControllerReference(obj, secret, rr.Client.Scheme()); err != nil {
-			return fmt.Errorf("setting owner reference: %w", err)
-		}
-		if secret.Annotations == nil {
-			secret.Annotations = make(map[string]string)
-		}
-		secret.Annotations[deploy.DefaultManagedByAnnotation] = "false"
-		if err := rr.AddResources(secret); err != nil {
-			return fmt.Errorf("adding credentials Secret to resources: %w", err)
-		}
-	}
-
-	// 7. Update status.
+	// 5. Update status.
+	connection := provisioner.ConnectionStatus(schema)
 	obj.Status.Schema = schema
-	obj.Status.Connection = infraApi.SchemaConnectionStatus{
-		ConnectionStatus: infraApi.ConnectionStatus{
-			SecretRef: corev1.LocalObjectReference{Name: obj.Name},
-			Host:      cfg.Host,
-			Port:      int32(cfg.Port),
-		},
-		Database: cfg.DBName,
-		Schema:   schema,
-	}
+	obj.Status.Connection = connection
 	rr.Conditions.Mark(ConditionProvisioned, metav1.ConditionTrue,
 		conditions.WithReason("SchemaReady"),
-		conditions.WithMessage("Schema %q provisioned on provider %q", schema, provider.Name))
+		conditions.WithMessage("Schema %q provisioned on provider %q", connection.Schema, provider.Name))
 
 	return nil
 }
@@ -183,7 +122,7 @@ func (m *Controller) cleanupAction(ctx context.Context, rr *odhtypes.Reconciliat
 
 	return m.withGrace(ctx, obj,
 		func(ctx context.Context) error {
-			provider, err := dbcontroller.Resolve(ctx, rr.Client, obj.Spec.Provider)
+			provider, err := dbcontroller.ResolveForCurrent(ctx, rr.Client, obj.Spec.Provider, obj.Status.Provider)
 			if err != nil {
 				// Provider permanently gone -- signal CleanupWithGrace to allow removal
 				// by returning nil (not an error). This is not transient.

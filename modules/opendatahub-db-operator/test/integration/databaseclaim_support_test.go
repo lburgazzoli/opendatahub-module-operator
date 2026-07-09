@@ -20,6 +20,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"fmt"
+	"maps"
 	"regexp"
 	"testing"
 
@@ -29,6 +30,7 @@ import (
 	"github.com/rs/xid"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	infraApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/api/infrastructure/v1alpha1"
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/internal/controller/databaseclaim"
@@ -82,19 +84,34 @@ func newDatabaseClaimSuite(t *testing.T) (*databaseClaimSuite, error) {
 }
 
 func (st *databaseClaimSuite) createProvider(t *testing.T) error {
+	return st.createExternalProvider(t, st.providerName, st.db.cfg, nil, nil)
+}
+
+func (st *databaseClaimSuite) createExternalProvider(
+	t *testing.T,
+	name string,
+	cfg postgres.Config,
+	labels map[string]string,
+	annotations map[string]string,
+) error {
 	t.Helper()
+
+	mergedAnnotations := map[string]string{
+		"db.infrastructure.opendatahub.io/operator-namespace": st.env.Namespace,
+	}
+	maps.Copy(mergedAnnotations, annotations)
 
 	adminSecret := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      st.providerName + "-admin",
+			Name:      name + "-admin",
 			Namespace: st.env.Namespace,
 		},
 		StringData: map[string]string{
-			postgres.SecretKeyHost:     st.db.cfg.Host,
-			postgres.SecretKeyPort:     fmt.Sprintf("%d", st.db.cfg.Port),
-			postgres.SecretKeyUser:     st.db.cfg.User,
-			postgres.SecretKeyPassword: st.db.cfg.Password,
-			postgres.SecretKeyDatabase: st.db.cfg.DBName,
+			postgres.SecretKeyHost:     cfg.Host,
+			postgres.SecretKeyPort:     fmt.Sprintf("%d", cfg.Port),
+			postgres.SecretKeyUser:     cfg.User,
+			postgres.SecretKeyPassword: cfg.Password,
+			postgres.SecretKeyDatabase: cfg.DBName,
 		},
 	}
 	if err := st.env.Client.Create(t.Context(), adminSecret); err != nil {
@@ -106,10 +123,9 @@ func (st *databaseClaimSuite) createProvider(t *testing.T) error {
 
 	provider := &infraApi.DatabaseProvider{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: st.providerName,
-			Annotations: map[string]string{
-				"db.infrastructure.opendatahub.io/operator-namespace": st.env.Namespace,
-			},
+			Name:        name,
+			Labels:      labels,
+			Annotations: mergedAnnotations,
 		},
 		Spec: infraApi.DatabaseProviderSpec{
 			Type: infraApi.ProviderTypeExternal,
@@ -277,6 +293,32 @@ func (st *databaseClaimSuite) expectNoCredentialsSecret(t *testing.T, name strin
 
 	g.Consistently(t.Context(), k8sm.NotFound(st.env.Client, secret), "2s", "200ms").Should(BeTrue())
 	g.Eventually(t.Context(), k8sm.Absent(st.env.Client, secret), "2s", "200ms").Should(BeTrue())
+}
+
+func (st *databaseClaimSuite) dropRole(t *testing.T, role string, database string) {
+	t.Helper()
+
+	g := NewWithT(t)
+	pool, err := st.db.openAdminPool(t.Context())
+	g.Expect(err).NotTo(HaveOccurred())
+	t.Cleanup(pool.Close)
+
+	g.Expect(postgres.RevokeDatabasePrivileges(t.Context(), pool, database, role)).To(Succeed())
+	g.Expect(postgres.DropRole(t.Context(), pool, role)).To(Succeed())
+}
+
+func (st *databaseClaimSuite) triggerReconcile(t *testing.T, claim *infraApi.DatabaseClaim) {
+	t.Helper()
+
+	g := NewWithT(t)
+	current := &infraApi.DatabaseClaim{}
+	g.Expect(st.env.Client.Get(t.Context(), client.ObjectKeyFromObject(claim), current)).To(Succeed())
+
+	if current.Annotations == nil {
+		current.Annotations = map[string]string{}
+	}
+	current.Annotations["test/trigger"] = xid.New().String()
+	g.Expect(st.env.Client.Update(t.Context(), current)).To(Succeed())
 }
 
 func databaseClaimRoleName(namespace string, name string) string {

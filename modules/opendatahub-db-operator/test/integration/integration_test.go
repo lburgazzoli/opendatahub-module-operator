@@ -87,7 +87,6 @@ func runTestMain(m *testing.M) int {
 	moduleCfg.Controller.Metrics.BindAddress = "0"
 	moduleCfg.Controller.Health.BindAddress = "0"
 	moduleCfg.Controller.Pprof.BindAddress = "0"
-	moduleCfg.ApplicationsNamespace = support.IntegrationTestNamespace()
 	moduleCfg.OperatorNamespace = support.IntegrationTestNamespace()
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -123,7 +122,6 @@ func newIntegrationEnv(t *testing.T) (*integrationEnv, error) {
 	if err != nil {
 		return nil, fmt.Errorf("loading module config: %w", err)
 	}
-	moduleCfg.ApplicationsNamespace = support.IntegrationTestNamespace()
 	moduleCfg.OperatorNamespace = support.IntegrationTestNamespace()
 
 	return &integrationEnv{
