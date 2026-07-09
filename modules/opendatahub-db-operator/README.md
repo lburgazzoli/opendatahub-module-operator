@@ -37,6 +37,31 @@ exists and the operator only validates connectivity and provisions access.
 
 ## How It Works
 
+The following diagram illustrates how cluster-scoped database providers reconcile with namespaced database or schema claims:
+
+```text
+                  +-------------------------+
+                  |    DatabaseProvider     | (Cluster-scoped supply)
+                  |  (Embedded / External)  |
+                  +-------------------------+
+                               ^
+                               | (References via spec.provider)
+                               |
+  +----------------------------+----------------------------+
+  |                                                         |
+  v                                                         v
++------------------------+                                +------------------------+
+|      SchemaClaim       | (Namespaced)                   |     DatabaseClaim      | (Namespaced)
+|                        |                                |                        |
++------------------------+                                +------------------------+
+  |                                                         |
+  | (Provisions schema & role)                              | (Provisions role)
+  v                                                         v
++------------------------+                                +------------------------+
+|    Secret (claim-name) | <--- Connection details ------> |    Secret (claim-name) |
++------------------------+                                +------------------------+
+```
+
 ### Claims
 
 `SchemaClaim` and `DatabaseClaim` are namespace-scoped resources.
@@ -104,6 +129,13 @@ This is a convenience backend, not a full database service:
 If `spec.embedded.extensions` requests `vector`, the operator selects the
 configured pgvector image. Otherwise it uses the configured stock PostgreSQL
 image.
+
+### Security & Network Isolation
+
+Because `DatabaseProvider` is cluster-scoped and claims are namespace-scoped, security and tenant isolation are enforced by default:
+
+- **Dynamic Network Isolation (`Embedded` only):** For `Embedded` providers, the operator automatically discovers all namespaces with successfully provisioned claims referencing that provider, and dynamically configures the PostgreSQL `NetworkPolicy` to allow ingress traffic *only* from those specific namespaces.
+- **Tenant Credential Isolation:** Generated connection Secrets are created directly in the consumer claim's own namespace. A tenant in namespace `A` cannot access or view the connection credentials generated for a tenant in namespace `B`.
 
 ## API Summary
 
@@ -328,6 +360,16 @@ rotate when the controller has to reprovision the missing database-side state.
 ## Local Development
 
 Run commands from `modules/opendatahub-db-operator/`.
+
+### Prerequisites
+
+To build, run, and test the operator locally, you will need:
+
+- **Go:** `1.26.4` or later (as specified in `go.mod`)
+- **Container Tool:** `podman` (default) or `docker` (configured via `CONTAINER_TOOL` environment variable)
+- **Kubernetes Cluster:** A running local cluster (such as Kind, Minikube, or OpenShift Local) with `kubectl` configured and targeted by your active context
+
+### Useful Targets
 
 Useful targets:
 
