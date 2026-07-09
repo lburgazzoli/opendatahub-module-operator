@@ -348,6 +348,31 @@ Once a selector-based claim has picked a provider, the controller keeps that
 provider while it still exists and still matches the selector. A newly created
 or higher-priority match does not force rebinding of an already-bound claim.
 
+```mermaid
+flowchart TD
+    Start([Reconcile Claim]) --> IsBound{Is Claim Already Bound?}
+    
+    IsBound -- Yes --> StillMatches{Does Bound Provider Exist\n& Selector Still Match?}
+    StillMatches -- Yes --> KeepBinding[Keep Current Provider] --> End([End Reconciliation])
+    StillMatches -- No --> ClearBinding[Clear Existing Binding] --> Resolve
+    
+    IsBound -- No --> Resolve
+
+    Resolve{Resolve spec.provider}
+    Resolve -->|Exact Name| DirectName[Bind Directly by Name] --> End
+    Resolve -->|Label Selector| FindMatches[Query All Providers Matching Selector]
+    
+    FindMatches --> AnyMatches{Any Providers Matched?}
+    AnyMatches -- No --> Requeue[Requeue: Wait for Match] --> End
+    
+    AnyMatches -- Yes (1 Match) --> BindSingle[Bind to Single Match] --> End
+    
+    AnyMatches -- Yes (Multiple Matches) --> SortPriority[Compare 'selection-priority' Annotation]
+    SortPriority --> TieCheck{Is There a Priority Tie?}
+    TieCheck -- No --> BindHighest[Bind to Highest Priority Provider] --> End
+    TieCheck -- Yes --> Alphabetical[Tie-breaker: Alphabetical Order by Name] --> BindFirst[Bind to First Alphabetical] --> End
+```
+
 ## Drift Recovery
 
 Claims repair the resources they own when drift is detected:
