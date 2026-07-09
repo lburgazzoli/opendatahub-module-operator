@@ -20,6 +20,7 @@ import (
 	"fmt"
 
 	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 	ctrl "sigs.k8s.io/controller-runtime"
 
 	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/pkg/config"
@@ -27,17 +28,28 @@ import (
 )
 
 func NewCommand() *cobra.Command {
+	v := moduleconfig.NewViper()
+	var registerErr error
+
 	cmd := &cobra.Command{
 		Use:   "operator",
 		Short: "Start the module operator",
-		RunE:  run,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if registerErr != nil {
+				return registerErr
+			}
+
+			return run(cmd, v)
+		},
 	}
+
+	registerErr = moduleconfig.RegisterFlags(cmd, v)
 
 	return cmd
 }
 
-func run(cmd *cobra.Command, _ []string) error {
-	cfg, err := moduleconfig.Load()
+func run(cmd *cobra.Command, v *viper.Viper) error {
+	cfg, err := moduleconfig.LoadFromViper(v)
 	if err != nil {
 		return fmt.Errorf("loading operator config: %w", err)
 	}

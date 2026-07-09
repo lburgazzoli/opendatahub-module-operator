@@ -30,6 +30,14 @@ import (
 	fwapi "github.com/opendatahub-io/odh-platform-utilities/framework/api"
 )
 
+var decodeHook = viper.DecodeHook(
+	mapstructure.ComposeDecodeHookFunc(
+		mapstructure.TextUnmarshallerHookFunc(),
+		mapstructure.StringToTimeDurationHookFunc(),
+		mapstructure.StringToSliceHookFunc(","),
+	),
+)
+
 // PlatformVersion wraps semver.Version and implements encoding.TextUnmarshaler
 // so mapstructure can decode the platformVersion ConfigMap key directly.
 type PlatformVersion struct {
@@ -236,6 +244,15 @@ func (c *Config) PlatformRelease() fwapi.Release {
 	}
 }
 
+// NewViper returns a Viper instance primed with this module's compiled
+// defaults. Callers can bind flags before loading so Cobra flags become the
+// highest-precedence configuration source.
+func NewViper() *viper.Viper {
+	v := viper.New()
+	setDefaults(v)
+	return v
+}
+
 // Load reads operator configuration from all available sources.
 //
 // The loading sequence:
@@ -250,16 +267,39 @@ func Load() (*Config, error) {
 		configFS = os.DirFS(configPath)
 	}
 
-	return LoadFromFS(configFS)
+	return LoadFromViperFS(NewViper(), configFS)
+}
+
+// LoadFromViper reads operator configuration into Config using the caller's
+// Viper instance. This lets Cobra-bound flags participate in the same config
+// load path as defaults, ConfigMap files, and environment variables.
+func LoadFromViper(v *viper.Viper) (*Config, error) {
+	var configFS fs.FS
+
+	if configPath := os.Getenv(ConfigPathEnvVar); configPath != "" {
+		configFS = os.DirFS(configPath)
+	}
+
+	return LoadFromViperFS(v, configFS)
 }
 
 // LoadFromFS reads operator configuration from the given filesystem.
 // If fsys is nil, only defaults and environment variables are used.
 // This function is the primary entry point for testing.
 func LoadFromFS(fsys fs.FS) (*Config, error) {
-	v := viper.New()
+	return LoadFromViperFS(NewViper(), fsys)
+}
 
-	setDefaults(v)
+// LoadFromViperFS reads operator configuration from the given filesystem using
+// the caller's Viper instance. If v is nil, a fresh defaulted instance is
+// created. If fsys is nil, only defaults, environment variables, and any
+// caller-bound flags are used.
+func LoadFromViperFS(v *viper.Viper, fsys fs.FS) (*Config, error) {
+	if v == nil {
+		v = NewViper()
+	} else {
+		setDefaults(v)
+	}
 
 	if fsys != nil {
 		if err := loadFromFS(v, fsys); err != nil {
@@ -272,13 +312,7 @@ func LoadFromFS(fsys fs.FS) (*Config, error) {
 	}
 
 	cfg := &Config{}
-	if err := v.Unmarshal(cfg, viper.DecodeHook(
-		mapstructure.ComposeDecodeHookFunc(
-			mapstructure.TextUnmarshallerHookFunc(),
-			mapstructure.StringToTimeDurationHookFunc(),
-			mapstructure.StringToSliceHookFunc(","),
-		),
-	)); err != nil {
+	if err := v.Unmarshal(cfg, decodeHook); err != nil {
 		return nil, fmt.Errorf("unmarshaling config: %w", err)
 	}
 
