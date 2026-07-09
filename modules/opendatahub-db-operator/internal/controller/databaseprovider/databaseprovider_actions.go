@@ -51,11 +51,14 @@ func (m *Controller) reconcileExternalAction(
 
 	cfg, err := loadExternalConfig(ctx, rr.Client, obj)
 	if err != nil {
+		obj.Status.Connection = infraApi.ProviderConnectionStatus{}
 		rr.Conditions.Mark(ConditionReachable, metav1.ConditionFalse,
 			conditions.WithReason(externalFailureReason(err)),
 			conditions.WithMessage("%s", err.Error()))
 		return nil
 	}
+
+	obj.Status.Connection = providerConnectionStatus(cfg)
 
 	if err := postgres.Ping(ctx, cfg); err != nil {
 		rr.Conditions.Mark(ConditionReachable, metav1.ConditionFalse,
@@ -106,10 +109,16 @@ func (m *Controller) reconcileEmbeddedAction(
 	}
 
 	if _, err := ensureEmbeddedAdminSecret(ctx, rr.Client, obj, m.cfg); err != nil {
+		obj.Status.Connection = infraApi.ProviderConnectionStatus{}
 		rr.Conditions.Mark(ConditionReachable, metav1.ConditionFalse,
 			conditions.WithReason(reasonAdminSecretUnavailable),
 			conditions.WithMessage("%s", err.Error()))
 		return fmt.Errorf("ensuring embedded admin Secret: %w", err)
+	} else if cfg, err := dbcontroller.LoadProviderConfig(ctx, rr.Client, obj, m.cfg.OperatorNamespace); err == nil {
+		obj.Status.Connection = providerConnectionStatus(cfg)
+	} else {
+		obj.Status.Connection = infraApi.ProviderConnectionStatus{}
+		return fmt.Errorf("loading embedded provider connection status: %w", err)
 	}
 
 	rr.Templates = []odhtypes.TemplateInfo{

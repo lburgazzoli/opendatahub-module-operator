@@ -97,3 +97,11 @@ func externalFailureReason(err error) string {
 		return "ConnectionCheckFailed"
 	}
 }
+
+func providerConnectionStatus(cfg postgres.Config) infraApi.ProviderConnectionStatus {
+	return infraApi.ProviderConnectionStatus{
+		Host:     cfg.Host,
+		Port:     int32(cfg.Port),
+		Database: cfg.DBName,
+	}
+}

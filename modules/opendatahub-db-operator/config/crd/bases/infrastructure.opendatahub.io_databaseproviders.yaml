@@ -19,6 +19,14 @@ spec:
       jsonPath: .spec.type
       name: Type
       type: string
+    - description: Resolved host
+      jsonPath: .status.connection.host
+      name: Host
+      type: string
+    - description: Resolved admin database
+      jsonPath: .status.connection.database
+      name: Database
+      type: string
     - description: Reachable
       jsonPath: .status.conditions[?(@.type=="Reachable")].status
       name: Reachable
@@ -266,6 +274,18 @@ spec:
                   type: object
                 type: array
                 x-kubernetes-list-type: atomic
+              connection:
+                description: Connection is the non-secret connection surface for the
+                  provider.
+                properties:
+                  database:
+                    type: string
+                  host:
+                    type: string
+                  port:
+                    format: int32
+                    type: integer
+                type: object
               observedGeneration:
                 description: |-
                   ObservedGeneration is the most recent .metadata.generation observed

@@ -64,6 +64,14 @@ type ExternalProviderSpec struct {
 	ConnectionSecretRef corev1.SecretReference `json:"connectionSecretRef"`
 }
 
+// ProviderConnectionStatus is the non-secret connection surface for a
+// DatabaseProvider. It intentionally excludes credentials and secret references.
+type ProviderConnectionStatus struct {
+	Host     string `json:"host,omitempty"`
+	Port     int32  `json:"port,omitempty"`
+	Database string `json:"database,omitempty"`
+}
+
 // StorageSpec configures the Embedded provider's PersistentVolumeClaim
 // (docs/plan.md §7.3).
 type StorageSpec struct {
@@ -138,12 +146,18 @@ type DatabaseProviderSpec struct {
 type DatabaseProviderStatus struct {
 	common.Status                 `json:",inline"`
 	common.ComponentReleaseStatus `json:",inline"`
+
+	// Connection is the non-secret connection surface for the provider.
+	// +optional
+	Connection ProviderConnectionStatus `json:"connection,omitempty"`
 }
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
 // +kubebuilder:resource:scope=Cluster
 // +kubebuilder:printcolumn:name="Type",type=string,JSONPath=`.spec.type`,description="Provider type"
+// +kubebuilder:printcolumn:name="Host",type=string,JSONPath=`.status.connection.host`,description="Resolved host"
+// +kubebuilder:printcolumn:name="Database",type=string,JSONPath=`.status.connection.database`,description="Resolved admin database"
 // +kubebuilder:printcolumn:name="Reachable",type=string,JSONPath=`.status.conditions[?(@.type=="Reachable")].status`,description="Reachable"
 
 // DatabaseProvider is the Schema for the databaseproviders API.

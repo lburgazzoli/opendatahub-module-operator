@@ -115,3 +115,19 @@ func TestLoadExternalConfig_InvalidSecret(t *testing.T) {
 		g.Expect(invalid.Error()).To(ContainSubstring(postgres.SecretKeyPort))
 	})
 }
+
+func TestProviderConnectionStatus(t *testing.T) {
+	g := NewWithT(t)
+
+	status := providerConnectionStatus(postgres.Config{
+		Host:   "db.example.test",
+		Port:   5432,
+		DBName: "postgres",
+	})
+
+	g.Expect(status).To(Equal(infraApi.ProviderConnectionStatus{
+		Host:     "db.example.test",
+		Port:     5432,
+		Database: "postgres",
+	}))
+}

@@ -60,7 +60,7 @@ func EmbeddedNamespace(provider *infraApi.DatabaseProvider, operatorNamespace st
 }
 
 func EmbeddedServiceHost(provider *infraApi.DatabaseProvider, operatorNamespace string) string {
-	return fmt.Sprintf("%s.%s.svc", EmbeddedServiceName(provider.Name), EmbeddedNamespace(provider, operatorNamespace))
+	return fmt.Sprintf("%s.%s.svc.cluster.local", EmbeddedServiceName(provider.Name), EmbeddedNamespace(provider, operatorNamespace))
 }
 
 func OperatorNamespace(cfg *moduleconfig.Config) string {
@@ -76,8 +76,13 @@ func LoadProviderConfig(
 	provider *infraApi.DatabaseProvider,
 	operatorNamespace string,
 ) (postgres.Config, error) {
-	ref := provider.Spec.External.ConnectionSecretRef
-	if provider.Spec.Type != infraApi.ProviderTypeExternal {
+	ref := corev1.SecretReference{}
+	if provider.Spec.Type == infraApi.ProviderTypeExternal {
+		if provider.Spec.External == nil {
+			return postgres.Config{}, fmt.Errorf("spec.external is required for External providers")
+		}
+		ref = provider.Spec.External.ConnectionSecretRef
+	} else {
 		ref = corev1.SecretReference{
 			Namespace: EmbeddedNamespace(provider, operatorNamespace),
 			Name:      EmbeddedAdminSecretName(provider.Name),
