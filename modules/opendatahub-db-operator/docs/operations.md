@@ -47,7 +47,7 @@ Those resources are created in:
 Claim credentials for an embedded-backed claim always use the Service DNS name,
 never a pod IP:
 
-`<provider>.<effective-embedded-namespace>.svc`
+`<provider>.<effective-embedded-namespace>.svc.cluster.local`
 
 where effective embedded namespace means:
 

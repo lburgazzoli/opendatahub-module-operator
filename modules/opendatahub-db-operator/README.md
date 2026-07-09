@@ -92,7 +92,7 @@ The embedded provider defaults to creating these resources in the operator
 namespace, but `spec.embedded.namespace` can override that. Claim connections
 still resolve through the embedded Service DNS name:
 
-`<provider-name>.<target-namespace>.svc`
+`<provider-name>.<target-namespace>.svc.cluster.local`
 
 This is a convenience backend, not a full database service:
 
@@ -171,7 +171,7 @@ apiVersion: v1
 kind: Secret
 metadata:
   name: external-postgres-admin
-  namespace: db-admin
+  namespace: opendatahub-db
 type: Opaque
 stringData:
   pg.host: postgres.example.com
@@ -189,7 +189,7 @@ spec:
   external:
     connectionSecretRef:
       name: external-postgres-admin
-      namespace: db-admin
+      namespace: opendatahub-db
 ```
 
 ### Embedded provider
@@ -204,7 +204,7 @@ metadata:
 spec:
   type: Embedded
   embedded:
-    namespace: odh-db-runtime
+    namespace: opendatahub-db
     deletionPolicy: Retain
     storage:
       size: 10Gi
@@ -213,7 +213,7 @@ spec:
     - pg_trgm
 ```
 
-This creates a controller-managed PostgreSQL instance in `odh-db-runtime`.
+This creates a controller-managed PostgreSQL instance in `opendatahub-db`.
 
 ### SchemaClaim
 

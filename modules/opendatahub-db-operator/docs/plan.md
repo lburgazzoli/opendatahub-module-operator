@@ -377,7 +377,7 @@ surroundings belong to the admin, not this operator):
 
 - **Always the Service's cluster-DNS name, never a pod IP.** A claim's `status.connection.host`
   and Secret must resolve to the `Embedded` provider's headless `Service` (§7.3) by its stable
-  in-cluster DNS name (`<service>.<namespace>.svc`), computed deterministically from the
+  in-cluster DNS name (`<service>.<namespace>.svc.cluster.local`), computed deterministically from the
   provider's name and the effective embedded target namespace — `spec.embedded.namespace` when set,
   otherwise the module operator namespace — never the StatefulSet pod's IP, which isn't stable
   across pod restarts/rescheduling. This falls out naturally from routing through the Service at

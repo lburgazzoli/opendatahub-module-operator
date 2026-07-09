@@ -5,7 +5,7 @@ metadata:
 spec:
   type: Embedded
   embedded:
-    namespace: odh-db-runtime
+    namespace: opendatahub-db
     deletionPolicy: Retain
     storage:
       size: 10Gi

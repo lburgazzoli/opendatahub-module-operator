@@ -7,4 +7,4 @@ spec:
   external:
     connectionSecretRef:
       name: external-postgres-admin
-      namespace: db-admin
+      namespace: opendatahub-db

@@ -2,7 +2,7 @@
 -include local.mk
 
 # Image URL to use all building/pushing image targets
-IMG ?= ttl.sh/$(shell uuidgen | tr '[:upper:]' '[:lower:]'):1h
+IMG ?= quay.io/lburgazzoli/opendatahub-db-operator:dev
 # YEAR defines the year value used for substituting the YEAR placeholder in the boilerplate header.
 YEAR ?= $(shell date +%Y)
 
@@ -109,10 +109,6 @@ lint: ## Run golangci-lint linter.
 lint-fix: ## Run golangci-lint linter and perform fixes.
 	$(GOLANGCI_LINT) run --fix
 
-.PHONY: get-manifests
-get-manifests: ## Download component manifests.
-	./hack/scripts/get-manifests.sh
-
 ##@ Build
 
 VERSION_PKG    = github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/pkg/module
@@ -143,11 +139,11 @@ build-bin: ## Build manager binary only (for Containerfile; run container-prep o
 		go build -ldflags "$(LDFLAGS)" -o "$(BIN_DIR)/$(BIN_NAME)" cmd/main.go
 
 .PHONY: container-prep
-container-prep: manifests generate get-manifests ## On host: regenerate code and fetch manifests before container-build.
+container-prep: manifests generate ## On host: regenerate code before container-build.
 
 .PHONY: run
 run: manifests generate fmt vet ## Run a controller from your host.
-	go run -ldflags "$(LDFLAGS)" ./cmd/main.go operator
+	ODH_MODULE_OPERATOR_CONTROLLER_LEADER_ELECTION_ENABLED=false go run -ldflags "$(LDFLAGS)" ./cmd/main.go operator
 
 .PHONY: container-build
 container-build: container-prep ## Build container image with the manager.
@@ -156,6 +152,23 @@ container-build: container-prep ## Build container image with the manager.
 .PHONY: container-push
 container-push: ## Push container image with the manager.
 	$(CONTAINER_TOOL) push ${IMG}
+
+.PHONY: deploy-help
+deploy-help: ## Show the supported image build and Helm deploy workflow.
+	@printf '%s\n' \
+		'Run deployment commands from modules/opendatahub-db-operator/.' \
+		'' \
+		'Typical workflow:' \
+		'  make container-build IMG="$(IMG)"' \
+		'  make container-push IMG="$(IMG)"' \
+		'  make helm' \
+		'  make deploy-helm IMG="$(IMG)"' \
+		'' \
+		'Useful overrides:' \
+		'  HELM_NAMESPACE=<namespace>' \
+		'  HELM_RELEASE=<release-name>' \
+		'  TEST_PLATFORM_TYPE=<OpenDataHub|RHOAI>' \
+		'  TEST_PLATFORM_VERSION=<version>'
 
 ##@ Helm
 
@@ -184,11 +197,10 @@ endif
 
 .PHONY: deploy-helm
 deploy-helm: ## Deploy controller via Helm chart.
-	@resolved_img="$$(bash ./hack/scripts/resolve-image-ref.sh "$(IMG)")"; \
-		echo "Deploying image: $$resolved_img"; \
+	@echo "Deploying image: $(IMG)"; \
 		$(HELM) upgrade --install $(HELM_RELEASE) config/chart \
 			--namespace $(HELM_NAMESPACE) --create-namespace \
-			--set-string operator.image.ref="$$resolved_img" \
+			--set-string operator.image.ref="$(IMG)" \
 			--wait --timeout 5m $(HELM_EXTRA_ARGS)
 
 .PHONY: undeploy-helm
