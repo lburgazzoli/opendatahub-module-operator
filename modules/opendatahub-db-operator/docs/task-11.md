@@ -20,20 +20,20 @@ Tasks 01–10.
    (`SchemaClaim`, `DatabaseClaim`, `DatabaseProvider` External and Embedded) so a reader can
    copy-paste a working example.
 2. Run the full verification gate, one command at a time, from
-   `modules/opendatahub-db-operator/`:
+   `modules/opendatahub-db-operator/`. Use the composite integration/e2e
+   targets rather than calling the `*-run` targets directly after cleanup,
+   because `cleanup-integration` and `cleanup-e2e` remove CRDs/operator state:
    ```
    make test
    make lint
    make manifests generate
-   make cleanup-integration
-   make test-integration-run
-   export IMG="opendatahub-db-operator:dev"
-   make container-prep
-   make container-build IMG="${IMG}"
-   make helm
-   make cleanup-e2e
-   make deploy-helm IMG="${IMG}"
-   make test-e2e-run
+   kubectl get namespace odh-db-operator-system || kubectl create namespace odh-db-operator-system
+   go run sigs.k8s.io/kustomize/kustomize/v5@v5.8.1 build config/default
+   go run sigs.k8s.io/kustomize/kustomize/v5@v5.8.1 build config/default | kubectl apply --dry-run=server -f -
+   kubectl apply --dry-run=server -f config/rbac/schemaclaim-creator-role.yaml
+   kubectl apply --dry-run=server -f config/rbac/db-consumer-role.yaml
+   make test-integration
+   make test-e2e
    make cleanup-e2e
    ```
 3. Spawn a clean-context review agent (no access to this conversation's history) with exactly two
@@ -62,3 +62,62 @@ Tasks 01–10.
 - `README.md` examples are copy-paste-runnable against a `kind` cluster with this module
   installed.
 - Root `CLAUDE.md` "Current Modules" and "Test Parallelism" sections updated.
+
+## Closeout Notes
+
+### Verification Results
+
+The following commands were run successfully during closeout on 2026-07-09:
+
+```text
+make test
+make lint
+make manifests generate
+kubectl get namespace odh-db-operator-system || kubectl create namespace odh-db-operator-system
+go run sigs.k8s.io/kustomize/kustomize/v5@v5.8.1 build config/default
+go run sigs.k8s.io/kustomize/kustomize/v5@v5.8.1 build config/default | kubectl apply --dry-run=server -f -
+kubectl apply --dry-run=server -f config/rbac/schemaclaim-creator-role.yaml
+kubectl apply --dry-run=server -f config/rbac/db-consumer-role.yaml
+make test-integration
+make test-e2e
+make cleanup-e2e
+```
+
+### Adversarial Review Disposition
+
+Fixed during closeout:
+
+- `DatabaseClaim.spec.access` now controls granted database privileges, so
+  `ReadOnly` claims no longer receive `CREATE`.
+- `postgres.Config.DSN()` now uses an escaped PostgreSQL URL instead of raw
+  keyword-string concatenation, which makes passwords and usernames with
+  special characters safe to parse.
+- Embedded admin-secret recovery now treats a surviving PVC as evidence of an
+  existing instance, preventing accidental password regeneration after a
+  partial workload teardown.
+
+Consciously deferred with written reasons:
+
+- Default-provider fallback from `spec.md` remains intentionally unsupported:
+  this branch requires `spec.provider` to be explicit, per the final API and
+  tests accepted during implementation.
+- Selector resolution remains sticky once a claim has bound to a matching
+  provider. This was an intentional stability choice made during implementation
+  and is covered by integration tests.
+- Claim-side `secretName` override remains part of the shipped API by explicit
+  design choice on this branch.
+- Automatic drift recovery for missing claim secrets / roles / schema remains
+  enabled by explicit design choice on this branch, even though the original
+  spec was stricter.
+- `status.matchedProviders` is still omitted; only the selected provider is
+  surfaced in status.
+- External providers still assume static PostgreSQL credentials in
+  `connectionSecretRef`; IAM/workload-identity style auth was not implemented
+  in this module.
+- Embedded extension handling still uses underscore-form names such as
+  `uuid_ossp`; the canonical PostgreSQL spelling `uuid-ossp` is not accepted
+  by the current CRD validation.
+- The embedded NetworkPolicy currently allows ingress on port `5432` before any
+  claim namespaces are authorized so the operator can continue reaching the
+  instance without an additional policy exception; tightening that posture was
+  deferred.

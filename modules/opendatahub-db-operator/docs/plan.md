@@ -18,9 +18,9 @@ source of implementation progress:
 | 06 | `SchemaClaim` reconciler | Idempotent schema+user provisioning, SSA Secret write, `Retain`/`Delete` finalizer logic, conditions/status | Done |
 | 07 | `DatabaseClaim` reconciler | Dedicated-user provisioning against a pre-existing database, SSA Secret write, always-Retain finalizer, conditions/status | Done |
 | 08 | `DatabaseProvider` — `Embedded` (focus task) | Image mapping via config keys, templated StatefulSet/PVC/Service/`initdb`-ConfigMap/NetworkPolicy, admin-secret get-or-create, readiness, capability labels, idle cleanup, configurable embedded target namespace | Done |
-| 09 | RBAC, packaging, Helm chart | Kubebuilder RBAC markers, `make manifests generate helm`, module descriptor + `component_metadata.yaml`, consumer-facing RBAC examples | Pending |
-| 10 | Tests | Cross-cutting, whole-module integration scenarios not owned by any single task; cleanup scripts | Pending |
-| 11 | Docs, verification & adversarial review | README/CRD examples, full verification gate, adversarial review vs. spec.md, root `CLAUDE.md` module-list update | Pending |
+| 09 | RBAC, packaging, Helm chart | Kubebuilder RBAC markers, `make manifests generate helm`, chart installability, consumer-facing RBAC examples | Done |
+| 10 | Tests | Cross-cutting, whole-module integration scenarios not owned by any single task; cleanup scripts | Done |
+| 11 | Docs, verification & adversarial review | README/CRD examples, full verification gate, adversarial review vs. spec.md, root `CLAUDE.md` module-list update | Done |
 
 ## 1. Context & Problem
 

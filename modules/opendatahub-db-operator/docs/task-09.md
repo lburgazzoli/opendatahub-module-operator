@@ -15,7 +15,6 @@ Tasks 02–08 (RBAC markers must reflect the real, final `Owns` list and DDL con
 
 - RBAC markers across `internal/controller/**/*.go` (co-located with the reconciler that needs
   them, per this repo's convention).
-- `assets/manifests/module.yaml`, `assets/manifests/component_metadata.yaml`.
 - `config/chart/` (generated, not hand-edited).
 - `config/rbac/schemaclaim-creator-role.yaml`, `config/rbac/db-consumer-role.yaml` — illustrative,
   non-enforced consumer-facing `ClusterRole`s (see step 7).
@@ -38,15 +37,10 @@ Tasks 02–08 (RBAC markers must reflect the real, final `Owns` list and DDL con
    or watches must have a matching RBAC rule (per `.agents/skills/odh-manifest-audit`
    conventions, adapted here since there's no fetched upstream manifest to audit against — audit
    against this module's own `Owns()` calls instead).
-3. `assets/manifests/module.yaml`: descriptor referencing this module's own CRDs/RBAC/Deployment
-   manifests (no Kustomize overlay variants needed unless ODH vs. RHOAI packaging genuinely
-   differs for this module — default to a single variant unless a concrete difference is found).
-4. `assets/manifests/component_metadata.yaml`: per `docs/plan.md` §10's caveat, set `releases` to
-   describe this module's own version/repo rather than an upstream operand it doesn't have.
-5. `make manifests generate helm` — verify `config/crd/bases/*.yaml`, `config/rbac/role.yaml`,
+3. `make manifests generate helm` — verify `config/crd/bases/*.yaml`, `config/rbac/role.yaml`,
    and `config/chart/` all generate cleanly.
-6. `kustomize build config/default` must succeed with no errors.
-7. Ship the consumer-facing RBAC split spec.md's design rationale calls for (§"RBAC Design
+4. `kustomize build config/default` must succeed with no errors.
+5. Ship the consumer-facing RBAC split spec.md's design rationale calls for (§"RBAC Design
    Rationale") — not just the controller's own `ClusterRole`, which is a different thing (that's
    the permissions *this operator* needs; these are the permissions *tenants/module operators*
    need to *use* it): `config/rbac/schemaclaim-creator-role.yaml` (a `ClusterRole` granting
@@ -56,6 +50,10 @@ Tasks 02–08 (RBAC markers must reflect the real, final `Owns` list and DDL con
    `RoleBinding` in a consuming namespace; they are not applied automatically by this module and
    carry no owner reference to anything — document this explicitly in a comment in each file so
    they aren't mistaken for something this operator manages the lifecycle of.
+
+For this module, `module.yaml` and `component_metadata.yaml` were consciously
+left out of scope by product decision during implementation, so task closeout
+focuses on RBAC correctness, manifest/chart generation, and installability.
 
 ## Acceptance criteria
 

@@ -18,7 +18,10 @@ package postgres
 
 import (
 	"fmt"
+	"net"
+	"net/url"
 	"reflect"
+	"strconv"
 
 	"github.com/go-viper/mapstructure/v2"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -124,6 +127,11 @@ func ConfigFromDSN(dsn string) (Config, error) {
 
 // DSN returns the libpq-style connection string for the config.
 func (c Config) DSN() string {
-	return fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s sslmode=disable",
-		c.Host, c.Port, c.User, c.Password, c.DBName)
+	return (&url.URL{
+		Scheme:   "postgres",
+		User:     url.UserPassword(c.User, c.Password),
+		Host:     net.JoinHostPort(c.Host, strconv.Itoa(c.Port)),
+		Path:     c.DBName,
+		RawQuery: "sslmode=disable",
+	}).String()
 }

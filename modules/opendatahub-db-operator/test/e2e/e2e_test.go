@@ -32,8 +32,8 @@ import (
 )
 
 const (
-	operatorDeploymentName = "odh-db-operator-operator"
-	operatorConfigMapName  = "odh-db-operator-config"
+	operatorDeploymentName  = "odh-db-operator-operator"
+	operatorConfigMapName   = "odh-db-operator-config"
 	defaultE2ETestNamespace = "odh-db-operator-e2e"
 )
 

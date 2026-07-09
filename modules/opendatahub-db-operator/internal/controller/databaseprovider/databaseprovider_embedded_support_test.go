@@ -170,6 +170,40 @@ func TestEnsureEmbeddedAdminSecret_DoesNotRecoverMissingSecretForExistingInstanc
 	g.Expect(secret).To(BeNil())
 }
 
+func TestEnsureEmbeddedAdminSecret_DoesNotRecoverMissingSecretWhenPVCRemains(t *testing.T) {
+	g := NewWithT(t)
+	ctx := context.Background()
+
+	scheme := runtime.NewScheme()
+	g.Expect(appsv1.AddToScheme(scheme)).To(Succeed())
+	g.Expect(corev1.AddToScheme(scheme)).To(Succeed())
+	g.Expect(infraApi.AddToScheme(scheme)).To(Succeed())
+
+	cfg := &moduleconfig.Config{OperatorNamespace: "operator-ns"}
+	provider := &infraApi.DatabaseProvider{
+		ObjectMeta: metav1.ObjectMeta{Name: "embedded"},
+		Spec: infraApi.DatabaseProviderSpec{
+			Type:     infraApi.ProviderTypeEmbedded,
+			Embedded: &infraApi.EmbeddedProviderSpec{},
+		},
+	}
+	pvc := &corev1.PersistentVolumeClaim{
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace: cfg.OperatorNamespace,
+			Name:      dbcontroller.EmbeddedPVCName(provider.Name),
+		},
+	}
+
+	cli := fake.NewClientBuilder().
+		WithScheme(scheme).
+		WithRuntimeObjects(provider, pvc).
+		Build()
+
+	secret, err := ensureEmbeddedAdminSecret(ctx, cli, provider, cfg)
+	g.Expect(err).To(MatchError(ContainSubstring("not found for an existing instance")))
+	g.Expect(secret).To(BeNil())
+}
+
 func TestEnsureEmbeddedAdminSecret_DoesNotRecoverIncompleteSecretForExistingInstance(t *testing.T) {
 	g := NewWithT(t)
 	ctx := context.Background()

@@ -334,6 +334,19 @@ func embeddedInstanceExists(
 ) (bool, error) {
 	sts := &appsv1.StatefulSet{}
 	if err := cli.Get(ctx, embeddedStatefulSetKey(provider, cfg), sts); err != nil {
+		if !apierrors.IsNotFound(err) {
+			return false, err
+		}
+	} else {
+		return true, nil
+	}
+
+	pvc := &corev1.PersistentVolumeClaim{}
+	pvcKey := types.NamespacedName{
+		Namespace: dbcontroller.EmbeddedNamespace(provider, cfg.OperatorNamespace),
+		Name:      dbcontroller.EmbeddedPVCName(provider.Name),
+	}
+	if err := cli.Get(ctx, pvcKey, pvc); err != nil {
 		if apierrors.IsNotFound(err) {
 			return false, nil
 		}

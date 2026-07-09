@@ -104,7 +104,7 @@ func (p DatabaseProvisioner) Ensure(
 		if err := postgres.CreateRole(ctx, p.Pool, role, pw); err != nil {
 			return nil, wrapQuickRetry("creating role", err)
 		}
-		if err := postgres.GrantDatabasePrivileges(ctx, p.Pool, p.Claim.Spec.Database, role); err != nil {
+		if err := postgres.GrantDatabasePrivileges(ctx, p.Pool, p.Claim.Spec.Database, role, p.Claim.Spec.Access); err != nil {
 			return nil, wrapQuickRetry("granting database privileges", err)
 		}
 

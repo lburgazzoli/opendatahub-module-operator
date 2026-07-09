@@ -20,6 +20,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/jackc/pgx/v5/pgxpool"
 	. "github.com/onsi/gomega"
 	tcpostgres "github.com/testcontainers/testcontainers-go/modules/postgres"
 
@@ -107,6 +108,26 @@ func TestParseSecret_DefaultPort(t *testing.T) {
 	})
 	g.Expect(err).NotTo(HaveOccurred())
 	g.Expect(cfg.Port).To(Equal(postgres.DefaultPort))
+}
+
+func TestConfigDSN_EscapesSpecialCharacters(t *testing.T) {
+	g := NewWithT(t)
+
+	cfg := postgres.Config{
+		Host:     "db.example.test",
+		Port:     5432,
+		User:     "user name",
+		Password: "pa ss:wo/rd?&=#",
+		DBName:   "app-db",
+	}
+
+	parsed, err := pgxpool.ParseConfig(cfg.DSN())
+	g.Expect(err).NotTo(HaveOccurred())
+	g.Expect(parsed.ConnConfig.Host).To(Equal(cfg.Host))
+	g.Expect(parsed.ConnConfig.Port).To(Equal(uint16(cfg.Port)))
+	g.Expect(parsed.ConnConfig.User).To(Equal(cfg.User))
+	g.Expect(parsed.ConnConfig.Password).To(Equal(cfg.Password))
+	g.Expect(parsed.ConnConfig.Database).To(Equal(cfg.DBName))
 }
 
 // TestPing_Success tests a real connection against a testcontainers Postgres.
