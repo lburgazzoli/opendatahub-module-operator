@@ -34,6 +34,7 @@ const (
 	sqlDropSchemaCascade       = "DROP SCHEMA IF EXISTS %s CASCADE"
 	sqlDropRole                = "DROP ROLE IF EXISTS %s"
 	sqlGrantUsageOnSchema      = "GRANT USAGE ON SCHEMA %s TO %s"
+	sqlGrantCreateOnSchema     = "GRANT CREATE ON SCHEMA %s TO %s"
 
 	sqlGrantSelectOnTables    = "GRANT SELECT ON ALL TABLES IN SCHEMA %s TO %s"
 	sqlDefaultPrivGrantSelect = "ALTER DEFAULT PRIVILEGES IN SCHEMA %s GRANT SELECT ON TABLES TO %s"
@@ -102,9 +103,9 @@ func DropRole(ctx context.Context, pool *pgxpool.Pool, role string) error {
 }
 
 // GrantSchemaPrivileges grants privileges to a role on a schema according to
-// the claim access mode. ReadWrite grants USAGE and all DML. ReadOnly grants
-// USAGE and SELECT only. It also sets default privileges so future tables are
-// covered.
+// the claim access mode. ReadWrite grants schema-local administration: USAGE,
+// CREATE, and DML on tables. ReadOnly grants USAGE and SELECT only. It also
+// sets default privileges so future admin-created tables are covered.
 func GrantSchemaPrivileges(
 	ctx context.Context,
 	pool *pgxpool.Pool,
@@ -123,6 +124,9 @@ func GrantSchemaPrivileges(
 		tableGrant = sqlGrantSelectOnTables
 		defaultPriv = sqlDefaultPrivGrantSelect
 	} else {
+		if _, err := pool.Exec(ctx, fmt.Sprintf(sqlGrantCreateOnSchema, q(schema), q(role))); err != nil {
+			return fmt.Errorf("grant create on schema: %w", err)
+		}
 		tableGrant = sqlGrantDMLOnTables
 		defaultPriv = sqlDefaultPrivGrantDML
 	}
@@ -136,15 +140,24 @@ func GrantSchemaPrivileges(
 	return nil
 }
 
-// GrantDatabasePrivileges grants a role CONNECT and CREATE on a database.
-// Used by DatabaseClaim (broader privileges than schema-scoped user).
-func GrantDatabasePrivileges(ctx context.Context, pool *pgxpool.Pool, database, role string) error {
+// GrantDatabasePrivileges grants privileges on a database according to the
+// claim access mode. ReadOnly grants CONNECT only; ReadWrite grants both
+// CONNECT and CREATE.
+func GrantDatabasePrivileges(
+	ctx context.Context,
+	pool *pgxpool.Pool,
+	database string,
+	role string,
+	accessMode infraApi.AccessMode,
+) error {
 	q := QuoteIdentifier
 	if _, err := pool.Exec(ctx, fmt.Sprintf(sqlGrantConnectOnDatabase, q(database), q(role))); err != nil {
 		return fmt.Errorf("grant connect on database: %w", err)
 	}
-	if _, err := pool.Exec(ctx, fmt.Sprintf(sqlGrantCreateOnDatabase, q(database), q(role))); err != nil {
-		return fmt.Errorf("grant create on database: %w", err)
+	if accessMode != infraApi.AccessModeReadOnly {
+		if _, err := pool.Exec(ctx, fmt.Sprintf(sqlGrantCreateOnDatabase, q(database), q(role))); err != nil {
+			return fmt.Errorf("grant create on database: %w", err)
+		}
 	}
 	return nil
 }

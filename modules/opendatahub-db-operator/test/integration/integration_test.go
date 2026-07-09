@@ -177,6 +177,14 @@ func (db *testDatabase) openAdminPool(ctx context.Context) (*pgxpool.Pool, error
 	return pool, nil
 }
 
+func openClaimPool(ctx context.Context, cfg postgres.Config) (*pgxpool.Pool, error) {
+	pool, err := pgxpool.New(ctx, cfg.DSN())
+	if err != nil {
+		return nil, fmt.Errorf("opening claim pool: %w", err)
+	}
+	return pool, nil
+}
+
 func (db *testDatabase) Close(ctx context.Context) error {
 	if db == nil || db.terminate == nil {
 		return nil

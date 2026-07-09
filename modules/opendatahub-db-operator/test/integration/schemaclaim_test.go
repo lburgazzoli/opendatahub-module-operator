@@ -17,6 +17,7 @@ limitations under the License.
 package integration
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -43,6 +44,7 @@ func TestSchemaClaim(t *testing.T) {
 func (st *schemaClaimSuite) Run(t *testing.T) {
 	t.Run("crd validation", st.testCRDValidation)
 	t.Run("provisioning", st.testProvisioning)
+	t.Run("access mode is enforced", st.testAccessModeEnforcement)
 	t.Run("secret name override", st.testSecretNameOverride)
 	t.Run("explicit schema", st.testExplicitSchema)
 	t.Run("idempotency", st.testIdempotency)
@@ -75,6 +77,72 @@ func (st *schemaClaimSuite) testProvisioning(t *testing.T) {
 	g.Expect(err).NotTo(HaveOccurred())
 	g.Expect(credCfg.DBName).To(Equal(st.databaseName))
 	g.Expect(postgres.Ping(ctx, credCfg)).To(Succeed())
+}
+
+func (st *schemaClaimSuite) testAccessModeEnforcement(t *testing.T) {
+	g := NewWithT(t)
+	ctx := t.Context()
+
+	readWriteClaim := st.newClaim("sc-rw-" + xid.New().String())
+	readWriteClaim.Spec.Access = infraApi.AccessModeReadWrite
+	readWriteClaim.Spec.Schema = "rw_schema_" + xid.New().String()
+	readWriteClaim.Spec.DeletionPolicy = infraApi.DeletionPolicyDelete
+	st.createClaim(t, readWriteClaim)
+	st.waitProvisioned(t, readWriteClaim)
+
+	readOnlyClaim := st.newClaim("sc-ro-" + xid.New().String())
+	readOnlyClaim.Spec.Access = infraApi.AccessModeReadOnly
+	readOnlyClaim.Spec.Schema = "ro_schema_" + xid.New().String()
+	readOnlyClaim.Spec.DeletionPolicy = infraApi.DeletionPolicyDelete
+	st.createClaim(t, readOnlyClaim)
+	st.waitProvisioned(t, readOnlyClaim)
+
+	readWriteSecret := st.waitCredentialsSecret(t, readWriteClaim.Name)
+	readOnlySecret := st.waitCredentialsSecret(t, readOnlyClaim.Name)
+
+	readWriteCfg, err := postgres.ParseSecret(readWriteSecret.Data)
+	g.Expect(err).NotTo(HaveOccurred())
+	readOnlyCfg, err := postgres.ParseSecret(readOnlySecret.Data)
+	g.Expect(err).NotTo(HaveOccurred())
+
+	readWritePool, err := openClaimPool(ctx, readWriteCfg)
+	g.Expect(err).NotTo(HaveOccurred())
+	t.Cleanup(readWritePool.Close)
+
+	readOnlyPool, err := openClaimPool(ctx, readOnlyCfg)
+	g.Expect(err).NotTo(HaveOccurred())
+	t.Cleanup(readOnlyPool.Close)
+
+	readWriteTable := "rw_claim_table"
+	_, err = readWritePool.Exec(
+		ctx,
+		fmt.Sprintf(
+			"CREATE TABLE %s.%s (id int PRIMARY KEY)",
+			postgres.QuoteIdentifier(readWriteCfg.Schema),
+			postgres.QuoteIdentifier(readWriteTable),
+		),
+	)
+	g.Expect(err).NotTo(HaveOccurred())
+
+	_, err = readWritePool.Exec(
+		ctx,
+		fmt.Sprintf(
+			"INSERT INTO %s.%s VALUES (1)",
+			postgres.QuoteIdentifier(readWriteCfg.Schema),
+			postgres.QuoteIdentifier(readWriteTable),
+		),
+	)
+	g.Expect(err).NotTo(HaveOccurred())
+
+	_, err = readOnlyPool.Exec(
+		ctx,
+		fmt.Sprintf(
+			"CREATE TABLE %s.%s (id int PRIMARY KEY)",
+			postgres.QuoteIdentifier(readOnlyCfg.Schema),
+			postgres.QuoteIdentifier("ro_claim_table"),
+		),
+	)
+	g.Expect(err).To(HaveOccurred(), "readonly schema claim must not be able to create tables")
 }
 
 func (st *schemaClaimSuite) testSecretNameOverride(t *testing.T) {

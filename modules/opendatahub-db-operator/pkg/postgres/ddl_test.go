@@ -138,13 +138,65 @@ func TestDDL_GrantSchemaPrivileges(t *testing.T) {
 			).Scan(&count)).To(Succeed())
 			g.Expect(count).To(Equal(1))
 
-			// INSERT: allowed for ReadWrite, must fail for ReadOnly
-			_, insertErr := rolePool.Exec(ctx,
-				fmt.Sprintf("INSERT INTO %s.t VALUES (99)", postgres.QuoteIdentifier(schema)))
+			// CREATE TABLE: allowed for ReadWrite, must fail for ReadOnly.
+			_, createErr := rolePool.Exec(ctx,
+				fmt.Sprintf("CREATE TABLE %s.created_by_claim (id int)", postgres.QuoteIdentifier(schema)))
 			if tc.canWrite {
-				g.Expect(insertErr).To(Succeed(), fmt.Sprintf("readwrite role should be able to insert: %v", insertErr))
+				g.Expect(createErr).To(Succeed(),
+					fmt.Sprintf("readwrite role should be able to create tables: %v", createErr))
 			} else {
-				g.Expect(insertErr).To(HaveOccurred(), "readonly role must not be able to insert")
+				g.Expect(createErr).To(HaveOccurred(), "readonly role must not be able to create tables")
+			}
+		})
+	}
+}
+
+func TestDDL_GrantDatabasePrivileges(t *testing.T) {
+	cfg := startPostgres(t)
+
+	ctx := t.Context()
+	pool := openPool(t, cfg)
+
+	for _, tc := range []struct {
+		name       string
+		accessMode infraApi.AccessMode
+		canCreate  bool
+	}{
+		{"readwrite", infraApi.AccessModeReadWrite, true},
+		{"readonly", infraApi.AccessModeReadOnly, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			g := NewWithT(t)
+
+			role := "db_role_" + tc.name
+			password, err := postgres.GeneratePassword(24)
+			g.Expect(err).NotTo(HaveOccurred())
+
+			g.Expect(postgres.CreateRole(ctx, pool, role, password)).To(Succeed())
+			g.Expect(postgres.GrantDatabasePrivileges(ctx, pool, cfg.DBName, role, tc.accessMode)).To(Succeed())
+			t.Cleanup(func() { _ = postgres.DropRole(ctx, pool, role) })
+
+			roleCfg := postgres.Config{
+				Host:     cfg.Host,
+				Port:     cfg.Port,
+				User:     role,
+				Password: password,
+				DBName:   cfg.DBName,
+			}
+			rolePool, err := pgxpool.New(ctx, roleCfg.DSN())
+			g.Expect(err).NotTo(HaveOccurred())
+			defer rolePool.Close()
+
+			schema := "db_priv_" + tc.name
+			_, createErr := rolePool.Exec(
+				ctx,
+				fmt.Sprintf("CREATE SCHEMA %s", postgres.QuoteIdentifier(schema)),
+			)
+			if tc.canCreate {
+				g.Expect(createErr).To(Succeed(), fmt.Sprintf("readwrite role should be able to create schema: %v", createErr))
+				t.Cleanup(func() { _ = postgres.DropSchemaCascade(ctx, pool, schema) })
+			} else {
+				g.Expect(createErr).To(HaveOccurred(), "readonly role must not be able to create schema")
 			}
 		})
 	}
