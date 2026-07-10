@@ -57,7 +57,7 @@ func TestDDL_CreateDropSchema(t *testing.T) {
 }
 
 // TestDDL_CreateDropRole verifies role creation and deletion.
-func TestDDL_CreateDropRole(t *testing.T) {
+func TestDDL_EnsureDropRole(t *testing.T) {
 	g := NewWithT(t)
 	cfg := startPostgres(t)
 
@@ -68,8 +68,8 @@ func TestDDL_CreateDropRole(t *testing.T) {
 	g.Expect(err).NotTo(HaveOccurred())
 
 	// Idempotent create
-	g.Expect(postgres.CreateRole(ctx, pool, "testrole", pw)).To(Succeed())
-	g.Expect(postgres.CreateRole(ctx, pool, "testrole", pw)).To(Succeed())
+	g.Expect(postgres.EnsureRole(ctx, pool, "testrole", pw)).To(Succeed())
+	g.Expect(postgres.EnsureRole(ctx, pool, "testrole", pw)).To(Succeed())
 
 	// Verify the role can actually connect
 	roleCfg := postgres.Config{
@@ -119,7 +119,7 @@ func TestDDL_GrantSchemaPrivileges(t *testing.T) {
 			_, err = pool.Exec(ctx, fmt.Sprintf("INSERT INTO %s.t VALUES (1)", postgres.QuoteIdentifier(schema)))
 			g.Expect(err).NotTo(HaveOccurred())
 
-			g.Expect(postgres.CreateRole(ctx, pool, role, pw)).To(Succeed())
+			g.Expect(postgres.EnsureRole(ctx, pool, role, pw)).To(Succeed())
 			g.Expect(postgres.GrantSchemaPrivileges(ctx, pool, schema, role, tc.accessMode)).To(Succeed())
 			t.Cleanup(func() { _ = postgres.DropRole(ctx, pool, role) })
 
@@ -172,7 +172,7 @@ func TestDDL_GrantDatabasePrivileges(t *testing.T) {
 			password, err := postgres.GeneratePassword(24)
 			g.Expect(err).NotTo(HaveOccurred())
 
-			g.Expect(postgres.CreateRole(ctx, pool, role, password)).To(Succeed())
+			g.Expect(postgres.EnsureRole(ctx, pool, role, password)).To(Succeed())
 			g.Expect(postgres.GrantDatabasePrivileges(ctx, pool, cfg.DBName, role, tc.accessMode)).To(Succeed())
 			t.Cleanup(func() { _ = postgres.DropRole(ctx, pool, role) })
 

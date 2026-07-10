@@ -60,20 +60,18 @@ const (
 	sqlSchemaExists   = "SELECT EXISTS(SELECT 1 FROM pg_namespace WHERE nspname = $1)"
 )
 
-// sqlCreateOrUpdateRole is a PL/pgSQL DO block because CREATE ROLE has no
-// IF NOT EXISTS clause. Placeholders (filled via fmt.Sprintf before exec):
-// 1) role-as-literal (pg_roles lookup), 2) role-as-identifier + password-as-literal
-// (CREATE branch), 3) role-as-identifier + password-as-literal (ALTER branch).
-// Kept outside the const block to avoid breaking the backtick indentation.
-const sqlCreateOrUpdateRole = `DO $$
+// sqlEnsureRole is a PL/pgSQL DO block that creates a role only when it does
+// not already exist. Placeholders: 1) role-as-literal (pg_roles lookup),
+// 2) role-as-identifier + password-as-literal (CREATE branch only).
+const sqlEnsureRole = `DO $$
 BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = %s) THEN
     CREATE ROLE %s WITH LOGIN PASSWORD %s;
-  ELSE
-    ALTER ROLE %s WITH PASSWORD %s;
   END IF;
 END
 $$`
+
+const sqlSetRolePassword = `ALTER ROLE %s WITH PASSWORD %s`
 
 // CreateSchema creates a schema if it doesn't already exist. Idempotent.
 func CreateSchema(ctx context.Context, pool *pgxpool.Pool, schema string) error {
@@ -88,19 +86,24 @@ func DropSchemaCascade(ctx context.Context, pool *pgxpool.Pool, schema string) e
 	return err
 }
 
-// CreateRole creates or updates a PostgreSQL login role with the given password.
-// If the role already exists, its password is always updated to match the supplied
-// value. This is intentional: the credentials Secret is the only durable copy of
-// the password; if the Secret is deleted and re-created, a new password is generated
-// and the role is updated here so Secret and role stay in sync. A vault integration
-// would replace this regeneration path in the future.
-func CreateRole(ctx context.Context, pool *pgxpool.Pool, role, password string) error {
-	stmt := fmt.Sprintf(sqlCreateOrUpdateRole,
+// EnsureRole creates a PostgreSQL login role with the given password if it does
+// not already exist. It is a true CREATE-only idempotent operation — it never
+// alters an existing role's password. Use SetRolePassword for explicit rotation.
+func EnsureRole(ctx context.Context, pool *pgxpool.Pool, role, password string) error {
+	stmt := fmt.Sprintf(sqlEnsureRole,
 		QuoteLiteral(role),
-		QuoteIdentifier(role), QuoteLiteral(password),
 		QuoteIdentifier(role), QuoteLiteral(password),
 	)
 	_, err := pool.Exec(ctx, stmt)
+	return err
+}
+
+// SetRolePassword explicitly rotates the password of an existing PostgreSQL role.
+// Callers must ensure this is intentional — rotating breaks all active connections
+// that use the old credentials. Only call this when a credentials Secret has been
+// lost and an explicit rotation is required to restore a known-good state.
+func SetRolePassword(ctx context.Context, pool *pgxpool.Pool, role, password string) error {
+	_, err := pool.Exec(ctx, fmt.Sprintf(sqlSetRolePassword, QuoteIdentifier(role), QuoteLiteral(password)))
 	return err
 }
 

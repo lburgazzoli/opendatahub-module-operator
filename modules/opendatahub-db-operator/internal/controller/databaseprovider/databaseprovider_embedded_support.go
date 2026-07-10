@@ -33,8 +33,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	infraApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/api/infrastructure/v1alpha1"
-	dbclaimcontroller "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/internal/controller/databaseclaim"
-	schemaclaimcontroller "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/internal/controller/schemaclaim"
 	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/pkg/config"
 	dbcontroller "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/pkg/controller"
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/pkg/postgres"
@@ -200,7 +198,7 @@ func referencedClaimNamespaces(
 		if schemaClaimEffectiveProvider(claim) != provider.Name {
 			continue
 		}
-		if isConditionTrue(claim.Status.Conditions, schemaclaimcontroller.ConditionProvisioned) {
+		if isConditionTrue(claim.Status.Conditions, dbcontroller.ConditionProvisioned) {
 			namespaces[claim.Namespace] = struct{}{}
 		}
 	}
@@ -214,7 +212,7 @@ func referencedClaimNamespaces(
 		if databaseClaimEffectiveProvider(claim) != provider.Name {
 			continue
 		}
-		if isConditionTrue(claim.Status.Conditions, dbclaimcontroller.ConditionProvisioned) {
+		if isConditionTrue(claim.Status.Conditions, dbcontroller.ConditionProvisioned) {
 			namespaces[claim.Namespace] = struct{}{}
 		}
 	}

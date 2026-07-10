@@ -68,10 +68,10 @@ func (p SchemaProvisioner) Ensure(
 		return nil, err
 	}
 
-	role := roleNameFor(p.Claim)
+	role := dbcontroller.RoleNameFor(p.Claim.Namespace, p.Claim.Name)
 	roleExists, err := postgres.RoleExists(ctx, p.Pool, role)
 	if err != nil {
-		return nil, wrapQuickRetry("checking role existence", err)
+		return nil, dbcontroller.WrapQuickRetry("checking role existence", err)
 	}
 
 	secret := &corev1.Secret{}
@@ -82,30 +82,39 @@ func (p SchemaProvisioner) Ensure(
 	}
 	secretExists := secret.ResourceVersion != ""
 
-	// A new password is generated whenever any piece of the trio is absent:
-	// missing schema (first provision), missing role, or missing Secret. The
-	// Secret is the only durable copy of the password; if it is deleted, a new
-	// password is generated and the role is updated to match via CreateRole.
-	// Existing connections using the old credentials will break -- this is the
-	// accepted trade-off until a vault integration is added.
-	if !schemaExists || !roleExists || !secretExists {
+	switch {
+	case !roleExists:
+		// First provisioning: create the role with a fresh password.
 		pw, err := postgres.GeneratePassword(24)
 		if err != nil {
 			return nil, fmt.Errorf("generating password: %w", err)
 		}
-		if err := postgres.CreateRole(ctx, p.Pool, role, pw); err != nil {
-			return nil, wrapQuickRetry("creating role", err)
+		if err := postgres.EnsureRole(ctx, p.Pool, role, pw); err != nil {
+			return nil, dbcontroller.WrapQuickRetry("creating role", err)
 		}
+		p.buildCredentialsSecret(secret, role, pw, schema)
 
+	case !secretExists || !schemaExists:
+		// The credentials Secret or schema was lost while the role still exists.
+		// Explicitly rotate the password so Secret and role stay in sync.
+		// Active connections using the old credentials will break — this is the
+		// accepted trade-off; a vault integration would replace this path.
+		pw, err := postgres.GeneratePassword(24)
+		if err != nil {
+			return nil, fmt.Errorf("generating password: %w", err)
+		}
+		if err := postgres.SetRolePassword(ctx, p.Pool, role, pw); err != nil {
+			return nil, dbcontroller.WrapQuickRetry("rotating role password", err)
+		}
 		p.buildCredentialsSecret(secret, role, pw, schema)
 	}
 
 	switch ok, err := postgres.HasSchemaPrivileges(ctx, p.Pool, schema, role, p.Claim.Spec.Access); {
 	case err != nil:
-		return nil, wrapQuickRetry("checking schema privileges", err)
+		return nil, dbcontroller.WrapQuickRetry("checking schema privileges", err)
 	case !ok:
 		if err := postgres.GrantSchemaPrivileges(ctx, p.Pool, schema, role, p.Claim.Spec.Access); err != nil {
-			return nil, wrapQuickRetry("granting schema privileges", err)
+			return nil, dbcontroller.WrapQuickRetry("granting schema privileges", err)
 		}
 	}
 	secret.SetGroupVersionKind(gvk.Secret)

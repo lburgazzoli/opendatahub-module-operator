@@ -62,7 +62,7 @@ func (m *Controller) provisionAction(ctx context.Context, rr *odhtypes.Reconcili
 	}
 
 	// 2. Open connection to provider.
-	cfg, pool, err := openPool(ctx, rr.Client, provider, m.cfg)
+	cfg, pool, err := dbcontroller.OpenPool(ctx, rr.Client, provider, m.cfg)
 	if err != nil {
 		rr.Conditions.Mark(ConditionProvisioned, metav1.ConditionFalse,
 			conditions.WithError(err))
@@ -117,7 +117,7 @@ func (m *Controller) cleanupAction(ctx context.Context, rr *odhtypes.Reconciliat
 		return fmt.Errorf("instance is not a DatabaseClaim")
 	}
 
-	role := roleNameFor(obj)
+	role := dbcontroller.RoleNameFor(obj.Namespace, obj.Name)
 
 	return m.withGrace(ctx, obj,
 		func(ctx context.Context) error {
@@ -130,7 +130,7 @@ func (m *Controller) cleanupAction(ctx context.Context, rr *odhtypes.Reconciliat
 				return err
 			}
 
-			_, pool, err := openPool(ctx, rr.Client, provider, m.cfg)
+			_, pool, err := dbcontroller.OpenPool(ctx, rr.Client, provider, m.cfg)
 			if err != nil {
 				return fmt.Errorf("opening pool for provider %q: %w", provider.Name, err)
 			}

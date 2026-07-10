@@ -65,16 +65,16 @@ func (p DatabaseProvisioner) Ensure(
 ) (*corev1.Secret, error) {
 	dbExists, err := postgres.DatabaseExists(ctx, p.Pool, p.Claim.Spec.Database)
 	if err != nil {
-		return nil, wrapQuickRetry("checking database existence", err)
+		return nil, dbcontroller.WrapQuickRetry("checking database existence", err)
 	}
 	if !dbExists {
 		return nil, ErrDatabaseNotFound{Database: p.Claim.Spec.Database}
 	}
 
-	role := roleNameFor(p.Claim)
+	role := dbcontroller.RoleNameFor(p.Claim.Namespace, p.Claim.Name)
 	roleExists, err := postgres.RoleExists(ctx, p.Pool, role)
 	if err != nil {
-		return nil, wrapQuickRetry("checking role existence", err)
+		return nil, dbcontroller.WrapQuickRetry("checking role existence", err)
 	}
 
 	secret := &corev1.Secret{}
@@ -86,29 +86,39 @@ func (p DatabaseProvisioner) Ensure(
 
 	secretExists := secret.ResourceVersion != ""
 
-	// A new password is generated whenever the role or Secret is absent. The
-	// Secret is the only durable copy of the password; if it is deleted, a new
-	// password is generated and the role is updated to match via CreateRole.
-	// Existing connections using the old credentials will break -- this is the
-	// accepted trade-off until a vault integration is added.
-	if !roleExists || !secretExists {
+	switch {
+	case !roleExists:
+		// First provisioning: create the role with a fresh password.
 		pw, err := postgres.GeneratePassword(24)
 		if err != nil {
 			return nil, fmt.Errorf("generating password: %w", err)
 		}
-		if err := postgres.CreateRole(ctx, p.Pool, role, pw); err != nil {
-			return nil, wrapQuickRetry("creating role", err)
+		if err := postgres.EnsureRole(ctx, p.Pool, role, pw); err != nil {
+			return nil, dbcontroller.WrapQuickRetry("creating role", err)
 		}
+		p.buildCredentialsSecret(secret, role, pw)
 
+	case !secretExists:
+		// The credentials Secret was lost while the role still exists.
+		// Explicitly rotate the password so Secret and role stay in sync.
+		// Active connections using the old credentials will break — this is the
+		// accepted trade-off; a vault integration would replace this path.
+		pw, err := postgres.GeneratePassword(24)
+		if err != nil {
+			return nil, fmt.Errorf("generating password: %w", err)
+		}
+		if err := postgres.SetRolePassword(ctx, p.Pool, role, pw); err != nil {
+			return nil, dbcontroller.WrapQuickRetry("rotating role password", err)
+		}
 		p.buildCredentialsSecret(secret, role, pw)
 	}
 
 	switch ok, err := postgres.HasDatabasePrivileges(ctx, p.Pool, p.Claim.Spec.Database, role, p.Claim.Spec.Access); {
 	case err != nil:
-		return nil, wrapQuickRetry("checking database privileges", err)
+		return nil, dbcontroller.WrapQuickRetry("checking database privileges", err)
 	case !ok:
 		if err := postgres.GrantDatabasePrivileges(ctx, p.Pool, p.Claim.Spec.Database, role, p.Claim.Spec.Access); err != nil {
-			return nil, wrapQuickRetry("granting database privileges", err)
+			return nil, dbcontroller.WrapQuickRetry("granting database privileges", err)
 		}
 	}
 	secret.SetGroupVersionKind(gvk.Secret)
