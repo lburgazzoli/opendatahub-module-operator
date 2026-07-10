@@ -60,9 +60,11 @@ func TestLoadProviderConfig_EmbeddedUsesGeneratedAdminSecret(t *testing.T) {
 			Namespace: "opendatahub-db",
 		},
 		Data: map[string][]byte{
-			controller.EmbeddedAdminSecretUserKey:     []byte("postgres"),
-			controller.EmbeddedAdminSecretPasswordKey: []byte("postgres"),
-			controller.EmbeddedAdminSecretDBKey:       []byte("postgres"),
+			postgres.SecretKeyHost:     []byte("sample-embedded.opendatahub-db.svc"),
+			postgres.SecretKeyPort:     []byte("5432"),
+			postgres.SecretKeyUser:     []byte("postgres"),
+			postgres.SecretKeyPassword: []byte("postgres"),
+			postgres.SecretKeyDatabase: []byte("postgres"),
 		},
 	}
 
@@ -84,6 +86,7 @@ func TestLoadProviderConfig_EmbeddedUsesGeneratedAdminSecret(t *testing.T) {
 		User:     "postgres",
 		Password: "postgres",
 		DBName:   "postgres",
+		SSLMode:  "disable",
 	}))
 }
 
@@ -137,6 +140,7 @@ func TestLoadProviderConfig_ExternalUsesConnectionSecretRef(t *testing.T) {
 		User:     "postgres",
 		Password: "secret",
 		DBName:   "postgres",
+		SSLMode:  "require",
 	}))
 }
 

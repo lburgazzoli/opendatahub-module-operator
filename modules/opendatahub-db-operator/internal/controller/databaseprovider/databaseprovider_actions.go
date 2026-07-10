@@ -31,7 +31,7 @@ import (
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/assets"
 	dbcontroller "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/pkg/controller"
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/pkg/postgres"
-	odherrors "github.com/opendatahub-io/odh-platform-utilities/framework/controller/actions/errors"
+	dbmaps "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/pkg/utils/maps"
 	"github.com/opendatahub-io/odh-platform-utilities/framework/controller/conditions"
 	odhtypes "github.com/opendatahub-io/odh-platform-utilities/framework/controller/types"
 )
@@ -88,41 +88,30 @@ func (m *Controller) reconcileEmbeddedAction(
 		return nil
 	}
 
-	if _, err := resolveEmbeddedImage(obj, m.cfg); err != nil {
-		rr.Conditions.Mark(ConditionReachable, metav1.ConditionFalse,
-			conditions.WithReason(reasonImageUnmapped),
-			conditions.WithMessage("%s", err.Error()))
-		return odherrors.NewStopErrorW(err)
-	}
-
-	sts := &appsv1.StatefulSet{}
-	stsKey := embeddedStatefulSetKey(obj, m.cfg)
-	err := rr.Client.Get(ctx, stsKey, sts)
-	switch {
-	case err == nil && embeddedImageChanged(sts, obj, m.cfg):
-		err := fmt.Errorf("embedded extensions changed for an existing instance; recreate the provider to apply them")
-		rr.Conditions.Mark(ConditionReachable, metav1.ConditionFalse,
-			conditions.WithReason(reasonExtensionChangeRequiresRecreate),
-			conditions.WithMessage("%s", err.Error()))
-		return odherrors.NewStopErrorW(err)
-	case client.IgnoreNotFound(err) != nil:
-		return fmt.Errorf("reading embedded StatefulSet: %w", err)
-	}
-
-	if _, err := ensureEmbeddedAdminSecret(ctx, rr.Client, obj, m.cfg); err != nil {
+	adminSecret, err := computeEmbeddedAdminSecret(ctx, rr.Client, obj, m.cfg)
+	if err != nil {
 		obj.Status.Connection = infraApi.ProviderConnectionStatus{}
+
 		rr.Conditions.Mark(ConditionReachable, metav1.ConditionFalse,
 			conditions.WithReason(reasonAdminSecretUnavailable),
 			conditions.WithMessage("%s", err.Error()))
+
 		return fmt.Errorf("ensuring embedded admin Secret: %w", err)
 	}
 
-	cfg, err := dbcontroller.LoadProviderConfig(ctx, rr.Client, obj, m.cfg.OperatorNamespace)
-	if err != nil {
-		obj.Status.Connection = infraApi.ProviderConnectionStatus{}
-		return fmt.Errorf("loading embedded provider connection status: %w", err)
+	if err := rr.AddResources(adminSecret); err != nil {
+		return fmt.Errorf("adding embedded admin Secret to resources: %w", err)
 	}
-	obj.Status.Connection = providerConnectionStatus(cfg)
+
+	rr.Extensions = dbmaps.Set(rr.Extensions, extKeyInstanceHash, any(adminSecret.Annotations[instanceHashAnnotation]))
+
+	// Build connection status from the in-memory secret so it is available on
+	// first reconcile before the deploy action has persisted the Secret.
+	obj.Status.Connection = infraApi.ProviderConnectionStatus{
+		Host:     string(adminSecret.Data[postgres.SecretKeyHost]),
+		Port:     postgres.DefaultPort,
+		Database: string(adminSecret.Data[postgres.SecretKeyDatabase]),
+	}
 
 	rr.Templates = []odhtypes.TemplateInfo{
 		{FS: assets.Manifests, Path: "manifests/embedded/pvc.yaml.tmpl"},

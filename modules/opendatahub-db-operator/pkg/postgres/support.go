@@ -62,9 +62,9 @@ const passwordChars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ01234
 // beyond the single reconcile (docs/plan.md §9).
 func GeneratePassword(length int) (string, error) {
 	chars := make([]byte, length)
-	max := big.NewInt(int64(len(passwordChars)))
+	maxInt := big.NewInt(int64(len(passwordChars)))
 	for i := range chars {
-		n, err := rand.Int(rand.Reader, max)
+		n, err := rand.Int(rand.Reader, maxInt)
 		if err != nil {
 			return "", err
 		}

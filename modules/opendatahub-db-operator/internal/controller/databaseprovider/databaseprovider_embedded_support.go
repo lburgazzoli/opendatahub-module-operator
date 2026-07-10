@@ -19,16 +19,17 @@ package databaseprovider
 import (
 	"context"
 	"fmt"
+	"maps"
 	"sort"
 	"time"
 
+	"github.com/rs/xid"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
-	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	infraApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/api/infrastructure/v1alpha1"
@@ -37,22 +38,28 @@ import (
 	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/pkg/config"
 	dbcontroller "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/pkg/controller"
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/pkg/postgres"
-	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/pkg/resources/gvk"
 	common "github.com/opendatahub-io/odh-platform-utilities/api/common"
 	odhtypes "github.com/opendatahub-io/odh-platform-utilities/framework/controller/types"
 )
 
 const (
-	reasonConnectionVerified              = "ConnectionVerified"
-	reasonConnectionCheckFailed           = "ConnectionCheckFailed"
-	reasonImageUnmapped                   = "ImageUnmapped"
-	reasonExtensionChangeRequiresRecreate = "ExtensionChangeRequiresRecreate"
-	reasonAdminSecretUnavailable          = "AdminSecretUnavailable"
-	reasonInstanceRunning                 = "InstanceRunning"
-	reasonProvisioning                    = "Provisioning"
-	reasonIdle                            = "Idle"
-	defaultEmbeddedAdminUser              = "postgres"
-	defaultEmbeddedAdminDatabase          = "postgres"
+	// instanceHashAnnotation holds an opaque random token on the admin Secret.
+	// It is generated once on Secret creation, preserved on subsequent reconciles,
+	// and changes only when the Secret is deleted and recreated. The token is
+	// written into the StatefulSet pod-template annotation so that any Secret
+	// recreation triggers a rolling restart — without exposing the password.
+	instanceHashAnnotation = dbcontroller.EmbeddedInstanceHashAnnotation
+
+	// extKeyInstanceHash is the rr.Extensions key that carries the credential ID
+	// between reconcileEmbeddedAction and embeddedTemplateData.
+	extKeyInstanceHash = "embedded/instanceHash"
+
+	reasonAdminSecretUnavailable = "AdminSecretUnavailable"
+	reasonInstanceRunning        = "InstanceRunning"
+	reasonProvisioning           = "Provisioning"
+	reasonIdle                   = "Idle"
+	defaultEmbeddedAdminUser     = "postgres"
+	defaultEmbeddedAdminDatabase = "postgres"
 )
 
 var (
@@ -83,6 +90,8 @@ func embeddedTemplateData(
 		return nil, err
 	}
 
+	credHash, _ := rr.Extensions[extKeyInstanceHash].(string)
+
 	return map[string]any{
 		"ResolvedImage":       resolvedImage,
 		"AdminSecretName":     dbcontroller.EmbeddedAdminSecretName(obj.Name),
@@ -90,6 +99,7 @@ func embeddedTemplateData(
 		"PVCName":             dbcontroller.EmbeddedPVCName(obj.Name),
 		"InitDBConfigMapName": dbcontroller.EmbeddedInitDBConfigMapName(obj.Name),
 		"AllowedNamespaces":   namespaces,
+		"InstanceHash":        credHash,
 	}, nil
 }
 
@@ -120,129 +130,58 @@ func resolveEmbeddedImage(obj *infraApi.DatabaseProvider, cfg *moduleconfig.Conf
 	}
 }
 
-func ensureEmbeddedAdminSecret(
+// computeEmbeddedAdminSecret returns the desired admin Secret for the embedded
+// provider. If the Secret already exists it is returned as-is. If it is absent
+// fresh credentials are generated. The caller adds it to rr.Resources so the
+// deploy action creates or updates it via SSA.
+func computeEmbeddedAdminSecret(
 	ctx context.Context,
 	cli client.Client,
 	provider *infraApi.DatabaseProvider,
 	cfg *moduleconfig.Config,
 ) (*corev1.Secret, error) {
-	operatorNamespace := cfg.OperatorNamespace
-	secret := &corev1.Secret{}
-	key := types.NamespacedName{
-		Namespace: dbcontroller.EmbeddedNamespace(provider, operatorNamespace),
-		Name:      dbcontroller.EmbeddedAdminSecretName(provider.Name),
-	}
-	if err := cli.Get(ctx, key, secret); err != nil {
-		if !apierrors.IsNotFound(err) {
-			return nil, err
+
+	existing := &corev1.Secret{}
+	existing.Name = dbcontroller.EmbeddedAdminSecretName(provider.Name)
+	existing.Namespace = dbcontroller.EmbeddedNamespace(provider, cfg.OperatorNamespace)
+
+	err := cli.Get(ctx, client.ObjectKeyFromObject(existing), existing)
+	switch {
+	case err == nil:
+		// Secret found — project a clean desired state with only the fields we own.
+		// Returning existing as-is would carry over server-side metadata that SSA
+		// should not manage (ResourceVersion, owner references from other actors, etc.).
+		res := &corev1.Secret{}
+		res.Name = existing.Name
+		res.Namespace = existing.Namespace
+		res.Annotations = map[string]string{
+			instanceHashAnnotation: existing.Annotations[instanceHashAnnotation],
+		}
+		res.Data = maps.Clone(existing.Data)
+
+		return res, nil
+	case apierrors.IsNotFound(err):
+		password, err := postgres.GeneratePassword(24)
+		if err != nil {
+			return nil, fmt.Errorf("generating admin password: %w", err)
 		}
 
-		exists, existsErr := embeddedInstanceExists(ctx, cli, provider, cfg)
-		if existsErr != nil {
-			return nil, existsErr
-		}
-		if exists {
-			return nil, fmt.Errorf("embedded admin Secret %s/%s not found for an existing instance", key.Namespace, key.Name)
+		existing.Annotations = map[string]string{
+			instanceHashAnnotation: xid.New().String(),
 		}
 
-		password, pwErr := postgres.GeneratePassword(24)
-		if pwErr != nil {
-			return nil, fmt.Errorf("generating admin password: %w", pwErr)
+		existing.Data = map[string][]byte{
+			postgres.SecretKeyHost:     []byte(dbcontroller.EmbeddedServiceHost(provider, cfg.OperatorNamespace)),
+			postgres.SecretKeyPort:     fmt.Appendf(nil, "%d", postgres.DefaultPort),
+			postgres.SecretKeyUser:     []byte(defaultEmbeddedAdminUser),
+			postgres.SecretKeyPassword: []byte(password),
+			postgres.SecretKeyDatabase: []byte(defaultEmbeddedAdminDatabase),
 		}
 
-		secret = buildEmbeddedAdminSecret(key, password)
-		if err := ctrl.SetControllerReference(provider, secret, cli.Scheme()); err != nil {
-			return nil, fmt.Errorf("setting admin Secret owner reference: %w", err)
-		}
-		if err := cli.Create(ctx, secret); err != nil {
-			return nil, err
-		}
-		return secret, nil
-	}
-
-	if embeddedAdminSecretComplete(secret) {
-		return secret, nil
-	}
-
-	exists, err := embeddedInstanceExists(ctx, cli, provider, cfg)
-	if err != nil {
+		return existing, nil
+	default:
 		return nil, err
 	}
-	if exists {
-		return nil, fmt.Errorf("embedded admin Secret %s/%s is incomplete for an existing instance", key.Namespace, key.Name)
-	}
-
-	password, err := postgres.GeneratePassword(24)
-	if err != nil {
-		return nil, fmt.Errorf("generating admin password: %w", err)
-	}
-
-	base := secret.DeepCopy()
-	secret.Type = corev1.SecretTypeOpaque
-	secret.Data = map[string][]byte{
-		dbcontroller.EmbeddedAdminSecretUserKey:     []byte(defaultEmbeddedAdminUser),
-		dbcontroller.EmbeddedAdminSecretPasswordKey: []byte(password),
-		dbcontroller.EmbeddedAdminSecretDBKey:       []byte(defaultEmbeddedAdminDatabase),
-	}
-	if err := ctrl.SetControllerReference(provider, secret, cli.Scheme()); err != nil {
-		return nil, fmt.Errorf("setting admin Secret owner reference: %w", err)
-	}
-	if err := cli.Patch(ctx, secret, client.MergeFrom(base)); err != nil {
-		return nil, err
-	}
-	return secret, nil
-}
-
-func embeddedAdminSecretComplete(secret *corev1.Secret) bool {
-	if secret == nil {
-		return false
-	}
-
-	return len(secret.Data[dbcontroller.EmbeddedAdminSecretUserKey]) != 0 &&
-		len(secret.Data[dbcontroller.EmbeddedAdminSecretPasswordKey]) != 0 &&
-		len(secret.Data[dbcontroller.EmbeddedAdminSecretDBKey]) != 0
-}
-
-func buildEmbeddedAdminSecret(key types.NamespacedName, password string) *corev1.Secret {
-	return &corev1.Secret{
-		TypeMeta: metav1.TypeMeta{
-			Kind:       gvk.Secret.Kind,
-			APIVersion: gvk.Secret.GroupVersion().String(),
-		},
-		ObjectMeta: metav1.ObjectMeta{
-			Namespace: key.Namespace,
-			Name:      key.Name,
-		},
-		Type: corev1.SecretTypeOpaque,
-		Data: map[string][]byte{
-			dbcontroller.EmbeddedAdminSecretUserKey:     []byte(defaultEmbeddedAdminUser),
-			dbcontroller.EmbeddedAdminSecretPasswordKey: []byte(password),
-			dbcontroller.EmbeddedAdminSecretDBKey:       []byte(defaultEmbeddedAdminDatabase),
-		},
-	}
-}
-
-func embeddedImageChanged(
-	sts *appsv1.StatefulSet,
-	provider *infraApi.DatabaseProvider,
-	cfg *moduleconfig.Config,
-) bool {
-	if sts == nil {
-		return false
-	}
-
-	desiredImage, err := resolveEmbeddedImage(provider, cfg)
-	if err != nil {
-		return false
-	}
-
-	for _, container := range sts.Spec.Template.Spec.Containers {
-		if container.Name == "postgres" {
-			return container.Image != desiredImage
-		}
-	}
-
-	return false
 }
 
 func referencedClaimNamespaces(
@@ -251,25 +190,30 @@ func referencedClaimNamespaces(
 	provider *infraApi.DatabaseProvider,
 ) ([]string, error) {
 	namespaces := map[string]struct{}{}
-	providerFilter := client.MatchingFields{dbcontroller.IndexEffectiveProvider: provider.Name}
 
 	schemaClaims := &infraApi.SchemaClaimList{}
-	if err := cli.List(ctx, schemaClaims, providerFilter); err != nil {
+	if err := cli.List(ctx, schemaClaims); err != nil {
 		return nil, err
 	}
 	for i := range schemaClaims.Items {
 		claim := &schemaClaims.Items[i]
+		if schemaClaimEffectiveProvider(claim) != provider.Name {
+			continue
+		}
 		if isConditionTrue(claim.Status.Conditions, schemaclaimcontroller.ConditionProvisioned) {
 			namespaces[claim.Namespace] = struct{}{}
 		}
 	}
 
 	databaseClaims := &infraApi.DatabaseClaimList{}
-	if err := cli.List(ctx, databaseClaims, providerFilter); err != nil {
+	if err := cli.List(ctx, databaseClaims); err != nil {
 		return nil, err
 	}
 	for i := range databaseClaims.Items {
 		claim := &databaseClaims.Items[i]
+		if databaseClaimEffectiveProvider(claim) != provider.Name {
+			continue
+		}
 		if isConditionTrue(claim.Status.Conditions, dbclaimcontroller.ConditionProvisioned) {
 			namespaces[claim.Namespace] = struct{}{}
 		}
@@ -283,41 +227,26 @@ func referencedClaimNamespaces(
 	return result, nil
 }
 
+func schemaClaimEffectiveProvider(claim *infraApi.SchemaClaim) string {
+	if claim.Spec.Provider.Name != "" {
+		return claim.Spec.Provider.Name
+	}
+	return claim.Status.Provider
+}
+
+func databaseClaimEffectiveProvider(claim *infraApi.DatabaseClaim) string {
+	if claim.Spec.Provider.Name != "" {
+		return claim.Spec.Provider.Name
+	}
+	return claim.Status.Provider
+}
+
 func embeddedStatefulSetKey(provider *infraApi.DatabaseProvider, cfg *moduleconfig.Config) types.NamespacedName {
 	operatorNamespace := cfg.OperatorNamespace
 	return types.NamespacedName{
 		Namespace: dbcontroller.EmbeddedNamespace(provider, operatorNamespace),
 		Name:      dbcontroller.EmbeddedServiceName(provider.Name),
 	}
-}
-
-func embeddedInstanceExists(
-	ctx context.Context,
-	cli client.Client,
-	provider *infraApi.DatabaseProvider,
-	cfg *moduleconfig.Config,
-) (bool, error) {
-	sts := &appsv1.StatefulSet{}
-	if err := cli.Get(ctx, embeddedStatefulSetKey(provider, cfg), sts); err != nil {
-		if !apierrors.IsNotFound(err) {
-			return false, err
-		}
-	} else {
-		return true, nil
-	}
-
-	pvc := &corev1.PersistentVolumeClaim{}
-	pvcKey := types.NamespacedName{
-		Namespace: dbcontroller.EmbeddedNamespace(provider, cfg.OperatorNamespace),
-		Name:      dbcontroller.EmbeddedPVCName(provider.Name),
-	}
-	if err := cli.Get(ctx, pvcKey, pvc); err != nil {
-		if apierrors.IsNotFound(err) {
-			return false, nil
-		}
-		return false, err
-	}
-	return true, nil
 }
 
 func embeddedChildResources(provider *infraApi.DatabaseProvider, cfg *moduleconfig.Config) []client.Object {

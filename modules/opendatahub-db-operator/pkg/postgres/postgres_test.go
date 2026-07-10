@@ -119,6 +119,7 @@ func TestConfigDSN_EscapesSpecialCharacters(t *testing.T) {
 		User:     "user name",
 		Password: "pa ss:wo/rd?&=#",
 		DBName:   "app-db",
+		SSLMode:  "disable",
 	}
 
 	parsed, err := pgxpool.ParseConfig(cfg.DSN())

@@ -34,6 +34,7 @@ import (
 	infraApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/api/infrastructure/v1alpha1"
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/internal/controller/databaseprovider"
 	dbcontroller "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/pkg/controller"
+	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/pkg/postgres"
 )
 
 type embeddedDatabaseProviderSuite struct {
@@ -65,8 +66,6 @@ func (st *embeddedDatabaseProviderSuite) Run(t *testing.T) {
 	t.Run("creates embedded postgres resources", st.testProvisioning)
 	t.Run("creates embedded postgres resources in configured namespace", st.testProvisioningCustomNamespace)
 	t.Run("deleted admin secret is surfaced", st.testAdminSecretDeleted)
-	t.Run("rejects unmapped extensions", st.testImageUnmapped)
-	t.Run("rejects extension changes after provisioning", st.testExtensionChangeRequiresRecreate)
 }
 
 func (st *embeddedDatabaseProviderSuite) testCRDValidation(t *testing.T) {
@@ -118,6 +117,20 @@ func (st *embeddedDatabaseProviderSuite) testCRDValidation(t *testing.T) {
 		g.Expect(cli.Create(ctx, obj)).To(HaveOccurred())
 	})
 
+	t.Run("rejects-unsupported-extension", func(t *testing.T) {
+		g := NewWithT(t)
+		bad := embeddedSpec
+		bad.Extensions = []string{"postgis"}
+		obj := &infraApi.DatabaseProvider{
+			ObjectMeta: metav1.ObjectMeta{Name: "dbp-unsupported-extension"},
+			Spec: infraApi.DatabaseProviderSpec{
+				Type:     infraApi.ProviderTypeEmbedded,
+				Embedded: &bad,
+			},
+		}
+		g.Expect(cli.Create(ctx, obj)).To(HaveOccurred())
+	})
+
 	t.Run("rejects-zero-storage-size", func(t *testing.T) {
 		g := NewWithT(t)
 		bad := embeddedSpec
@@ -158,8 +171,9 @@ func (st *embeddedDatabaseProviderSuite) testProvisioningCustomNamespace(t *test
 }
 
 func (st *embeddedDatabaseProviderSuite) testAdminSecretDeleted(t *testing.T) {
-	provider := st.createEmbeddedProvider(t, "embedded-"+xid.New().String(), []string{"pg_trgm"})
+	g := NewWithT(t)
 
+	provider := st.createEmbeddedProvider(t, "embedded-"+xid.New().String(), []string{"pg_trgm"})
 	st.waitReachable(t, provider)
 
 	adminSecret := &corev1.Secret{
@@ -168,54 +182,26 @@ func (st *embeddedDatabaseProviderSuite) testAdminSecretDeleted(t *testing.T) {
 			Name:      dbcontroller.EmbeddedAdminSecretName(provider.Name),
 		},
 	}
+	g.Expect(st.env.Client.Get(t.Context(), client.ObjectKeyFromObject(adminSecret), adminSecret)).To(Succeed())
+	initialHash := adminSecret.Annotations[dbcontroller.EmbeddedInstanceHashAnnotation]
+	g.Expect(initialHash).NotTo(BeEmpty())
+
 	st.env.deleteAndWait(t.Context(), t, adminSecret)
 
-	expectDatabaseProviderUnreachable(
-		t,
-		st.env,
-		provider,
-		"AdminSecretUnavailable",
-		adminSecret.Name,
-	)
-}
-
-func (st *embeddedDatabaseProviderSuite) testImageUnmapped(t *testing.T) {
-	g := NewWithT(t)
-	provider := st.createEmbeddedProvider(t, "embedded-"+xid.New().String(), []string{"postgis"})
-
-	expectDatabaseProviderUnreachable(
-		t,
-		st.env,
-		provider,
-		"ImageUnmapped",
-		"use an External provider",
-	)
-
-	statefulSet := &appsv1.StatefulSet{
-		ObjectMeta: metav1.ObjectMeta{
-			Namespace: dbcontroller.EmbeddedNamespace(provider, st.env.Config.OperatorNamespace),
-			Name:      dbcontroller.EmbeddedServiceName(provider.Name),
-		},
-	}
-	g.Eventually(t.Context(), k8sm.Absent(st.env.Client, statefulSet)).Should(BeTrue())
-}
-
-func (st *embeddedDatabaseProviderSuite) testExtensionChangeRequiresRecreate(t *testing.T) {
-	g := NewWithT(t)
-	provider := st.createEmbeddedProvider(t, "embedded-"+xid.New().String(), []string{"pg_trgm"})
-
-	st.waitReachable(t, provider)
-
-	g.Expect(st.env.Client.Get(t.Context(), client.ObjectKeyFromObject(provider), provider)).To(Succeed())
-	provider.Spec.Embedded.Extensions = []string{"pg_trgm", "pgcrypto"}
-	g.Expect(st.env.Client.Update(t.Context(), provider)).To(Succeed())
-
-	expectDatabaseProviderUnreachable(
-		t,
-		st.env,
-		provider,
-		"ExtensionChangeRequiresRecreate",
-		"recreate the provider",
+	// The controller detects the missing Secret, regenerates credentials with a
+	// fresh instance hash, and recreates the Secret. The new hash must differ
+	// from the original so the StatefulSet rolls to pick up the new credentials.
+	refreshed := &corev1.Secret{ObjectMeta: metav1.ObjectMeta{
+		Namespace: st.env.Config.OperatorNamespace,
+		Name:      dbcontroller.EmbeddedAdminSecretName(provider.Name),
+	}}
+	g.Eventually(t.Context(), k8sm.Get(st.env.Client, refreshed)).Should(
+		WithTransform(func(s *corev1.Secret) string {
+			return s.Annotations[dbcontroller.EmbeddedInstanceHashAnnotation]
+		}, SatisfyAll(
+			Not(BeEmpty()),
+			Not(Equal(initialHash)),
+		)),
 	)
 }
 
@@ -278,7 +264,7 @@ func (st *embeddedDatabaseProviderSuite) expectProvisionedInNamespace(
 		},
 	}
 	g.Eventually(t.Context(), k8sm.Lookup(st.env.Client, adminSecret)).To(Succeed())
-	g.Expect(adminSecret.Data).To(HaveKey(dbcontroller.EmbeddedAdminSecretPasswordKey))
+	g.Expect(adminSecret.Data).To(HaveKey(postgres.SecretKeyPassword))
 
 	networkPolicy := &networkingv1.NetworkPolicy{
 		ObjectMeta: metav1.ObjectMeta{
@@ -288,10 +274,6 @@ func (st *embeddedDatabaseProviderSuite) expectProvisionedInNamespace(
 	}
 	g.Eventually(t.Context(), k8sm.Lookup(st.env.Client, networkPolicy)).To(Succeed())
 
-	current := &infraApi.DatabaseProvider{ObjectMeta: metav1.ObjectMeta{Name: provider.Name}}
-	g.Eventually(t.Context(), k8sm.Lookup(st.env.Client, current)).To(Succeed())
-	g.Expect(current.Labels).To(HaveKeyWithValue("db.infrastructure.opendatahub.io/capability-pgvector", "true"))
-	g.Expect(current.Labels).To(HaveKeyWithValue("db.infrastructure.opendatahub.io/capability-pg_trgm", "true"))
 }
 
 func withEmbeddedNamespace(namespace string) func(*infraApi.DatabaseProvider) {

@@ -82,6 +82,12 @@ func (p SchemaProvisioner) Ensure(
 	}
 	secretExists := secret.ResourceVersion != ""
 
+	// A new password is generated whenever any piece of the trio is absent:
+	// missing schema (first provision), missing role, or missing Secret. The
+	// Secret is the only durable copy of the password; if it is deleted, a new
+	// password is generated and the role is updated to match via CreateRole.
+	// Existing connections using the old credentials will break -- this is the
+	// accepted trade-off until a vault integration is added.
 	if !schemaExists || !roleExists || !secretExists {
 		pw, err := postgres.GeneratePassword(24)
 		if err != nil {

@@ -7,6 +7,7 @@ require (
 	github.com/go-logr/logr v1.4.3
 	github.com/go-viper/mapstructure/v2 v2.5.0
 	github.com/invopop/jsonschema v0.14.0
+	github.com/jackc/pgerrcode v0.0.0-20250907135507-afb5586c32a6
 	github.com/jackc/pgx/v5 v5.10.0
 	github.com/lburgazzoli/gomega-matchers v0.4.1-0.20260707174420-9bb480701a57
 	github.com/lib/pq v1.12.3
@@ -15,7 +16,10 @@ require (
 	github.com/opendatahub-io/odh-platform-utilities/framework v0.0.0-20260629160854-953ca337b8dd
 	github.com/rs/xid v1.6.0
 	github.com/spf13/cobra v1.10.2
+	github.com/spf13/pflag v1.0.10
 	github.com/spf13/viper v1.21.0
+	github.com/testcontainers/testcontainers-go v0.43.0
+	github.com/testcontainers/testcontainers-go/modules/k3s v0.43.0
 	github.com/testcontainers/testcontainers-go/modules/postgres v0.43.0
 	go.uber.org/zap v1.27.1
 	k8s.io/api v0.36.2
@@ -126,10 +130,8 @@ require (
 	github.com/sourcegraph/conc v0.3.1-0.20240121214520-5f936abd7ae8 // indirect
 	github.com/spf13/afero v1.15.0 // indirect
 	github.com/spf13/cast v1.10.0 // indirect
-	github.com/spf13/pflag v1.0.10 // indirect
 	github.com/stretchr/testify v1.11.1 // indirect
 	github.com/subosito/gotenv v1.6.0 // indirect
-	github.com/testcontainers/testcontainers-go v0.43.0 // indirect
 	github.com/tklauser/go-sysconf v0.3.16 // indirect
 	github.com/tklauser/numcpus v0.11.0 // indirect
 	github.com/x448/float16 v0.8.4 // indirect

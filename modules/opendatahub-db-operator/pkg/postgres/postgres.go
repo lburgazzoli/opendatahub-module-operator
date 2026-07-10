@@ -37,15 +37,25 @@ const (
 	SecretKeyPassword = "pg.password"
 	SecretKeyDatabase = "pg.database"
 	SecretKeySchema   = "pg.schema"
+	// SecretKeySSLMode holds the libpq sslmode value (e.g. "disable", "require",
+	// "verify-full"). Optional in the Secret; when absent, callers apply their own
+	// default ("disable" for embedded, "require" for external).
+	SecretKeySSLMode = "pg.sslmode"
 
 	// DefaultPort is the standard PostgreSQL port, used when pg.port is absent.
 	DefaultPort = 5432
+
+	// SSLMode* are the libpq sslmode values accepted by pg.sslmode.
+	SSLModeDisable    = "disable"
+	SSLModeRequire    = "require"
+	SSLModeVerifyCA   = "verify-ca"
+	SSLModeVerifyFull = "verify-full"
 )
 
 // Config holds the connection parameters parsed from or written to a Kubernetes
 // Secret (docs/plan.md §6). The pg.* key convention keeps the Secret schema
 // clean and namespaced. The mapstructure tags match the SecretKey*
-// constants above. Schema is optional -- set only for SchemaClaim credentials.
+// constants above. Schema and SSLMode are optional.
 type Config struct {
 	Host     string `mapstructure:"pg.host"`
 	Port     int    `mapstructure:"pg.port"`
@@ -53,6 +63,7 @@ type Config struct {
 	Password string `mapstructure:"pg.password"`
 	DBName   string `mapstructure:"pg.database"`
 	Schema   string `mapstructure:"pg.schema"`
+	SSLMode  string `mapstructure:"pg.sslmode"`
 }
 
 type secretField struct {
@@ -116,22 +127,33 @@ func ConfigFromDSN(dsn string) (Config, error) {
 	if err != nil {
 		return Config{}, fmt.Errorf("parsing DSN: %w", err)
 	}
+	// pgx does not expose the raw sslmode string after parsing, so extract it
+	// directly from the URL query string.
+	sslMode := ""
+	if u, err := url.Parse(dsn); err == nil {
+		sslMode = u.Query().Get("sslmode")
+	}
 	return Config{
 		Host:     pcfg.ConnConfig.Host,
 		Port:     int(pcfg.ConnConfig.Port),
 		User:     pcfg.ConnConfig.User,
 		Password: pcfg.ConnConfig.Password,
 		DBName:   pcfg.ConnConfig.Database,
+		SSLMode:  sslMode,
 	}, nil
 }
 
 // DSN returns the libpq-style connection string for the config.
 func (c Config) DSN() string {
+	q := url.Values{}
+	if c.SSLMode != "" {
+		q.Set("sslmode", c.SSLMode)
+	}
 	return (&url.URL{
 		Scheme:   "postgres",
 		User:     url.UserPassword(c.User, c.Password),
 		Host:     net.JoinHostPort(c.Host, strconv.Itoa(c.Port)),
 		Path:     c.DBName,
-		RawQuery: "sslmode=disable",
+		RawQuery: q.Encode(),
 	}).String()
 }

@@ -32,9 +32,11 @@ import (
 const (
 	OperatorNamespaceAnnotation = "db.infrastructure.opendatahub.io/operator-namespace"
 
-	EmbeddedAdminSecretUserKey     = "POSTGRES_USER"
-	EmbeddedAdminSecretPasswordKey = "POSTGRES_PASSWORD"
-	EmbeddedAdminSecretDBKey       = "POSTGRES_DB"
+	// EmbeddedInstanceHashAnnotation is the annotation key on the embedded admin
+	// Secret that holds an opaque token identifying the credential generation.
+	// The same token is written into the StatefulSet pod-template annotation so
+	// that Secret recreation triggers a rolling restart.
+	EmbeddedInstanceHashAnnotation = "db.infrastructure.opendatahub.io/instance-hash"
 )
 
 func OperatorNamespace(cfg *moduleconfig.Config) string {
@@ -81,6 +83,12 @@ func loadExternalProviderConfig(
 			return postgres.Config{}, fmt.Errorf("parsing admin Secret: %w", err)
 		}
 
+		// Default to require when the Secret does not specify pg.sslmode.
+		// External providers are assumed to be remote services that support TLS.
+		if cfg.SSLMode == "" {
+			cfg.SSLMode = postgres.SSLModeRequire
+		}
+
 		return cfg, nil
 	}
 }
@@ -95,24 +103,19 @@ func loadEmbeddedProviderConfig(
 		Namespace: EmbeddedNamespace(provider, operatorNamespace),
 		Name:      EmbeddedAdminSecretName(provider.Name),
 	}
+
 	secret, err := readSecretRef(ctx, cli, ref)
 	if err != nil {
 		return postgres.Config{}, err
 	}
 
-	parsed := postgres.Config{
-		Host:     EmbeddedServiceHost(provider, operatorNamespace),
-		Port:     postgres.DefaultPort,
-		User:     string(secret.Data[EmbeddedAdminSecretUserKey]),
-		Password: string(secret.Data[EmbeddedAdminSecretPasswordKey]),
-		DBName:   string(secret.Data[EmbeddedAdminSecretDBKey]),
-	}
-
-	if err := parsed.Validate(); err != nil {
+	cfg, err := postgres.ParseSecret(secret.Data)
+	if err != nil {
 		return postgres.Config{}, fmt.Errorf("parsing embedded admin Secret: %w", err)
 	}
-
-	return parsed, nil
+	// Embedded PostgreSQL runs inside the cluster without TLS certificates.
+	cfg.SSLMode = postgres.SSLModeDisable
+	return cfg, nil
 }
 
 func readSecretRef(

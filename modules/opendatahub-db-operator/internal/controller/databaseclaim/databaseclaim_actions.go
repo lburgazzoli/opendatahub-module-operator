@@ -136,6 +136,14 @@ func (m *Controller) cleanupAction(ctx context.Context, rr *odhtypes.Reconciliat
 			}
 			defer pool.Close()
 
+			roleExists, err := postgres.RoleExists(ctx, pool, role)
+			if err != nil {
+				return fmt.Errorf("checking role %q existence: %w", role, err)
+			}
+			if !roleExists {
+				return nil
+			}
+
 			if err := postgres.RevokeDatabasePrivileges(ctx, pool, obj.Spec.Database, role); err != nil {
 				return fmt.Errorf("revoking privileges from role %q on database %q: %w", role, obj.Spec.Database, err)
 			}

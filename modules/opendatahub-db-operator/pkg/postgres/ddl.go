@@ -18,8 +18,11 @@ package postgres
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
+	"github.com/jackc/pgerrcode"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	infraApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/api/infrastructure/v1alpha1"
@@ -85,7 +88,12 @@ func DropSchemaCascade(ctx context.Context, pool *pgxpool.Pool, schema string) e
 	return err
 }
 
-// CreateRole creates a PostgreSQL login role with the given password. Idempotent.
+// CreateRole creates or updates a PostgreSQL login role with the given password.
+// If the role already exists, its password is always updated to match the supplied
+// value. This is intentional: the credentials Secret is the only durable copy of
+// the password; if the Secret is deleted and re-created, a new password is generated
+// and the role is updated here so Secret and role stay in sync. A vault integration
+// would replace this regeneration path in the future.
 func CreateRole(ctx context.Context, pool *pgxpool.Pool, role, password string) error {
 	stmt := fmt.Sprintf(sqlCreateOrUpdateRole,
 		QuoteLiteral(role),
@@ -162,6 +170,21 @@ func GrantDatabasePrivileges(
 	return nil
 }
 
+// IsPgError reports whether err is a PostgreSQL error with the given SQLSTATE
+// code. Use pgerrcode constants (e.g. pgerrcode.UndefinedObject) as the code.
+func IsPgError(err error, code string) bool {
+	var pgErr *pgconn.PgError
+	return errors.As(err, &pgErr) && pgErr.Code == code
+}
+
+// IsUndefinedObject reports whether err is SQLSTATE 42704 (undefined_object).
+// PostgreSQL returns this for any missing database object — role, schema,
+// function, etc. — that a statement references. Callers can use it to
+// distinguish "already gone" from real failures and treat it as a no-op.
+func IsUndefinedObject(err error) bool {
+	return IsPgError(err, pgerrcode.UndefinedObject)
+}
+
 // RevokeDatabasePrivileges revokes the privileges granted by GrantDatabasePrivileges.
 func RevokeDatabasePrivileges(ctx context.Context, pool *pgxpool.Pool, database, role string) error {
 	q := QuoteIdentifier
@@ -170,7 +193,7 @@ func RevokeDatabasePrivileges(ctx context.Context, pool *pgxpool.Pool, database,
 		fmt.Sprintf(sqlRevokeCreateOnDB, q(database), q(role)),
 		fmt.Sprintf(sqlRevokeConnectOnDB, q(database), q(role)),
 	} {
-		if _, err := pool.Exec(ctx, stmt); err != nil {
+		if _, err := pool.Exec(ctx, stmt); err != nil && !IsUndefinedObject(err) {
 			errs = append(errs, err)
 		}
 	}
@@ -192,7 +215,7 @@ func RevokeSchemaPrivileges(ctx context.Context, pool *pgxpool.Pool, schema, rol
 		fmt.Sprintf(sqlRevokeAllOnTables, q(schema), q(role)),
 		fmt.Sprintf(sqlRevokeAllOnSchema, q(schema), q(role)),
 	} {
-		if _, err := pool.Exec(ctx, stmt); err != nil {
+		if _, err := pool.Exec(ctx, stmt); err != nil && !IsUndefinedObject(err) {
 			errs = append(errs, err)
 		}
 	}

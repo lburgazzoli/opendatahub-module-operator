@@ -17,6 +17,7 @@ limitations under the License.
 package integration
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"testing"
@@ -436,12 +437,12 @@ func (st *schemaClaimSuite) testCRDValidation(t *testing.T) {
 		obj := &infraApi.SchemaClaim{
 			ObjectMeta: metav1.ObjectMeta{Name: "sc-valid", Namespace: ns},
 			Spec: infraApi.SchemaClaimSpec{
-				Provider: infraApi.ProviderRef{Name: "p"},
+				Provider: infraApi.ProviderRef{Name: st.providerName},
 				Schema:   "my_schema",
 			},
 		}
 		g.Expect(cli.Create(ctx, obj)).To(Succeed())
-		t.Cleanup(func() { _ = cli.Delete(ctx, obj) })
+		t.Cleanup(func() { st.env.deleteAndWait(context.Background(), t, obj) })
 
 		obj.Spec.Schema = "a_different_schema"
 		g.Expect(cli.Update(ctx, obj)).To(HaveOccurred())
@@ -452,12 +453,12 @@ func (st *schemaClaimSuite) testCRDValidation(t *testing.T) {
 		obj := &infraApi.SchemaClaim{
 			ObjectMeta: metav1.ObjectMeta{Name: "sc-immut-access", Namespace: ns},
 			Spec: infraApi.SchemaClaimSpec{
-				Provider: infraApi.ProviderRef{Name: "p"},
+				Provider: infraApi.ProviderRef{Name: st.providerName},
 				Access:   infraApi.AccessModeReadWrite,
 			},
 		}
 		g.Expect(cli.Create(ctx, obj)).To(Succeed())
-		t.Cleanup(func() { _ = cli.Delete(ctx, obj) })
+		t.Cleanup(func() { st.env.deleteAndWait(context.Background(), t, obj) })
 
 		obj.Spec.Access = infraApi.AccessModeReadOnly
 		g.Expect(cli.Update(ctx, obj)).To(HaveOccurred())
@@ -468,11 +469,11 @@ func (st *schemaClaimSuite) testCRDValidation(t *testing.T) {
 		obj := &infraApi.SchemaClaim{
 			ObjectMeta: metav1.ObjectMeta{Name: "sc-immut-provider", Namespace: ns},
 			Spec: infraApi.SchemaClaimSpec{
-				Provider: infraApi.ProviderRef{Name: "p"},
+				Provider: infraApi.ProviderRef{Name: st.providerName},
 			},
 		}
 		g.Expect(cli.Create(ctx, obj)).To(Succeed())
-		t.Cleanup(func() { _ = cli.Delete(ctx, obj) })
+		t.Cleanup(func() { st.env.deleteAndWait(context.Background(), t, obj) })
 
 		obj.Spec.Provider = infraApi.ProviderRef{Name: "q"}
 		g.Expect(cli.Update(ctx, obj)).To(HaveOccurred())

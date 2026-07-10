@@ -92,8 +92,9 @@ type StorageSpec struct {
 // resolved from Extensions via pkg/config compiled defaults (task-08).
 type EmbeddedProviderSpec struct {
 	// Namespace overrides where the embedded PostgreSQL resources are created.
-	// When unset, the operator namespace is used.
+	// When unset, the operator namespace is used. Immutable once set.
 	// +optional
+	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="namespace is immutable once set"
 	Namespace string `json:"namespace,omitempty"`
 
 	// DeletionPolicy governs the instance's lifecycle when zero claims
@@ -111,12 +112,13 @@ type EmbeddedProviderSpec struct {
 	// +optional
 	Resources corev1.ResourceRequirements `json:"resources,omitempty"`
 
-	// Extensions lists PostgreSQL extension names to make available,
-	// mapped to a built-in container image (task-08 §1) -- an unmapped
-	// combination fails reconciliation with an actionable condition rather
-	// than silently ignoring the request.
+	// Extensions lists PostgreSQL extensions to make available inside the
+	// embedded instance. Each value selects a built-in container image:
+	// "vector" uses the pgvector image; all others use the standard
+	// PostgreSQL image. Immutable once set.
 	// +optional
-	// +kubebuilder:validation:items:Pattern=`^[a-z][a-z0-9_]*$`
+	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="extensions are immutable once set"
+	// +kubebuilder:validation:items:Enum=vector;pg_trgm;uuid_ossp;pgcrypto
 	Extensions []string `json:"extensions,omitempty"`
 }
 

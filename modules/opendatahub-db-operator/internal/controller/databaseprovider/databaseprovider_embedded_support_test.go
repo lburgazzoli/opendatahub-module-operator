@@ -25,12 +25,12 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
 	infraApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/api/infrastructure/v1alpha1"
 	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/pkg/config"
 	dbcontroller "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/pkg/controller"
+	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/pkg/postgres"
 	common "github.com/opendatahub-io/odh-platform-utilities/api/common"
 )
 
@@ -46,7 +46,6 @@ func TestResolveEmbeddedImage(t *testing.T) {
 		name       string
 		extensions []string
 		wantImage  string
-		wantErr    string
 	}{
 		{
 			name:       "vector selects pgvector image",
@@ -59,9 +58,9 @@ func TestResolveEmbeddedImage(t *testing.T) {
 			wantImage:  "postgres:test",
 		},
 		{
-			name:       "unmapped extension fails",
-			extensions: []string{"postgis"},
-			wantErr:    `extension "postgis" does not map`,
+			name:       "no extensions selects postgres image",
+			extensions: nil,
+			wantImage:  "postgres:test",
 		},
 	}
 
@@ -80,19 +79,13 @@ func TestResolveEmbeddedImage(t *testing.T) {
 			}
 
 			image, err := resolveEmbeddedImage(provider, cfg)
-			if tc.wantErr != "" {
-				g.Expect(err).To(HaveOccurred())
-				g.Expect(err.Error()).To(ContainSubstring(tc.wantErr))
-				return
-			}
-
 			g.Expect(err).NotTo(HaveOccurred())
 			g.Expect(image).To(Equal(tc.wantImage))
 		})
 	}
 }
 
-func TestEnsureEmbeddedAdminSecret_Idempotent(t *testing.T) {
+func TestComputeEmbeddedAdminSecret_GeneratesCredentialsOnFirstReconcile(t *testing.T) {
 	g := NewWithT(t)
 	ctx := context.Background()
 
@@ -110,34 +103,19 @@ func TestEnsureEmbeddedAdminSecret_Idempotent(t *testing.T) {
 		},
 	}
 
-	cli := fake.NewClientBuilder().
-		WithScheme(scheme).
-		WithRuntimeObjects(provider).
-		Build()
+	cli := fake.NewClientBuilder().WithScheme(scheme).WithRuntimeObjects(provider).Build()
 
-	first, err := ensureEmbeddedAdminSecret(ctx, cli, provider, cfg)
+	secret, err := computeEmbeddedAdminSecret(ctx, cli, provider, cfg)
 	g.Expect(err).NotTo(HaveOccurred())
-	g.Expect(first.Data).To(HaveKey(dbcontroller.EmbeddedAdminSecretPasswordKey))
-
-	original := map[string][]byte{}
-	for key, value := range first.Data {
-		original[key] = append([]byte(nil), value...)
-	}
-
-	second, err := ensureEmbeddedAdminSecret(ctx, cli, provider, cfg)
-	g.Expect(err).NotTo(HaveOccurred())
-	g.Expect(second.Data).To(Equal(original))
-
-	stored := &corev1.Secret{}
-	err = cli.Get(ctx, client.ObjectKey{
-		Namespace: cfg.OperatorNamespace,
-		Name:      dbcontroller.EmbeddedAdminSecretName(provider.Name),
-	}, stored)
-	g.Expect(err).NotTo(HaveOccurred())
-	g.Expect(stored.Data).To(Equal(original))
+	g.Expect(secret.Data).To(SatisfyAll(
+		HaveKey(postgres.SecretKeyHost),
+		HaveKey(postgres.SecretKeyUser),
+		HaveKey(postgres.SecretKeyPassword),
+		HaveKey(postgres.SecretKeyDatabase),
+	))
 }
 
-func TestEnsureEmbeddedAdminSecret_DoesNotRecoverMissingSecretForExistingInstance(t *testing.T) {
+func TestComputeEmbeddedAdminSecret_PreservesExistingPassword(t *testing.T) {
 	g := NewWithT(t)
 	ctx := context.Background()
 
@@ -154,98 +132,30 @@ func TestEnsureEmbeddedAdminSecret_DoesNotRecoverMissingSecretForExistingInstanc
 			Embedded: &infraApi.EmbeddedProviderSpec{},
 		},
 	}
-	sts := &appsv1.StatefulSet{
-		ObjectMeta: metav1.ObjectMeta{
-			Namespace: cfg.OperatorNamespace,
-			Name:      dbcontroller.EmbeddedServiceName(provider.Name),
-		},
-	}
-
-	cli := fake.NewClientBuilder().
-		WithScheme(scheme).
-		WithRuntimeObjects(provider, sts).
-		Build()
-
-	secret, err := ensureEmbeddedAdminSecret(ctx, cli, provider, cfg)
-	g.Expect(err).To(MatchError(ContainSubstring("not found for an existing instance")))
-	g.Expect(secret).To(BeNil())
-}
-
-func TestEnsureEmbeddedAdminSecret_DoesNotRecoverMissingSecretWhenPVCRemains(t *testing.T) {
-	g := NewWithT(t)
-	ctx := context.Background()
-
-	scheme := runtime.NewScheme()
-	g.Expect(appsv1.AddToScheme(scheme)).To(Succeed())
-	g.Expect(corev1.AddToScheme(scheme)).To(Succeed())
-	g.Expect(infraApi.AddToScheme(scheme)).To(Succeed())
-
-	cfg := &moduleconfig.Config{OperatorNamespace: "operator-ns"}
-	provider := &infraApi.DatabaseProvider{
-		ObjectMeta: metav1.ObjectMeta{Name: "embedded"},
-		Spec: infraApi.DatabaseProviderSpec{
-			Type:     infraApi.ProviderTypeEmbedded,
-			Embedded: &infraApi.EmbeddedProviderSpec{},
-		},
-	}
-	pvc := &corev1.PersistentVolumeClaim{
-		ObjectMeta: metav1.ObjectMeta{
-			Namespace: cfg.OperatorNamespace,
-			Name:      dbcontroller.EmbeddedPVCName(provider.Name),
-		},
-	}
-
-	cli := fake.NewClientBuilder().
-		WithScheme(scheme).
-		WithRuntimeObjects(provider, pvc).
-		Build()
-
-	secret, err := ensureEmbeddedAdminSecret(ctx, cli, provider, cfg)
-	g.Expect(err).To(MatchError(ContainSubstring("not found for an existing instance")))
-	g.Expect(secret).To(BeNil())
-}
-
-func TestEnsureEmbeddedAdminSecret_DoesNotRecoverIncompleteSecretForExistingInstance(t *testing.T) {
-	g := NewWithT(t)
-	ctx := context.Background()
-
-	scheme := runtime.NewScheme()
-	g.Expect(appsv1.AddToScheme(scheme)).To(Succeed())
-	g.Expect(corev1.AddToScheme(scheme)).To(Succeed())
-	g.Expect(infraApi.AddToScheme(scheme)).To(Succeed())
-
-	cfg := &moduleconfig.Config{OperatorNamespace: "operator-ns"}
-	provider := &infraApi.DatabaseProvider{
-		ObjectMeta: metav1.ObjectMeta{Name: "embedded"},
-		Spec: infraApi.DatabaseProviderSpec{
-			Type:     infraApi.ProviderTypeEmbedded,
-			Embedded: &infraApi.EmbeddedProviderSpec{},
-		},
-	}
-	sts := &appsv1.StatefulSet{
-		ObjectMeta: metav1.ObjectMeta{
-			Namespace: cfg.OperatorNamespace,
-			Name:      dbcontroller.EmbeddedServiceName(provider.Name),
-		},
-	}
-	secret := &corev1.Secret{
+	// Simulate deploy action having already created the Secret.
+	existing := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Namespace: cfg.OperatorNamespace,
 			Name:      dbcontroller.EmbeddedAdminSecretName(provider.Name),
 		},
 		Data: map[string][]byte{
-			dbcontroller.EmbeddedAdminSecretUserKey: []byte("postgres"),
+			postgres.SecretKeyHost:     []byte("embedded.operator-ns.svc"),
+			postgres.SecretKeyPort:     []byte("5432"),
+			postgres.SecretKeyUser:     []byte("postgres"),
+			postgres.SecretKeyPassword: []byte("stable-password"),
+			postgres.SecretKeyDatabase: []byte("postgres"),
 		},
 	}
 
-	cli := fake.NewClientBuilder().
-		WithScheme(scheme).
-		WithRuntimeObjects(provider, sts, secret).
-		Build()
+	cli := fake.NewClientBuilder().WithScheme(scheme).WithRuntimeObjects(provider, existing).Build()
 
-	current, err := ensureEmbeddedAdminSecret(ctx, cli, provider, cfg)
-	g.Expect(err).To(MatchError(ContainSubstring("is incomplete for an existing instance")))
-	g.Expect(current).To(BeNil())
+	first, err := computeEmbeddedAdminSecret(ctx, cli, provider, cfg)
+	g.Expect(err).NotTo(HaveOccurred())
+	g.Expect(first.Data[postgres.SecretKeyPassword]).To(Equal([]byte("stable-password")))
+
+	second, err := computeEmbeddedAdminSecret(ctx, cli, provider, cfg)
+	g.Expect(err).NotTo(HaveOccurred())
+	g.Expect(second.Data).To(Equal(first.Data))
 }
 
 func TestEmbeddedNamespace_UsesOverride(t *testing.T) {
@@ -264,72 +174,6 @@ func TestEmbeddedNamespace_UsesOverride(t *testing.T) {
 
 	g.Expect(dbcontroller.EmbeddedNamespace(provider, cfg.OperatorNamespace)).To(Equal("custom-ns"))
 	g.Expect(dbcontroller.EmbeddedServiceHost(provider, cfg.OperatorNamespace)).To(Equal("embedded.custom-ns.svc"))
-}
-
-func TestEmbeddedImageChanged_MatchesCurrentStatefulSetImage(t *testing.T) {
-	g := NewWithT(t)
-
-	cfg := &moduleconfig.Config{
-		Embedded: moduleconfig.EmbeddedConfig{
-			PostgresImage: "postgres:test",
-			PgvectorImage: "pgvector:test",
-		},
-	}
-	provider := &infraApi.DatabaseProvider{
-		ObjectMeta: metav1.ObjectMeta{Name: "embedded"},
-		Spec: infraApi.DatabaseProviderSpec{
-			Type: infraApi.ProviderTypeEmbedded,
-			Embedded: &infraApi.EmbeddedProviderSpec{
-				Extensions: []string{"vector"},
-			},
-		},
-	}
-	sts := &appsv1.StatefulSet{
-		Spec: appsv1.StatefulSetSpec{
-			Template: corev1.PodTemplateSpec{
-				Spec: corev1.PodSpec{
-					Containers: []corev1.Container{
-						{Name: "postgres", Image: "pgvector:test"},
-					},
-				},
-			},
-		},
-	}
-
-	g.Expect(embeddedImageChanged(sts, provider, cfg)).To(BeFalse())
-}
-
-func TestEmbeddedImageChanged_DetectsDrift(t *testing.T) {
-	g := NewWithT(t)
-
-	cfg := &moduleconfig.Config{
-		Embedded: moduleconfig.EmbeddedConfig{
-			PostgresImage: "postgres:test",
-			PgvectorImage: "pgvector:test",
-		},
-	}
-	provider := &infraApi.DatabaseProvider{
-		ObjectMeta: metav1.ObjectMeta{Name: "embedded"},
-		Spec: infraApi.DatabaseProviderSpec{
-			Type: infraApi.ProviderTypeEmbedded,
-			Embedded: &infraApi.EmbeddedProviderSpec{
-				Extensions: []string{"vector"},
-			},
-		},
-	}
-	sts := &appsv1.StatefulSet{
-		Spec: appsv1.StatefulSetSpec{
-			Template: corev1.PodTemplateSpec{
-				Spec: corev1.PodSpec{
-					Containers: []corev1.Container{
-						{Name: "postgres", Image: "postgres:test"},
-					},
-				},
-			},
-		},
-	}
-
-	g.Expect(embeddedImageChanged(sts, provider, cfg)).To(BeTrue())
 }
 
 func TestReferencedClaimNamespaces_UsesPinnedProvider(t *testing.T) {
@@ -376,15 +220,10 @@ func TestReferencedClaimNamespaces_UsesPinnedProvider(t *testing.T) {
 		},
 	}
 
-	builder := fake.NewClientBuilder().
+	cli := fake.NewClientBuilder().
 		WithScheme(scheme).
-		WithRuntimeObjects(alpha, bravo, claim)
-
-	for _, idx := range dbcontroller.FieldIndexers {
-		builder = builder.WithIndex(idx.Obj, idx.Field, idx.Fn)
-	}
-
-	cli := builder.Build()
+		WithRuntimeObjects(alpha, bravo, claim).
+		Build()
 
 	namespaces, err := referencedClaimNamespaces(ctx, cli, bravo)
 	g.Expect(err).NotTo(HaveOccurred())

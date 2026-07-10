@@ -101,18 +101,22 @@ func (st *databaseClaimSuite) createExternalProvider(
 	}
 	maps.Copy(mergedAnnotations, annotations)
 
+	adminSecretData := map[string]string{
+		postgres.SecretKeyHost:     cfg.Host,
+		postgres.SecretKeyPort:     fmt.Sprintf("%d", cfg.Port),
+		postgres.SecretKeyUser:     cfg.User,
+		postgres.SecretKeyPassword: cfg.Password,
+		postgres.SecretKeyDatabase: cfg.DBName,
+	}
+	if cfg.SSLMode != "" {
+		adminSecretData[postgres.SecretKeySSLMode] = cfg.SSLMode
+	}
 	adminSecret := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name + "-admin",
 			Namespace: st.env.Namespace,
 		},
-		StringData: map[string]string{
-			postgres.SecretKeyHost:     cfg.Host,
-			postgres.SecretKeyPort:     fmt.Sprintf("%d", cfg.Port),
-			postgres.SecretKeyUser:     cfg.User,
-			postgres.SecretKeyPassword: cfg.Password,
-			postgres.SecretKeyDatabase: cfg.DBName,
-		},
+		StringData: adminSecretData,
 	}
 	if err := st.env.Client.Create(t.Context(), adminSecret); err != nil {
 		return err

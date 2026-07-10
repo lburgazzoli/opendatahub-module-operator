@@ -18,6 +18,10 @@ spec:
       labels:
         app.kubernetes.io/name: {{.ServiceName}}
         db.infrastructure.opendatahub.io/provider: {{.Component.Name}}
+{{- if .InstanceHash}}
+      annotations:
+        db.infrastructure.opendatahub.io/instance-hash: {{.InstanceHash}}
+{{- end}}
     spec:
       containers:
         - name: postgres
@@ -32,17 +36,17 @@ spec:
               valueFrom:
                 secretKeyRef:
                   name: {{.AdminSecretName}}
-                  key: POSTGRES_USER
+                  key: pg.user
             - name: POSTGRES_PASSWORD
               valueFrom:
                 secretKeyRef:
                   name: {{.AdminSecretName}}
-                  key: POSTGRES_PASSWORD
+                  key: pg.password
             - name: POSTGRES_DB
               valueFrom:
                 secretKeyRef:
                   name: {{.AdminSecretName}}
-                  key: POSTGRES_DB
+                  key: pg.database
             - name: PGDATA
               value: /var/lib/postgresql/data/pgdata
           readinessProbe:

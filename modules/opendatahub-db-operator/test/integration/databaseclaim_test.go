@@ -390,12 +390,12 @@ func (st *databaseClaimSuite) testCRDValidation(t *testing.T) {
 		obj := &infraApi.DatabaseClaim{
 			ObjectMeta: metav1.ObjectMeta{Name: "dc-valid", Namespace: ns},
 			Spec: infraApi.DatabaseClaimSpec{
-				Provider: infraApi.ProviderRef{Name: "p"},
-				Database: "ai_pipelines",
+				Provider: infraApi.ProviderRef{Name: st.providerName},
+				Database: st.db.cfg.DBName,
 			},
 		}
 		g.Expect(cli.Create(ctx, obj)).To(Succeed())
-		t.Cleanup(func() { _ = cli.Delete(ctx, obj) })
+		t.Cleanup(func() { st.env.deleteAndWait(context.Background(), t, obj) })
 
 		obj.Spec.Database = "a_different_database"
 		g.Expect(cli.Update(ctx, obj)).To(HaveOccurred())
@@ -406,13 +406,13 @@ func (st *databaseClaimSuite) testCRDValidation(t *testing.T) {
 		obj := &infraApi.DatabaseClaim{
 			ObjectMeta: metav1.ObjectMeta{Name: "dc-immut-access", Namespace: ns},
 			Spec: infraApi.DatabaseClaimSpec{
-				Provider: infraApi.ProviderRef{Name: "p"},
-				Database: "ai_pipelines",
+				Provider: infraApi.ProviderRef{Name: st.providerName},
+				Database: st.db.cfg.DBName,
 				Access:   infraApi.AccessModeReadWrite,
 			},
 		}
 		g.Expect(cli.Create(ctx, obj)).To(Succeed())
-		t.Cleanup(func() { _ = cli.Delete(ctx, obj) })
+		t.Cleanup(func() { st.env.deleteAndWait(context.Background(), t, obj) })
 
 		obj.Spec.Access = infraApi.AccessModeReadOnly
 		g.Expect(cli.Update(ctx, obj)).To(HaveOccurred())
@@ -423,12 +423,12 @@ func (st *databaseClaimSuite) testCRDValidation(t *testing.T) {
 		obj := &infraApi.DatabaseClaim{
 			ObjectMeta: metav1.ObjectMeta{Name: "dc-immut-provider", Namespace: ns},
 			Spec: infraApi.DatabaseClaimSpec{
-				Provider: infraApi.ProviderRef{Name: "p"},
-				Database: "ai_pipelines",
+				Provider: infraApi.ProviderRef{Name: st.providerName},
+				Database: st.db.cfg.DBName,
 			},
 		}
 		g.Expect(cli.Create(ctx, obj)).To(Succeed())
-		t.Cleanup(func() { _ = cli.Delete(ctx, obj) })
+		t.Cleanup(func() { st.env.deleteAndWait(context.Background(), t, obj) })
 
 		obj.Spec.Provider = infraApi.ProviderRef{Name: "q"}
 		g.Expect(cli.Update(ctx, obj)).To(HaveOccurred())

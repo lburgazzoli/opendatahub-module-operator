@@ -127,18 +127,22 @@ func (st *schemaClaimSuite) createExternalProvider(
 	}
 	maps.Copy(mergedAnnotations, annotations)
 
+	adminSecretData := map[string]string{
+		postgres.SecretKeyHost:     cfg.Host,
+		postgres.SecretKeyPort:     fmt.Sprintf("%d", cfg.Port),
+		postgres.SecretKeyUser:     cfg.User,
+		postgres.SecretKeyPassword: cfg.Password,
+		postgres.SecretKeyDatabase: database,
+	}
+	if cfg.SSLMode != "" {
+		adminSecretData[postgres.SecretKeySSLMode] = cfg.SSLMode
+	}
 	adminSecret := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name + "-admin",
 			Namespace: st.env.Namespace,
 		},
-		StringData: map[string]string{
-			postgres.SecretKeyHost:     cfg.Host,
-			postgres.SecretKeyPort:     fmt.Sprintf("%d", cfg.Port),
-			postgres.SecretKeyUser:     cfg.User,
-			postgres.SecretKeyPassword: cfg.Password,
-			postgres.SecretKeyDatabase: database,
-		},
+		StringData: adminSecretData,
 	}
 	g.Expect(st.env.Client.Create(t.Context(), adminSecret)).To(Succeed())
 	t.Cleanup(func() {
