@@ -18,7 +18,7 @@ package controller
 
 import (
 	"errors"
-	"strings"
+	"net"
 	"syscall"
 	"time"
 
@@ -27,12 +27,20 @@ import (
 
 const connectionRefusedRetryAfter = time.Second
 
+// StopWithQuickRetryIfConnectionRefused returns a quick-requeue StopError when
+// err is a connection-refused failure, and nil otherwise.
+//
+// Detection walks the error chain with errors.As to find a *net.OpError whose
+// underlying syscall error is ECONNREFUSED. This is reliable across locales,
+// error-wrapping styles, and TLS stacks — unlike string matching on the error
+// message, which breaks for non-English systems or non-standard wrappers.
 func StopWithQuickRetryIfConnectionRefused(err error) error {
 	if err == nil {
 		return nil
 	}
 
-	if errors.Is(err, syscall.ECONNREFUSED) || strings.Contains(err.Error(), "connect: connection refused") {
+	var opErr *net.OpError
+	if errors.As(err, &opErr) && errors.Is(opErr.Err, syscall.ECONNREFUSED) {
 		return odherrors.NewStopErrorWithRequeueAfterW(connectionRefusedRetryAfter, err)
 	}
 
