@@ -220,6 +220,7 @@ func (st *e2eSuite) createExternalProviderWithDatabase(t *testing.T) (*infraApi.
 			postgres.SecretKeyUser:     externalPostgresUser,
 			postgres.SecretKeyPassword: externalPostgresPassword,
 			postgres.SecretKeyDatabase: externalPostgresDB,
+			postgres.SecretKeySSLMode:  postgres.SSLModeDisable,
 		},
 	}
 	g.Expect(st.Client.Create(t.Context(), adminSecret)).To(Succeed())

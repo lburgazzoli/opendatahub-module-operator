@@ -55,6 +55,9 @@ spec:
                 - ReadWrite
                 - ReadOnly
                 type: string
+                x-kubernetes-validations:
+                - message: access is immutable once set
+                  rule: self == oldSelf
               database:
                 description: |-
                   Database names a pre-existing database on the provider's backend.
@@ -126,6 +129,8 @@ spec:
                     x-kubernetes-map-type: atomic
                 type: object
                 x-kubernetes-validations:
+                - message: provider is immutable once set
+                  rule: self == oldSelf
                 - message: exactly one of name or selector must be set
                   rule: '(has(self.name) ? 1 : 0) + (has(self.selector) ? 1 : 0) ==
                     1'
@@ -375,19 +380,29 @@ spec:
                     type: string
                   extensions:
                     description: |-
-                      Extensions lists PostgreSQL extension names to make available,
-                      mapped to a built-in container image (task-08 §1) -- an unmapped
-                      combination fails reconciliation with an actionable condition rather
-                      than silently ignoring the request.
+                      Extensions lists PostgreSQL extensions to make available inside the
+                      embedded instance. Each value selects a built-in container image:
+                      "vector" uses the pgvector image; all others use the standard
+                      PostgreSQL image. Immutable once set.
                     items:
-                      pattern: ^[a-z][a-z0-9_]*$
+                      enum:
+                      - vector
+                      - pg_trgm
+                      - uuid_ossp
+                      - pgcrypto
                       type: string
                     type: array
+                    x-kubernetes-validations:
+                    - message: extensions are immutable once set
+                      rule: self == oldSelf
                   namespace:
                     description: |-
                       Namespace overrides where the embedded PostgreSQL resources are created.
-                      When unset, the operator namespace is used.
+                      When unset, the operator namespace is used. Immutable once set.
                     type: string
+                    x-kubernetes-validations:
+                    - message: namespace is immutable once set
+                      rule: self == oldSelf
                   resources:
                     description: Resources are applied to the Postgres container.
                     properties:
@@ -856,6 +871,9 @@ spec:
                 - ReadWrite
                 - ReadOnly
                 type: string
+                x-kubernetes-validations:
+                - message: access is immutable once set
+                  rule: self == oldSelf
               deletionPolicy:
                 default: Retain
                 description: DeletionPolicy governs schema+data lifecycle on claim
@@ -922,6 +940,8 @@ spec:
                     x-kubernetes-map-type: atomic
                 type: object
                 x-kubernetes-validations:
+                - message: provider is immutable once set
+                  rule: self == oldSelf
                 - message: exactly one of name or selector must be set
                   rule: '(has(self.name) ? 1 : 0) + (has(self.selector) ? 1 : 0) ==
                     1'

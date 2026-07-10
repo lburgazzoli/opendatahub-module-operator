@@ -29,6 +29,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/test/support"
+	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/test/support/cluster"
 )
 
 const (
@@ -56,7 +57,12 @@ func runTestMain(m *testing.M) int {
 }
 
 func newE2ESuite(t *testing.T) *e2eSuite {
-	cli, err := support.NewClient()
+	testCluster, err := cluster.NewExternal()
+	if err != nil {
+		t.Fatalf("failed to create e2e cluster: %v", err)
+	}
+
+	cli, err := testCluster.Client()
 	if err != nil {
 		t.Fatalf("failed to create client: %v", err)
 	}

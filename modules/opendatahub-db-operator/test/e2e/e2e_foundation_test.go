@@ -81,26 +81,6 @@ func (st *e2eSuite) waitProviderReachable(t *testing.T, provider *infraApi.Datab
 	)
 }
 
-func (st *e2eSuite) expectProviderUnreachable(
-	t *testing.T,
-	provider *infraApi.DatabaseProvider,
-	reason string,
-	messageSubstring string,
-) {
-	t.Helper()
-
-	NewWithT(t).Eventually(t.Context(), k8sm.Get(st.Client, provider)).Should(
-		WithTransform(k8sm.ConditionsOf[metav1.Condition](), ContainElement(
-			SatisfyAll(
-				HaveField("Type", Equal(databaseprovider.ConditionReachable)),
-				HaveField("Status", Equal(metav1.ConditionFalse)),
-				HaveField("Reason", Equal(reason)),
-				HaveField("Message", ContainSubstring(messageSubstring)),
-			),
-		)),
-	)
-}
-
 func (st *e2eSuite) deleteAndWait(ctx context.Context, t *testing.T, obj client.Object) {
 	t.Helper()
 

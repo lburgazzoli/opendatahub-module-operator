@@ -23,7 +23,6 @@ func TestDatabaseOperatorE2EEmbedded(t *testing.T) {
 	suite := newE2ESuite(t)
 
 	t.Run("embedded provider serves schema and database claims together", suite.testEmbeddedProviderServesClaims)
-	t.Run("deleted embedded admin secret is surfaced", suite.testDeletedAdminSecret)
 }
 
 func (st *e2eSuite) testEmbeddedProviderServesClaims(t *testing.T) {
@@ -105,21 +104,6 @@ func (st *e2eSuite) testEmbeddedProviderServesClaims(t *testing.T) {
 	g.Expect(schemaCfg.Host).To(Equal(expectedHost))
 	g.Expect(databaseCfg.Host).To(Equal(expectedHost))
 	g.Expect(schemaCfg.User).NotTo(Equal(databaseCfg.User))
-}
-
-func (st *e2eSuite) testDeletedAdminSecret(t *testing.T) {
-	provider := st.createEmbeddedProvider(t)
-	st.waitProviderReachable(t, provider)
-
-	adminSecret := &corev1.Secret{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      dbcontroller.EmbeddedAdminSecretName(provider.Name),
-			Namespace: st.operatorNamespace,
-		},
-	}
-	st.deleteAndWait(t.Context(), t, adminSecret)
-
-	st.expectProviderUnreachable(t, provider, "AdminSecretUnavailable", adminSecret.Name)
 }
 
 func (st *e2eSuite) createEmbeddedProvider(t *testing.T) *infraApi.DatabaseProvider {

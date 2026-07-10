@@ -36,13 +36,13 @@ import (
 	"k8s.io/client-go/rest"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/client/config"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
 	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/pkg/config"
 	modulemanager "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/pkg/manager"
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/pkg/postgres"
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/test/support"
+	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/test/support/cluster"
 )
 
 type integrationEnv struct {
@@ -72,9 +72,9 @@ func runTestMain(m *testing.M) int {
 
 	ctrl.SetLogger(zap.New(zap.UseDevMode(true)))
 
-	restCfg, err := config.GetConfig()
+	testCluster, err := cluster.NewExternal()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to read rest config: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Failed to create integration cluster: %v\n", err)
 		return 1
 	}
 
@@ -91,8 +91,11 @@ func runTestMain(m *testing.M) int {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+	defer func() {
+		_ = testCluster.Stop(ctx)
+	}()
 
-	cli, err := support.NewClient()
+	cli, err := testCluster.Client()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to create integration client: %v\n", err)
 		return 1
@@ -102,7 +105,7 @@ func runTestMain(m *testing.M) int {
 		return 1
 	}
 
-	if err := startIntegrationManager(ctx, restCfg, moduleCfg); err != nil {
+	if err := startIntegrationManager(ctx, testCluster.Config(), moduleCfg); err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to start integration manager: %v\n", err)
 		return 1
 	}
@@ -113,7 +116,11 @@ func runTestMain(m *testing.M) int {
 func newIntegrationEnv(t *testing.T) (*integrationEnv, error) {
 	t.Helper()
 
-	cli, err := support.NewClient()
+	testCluster, err := cluster.NewExternal()
+	if err != nil {
+		return nil, fmt.Errorf("creating integration cluster: %w", err)
+	}
+	cli, err := testCluster.Client()
 	if err != nil {
 		return nil, fmt.Errorf("creating test client: %w", err)
 	}
