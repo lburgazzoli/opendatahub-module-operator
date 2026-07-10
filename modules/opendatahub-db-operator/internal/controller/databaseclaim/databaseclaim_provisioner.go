@@ -63,16 +63,6 @@ func (p DatabaseProvisioner) ConnectionStatus() infraApi.DatabaseConnectionStatu
 func (p DatabaseProvisioner) Ensure(
 	ctx context.Context,
 ) (*corev1.Secret, error) {
-	if p.Client == nil {
-		return nil, fmt.Errorf("client is required")
-	}
-	if p.Claim == nil {
-		return nil, fmt.Errorf("claim is required")
-	}
-	if p.Pool == nil {
-		return nil, fmt.Errorf("pool is required")
-	}
-
 	dbExists, err := postgres.DatabaseExists(ctx, p.Pool, p.Claim.Spec.Database)
 	if err != nil {
 		return nil, wrapQuickRetry("checking database existence", err)
@@ -125,8 +115,6 @@ func (p DatabaseProvisioner) buildCredentialsSecret(
 	password string,
 ) {
 	secret.SetGroupVersionKind(gvk.Secret)
-	secret.Name = dbcontroller.SecretNameForDatabaseClaim(p.Claim)
-	secret.Namespace = p.Claim.Namespace
 	secret.Type = corev1.SecretTypeOpaque
 	secret.Data = map[string][]byte{
 		postgres.SecretKeyHost:     []byte(p.Config.Host),

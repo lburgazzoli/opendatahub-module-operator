@@ -115,12 +115,14 @@ func (m *Controller) reconcileEmbeddedAction(
 			conditions.WithReason(reasonAdminSecretUnavailable),
 			conditions.WithMessage("%s", err.Error()))
 		return fmt.Errorf("ensuring embedded admin Secret: %w", err)
-	} else if cfg, err := dbcontroller.LoadProviderConfig(ctx, rr.Client, obj, m.cfg.OperatorNamespace); err == nil {
-		obj.Status.Connection = providerConnectionStatus(cfg)
-	} else {
+	}
+
+	cfg, err := dbcontroller.LoadProviderConfig(ctx, rr.Client, obj, m.cfg.OperatorNamespace)
+	if err != nil {
 		obj.Status.Connection = infraApi.ProviderConnectionStatus{}
 		return fmt.Errorf("loading embedded provider connection status: %w", err)
 	}
+	obj.Status.Connection = providerConnectionStatus(cfg)
 
 	rr.Templates = []odhtypes.TemplateInfo{
 		{FS: assets.Manifests, Path: "manifests/embedded/pvc.yaml.tmpl"},

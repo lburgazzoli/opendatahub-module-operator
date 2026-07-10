@@ -62,16 +62,6 @@ func (p SchemaProvisioner) ConnectionStatus(schema string) infraApi.SchemaConnec
 func (p SchemaProvisioner) Ensure(
 	ctx context.Context,
 ) (*corev1.Secret, error) {
-	if p.Client == nil {
-		return nil, fmt.Errorf("client is required")
-	}
-	if p.Claim == nil {
-		return nil, fmt.Errorf("claim is required")
-	}
-	if p.Pool == nil {
-		return nil, fmt.Errorf("pool is required")
-	}
-
 	schema := p.Schema()
 	schemaExists, err := ensureSchema(ctx, p.Pool, schema)
 	if err != nil {
@@ -122,8 +112,6 @@ func (p SchemaProvisioner) buildCredentialsSecret(
 	schema string,
 ) {
 	secret.SetGroupVersionKind(gvk.Secret)
-	secret.Name = dbcontroller.SecretNameForSchemaClaim(p.Claim)
-	secret.Namespace = p.Claim.Namespace
 	secret.Type = corev1.SecretTypeOpaque
 	secret.Data = map[string][]byte{
 		postgres.SecretKeyHost:     []byte(p.Config.Host),

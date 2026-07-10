@@ -18,6 +18,7 @@ package databaseprovider
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	corev1 "k8s.io/api/core/v1"
@@ -88,14 +89,13 @@ func loadExternalConfig(
 }
 
 func externalFailureReason(err error) string {
-	switch err.(type) {
-	case ErrConnectionSecretUnavailable:
+	if _, ok := errors.AsType[ErrConnectionSecretUnavailable](err); ok {
 		return "ConnectionSecretUnavailable"
-	case ErrConnectionSecretInvalid:
-		return "ConnectionSecretInvalid"
-	default:
-		return "ConnectionCheckFailed"
 	}
+	if _, ok := errors.AsType[ErrConnectionSecretInvalid](err); ok {
+		return "ConnectionSecretInvalid"
+	}
+	return "ConnectionCheckFailed"
 }
 
 func providerConnectionStatus(cfg postgres.Config) infraApi.ProviderConnectionStatus {
