@@ -232,6 +232,16 @@ func RevokeSchemaPrivileges(ctx context.Context, pool *pgxpool.Pool, schema, rol
 // expected for accessMode on schema: USAGE for ReadOnly, USAGE+CREATE for
 // ReadWrite. COALESCE handles the NULL returned when the role is unknown to
 // HAS_SCHEMA_PRIVILEGE (treats it as false).
+//
+// Note: this checks schema-level grants only (USAGE / CREATE on the schema
+// itself). It does not check DML grants on individual tables that existed
+// before the schema was claimed, or on tables whose default privileges were
+// manually revoked. If such tables exist, HAS_SCHEMA_PRIVILEGE may return
+// true while queries against those tables still fail. This is an acceptable
+// bounded risk: new schemas provisioned by this operator contain no
+// pre-existing tables, so the check is complete for the normal provisioning
+// path. Operators who manually manipulate schema objects should verify
+// per-table grants independently.
 func HasSchemaPrivileges(
 	ctx context.Context,
 	pool *pgxpool.Pool,
