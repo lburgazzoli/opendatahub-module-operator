@@ -18,16 +18,16 @@ const (
 	TypeK3s      Type = "k3s"
 )
 
-// TestCluster exposes the minimum cluster primitives needed by tests without
+// Instance exposes the minimum cluster primitives needed by tests without
 // coupling callers to a specific backend implementation.
-type TestCluster interface {
+type Instance interface {
 	Config() *rest.Config
 	Scheme() *runtime.Scheme
-	Client() (client.Client, error)
+	Client() client.Client
 	Stop(ctx context.Context) error
 }
 
-func New(ctx context.Context, clusterType Type) (TestCluster, error) {
+func New(ctx context.Context, clusterType Type) (Instance, error) {
 	switch clusterType {
 	case TypeExternal:
 		return NewExternal()

@@ -21,6 +21,9 @@ package gvk
 
 import (
 	fwgvk "github.com/opendatahub-io/odh-platform-utilities/framework/cluster/gvk"
+	"k8s.io/apimachinery/pkg/runtime/schema"
+
+	infraApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/api/infrastructure/v1alpha1"
 )
 
 // Shared chartgen GVKs reused from the upstream operator cluster package.
@@ -37,6 +40,26 @@ var (
 	Secret                         = fwgvk.Secret
 )
 
-// Module-specific GVKs (SchemaClaim, DatabaseClaim, DatabaseProvider, StatefulSet,
-// PersistentVolumeClaim, Service, NetworkPolicy) are added in task-02/task-08 once
-// those types and the Embedded provider's owned resources exist (docs/plan.md §5, §7).
+// Module-specific GVKs used across controllers, tests, and chart generation.
+var (
+	SchemaClaim     = infraApi.SchemeGroupVersion.WithKind(infraApi.SchemaClaimKind)
+	SchemaClaimList = schema.GroupVersionKind{
+		Group:   SchemaClaim.Group,
+		Version: SchemaClaim.Version,
+		Kind:    infraApi.SchemaClaimKind,
+	}
+
+	DatabaseClaim     = infraApi.SchemeGroupVersion.WithKind(infraApi.DatabaseClaimKind)
+	DatabaseClaimList = schema.GroupVersionKind{
+		Group:   DatabaseClaim.Group,
+		Version: DatabaseClaim.Version,
+		Kind:    infraApi.DatabaseClaimKind,
+	}
+
+	DatabaseProvider     = infraApi.SchemeGroupVersion.WithKind(infraApi.DatabaseProviderKind)
+	DatabaseProviderList = schema.GroupVersionKind{
+		Group:   DatabaseProvider.Group,
+		Version: DatabaseProvider.Version,
+		Kind:    infraApi.DatabaseProviderKind,
+	}
+)

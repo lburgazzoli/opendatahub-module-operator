@@ -31,16 +31,8 @@ import (
 	infraApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/api/infrastructure/v1alpha1"
 	dbcontroller "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/pkg/controller"
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/pkg/postgres"
+	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/test/support"
 )
-
-func TestSchemaClaim(t *testing.T) {
-	g := NewWithT(t)
-
-	suite, err := newSchemaClaimSuite(t)
-	g.Expect(err).ToNot(HaveOccurred())
-
-	t.Run("schema claim suite", suite.Run)
-}
 
 func (st *schemaClaimSuite) Run(t *testing.T) {
 	t.Run("crd validation", st.testCRDValidation)
@@ -106,11 +98,11 @@ func (st *schemaClaimSuite) testAccessModeEnforcement(t *testing.T) {
 	readOnlyCfg, err := postgres.ParseSecret(readOnlySecret.Data)
 	g.Expect(err).NotTo(HaveOccurred())
 
-	readWritePool, err := openClaimPool(ctx, readWriteCfg)
+	readWritePool, err := postgres.OpenPool(ctx, readWriteCfg)
 	g.Expect(err).NotTo(HaveOccurred())
 	t.Cleanup(readWritePool.Close)
 
-	readOnlyPool, err := openClaimPool(ctx, readOnlyCfg)
+	readOnlyPool, err := postgres.OpenPool(ctx, readOnlyCfg)
 	g.Expect(err).NotTo(HaveOccurred())
 	t.Cleanup(readOnlyPool.Close)
 
@@ -226,7 +218,7 @@ func (st *schemaClaimSuite) testSecretDeletionRecovery(t *testing.T) {
 	g.Expect(err).NotTo(HaveOccurred())
 	oldPassword := string(secret.Data[postgres.SecretKeyPassword])
 
-	st.env.deleteAndWait(t.Context(), t, secret)
+	g.Expect(support.DeleteAndWait(t.Context(), st.env.Client, secret)).To(Succeed())
 	st.triggerReconcile(t, claim)
 
 	recovered := st.waitCredentialsSecret(t, name)
@@ -325,7 +317,7 @@ func (st *schemaClaimSuite) testSelectorKeepsCurrentProvider(t *testing.T) {
 	claim := st.newSelectorClaim(name, selector)
 
 	currentProvider := "provider-" + xid.New().String()
-	st.createExternalProvider(t, currentProvider, st.db.cfg, st.databaseName, selector, map[string]string{
+	st.createExternalProvider(t, currentProvider, st.db.Config(), st.databaseName, selector, map[string]string{
 		dbcontroller.AnnotationSelectionPriority: "0",
 	})
 
@@ -341,7 +333,7 @@ func (st *schemaClaimSuite) testSelectorKeepsCurrentProvider(t *testing.T) {
 	otherDB := "schema_" + xid.New().String()
 	st.createDatabase(t, otherDB)
 	betterProvider := "provider-" + xid.New().String()
-	st.createExternalProvider(t, betterProvider, st.db.cfg, otherDB, selector, map[string]string{
+	st.createExternalProvider(t, betterProvider, st.db.Config(), otherDB, selector, map[string]string{
 		dbcontroller.AnnotationSelectionPriority: "100",
 	})
 
@@ -442,7 +434,11 @@ func (st *schemaClaimSuite) testCRDValidation(t *testing.T) {
 			},
 		}
 		g.Expect(cli.Create(ctx, obj)).To(Succeed())
-		t.Cleanup(func() { st.env.deleteAndWait(context.Background(), t, obj) })
+		t.Cleanup(func() {
+			if err := support.DeleteAndWait(context.Background(), st.env.Client, obj); err != nil {
+				t.Errorf("deleting schema claim: %v", err)
+			}
+		})
 
 		obj.Spec.Schema = "a_different_schema"
 		g.Expect(cli.Update(ctx, obj)).To(HaveOccurred())
@@ -458,7 +454,11 @@ func (st *schemaClaimSuite) testCRDValidation(t *testing.T) {
 			},
 		}
 		g.Expect(cli.Create(ctx, obj)).To(Succeed())
-		t.Cleanup(func() { st.env.deleteAndWait(context.Background(), t, obj) })
+		t.Cleanup(func() {
+			if err := support.DeleteAndWait(context.Background(), st.env.Client, obj); err != nil {
+				t.Errorf("deleting schema claim: %v", err)
+			}
+		})
 
 		obj.Spec.Access = infraApi.AccessModeReadOnly
 		g.Expect(cli.Update(ctx, obj)).To(HaveOccurred())
@@ -473,7 +473,11 @@ func (st *schemaClaimSuite) testCRDValidation(t *testing.T) {
 			},
 		}
 		g.Expect(cli.Create(ctx, obj)).To(Succeed())
-		t.Cleanup(func() { st.env.deleteAndWait(context.Background(), t, obj) })
+		t.Cleanup(func() {
+			if err := support.DeleteAndWait(context.Background(), st.env.Client, obj); err != nil {
+				t.Errorf("deleting schema claim: %v", err)
+			}
+		})
 
 		obj.Spec.Provider = infraApi.ProviderRef{Name: "q"}
 		g.Expect(cli.Update(ctx, obj)).To(HaveOccurred())

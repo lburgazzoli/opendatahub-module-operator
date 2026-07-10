@@ -12,10 +12,11 @@ import (
 
 type External struct {
 	cfg    *rest.Config
+	cli    client.Client
 	scheme *runtime.Scheme
 }
 
-func NewExternal() (TestCluster, error) {
+func NewExternal() (Instance, error) {
 	cfg, err := ctrlconfig.GetConfig()
 	if err != nil {
 		return nil, fmt.Errorf("getting kubeconfig: %w", err)
@@ -24,14 +25,22 @@ func NewExternal() (TestCluster, error) {
 	return NewExternalFromConfig(cfg)
 }
 
-func NewExternalFromConfig(cfg *rest.Config) (TestCluster, error) {
+func NewExternalFromConfig(cfg *rest.Config) (Instance, error) {
 	if cfg == nil {
 		return nil, fmt.Errorf("config is nil")
 	}
 
+	copiedCfg := rest.CopyConfig(cfg)
+	scheme := newScheme()
+	cli, err := newClient(copiedCfg, scheme)
+	if err != nil {
+		return nil, err
+	}
+
 	return &External{
-		cfg:    rest.CopyConfig(cfg),
-		scheme: newScheme(),
+		cfg:    copiedCfg,
+		cli:    cli,
+		scheme: scheme,
 	}, nil
 }
 
@@ -51,12 +60,12 @@ func (e *External) Scheme() *runtime.Scheme {
 	return e.scheme
 }
 
-func (e *External) Client() (client.Client, error) {
+func (e *External) Client() client.Client {
 	if e == nil {
-		return nil, fmt.Errorf("external cluster is nil")
+		return nil
 	}
 
-	return newClient(e.cfg, e.scheme)
+	return e.cli
 }
 
 func (e *External) Stop(_ context.Context) error {

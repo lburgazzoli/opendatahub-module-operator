@@ -12,7 +12,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-const DefaultK3sImage = "rancher/k3s:v1.32.9-k3s1"
+const DefaultK3sImage = "rancher/k3s:v1.36.2-k3s1"
 
 type K3sOption func(*K3sOptions)
 
@@ -23,11 +23,12 @@ type K3sOptions struct {
 
 type K3s struct {
 	cfg       *rest.Config
+	cli       client.Client
 	container *tck3s.K3sContainer
 	scheme    *runtime.Scheme
 }
 
-func NewK3s(ctx context.Context, opts ...K3sOption) (TestCluster, error) {
+func NewK3s(ctx context.Context, opts ...K3sOption) (Instance, error) {
 	if ctx == nil {
 		return nil, fmt.Errorf("context is nil")
 	}
@@ -59,10 +60,18 @@ func NewK3s(ctx context.Context, opts ...K3sOption) (TestCluster, error) {
 		return nil, fmt.Errorf("creating rest config from kubeconfig: %w", err)
 	}
 
+	scheme := newScheme()
+	cli, err := newClient(cfg, scheme)
+	if err != nil {
+		_ = testcontainers.TerminateContainer(container)
+		return nil, err
+	}
+
 	return &K3s{
 		cfg:       cfg,
+		cli:       cli,
 		container: container,
-		scheme:    newScheme(),
+		scheme:    scheme,
 	}, nil
 }
 
@@ -102,12 +111,12 @@ func (k *K3s) Scheme() *runtime.Scheme {
 	return k.scheme
 }
 
-func (k *K3s) Client() (client.Client, error) {
+func (k *K3s) Client() client.Client {
 	if k == nil {
-		return nil, fmt.Errorf("k3s cluster is nil")
+		return nil
 	}
 
-	return newClient(k.cfg, k.scheme)
+	return k.cli
 }
 
 func (k *K3s) Stop(ctx context.Context) error {

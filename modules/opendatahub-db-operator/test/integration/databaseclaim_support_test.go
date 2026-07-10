@@ -35,6 +35,8 @@ import (
 	infraApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/api/infrastructure/v1alpha1"
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/internal/controller/databaseclaim"
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/pkg/postgres"
+	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/test/support"
+	testdb "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/test/support/db"
 )
 
 const maxDatabaseClaimRoleLen = 63
@@ -43,24 +45,19 @@ var databaseClaimNonIdentRe = regexp.MustCompile(`[^a-z0-9_]`)
 
 type databaseClaimSuite struct {
 	env          *integrationEnv
-	db           *testDatabase
+	db           *testdb.Instance
 	providerName string
 }
 
-func newDatabaseClaimSuite(t *testing.T) (*databaseClaimSuite, error) {
+func newDatabaseClaimSuite(t *testing.T, env *integrationEnv) (*databaseClaimSuite, error) {
 	t.Helper()
-
-	env, err := newIntegrationEnv(t)
-	if err != nil {
-		return nil, err
-	}
 
 	suite := &databaseClaimSuite{
 		env:          env,
 		providerName: "database-provider-" + xid.New().String(),
 	}
 
-	db, err := startDatabase(t.Context())
+	db, err := testdb.Start(t.Context())
 	if err != nil {
 		return nil, err
 	}
@@ -84,7 +81,7 @@ func newDatabaseClaimSuite(t *testing.T) (*databaseClaimSuite, error) {
 }
 
 func (st *databaseClaimSuite) createProvider(t *testing.T) error {
-	return st.createExternalProvider(t, st.providerName, st.db.cfg, nil, nil)
+	return st.createExternalProvider(t, st.providerName, st.db.Config(), nil, nil)
 }
 
 func (st *databaseClaimSuite) createExternalProvider(
@@ -122,7 +119,9 @@ func (st *databaseClaimSuite) createExternalProvider(
 		return err
 	}
 	t.Cleanup(func() {
-		st.env.deleteAndWait(context.Background(), t, adminSecret)
+		if err := support.DeleteAndWait(context.Background(), st.env.Client, adminSecret); err != nil {
+			t.Errorf("deleting admin secret: %v", err)
+		}
 	})
 
 	provider := &infraApi.DatabaseProvider{
@@ -145,7 +144,9 @@ func (st *databaseClaimSuite) createExternalProvider(
 		return err
 	}
 	t.Cleanup(func() {
-		st.env.deleteAndWait(context.Background(), t, provider)
+		if err := support.DeleteAndWait(context.Background(), st.env.Client, provider); err != nil {
+			t.Errorf("deleting provider: %v", err)
+		}
 	})
 	return nil
 }
@@ -154,9 +155,8 @@ func (st *databaseClaimSuite) createDatabase(t *testing.T, name string) {
 	t.Helper()
 
 	g := NewWithT(t)
-	pool, err := st.db.openAdminPool(t.Context())
-	g.Expect(err).NotTo(HaveOccurred())
-	t.Cleanup(pool.Close)
+	pool := st.db.Pool()
+	g.Expect(pool).NotTo(BeNil())
 
 	exists, err := postgres.DatabaseExists(t.Context(), pool, name)
 	g.Expect(err).NotTo(HaveOccurred())
@@ -172,9 +172,8 @@ func (st *databaseClaimSuite) roleExists(t *testing.T, role string) bool {
 	t.Helper()
 
 	g := NewWithT(t)
-	pool, err := st.db.openAdminPool(t.Context())
-	g.Expect(err).NotTo(HaveOccurred())
-	t.Cleanup(pool.Close)
+	pool := st.db.Pool()
+	g.Expect(pool).NotTo(BeNil())
 
 	exists, err := postgres.RoleExists(t.Context(), pool, role)
 	g.Expect(err).NotTo(HaveOccurred())
@@ -185,9 +184,8 @@ func (st *databaseClaimSuite) databaseExists(t *testing.T, name string) bool {
 	t.Helper()
 
 	g := NewWithT(t)
-	pool, err := st.db.openAdminPool(t.Context())
-	g.Expect(err).NotTo(HaveOccurred())
-	t.Cleanup(pool.Close)
+	pool := st.db.Pool()
+	g.Expect(pool).NotTo(BeNil())
 
 	exists, err := postgres.DatabaseExists(t.Context(), pool, name)
 	g.Expect(err).NotTo(HaveOccurred())
@@ -216,7 +214,9 @@ func (st *databaseClaimSuite) createClaim(t *testing.T, claim *infraApi.Database
 	g.Expect(st.env.Client.Create(t.Context(), claim)).To(Succeed())
 
 	t.Cleanup(func() {
-		st.env.deleteAndWait(context.Background(), t, claim)
+		if err := support.DeleteAndWait(context.Background(), st.env.Client, claim); err != nil {
+			t.Errorf("deleting claim: %v", err)
+		}
 	})
 }
 
@@ -303,9 +303,8 @@ func (st *databaseClaimSuite) dropRole(t *testing.T, role string, database strin
 	t.Helper()
 
 	g := NewWithT(t)
-	pool, err := st.db.openAdminPool(t.Context())
-	g.Expect(err).NotTo(HaveOccurred())
-	t.Cleanup(pool.Close)
+	pool := st.db.Pool()
+	g.Expect(pool).NotTo(BeNil())
 
 	g.Expect(postgres.RevokeDatabasePrivileges(t.Context(), pool, database, role)).To(Succeed())
 	g.Expect(postgres.DropRole(t.Context(), pool, role)).To(Succeed())

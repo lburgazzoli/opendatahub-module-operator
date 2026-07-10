@@ -63,17 +63,9 @@ deps: ## Tidy and verify Go module dependencies.
 test: manifests generate fmt vet ## Run unit tests.
 	go test -ldflags "$(LDFLAGS)" $$(go list ./... | grep -v /e2e | grep -v /integration) -coverprofile cover.out
 
-.PHONY: test-integration-run
-test-integration-run: ## Run integration tests only (cluster must be prepared).
-	INTEGRATION_TEST_NAMESPACE="$(INTEGRATION_TEST_NAMESPACE)" TEST_PLATFORM_VERSION="$(TEST_PLATFORM_VERSION)" go test -ldflags "$(LDFLAGS)" ./test/integration/ -tags=integration -v -timeout 5m -failfast
-
-.PHONY: test-integration-setup
-test-integration-setup: manifests generate ## Prepare the cluster for integration tests.
-	$(MAKE) cleanup-integration
-	$(MAKE) install
-
 .PHONY: test-integration
-test-integration: test-integration-setup test-integration-run ## Run integration tests (prepare cluster, then run tests).
+test-integration: manifests generate ## Run integration tests.
+	INTEGRATION_TEST_NAMESPACE="$(INTEGRATION_TEST_NAMESPACE)" TEST_PLATFORM_VERSION="$(TEST_PLATFORM_VERSION)" go test -ldflags "$(LDFLAGS)" ./test/integration/ -tags=integration -v -timeout 5m -failfast
 
 .PHONY: test-e2e-run
 test-e2e-run: ## Run e2e tests only (operator must already be deployed).

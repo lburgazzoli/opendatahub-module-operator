@@ -18,6 +18,7 @@ package postgres
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -29,6 +30,15 @@ type poolPinger interface {
 
 var openPingPool = func(ctx context.Context, dsn string) (poolPinger, error) {
 	return pgxpool.New(ctx, dsn)
+}
+
+func OpenPool(ctx context.Context, cfg Config) (*pgxpool.Pool, error) {
+	pool, err := pgxpool.New(ctx, cfg.DSN())
+	if err != nil {
+		return nil, sanitize(fmt.Errorf("opening pool: %w", err), cfg.Password)
+	}
+
+	return pool, nil
 }
 
 // Ping opens a short-lived connection to verify the server is reachable, then

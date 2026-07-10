@@ -29,16 +29,8 @@ import (
 
 	infraApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/api/infrastructure/v1alpha1"
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/pkg/postgres"
+	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/test/support"
 )
-
-func TestDatabaseClaim(t *testing.T) {
-	g := NewWithT(t)
-
-	suite, err := newDatabaseClaimSuite(t)
-	g.Expect(err).ToNot(HaveOccurred())
-
-	t.Run("database claim suite", suite.Run)
-}
 
 func (st *databaseClaimSuite) Run(t *testing.T) {
 	t.Run("crd validation", st.testCRDValidation)
@@ -100,14 +92,15 @@ func (st *databaseClaimSuite) testAccessModeEnforcement(t *testing.T) {
 
 	readWriteCfg, err := postgres.ParseSecret(readWriteSecret.Data)
 	g.Expect(err).NotTo(HaveOccurred())
+
 	readOnlyCfg, err := postgres.ParseSecret(readOnlySecret.Data)
 	g.Expect(err).NotTo(HaveOccurred())
 
-	readWritePool, err := openClaimPool(ctx, readWriteCfg)
+	readWritePool, err := postgres.OpenPool(ctx, readWriteCfg)
 	g.Expect(err).NotTo(HaveOccurred())
 	t.Cleanup(readWritePool.Close)
 
-	readOnlyPool, err := openClaimPool(ctx, readOnlyCfg)
+	readOnlyPool, err := postgres.OpenPool(ctx, readOnlyCfg)
 	g.Expect(err).NotTo(HaveOccurred())
 	t.Cleanup(readOnlyPool.Close)
 
@@ -118,9 +111,8 @@ func (st *databaseClaimSuite) testAccessModeEnforcement(t *testing.T) {
 	)
 	g.Expect(err).NotTo(HaveOccurred())
 
-	adminPool, err := st.db.openAdminPool(ctx)
-	g.Expect(err).NotTo(HaveOccurred())
-	t.Cleanup(adminPool.Close)
+	adminPool := st.db.Pool()
+	g.Expect(adminPool).NotTo(BeNil())
 	t.Cleanup(func() {
 		_ = postgres.DropSchemaCascade(ctx, adminPool, readWriteSchema)
 	})
@@ -204,7 +196,7 @@ func (st *databaseClaimSuite) testSecretDeletionRecovery(t *testing.T) {
 	g.Expect(err).NotTo(HaveOccurred())
 	oldPassword := string(secret.Data[postgres.SecretKeyPassword])
 
-	st.env.deleteAndWait(ctx, t, secret)
+	g.Expect(support.DeleteAndWait(ctx, st.env.Client, secret)).To(Succeed())
 	st.triggerReconcile(t, claim)
 
 	recovered := st.waitCredentialsSecret(t, name, database)
@@ -278,7 +270,9 @@ func (st *databaseClaimSuite) testDeletionKeepsPeerUserAndDatabase(t *testing.T)
 	claimB := st.newClaim(nameB, database)
 	st.createClaimWithoutCleanup(t, claimB)
 	t.Cleanup(func() {
-		st.env.deleteAndWait(context.Background(), t, claimB)
+		if err := support.DeleteAndWait(context.Background(), st.env.Client, claimB); err != nil {
+			t.Errorf("deleting database claim: %v", err)
+		}
 	})
 
 	st.waitProvisioned(t, claimA)
@@ -333,7 +327,7 @@ func (st *databaseClaimSuite) testProviderCreationWakesPendingClaim(t *testing.T
 	st.waitProvisioningFailure(t, claim, "ProviderNotFound", providerName)
 	st.expectNoCredentialsSecret(t, name)
 
-	err := st.createExternalProvider(t, providerName, st.db.cfg, nil, nil)
+	err := st.createExternalProvider(t, providerName, st.db.Config(), nil, nil)
 	g.Expect(err).NotTo(HaveOccurred())
 
 	st.waitProvisioned(t, claim)
@@ -391,11 +385,15 @@ func (st *databaseClaimSuite) testCRDValidation(t *testing.T) {
 			ObjectMeta: metav1.ObjectMeta{Name: "dc-valid", Namespace: ns},
 			Spec: infraApi.DatabaseClaimSpec{
 				Provider: infraApi.ProviderRef{Name: st.providerName},
-				Database: st.db.cfg.DBName,
+				Database: st.db.Config().DBName,
 			},
 		}
 		g.Expect(cli.Create(ctx, obj)).To(Succeed())
-		t.Cleanup(func() { st.env.deleteAndWait(context.Background(), t, obj) })
+		t.Cleanup(func() {
+			if err := support.DeleteAndWait(context.Background(), st.env.Client, obj); err != nil {
+				t.Errorf("deleting database claim: %v", err)
+			}
+		})
 
 		obj.Spec.Database = "a_different_database"
 		g.Expect(cli.Update(ctx, obj)).To(HaveOccurred())
@@ -407,12 +405,16 @@ func (st *databaseClaimSuite) testCRDValidation(t *testing.T) {
 			ObjectMeta: metav1.ObjectMeta{Name: "dc-immut-access", Namespace: ns},
 			Spec: infraApi.DatabaseClaimSpec{
 				Provider: infraApi.ProviderRef{Name: st.providerName},
-				Database: st.db.cfg.DBName,
+				Database: st.db.Config().DBName,
 				Access:   infraApi.AccessModeReadWrite,
 			},
 		}
 		g.Expect(cli.Create(ctx, obj)).To(Succeed())
-		t.Cleanup(func() { st.env.deleteAndWait(context.Background(), t, obj) })
+		t.Cleanup(func() {
+			if err := support.DeleteAndWait(context.Background(), st.env.Client, obj); err != nil {
+				t.Errorf("deleting database claim: %v", err)
+			}
+		})
 
 		obj.Spec.Access = infraApi.AccessModeReadOnly
 		g.Expect(cli.Update(ctx, obj)).To(HaveOccurred())
@@ -424,11 +426,15 @@ func (st *databaseClaimSuite) testCRDValidation(t *testing.T) {
 			ObjectMeta: metav1.ObjectMeta{Name: "dc-immut-provider", Namespace: ns},
 			Spec: infraApi.DatabaseClaimSpec{
 				Provider: infraApi.ProviderRef{Name: st.providerName},
-				Database: st.db.cfg.DBName,
+				Database: st.db.Config().DBName,
 			},
 		}
 		g.Expect(cli.Create(ctx, obj)).To(Succeed())
-		t.Cleanup(func() { st.env.deleteAndWait(context.Background(), t, obj) })
+		t.Cleanup(func() {
+			if err := support.DeleteAndWait(context.Background(), st.env.Client, obj); err != nil {
+				t.Errorf("deleting database claim: %v", err)
+			}
+		})
 
 		obj.Spec.Provider = infraApi.ProviderRef{Name: "q"}
 		g.Expect(cli.Update(ctx, obj)).To(HaveOccurred())

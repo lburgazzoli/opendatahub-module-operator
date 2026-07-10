@@ -23,15 +23,8 @@ import (
 	"fmt"
 	"os"
 	"testing"
-	"time"
 
-	"github.com/jackc/pgx/v5/pgxpool"
-	k8sm "github.com/lburgazzoli/gomega-matchers/pkg/matchers/k8s"
-	infraApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/api/infrastructure/v1alpha1"
 	. "github.com/onsi/gomega"
-	tcpostgres "github.com/testcontainers/testcontainers-go/modules/postgres"
-	corev1 "k8s.io/api/core/v1"
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/client-go/rest"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -39,93 +32,96 @@ import (
 
 	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/pkg/config"
 	modulemanager "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/pkg/manager"
-	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/pkg/postgres"
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/test/support"
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/test/support/cluster"
+	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/test/support/reaper"
 )
 
 type integrationEnv struct {
-	*integrationSuite
+	Cluster   cluster.Instance
+	Client    client.Client
 	Namespace string
 	Config    *moduleconfig.Config
 }
 
-type integrationSuite struct {
-	Cluster cluster.TestCluster
-	Client  client.Client
-}
+func TestIntegration(t *testing.T) {
+	g := NewWithT(t)
 
-type testDatabase struct {
-	cfg       postgres.Config
-	terminate func(context.Context) error
-}
-
-var integrationTestSuite *integrationSuite
-
-func TestMain(m *testing.M) {
-	os.Exit(runTestMain(m))
-}
-
-func runTestMain(m *testing.M) int {
 	testCfg, err := support.LoadConfig(cluster.TypeK3s)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to load test config: %v\n", err)
-		return 1
-	}
+	g.Expect(err).NotTo(HaveOccurred())
+
 	SetDefaultEventuallyTimeout(testCfg.Gomega.EventuallyTimeout)
 	SetDefaultEventuallyPollingInterval(testCfg.Gomega.EventuallyPollingInterval)
 	SetDefaultConsistentlyPollingInterval(testCfg.Gomega.ConsistentlyPollingInterval)
 
 	ctrl.SetLogger(zap.New(zap.UseDevMode(true)))
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx, cancel := context.WithCancel(t.Context())
+	t.Cleanup(cancel)
 
-	testCluster, err := startIntegrationCluster(ctx, testCfg.Cluster.Type)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to create integration cluster: %v\n", err)
-		return 1
-	}
-	cli, err := testCluster.Client()
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to create integration client: %v\n", err)
-		return 1
-	}
-	integrationTestSuite = &integrationSuite{
-		Cluster: testCluster,
-		Client:  cli,
-	}
+	tc, err := startIntegrationCluster(ctx, testCfg.Cluster.Type)
+	g.Expect(err).NotTo(HaveOccurred())
+
+	t.Cleanup(func() {
+		_ = tc.Stop(context.Background())
+	})
 
 	moduleCfg, err := moduleconfig.LoadFromFS(nil)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to load module config: %v\n", err)
-		return 1
-	}
+	g.Expect(err).NotTo(HaveOccurred())
+
 	moduleCfg.Controller.LeaderElection.Enabled = false
 	moduleCfg.Controller.Metrics.BindAddress = "0"
 	moduleCfg.Controller.Health.BindAddress = "0"
 	moduleCfg.Controller.Pprof.BindAddress = "0"
 	moduleCfg.OperatorNamespace = support.IntegrationTestNamespace()
 
-	defer func() {
-		_ = testCluster.Stop(ctx)
-	}()
+	_, err = startIntegrationManager(ctx, tc.Config(), moduleCfg)
+	g.Expect(err).NotTo(HaveOccurred())
 
-	if err := startIntegrationManager(ctx, testCluster.Config(), moduleCfg); err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to start integration manager: %v\n", err)
-		return 1
-	}
+	t.Run("schema claim", func(t *testing.T) {
+		env, err := newIntegrationEnv(tc, tc.Client())
+		g := NewWithT(t)
+		g.Expect(err).NotTo(HaveOccurred())
 
-	return m.Run()
+		suite, err := newSchemaClaimSuite(t, env)
+		g.Expect(err).NotTo(HaveOccurred())
+		suite.Run(t)
+	})
+
+	t.Run("database claim", func(t *testing.T) {
+		env, err := newIntegrationEnv(tc, tc.Client())
+		g := NewWithT(t)
+		g.Expect(err).NotTo(HaveOccurred())
+
+		suite, err := newDatabaseClaimSuite(t, env)
+		g.Expect(err).NotTo(HaveOccurred())
+		suite.Run(t)
+	})
+
+	t.Run("database provider external", func(t *testing.T) {
+		env, err := newIntegrationEnv(tc, tc.Client())
+		g := NewWithT(t)
+		g.Expect(err).NotTo(HaveOccurred())
+
+		suite, err := newDatabaseProviderSuite(t, env)
+		g.Expect(err).NotTo(HaveOccurred())
+		suite.Run(t)
+	})
+
+	t.Run("database provider embedded", func(t *testing.T) {
+		env, err := newIntegrationEnv(tc, tc.Client())
+		g := NewWithT(t)
+		g.Expect(err).NotTo(HaveOccurred())
+
+		suite := newEmbeddedDatabaseProviderSuite(t, env)
+		suite.Run(t)
+	})
 }
 
-func newIntegrationEnv(t *testing.T) (*integrationEnv, error) {
-	t.Helper()
-
-	if integrationTestSuite == nil {
-		return nil, fmt.Errorf("integration suite is not initialized")
-	}
-
+func newIntegrationEnv(
+	testCluster cluster.Instance,
+	cli client.Client,
+) (*integrationEnv, error) {
 	moduleCfg, err := moduleconfig.LoadFromFS(nil)
 	if err != nil {
 		return nil, fmt.Errorf("loading module config: %w", err)
@@ -133,7 +129,8 @@ func newIntegrationEnv(t *testing.T) (*integrationEnv, error) {
 	moduleCfg.OperatorNamespace = support.IntegrationTestNamespace()
 
 	return &integrationEnv{
-		integrationSuite: integrationTestSuite,
+		Cluster:   testCluster,
+		Client:    cli,
 		Namespace: support.IntegrationTestNamespace(),
 		Config:    moduleCfg,
 	}, nil
@@ -142,91 +139,38 @@ func newIntegrationEnv(t *testing.T) (*integrationEnv, error) {
 func startIntegrationCluster(
 	ctx context.Context,
 	clusterType cluster.Type,
-) (cluster.TestCluster, error) {
-	testCluster, err := cluster.New(ctx, clusterType)
+) (cluster.Instance, error) {
+	tc, err := cluster.New(ctx, clusterType)
 	if err != nil {
 		return nil, fmt.Errorf("starting integration cluster: %w", err)
 	}
 
-	cli, err := testCluster.Client()
-	if err != nil {
-		_ = testCluster.Stop(ctx)
-		return nil, fmt.Errorf("creating k3s integration client: %w", err)
+	cli := tc.Client()
+	if cli == nil {
+		_ = tc.Stop(ctx)
+		return nil, fmt.Errorf("integration client is nil")
 	}
 
 	if err := support.InstallCRD(ctx, cli); err != nil {
-		_ = testCluster.Stop(ctx)
+		_ = tc.Stop(ctx)
 		return nil, fmt.Errorf("installing integration CRDs: %w", err)
 	}
+
 	if clusterType == cluster.TypeExternal {
-		if err := cleanupIntegrationFixtures(ctx, cli, support.IntegrationTestNamespace()); err != nil {
-			_ = testCluster.Stop(ctx)
+		r, err := reaper.New(
+			cli,
+		)
+		if err != nil {
+			_ = tc.Stop(ctx)
+			return nil, fmt.Errorf("creating integration reaper: %w", err)
+		}
+		if err := r.Run(ctx); err != nil {
+			_ = tc.Stop(ctx)
 			return nil, fmt.Errorf("cleaning integration fixtures: %w", err)
 		}
 	}
 
-	return testCluster, nil
-}
-
-// startDatabase spins up a postgres:16 container for a claim integration suite.
-func startDatabase(ctx context.Context) (*testDatabase, error) {
-	ctr, err := tcpostgres.Run(ctx, "postgres:16",
-		tcpostgres.WithDatabase("testdb"),
-		tcpostgres.WithUsername("admin"),
-		tcpostgres.WithPassword("adminpass"),
-		tcpostgres.BasicWaitStrategies(),
-	)
-	if err != nil {
-		return nil, fmt.Errorf("starting postgres container: %w", err)
-	}
-	connStr, err := ctr.ConnectionString(ctx, "sslmode=disable")
-	if err != nil {
-		if ctr != nil {
-			_ = ctr.Terminate(ctx)
-		}
-		return nil, fmt.Errorf("getting postgres connection string: %w", err)
-	}
-	cfg, err := postgres.ConfigFromDSN(connStr)
-	if err != nil {
-		if ctr != nil {
-			_ = ctr.Terminate(ctx)
-		}
-		return nil, fmt.Errorf("parsing postgres DSN: %w", err)
-	}
-
-	return &testDatabase{
-		cfg: cfg,
-		terminate: func(ctx context.Context) error {
-			if ctr == nil {
-				return nil
-			}
-
-			return ctr.Terminate(ctx)
-		},
-	}, nil
-}
-
-func (db *testDatabase) openAdminPool(ctx context.Context) (*pgxpool.Pool, error) {
-	pool, err := pgxpool.New(ctx, db.cfg.DSN())
-	if err != nil {
-		return nil, fmt.Errorf("opening admin pool: %w", err)
-	}
-	return pool, nil
-}
-
-func openClaimPool(ctx context.Context, cfg postgres.Config) (*pgxpool.Pool, error) {
-	pool, err := pgxpool.New(ctx, cfg.DSN())
-	if err != nil {
-		return nil, fmt.Errorf("opening claim pool: %w", err)
-	}
-	return pool, nil
-}
-
-func (db *testDatabase) Close(ctx context.Context) error {
-	if db == nil || db.terminate == nil {
-		return nil
-	}
-	return db.terminate(ctx)
+	return tc, nil
 }
 
 // startIntegrationManager starts the full module manager and ensures the
@@ -236,227 +180,27 @@ func startIntegrationManager(
 	restCfg *rest.Config,
 	cfg *moduleconfig.Config,
 	opts ...modulemanager.Option,
-) error {
+) (ctrl.Manager, error) {
 	mgr, err := modulemanager.New(ctx, restCfg, cfg, opts...)
 	if err != nil {
-		return fmt.Errorf("creating manager: %w", err)
+		return nil, fmt.Errorf("creating manager: %w", err)
 	}
 
 	go func() {
 		if err := mgr.Start(ctx); err != nil {
-			fmt.Fprintf(os.Stderr, "manager stopped: %v\n", err)
+			_, _ = fmt.Fprintf(os.Stderr, "manager stopped: %v\n", err)
 		}
 	}()
 
 	if !mgr.GetCache().WaitForCacheSync(ctx) {
-		return fmt.Errorf("cache failed to sync")
+		return nil, fmt.Errorf("cache failed to sync")
 	}
 
-	cli := mgr.GetClient()
 	ns := support.IntegrationTestNamespace()
-	if err := support.EnsureNamespace(ctx, cli, ns); err != nil {
-		return fmt.Errorf("creating namespace %q: %w", ns, err)
+
+	if err := support.EnsureNamespace(ctx, mgr.GetClient(), ns); err != nil {
+		return nil, fmt.Errorf("creating namespace %q: %w", ns, err)
 	}
 
-	return nil
-}
-
-func cleanupIntegrationFixtures(ctx context.Context, cli client.Client, namespace string) error {
-	if err := cleanupClusterScopedProviders(ctx, cli, namespace); err != nil {
-		return err
-	}
-	if err := cleanupSchemaClaims(ctx, cli, namespace); err != nil {
-		return err
-	}
-	if err := cleanupDatabaseClaims(ctx, cli, namespace); err != nil {
-		return err
-	}
-	if err := cleanupSecrets(ctx, cli, namespace); err != nil {
-		return err
-	}
-
-	return nil
-}
-
-func cleanupClusterScopedProviders(ctx context.Context, cli client.Client, namespace string) error {
-	providers := &infraApi.DatabaseProviderList{}
-	if err := cli.List(ctx, providers); err != nil {
-		return fmt.Errorf("listing database providers: %w", err)
-	}
-
-	for i := range providers.Items {
-		provider := &providers.Items[i]
-		if provider.GetAnnotations()["db.infrastructure.opendatahub.io/operator-namespace"] != namespace {
-			continue
-		}
-		if err := clearFinalizers(ctx, cli, provider); err != nil {
-			return err
-		}
-	}
-	for i := range providers.Items {
-		provider := &providers.Items[i]
-		if provider.GetAnnotations()["db.infrastructure.opendatahub.io/operator-namespace"] != namespace {
-			continue
-		}
-		if err := cli.Delete(ctx, provider); err != nil && !apierrors.IsNotFound(err) {
-			return fmt.Errorf("deleting database provider %q: %w", provider.GetName(), err)
-		}
-	}
-
-	return waitForListEmpty(ctx, 30*time.Second, 200*time.Millisecond, func(ctx context.Context) (bool, error) {
-		current := &infraApi.DatabaseProviderList{}
-		if err := cli.List(ctx, current); err != nil {
-			return false, fmt.Errorf("listing database providers: %w", err)
-		}
-		for i := range current.Items {
-			if current.Items[i].GetAnnotations()["db.infrastructure.opendatahub.io/operator-namespace"] == namespace {
-				return false, nil
-			}
-		}
-		return true, nil
-	}, "database providers")
-}
-
-func cleanupSchemaClaims(ctx context.Context, cli client.Client, namespace string) error {
-	list := &infraApi.SchemaClaimList{}
-	if err := cli.List(ctx, list, client.InNamespace(namespace)); err != nil {
-		return fmt.Errorf("listing schema claims in namespace %q: %w", namespace, err)
-	}
-	for i := range list.Items {
-		if err := clearFinalizers(ctx, cli, &list.Items[i]); err != nil {
-			return err
-		}
-	}
-	if err := cli.DeleteAllOf(ctx, &infraApi.SchemaClaim{}, client.InNamespace(namespace)); err != nil {
-		return fmt.Errorf("deleting schema claims in namespace %q: %w", namespace, err)
-	}
-
-	return waitForListEmpty(ctx, 30*time.Second, 200*time.Millisecond, func(ctx context.Context) (bool, error) {
-		current := &infraApi.SchemaClaimList{}
-		if err := cli.List(ctx, current, client.InNamespace(namespace)); err != nil {
-			return false, fmt.Errorf("listing schema claims in namespace %q: %w", namespace, err)
-		}
-		return len(current.Items) == 0, nil
-	}, "schema claims")
-}
-
-func cleanupDatabaseClaims(ctx context.Context, cli client.Client, namespace string) error {
-	list := &infraApi.DatabaseClaimList{}
-	if err := cli.List(ctx, list, client.InNamespace(namespace)); err != nil {
-		return fmt.Errorf("listing database claims in namespace %q: %w", namespace, err)
-	}
-	for i := range list.Items {
-		if err := clearFinalizers(ctx, cli, &list.Items[i]); err != nil {
-			return err
-		}
-	}
-	if err := cli.DeleteAllOf(ctx, &infraApi.DatabaseClaim{}, client.InNamespace(namespace)); err != nil {
-		return fmt.Errorf("deleting database claims in namespace %q: %w", namespace, err)
-	}
-
-	return waitForListEmpty(ctx, 30*time.Second, 200*time.Millisecond, func(ctx context.Context) (bool, error) {
-		current := &infraApi.DatabaseClaimList{}
-		if err := cli.List(ctx, current, client.InNamespace(namespace)); err != nil {
-			return false, fmt.Errorf("listing database claims in namespace %q: %w", namespace, err)
-		}
-		return len(current.Items) == 0, nil
-	}, "database claims")
-}
-
-func cleanupSecrets(ctx context.Context, cli client.Client, namespace string) error {
-	list := &corev1.SecretList{}
-	if err := cli.List(ctx, list, client.InNamespace(namespace)); err != nil {
-		return fmt.Errorf("listing secrets in namespace %q: %w", namespace, err)
-	}
-	for i := range list.Items {
-		if err := clearFinalizers(ctx, cli, &list.Items[i]); err != nil {
-			return err
-		}
-	}
-	if err := cli.DeleteAllOf(ctx, &corev1.Secret{}, client.InNamespace(namespace)); err != nil {
-		return fmt.Errorf("deleting secrets in namespace %q: %w", namespace, err)
-	}
-
-	return waitForListEmpty(ctx, 30*time.Second, 200*time.Millisecond, func(ctx context.Context) (bool, error) {
-		current := &corev1.SecretList{}
-		if err := cli.List(ctx, current, client.InNamespace(namespace)); err != nil {
-			return false, fmt.Errorf("listing secrets in namespace %q: %w", namespace, err)
-		}
-		return len(current.Items) == 0, nil
-	}, "secrets")
-}
-
-func clearFinalizers(ctx context.Context, cli client.Client, obj client.Object) error {
-	if len(obj.GetFinalizers()) == 0 {
-		return nil
-	}
-
-	patch := client.MergeFrom(obj.DeepCopyObject().(client.Object))
-	obj.SetFinalizers(nil)
-	if err := cli.Patch(ctx, obj, patch); err != nil && !apierrors.IsNotFound(err) {
-		return fmt.Errorf("clearing finalizers for %s: %w", client.ObjectKeyFromObject(obj), err)
-	}
-
-	return nil
-}
-
-func waitForListEmpty(
-	ctx context.Context,
-	timeout time.Duration,
-	interval time.Duration,
-	check func(context.Context) (bool, error),
-	what string,
-) error {
-	deadline := time.Now().Add(timeout)
-	for {
-		empty, err := check(ctx)
-		if err != nil {
-			return err
-		}
-		if empty {
-			return nil
-		}
-		if time.Now().After(deadline) {
-			return fmt.Errorf("timed out waiting for %s to be deleted", what)
-		}
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case <-time.After(interval):
-		}
-	}
-}
-
-// deleteAndWait deletes obj (stripping its finalizers first if needed) and
-// waits until it is fully gone from the API server. Safe to call when obj
-// does not yet exist. Resets ResourceVersion/UID on obj so it can be
-// re-created immediately after this call.
-func (env *integrationEnv) deleteAndWait(ctx context.Context, t *testing.T, obj client.Object) {
-	g := NewWithT(t)
-	key := client.ObjectKeyFromObject(obj)
-
-	// Read current state so we have the right resourceVersion / finalizers.
-	if err := env.Client.Get(ctx, key, obj); err != nil {
-		if apierrors.IsNotFound(err) {
-			return
-		}
-		return // unknown error, best-effort only
-	}
-
-	// Strip finalizers so the API server can delete immediately.
-	if len(obj.GetFinalizers()) > 0 {
-		patch := client.MergeFrom(obj.DeepCopyObject().(client.Object))
-		obj.SetFinalizers(nil)
-		_ = env.Client.Patch(ctx, obj, patch)
-	}
-	_ = env.Client.Delete(ctx, obj)
-
-	// Wait for the object to disappear (up to EventuallyTimeout).
-	g.Eventually(ctx, k8sm.NotFound(env.Client, obj)).Should(BeTrue(), "waiting for %s to be deleted", key)
-
-	// Clear server-assigned fields so the caller can re-create without conflict.
-	obj.SetResourceVersion("")
-	obj.SetUID("")
-	obj.SetDeletionTimestamp(nil)
-	obj.SetFinalizers(nil)
+	return mgr, nil
 }

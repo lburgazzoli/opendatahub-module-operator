@@ -32,26 +32,23 @@ import (
 	infraApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/api/infrastructure/v1alpha1"
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/internal/controller/databaseprovider"
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/pkg/postgres"
+	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/test/support"
+	testdb "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/test/support/db"
 )
 
 type databaseProviderSuite struct {
 	env *integrationEnv
-	db  *testDatabase
+	db  *testdb.Instance
 }
 
-func newDatabaseProviderSuite(t *testing.T) (*databaseProviderSuite, error) {
+func newDatabaseProviderSuite(t *testing.T, env *integrationEnv) (*databaseProviderSuite, error) {
 	t.Helper()
-
-	env, err := newIntegrationEnv(t)
-	if err != nil {
-		return nil, err
-	}
 
 	suite := &databaseProviderSuite{
 		env: env,
 	}
 
-	db, err := startDatabase(t.Context())
+	db, err := testdb.Start(t.Context())
 	if err != nil {
 		return nil, err
 	}
@@ -67,15 +64,6 @@ func newDatabaseProviderSuite(t *testing.T) (*databaseProviderSuite, error) {
 	})
 
 	return suite, nil
-}
-
-func TestDatabaseProviderExternal(t *testing.T) {
-	g := NewWithT(t)
-
-	suite, err := newDatabaseProviderSuite(t)
-	g.Expect(err).NotTo(HaveOccurred())
-
-	t.Run("external provider suite", suite.Run)
 }
 
 func (st *databaseProviderSuite) Run(t *testing.T) {
@@ -145,7 +133,7 @@ func (st *databaseProviderSuite) testCRDValidation(t *testing.T) {
 }
 
 func (st *databaseProviderSuite) testReachable(t *testing.T) {
-	cfg := st.db.cfg
+	cfg := st.db.Config()
 	secret := st.createConnectionSecret(t, "provider-secret-"+xid.New().String(), cfg)
 	provider := st.createExternalProvider(t, "provider-"+xid.New().String(), secret)
 
@@ -156,10 +144,10 @@ func (st *databaseProviderSuite) testAuthFailure(t *testing.T) {
 	g := NewWithT(t)
 
 	g.Eventually(func() error {
-		return postgres.Ping(t.Context(), st.db.cfg)
+		return postgres.Ping(t.Context(), st.db.Config())
 	}).Should(Succeed())
 
-	cfg := st.db.cfg
+	cfg := st.db.Config()
 	cfg.Password = "wrong-password-sentinel"
 	g.Eventually(func() error {
 		return postgres.Ping(t.Context(), cfg)
@@ -203,7 +191,9 @@ func (st *databaseProviderSuite) createConnectionSecret(
 
 	NewWithT(t).Expect(st.env.Client.Create(t.Context(), secret)).To(Succeed())
 	t.Cleanup(func() {
-		st.env.deleteAndWait(context.Background(), t, secret)
+		if err := support.DeleteAndWait(context.Background(), st.env.Client, secret); err != nil {
+			t.Errorf("deleting secret: %v", err)
+		}
 	})
 
 	return secret
@@ -231,7 +221,9 @@ func (st *databaseProviderSuite) createExternalProvider(
 
 	NewWithT(t).Expect(st.env.Client.Create(t.Context(), provider)).To(Succeed())
 	t.Cleanup(func() {
-		st.env.deleteAndWait(context.Background(), t, provider)
+		if err := support.DeleteAndWait(context.Background(), st.env.Client, provider); err != nil {
+			t.Errorf("deleting provider: %v", err)
+		}
 	})
 
 	return provider

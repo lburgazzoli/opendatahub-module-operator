@@ -43,6 +43,7 @@ func TestNewExternalFromConfigReturnsCopy(t *testing.T) {
 	g.Expect(cluster.Config()).NotTo(BeNil())
 	g.Expect(cluster.Config()).NotTo(BeIdenticalTo(cfg))
 	g.Expect(cluster.Config().Host).To(Equal(cfg.Host))
+	g.Expect(cluster.Client()).NotTo(BeNil())
 	g.Expect(cluster.Scheme()).NotTo(BeNil())
 }
 

@@ -31,6 +31,7 @@ import (
 
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/test/support"
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/test/support/cluster"
+	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/test/support/reaper"
 )
 
 const (
@@ -69,9 +70,20 @@ func newE2ESuite(t *testing.T) *e2eSuite {
 		_ = testCluster.Stop(context.Background())
 	})
 
-	cli, err := testCluster.Client()
-	if err != nil {
-		t.Fatalf("failed to create client: %v", err)
+	cli := testCluster.Client()
+	if cli == nil {
+		t.Fatal("failed to create client")
+	}
+	if e2eClusterType == cluster.TypeExternal {
+		r, err := reaper.New(
+			cli,
+		)
+		if err != nil {
+			t.Fatalf("failed to create e2e reaper: %v", err)
+		}
+		if err := r.Run(t.Context()); err != nil {
+			t.Fatalf("failed to clean e2e fixtures: %v", err)
+		}
 	}
 
 	operatorDeploy := &appsv1.Deployment{

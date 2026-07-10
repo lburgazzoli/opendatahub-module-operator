@@ -28,6 +28,8 @@ import (
 	infraApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/api/infrastructure/v1alpha1"
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/internal/controller/schemaclaim"
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/pkg/postgres"
+	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/test/support"
+	testdb "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/test/support/db"
 	. "github.com/onsi/gomega"
 	"github.com/rs/xid"
 	corev1 "k8s.io/api/core/v1"
@@ -37,18 +39,13 @@ import (
 
 type schemaClaimSuite struct {
 	env          *integrationEnv
-	db           *testDatabase
+	db           *testdb.Instance
 	databaseName string
 	providerName string
 }
 
-func newSchemaClaimSuite(t *testing.T) (*schemaClaimSuite, error) {
+func newSchemaClaimSuite(t *testing.T, env *integrationEnv) (*schemaClaimSuite, error) {
 	t.Helper()
-
-	env, err := newIntegrationEnv(t)
-	if err != nil {
-		return nil, err
-	}
 
 	suite := &schemaClaimSuite{
 		env:          env,
@@ -56,7 +53,7 @@ func newSchemaClaimSuite(t *testing.T) (*schemaClaimSuite, error) {
 		providerName: "schema-provider-" + xid.New().String(),
 	}
 
-	db, err := startDatabase(t.Context())
+	db, err := testdb.Start(t.Context())
 	if err != nil {
 		return nil, err
 	}
@@ -80,9 +77,8 @@ func (st *schemaClaimSuite) createDatabase(t *testing.T, name string) {
 	t.Helper()
 
 	g := NewWithT(t)
-	pool, err := st.db.openAdminPool(t.Context())
-	g.Expect(err).NotTo(HaveOccurred())
-	t.Cleanup(pool.Close)
+	pool := st.db.Pool()
+	g.Expect(pool).NotTo(BeNil())
 
 	exists, err := postgres.DatabaseExists(t.Context(), pool, name)
 	g.Expect(err).NotTo(HaveOccurred())
@@ -95,10 +91,10 @@ func (st *schemaClaimSuite) createDatabase(t *testing.T, name string) {
 }
 
 func (st *schemaClaimSuite) openProviderAdminPool(ctx context.Context) (*pgxpool.Pool, error) {
-	cfg := st.db.cfg
+	cfg := st.db.Config()
 	cfg.DBName = st.databaseName
 
-	pool, err := pgxpool.New(ctx, cfg.DSN())
+	pool, err := postgres.OpenPool(ctx, cfg)
 	if err != nil {
 		return nil, fmt.Errorf("opening provider admin pool: %w", err)
 	}
@@ -107,7 +103,7 @@ func (st *schemaClaimSuite) openProviderAdminPool(ctx context.Context) (*pgxpool
 }
 
 func (st *schemaClaimSuite) createProvider(t *testing.T) {
-	st.createExternalProvider(t, st.providerName, st.db.cfg, st.databaseName, nil, nil)
+	st.createExternalProvider(t, st.providerName, st.db.Config(), st.databaseName, nil, nil)
 }
 
 func (st *schemaClaimSuite) createExternalProvider(
@@ -146,7 +142,9 @@ func (st *schemaClaimSuite) createExternalProvider(
 	}
 	g.Expect(st.env.Client.Create(t.Context(), adminSecret)).To(Succeed())
 	t.Cleanup(func() {
-		st.env.deleteAndWait(context.Background(), t, adminSecret)
+		if err := support.DeleteAndWait(context.Background(), st.env.Client, adminSecret); err != nil {
+			t.Errorf("deleting admin secret: %v", err)
+		}
 	})
 
 	provider := &infraApi.DatabaseProvider{
@@ -167,7 +165,9 @@ func (st *schemaClaimSuite) createExternalProvider(
 	}
 	g.Expect(st.env.Client.Create(t.Context(), provider)).To(Succeed())
 	t.Cleanup(func() {
-		st.env.deleteAndWait(context.Background(), t, provider)
+		if err := support.DeleteAndWait(context.Background(), st.env.Client, provider); err != nil {
+			t.Errorf("deleting provider: %v", err)
+		}
 	})
 }
 
@@ -205,7 +205,9 @@ func (st *schemaClaimSuite) createClaim(t *testing.T, claim *infraApi.SchemaClai
 	g.Expect(st.env.Client.Create(t.Context(), claim)).To(Succeed())
 
 	t.Cleanup(func() {
-		st.env.deleteAndWait(context.Background(), t, claim)
+		if err := support.DeleteAndWait(context.Background(), st.env.Client, claim); err != nil {
+			t.Errorf("deleting claim: %v", err)
+		}
 	})
 }
 
@@ -290,9 +292,8 @@ func (st *schemaClaimSuite) roleExists(t *testing.T, role string) bool {
 	t.Helper()
 
 	g := NewWithT(t)
-	pool, err := st.db.openAdminPool(t.Context())
-	g.Expect(err).NotTo(HaveOccurred())
-	t.Cleanup(pool.Close)
+	pool := st.db.Pool()
+	g.Expect(pool).NotTo(BeNil())
 
 	exists, err := postgres.RoleExists(t.Context(), pool, role)
 	g.Expect(err).NotTo(HaveOccurred())

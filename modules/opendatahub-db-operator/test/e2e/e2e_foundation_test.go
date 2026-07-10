@@ -10,7 +10,6 @@ import (
 	. "github.com/onsi/gomega"
 	corev1 "k8s.io/api/core/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -83,18 +82,5 @@ func (st *e2eSuite) waitProviderReachable(t *testing.T, provider *infraApi.Datab
 
 func (st *e2eSuite) deleteAndWait(ctx context.Context, t *testing.T, obj client.Object) {
 	t.Helper()
-
-	key := client.ObjectKeyFromObject(obj)
-	if err := st.Client.Get(ctx, key, obj); err != nil {
-		if apierrors.IsNotFound(err) {
-			return
-		}
-		t.Fatalf("reading %s before delete: %v", key, err)
-	}
-
-	if err := st.Client.Delete(ctx, obj); err != nil && !apierrors.IsNotFound(err) {
-		t.Fatalf("deleting %s: %v", key, err)
-	}
-
-	NewWithT(t).Eventually(ctx, k8sm.NotFound(st.Client, obj)).Should(BeTrue(), "waiting for %s to be deleted", key)
+	NewWithT(t).Expect(support.DeleteAndWait(ctx, st.Client, obj)).To(Succeed())
 }

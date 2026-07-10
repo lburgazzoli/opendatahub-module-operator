@@ -35,30 +35,17 @@ import (
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/internal/controller/databaseprovider"
 	dbcontroller "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/pkg/controller"
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/pkg/postgres"
+	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/test/support"
 )
 
 type embeddedDatabaseProviderSuite struct {
 	env *integrationEnv
 }
 
-func newEmbeddedDatabaseProviderSuite(t *testing.T) (*embeddedDatabaseProviderSuite, error) {
+func newEmbeddedDatabaseProviderSuite(t *testing.T, env *integrationEnv) *embeddedDatabaseProviderSuite {
 	t.Helper()
 
-	env, err := newIntegrationEnv(t)
-	if err != nil {
-		return nil, err
-	}
-
-	return &embeddedDatabaseProviderSuite{env: env}, nil
-}
-
-func TestDatabaseProviderEmbedded(t *testing.T) {
-	g := NewWithT(t)
-
-	suite, err := newEmbeddedDatabaseProviderSuite(t)
-	g.Expect(err).NotTo(HaveOccurred())
-
-	t.Run("embedded provider suite", suite.Run)
+	return &embeddedDatabaseProviderSuite{env: env}
 }
 
 func (st *embeddedDatabaseProviderSuite) Run(t *testing.T) {
@@ -157,7 +144,9 @@ func (st *embeddedDatabaseProviderSuite) testProvisioningCustomNamespace(t *test
 	ns := &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: namespace}}
 	NewWithT(t).Expect(st.env.Client.Create(t.Context(), ns)).To(Succeed())
 	t.Cleanup(func() {
-		st.env.deleteAndWait(context.Background(), t, ns)
+		if err := support.DeleteAndWait(context.Background(), st.env.Client, ns); err != nil {
+			t.Errorf("deleting namespace: %v", err)
+		}
 	})
 
 	provider := st.createEmbeddedProvider(
@@ -186,7 +175,7 @@ func (st *embeddedDatabaseProviderSuite) testAdminSecretDeleted(t *testing.T) {
 	initialHash := adminSecret.Annotations[dbcontroller.EmbeddedInstanceHashAnnotation]
 	g.Expect(initialHash).NotTo(BeEmpty())
 
-	st.env.deleteAndWait(t.Context(), t, adminSecret)
+	g.Expect(support.DeleteAndWait(t.Context(), st.env.Client, adminSecret)).To(Succeed())
 
 	// The controller detects the missing Secret, regenerates credentials with a
 	// fresh instance hash, and recreates the Secret. The new hash must differ
@@ -232,7 +221,9 @@ func (st *embeddedDatabaseProviderSuite) createEmbeddedProvider(
 
 	NewWithT(t).Expect(st.env.Client.Create(t.Context(), provider)).To(Succeed())
 	t.Cleanup(func() {
-		st.env.deleteAndWait(context.Background(), t, provider)
+		if err := support.DeleteAndWait(context.Background(), st.env.Client, provider); err != nil {
+			t.Errorf("deleting provider: %v", err)
+		}
 	})
 
 	return provider
