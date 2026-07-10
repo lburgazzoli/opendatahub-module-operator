@@ -120,20 +120,14 @@ func resolveBySelector(
 	}
 
 	list := &infraApi.DatabaseProviderList{}
-	if err := cli.List(ctx, list); err != nil {
+	if err := cli.List(ctx, list, client.MatchingLabelsSelector{Selector: labelSelector}); err != nil {
 		return nil, fmt.Errorf("listing DatabaseProviders by selector: %w", err)
 	}
 
-	matches := make([]infraApi.DatabaseProvider, 0, len(list.Items))
-	for _, provider := range list.Items {
-		if labelSelector.Matches(labels.Set(provider.Labels)) {
-			matches = append(matches, provider)
-		}
-	}
-	if len(matches) == 0 {
+	if len(list.Items) == 0 {
 		return nil, ErrNotFound{Message: fmt.Sprintf("no DatabaseProvider matches selector %v", selector)}
 	}
-	return pickBest(matches), nil
+	return pickBest(list.Items), nil
 }
 
 // pickBest returns the provider with the highest selection-priority annotation
