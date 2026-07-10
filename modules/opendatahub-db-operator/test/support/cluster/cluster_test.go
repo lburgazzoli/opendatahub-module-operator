@@ -1,12 +1,24 @@
 package cluster
 
 import (
+	"context"
 	"testing"
 
 	. "github.com/onsi/gomega"
 	"github.com/testcontainers/testcontainers-go"
 	"k8s.io/client-go/rest"
 )
+
+func TestNewRejectsUnknownType(t *testing.T) {
+	t.Parallel()
+
+	g := NewWithT(t)
+
+	cluster, err := New(context.Background(), Type("unknown"))
+
+	g.Expect(err).To(HaveOccurred())
+	g.Expect(cluster).To(BeNil())
+}
 
 func TestNewExternalFromConfigRejectsNil(t *testing.T) {
 	t.Parallel()

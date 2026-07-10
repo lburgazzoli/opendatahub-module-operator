@@ -11,7 +11,12 @@ import (
 	modulemanager "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/pkg/manager"
 )
 
-const DefaultK3sImage = "rancher/k3s:v1.32.9-k3s1"
+type Type string
+
+const (
+	TypeExternal Type = "external"
+	TypeK3s      Type = "k3s"
+)
 
 // TestCluster exposes the minimum cluster primitives needed by tests without
 // coupling callers to a specific backend implementation.
@@ -20,6 +25,17 @@ type TestCluster interface {
 	Scheme() *runtime.Scheme
 	Client() (client.Client, error)
 	Stop(ctx context.Context) error
+}
+
+func New(ctx context.Context, clusterType Type) (TestCluster, error) {
+	switch clusterType {
+	case TypeExternal:
+		return NewExternal()
+	case TypeK3s:
+		return NewK3s(ctx)
+	default:
+		return nil, fmt.Errorf("unsupported cluster type %q", clusterType)
+	}
 }
 
 func newScheme() *runtime.Scheme {

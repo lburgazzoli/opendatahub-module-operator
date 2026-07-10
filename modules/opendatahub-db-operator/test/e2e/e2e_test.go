@@ -17,6 +17,7 @@ limitations under the License.
 package e2e
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"testing"
@@ -38,29 +39,35 @@ const (
 	defaultE2ETestNamespace = "odh-db-operator-e2e"
 )
 
+var e2eClusterType = cluster.TypeExternal
+
 func TestMain(m *testing.M) {
 	os.Exit(runTestMain(m))
 }
 
 func runTestMain(m *testing.M) int {
-	cfg, err := support.LoadGomegaConfig()
+	cfg, err := support.LoadConfig(cluster.TypeExternal)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to load test config: %v\n", err)
 		return 1
 	}
 
-	SetDefaultEventuallyTimeout(cfg.EventuallyTimeout)
-	SetDefaultEventuallyPollingInterval(cfg.EventuallyPollingInterval)
-	SetDefaultConsistentlyPollingInterval(cfg.ConsistentlyPollingInterval)
+	e2eClusterType = cfg.Cluster.Type
+	SetDefaultEventuallyTimeout(cfg.Gomega.EventuallyTimeout)
+	SetDefaultEventuallyPollingInterval(cfg.Gomega.EventuallyPollingInterval)
+	SetDefaultConsistentlyPollingInterval(cfg.Gomega.ConsistentlyPollingInterval)
 
 	return m.Run()
 }
 
 func newE2ESuite(t *testing.T) *e2eSuite {
-	testCluster, err := cluster.NewExternal()
+	testCluster, err := cluster.New(t.Context(), e2eClusterType)
 	if err != nil {
 		t.Fatalf("failed to create e2e cluster: %v", err)
 	}
+	t.Cleanup(func() {
+		_ = testCluster.Stop(context.Background())
+	})
 
 	cli, err := testCluster.Client()
 	if err != nil {

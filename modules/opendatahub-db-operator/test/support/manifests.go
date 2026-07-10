@@ -34,17 +34,18 @@ func ApplyManifestFromFile(
 	ctx context.Context,
 	cli client.Client,
 	manifestPath string,
-) error {
+) (unstructured.Unstructured, error) {
 	manifestBytes, err := os.ReadFile(manifestPath)
 	if err != nil {
-		return fmt.Errorf("reading manifest %s: %w", manifestPath, err)
+		return unstructured.Unstructured{}, fmt.Errorf("reading manifest %s: %w", manifestPath, err)
 	}
 
-	if err := applyManifestBytes(ctx, cli, manifestBytes); err != nil {
-		return fmt.Errorf("applying manifest %s: %w", manifestPath, err)
+	obj, err := applyManifestBytes(ctx, cli, manifestBytes)
+	if err != nil {
+		return unstructured.Unstructured{}, fmt.Errorf("applying manifest %s: %w", manifestPath, err)
 	}
 
-	return nil
+	return obj, nil
 }
 
 // ApplyManifestFromFS reads a single YAML manifest from the provided fs.FS and
@@ -54,50 +55,51 @@ func ApplyManifestFromFS(
 	cli client.Client,
 	fsys fs.FS,
 	manifestPath string,
-) error {
+) (unstructured.Unstructured, error) {
 	manifestBytes, err := fs.ReadFile(fsys, manifestPath)
 	if err != nil {
-		return fmt.Errorf("reading manifest %s: %w", manifestPath, err)
+		return unstructured.Unstructured{}, fmt.Errorf("reading manifest %s: %w", manifestPath, err)
 	}
 
-	if err := applyManifestBytes(ctx, cli, manifestBytes); err != nil {
-		return fmt.Errorf("applying manifest %s: %w", manifestPath, err)
+	obj, err := applyManifestBytes(ctx, cli, manifestBytes)
+	if err != nil {
+		return unstructured.Unstructured{}, fmt.Errorf("applying manifest %s: %w", manifestPath, err)
 	}
 
-	return nil
+	return obj, nil
 }
 
 func applyManifestBytes(
 	ctx context.Context,
 	cli client.Client,
 	manifestBytes []byte,
-) error {
+) (unstructured.Unstructured, error) {
 	obj := &unstructured.Unstructured{}
 	decoder := serializeryaml.NewDecodingSerializer(unstructured.UnstructuredJSONScheme)
 	if _, _, err := decoder.Decode(manifestBytes, nil, obj); err != nil {
-		return fmt.Errorf("decoding manifest: %w", err)
+		return unstructured.Unstructured{}, fmt.Errorf("decoding manifest: %w", err)
 	}
 
 	if obj.GroupVersionKind().Empty() {
-		return fmt.Errorf("validating manifest: manifest is missing apiVersion or kind")
+		return unstructured.Unstructured{}, fmt.Errorf("validating manifest: manifest is missing apiVersion or kind")
 	}
 
 	if err := cli.Create(ctx, obj); err == nil {
-		return nil
+		return *obj, nil
 	} else if !k8serr.IsAlreadyExists(err) {
-		return fmt.Errorf("creating resource %s: %w", client.ObjectKeyFromObject(obj), err)
+		return unstructured.Unstructured{}, fmt.Errorf("creating resource %s: %w", client.ObjectKeyFromObject(obj), err)
 	}
 
 	existing := &unstructured.Unstructured{}
 	existing.SetGroupVersionKind(obj.GroupVersionKind())
 	if err := cli.Get(ctx, client.ObjectKeyFromObject(obj), existing); err != nil {
-		return fmt.Errorf("checking resource %s: %w", client.ObjectKeyFromObject(obj), err)
+		return unstructured.Unstructured{}, fmt.Errorf("checking resource %s: %w", client.ObjectKeyFromObject(obj), err)
 	}
 
 	obj.SetResourceVersion(existing.GetResourceVersion())
 	if err := cli.Update(ctx, obj); err != nil {
-		return fmt.Errorf("updating resource %s: %w", client.ObjectKeyFromObject(obj), err)
+		return unstructured.Unstructured{}, fmt.Errorf("updating resource %s: %w", client.ObjectKeyFromObject(obj), err)
 	}
 
-	return nil
+	return *obj, nil
 }

@@ -22,7 +22,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"strings"
 	"testing"
 	"time"
 
@@ -46,9 +45,14 @@ import (
 )
 
 type integrationEnv struct {
-	Client    client.Client
+	*integrationSuite
 	Namespace string
 	Config    *moduleconfig.Config
+}
+
+type integrationSuite struct {
+	Cluster cluster.TestCluster
+	Client  client.Client
 }
 
 type testDatabase struct {
@@ -56,26 +60,40 @@ type testDatabase struct {
 	terminate func(context.Context) error
 }
 
+var integrationTestSuite *integrationSuite
+
 func TestMain(m *testing.M) {
 	os.Exit(runTestMain(m))
 }
 
 func runTestMain(m *testing.M) int {
-	gomegaCfg, err := support.LoadGomegaConfig()
+	testCfg, err := support.LoadConfig(cluster.TypeK3s)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to load test config: %v\n", err)
 		return 1
 	}
-	SetDefaultEventuallyTimeout(gomegaCfg.EventuallyTimeout)
-	SetDefaultEventuallyPollingInterval(gomegaCfg.EventuallyPollingInterval)
-	SetDefaultConsistentlyPollingInterval(gomegaCfg.ConsistentlyPollingInterval)
+	SetDefaultEventuallyTimeout(testCfg.Gomega.EventuallyTimeout)
+	SetDefaultEventuallyPollingInterval(testCfg.Gomega.EventuallyPollingInterval)
+	SetDefaultConsistentlyPollingInterval(testCfg.Gomega.ConsistentlyPollingInterval)
 
 	ctrl.SetLogger(zap.New(zap.UseDevMode(true)))
 
-	testCluster, err := cluster.NewExternal()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	testCluster, err := startIntegrationCluster(ctx, testCfg.Cluster.Type)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to create integration cluster: %v\n", err)
 		return 1
+	}
+	cli, err := testCluster.Client()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to create integration client: %v\n", err)
+		return 1
+	}
+	integrationTestSuite = &integrationSuite{
+		Cluster: testCluster,
+		Client:  cli,
 	}
 
 	moduleCfg, err := moduleconfig.LoadFromFS(nil)
@@ -89,21 +107,9 @@ func runTestMain(m *testing.M) int {
 	moduleCfg.Controller.Pprof.BindAddress = "0"
 	moduleCfg.OperatorNamespace = support.IntegrationTestNamespace()
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
 	defer func() {
 		_ = testCluster.Stop(ctx)
 	}()
-
-	cli, err := testCluster.Client()
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to create integration client: %v\n", err)
-		return 1
-	}
-	if err := cleanupIntegrationFixtures(ctx, cli, support.IntegrationTestNamespace()); err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to clean integration fixtures: %v\n", err)
-		return 1
-	}
 
 	if err := startIntegrationManager(ctx, testCluster.Config(), moduleCfg); err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to start integration manager: %v\n", err)
@@ -116,13 +122,8 @@ func runTestMain(m *testing.M) int {
 func newIntegrationEnv(t *testing.T) (*integrationEnv, error) {
 	t.Helper()
 
-	testCluster, err := cluster.NewExternal()
-	if err != nil {
-		return nil, fmt.Errorf("creating integration cluster: %w", err)
-	}
-	cli, err := testCluster.Client()
-	if err != nil {
-		return nil, fmt.Errorf("creating test client: %w", err)
+	if integrationTestSuite == nil {
+		return nil, fmt.Errorf("integration suite is not initialized")
 	}
 
 	moduleCfg, err := moduleconfig.LoadFromFS(nil)
@@ -132,10 +133,39 @@ func newIntegrationEnv(t *testing.T) (*integrationEnv, error) {
 	moduleCfg.OperatorNamespace = support.IntegrationTestNamespace()
 
 	return &integrationEnv{
-		Client:    cli,
+		integrationSuite: integrationTestSuite,
 		Namespace: support.IntegrationTestNamespace(),
 		Config:    moduleCfg,
 	}, nil
+}
+
+func startIntegrationCluster(
+	ctx context.Context,
+	clusterType cluster.Type,
+) (cluster.TestCluster, error) {
+	testCluster, err := cluster.New(ctx, clusterType)
+	if err != nil {
+		return nil, fmt.Errorf("starting integration cluster: %w", err)
+	}
+
+	cli, err := testCluster.Client()
+	if err != nil {
+		_ = testCluster.Stop(ctx)
+		return nil, fmt.Errorf("creating k3s integration client: %w", err)
+	}
+
+	if err := support.InstallCRD(ctx, cli); err != nil {
+		_ = testCluster.Stop(ctx)
+		return nil, fmt.Errorf("installing integration CRDs: %w", err)
+	}
+	if clusterType == cluster.TypeExternal {
+		if err := cleanupIntegrationFixtures(ctx, cli, support.IntegrationTestNamespace()); err != nil {
+			_ = testCluster.Stop(ctx)
+			return nil, fmt.Errorf("cleaning integration fixtures: %w", err)
+		}
+	}
+
+	return testCluster, nil
 }
 
 // startDatabase spins up a postgres:16 container for a claim integration suite.
@@ -232,152 +262,169 @@ func startIntegrationManager(
 }
 
 func cleanupIntegrationFixtures(ctx context.Context, cli client.Client, namespace string) error {
-	for _, item := range []struct {
-		list    client.ObjectList
-		matches func(client.Object) bool
-	}{
-		{
-			list: &infraApi.DatabaseProviderList{},
-			matches: func(obj client.Object) bool {
-				return hasAnyPrefix(
-					obj.GetName(),
-					"provider-",
-					"schema-provider-",
-					"database-provider-",
-				) || obj.GetAnnotations()["db.infrastructure.opendatahub.io/operator-namespace"] == namespace
-			},
-		},
-		{
-			list: &infraApi.SchemaClaimList{},
-			matches: func(obj client.Object) bool {
-				return obj.GetNamespace() == namespace && strings.HasPrefix(obj.GetName(), "sc-")
-			},
-		},
-		{
-			list: &infraApi.DatabaseClaimList{},
-			matches: func(obj client.Object) bool {
-				return obj.GetNamespace() == namespace && strings.HasPrefix(obj.GetName(), "dc-")
-			},
-		},
-		{
-			list: &corev1.SecretList{},
-			matches: func(obj client.Object) bool {
-				return obj.GetNamespace() == namespace && hasAnyPrefix(
-					obj.GetName(),
-					"provider-secret-",
-					"schema-provider-",
-					"database-provider-",
-					"sc-",
-					"dc-",
-				)
-			},
-		},
-	} {
-		if isClusterScopedList(item.list) {
-			if err := cli.List(ctx, item.list); err != nil {
-				return err
-			}
-		} else {
-			if err := cli.List(ctx, item.list, client.InNamespace(namespace)); err != nil {
-				return err
-			}
-		}
-		if err := forEachListedObject(item.list, func(obj client.Object) error {
-			if !item.matches(obj) {
-				return nil
-			}
-			return deleteObjectAndWait(ctx, cli, obj)
-		}); err != nil {
-			return err
-		}
+	if err := cleanupClusterScopedProviders(ctx, cli, namespace); err != nil {
+		return err
+	}
+	if err := cleanupSchemaClaims(ctx, cli, namespace); err != nil {
+		return err
+	}
+	if err := cleanupDatabaseClaims(ctx, cli, namespace); err != nil {
+		return err
+	}
+	if err := cleanupSecrets(ctx, cli, namespace); err != nil {
+		return err
 	}
 
 	return nil
 }
 
-func deleteObjectAndWait(ctx context.Context, cli client.Client, obj client.Object) error {
-	key := client.ObjectKeyFromObject(obj)
-	if err := cli.Get(ctx, key, obj); err != nil {
-		if apierrors.IsNotFound(err) {
+func cleanupClusterScopedProviders(ctx context.Context, cli client.Client, namespace string) error {
+	providers := &infraApi.DatabaseProviderList{}
+	if err := cli.List(ctx, providers); err != nil {
+		return fmt.Errorf("listing database providers: %w", err)
+	}
+
+	for i := range providers.Items {
+		provider := &providers.Items[i]
+		if provider.GetAnnotations()["db.infrastructure.opendatahub.io/operator-namespace"] != namespace {
+			continue
+		}
+		if err := clearFinalizers(ctx, cli, provider); err != nil {
+			return err
+		}
+	}
+	for i := range providers.Items {
+		provider := &providers.Items[i]
+		if provider.GetAnnotations()["db.infrastructure.opendatahub.io/operator-namespace"] != namespace {
+			continue
+		}
+		if err := cli.Delete(ctx, provider); err != nil && !apierrors.IsNotFound(err) {
+			return fmt.Errorf("deleting database provider %q: %w", provider.GetName(), err)
+		}
+	}
+
+	return waitForListEmpty(ctx, 30*time.Second, 200*time.Millisecond, func(ctx context.Context) (bool, error) {
+		current := &infraApi.DatabaseProviderList{}
+		if err := cli.List(ctx, current); err != nil {
+			return false, fmt.Errorf("listing database providers: %w", err)
+		}
+		for i := range current.Items {
+			if current.Items[i].GetAnnotations()["db.infrastructure.opendatahub.io/operator-namespace"] == namespace {
+				return false, nil
+			}
+		}
+		return true, nil
+	}, "database providers")
+}
+
+func cleanupSchemaClaims(ctx context.Context, cli client.Client, namespace string) error {
+	list := &infraApi.SchemaClaimList{}
+	if err := cli.List(ctx, list, client.InNamespace(namespace)); err != nil {
+		return fmt.Errorf("listing schema claims in namespace %q: %w", namespace, err)
+	}
+	for i := range list.Items {
+		if err := clearFinalizers(ctx, cli, &list.Items[i]); err != nil {
+			return err
+		}
+	}
+	if err := cli.DeleteAllOf(ctx, &infraApi.SchemaClaim{}, client.InNamespace(namespace)); err != nil {
+		return fmt.Errorf("deleting schema claims in namespace %q: %w", namespace, err)
+	}
+
+	return waitForListEmpty(ctx, 30*time.Second, 200*time.Millisecond, func(ctx context.Context) (bool, error) {
+		current := &infraApi.SchemaClaimList{}
+		if err := cli.List(ctx, current, client.InNamespace(namespace)); err != nil {
+			return false, fmt.Errorf("listing schema claims in namespace %q: %w", namespace, err)
+		}
+		return len(current.Items) == 0, nil
+	}, "schema claims")
+}
+
+func cleanupDatabaseClaims(ctx context.Context, cli client.Client, namespace string) error {
+	list := &infraApi.DatabaseClaimList{}
+	if err := cli.List(ctx, list, client.InNamespace(namespace)); err != nil {
+		return fmt.Errorf("listing database claims in namespace %q: %w", namespace, err)
+	}
+	for i := range list.Items {
+		if err := clearFinalizers(ctx, cli, &list.Items[i]); err != nil {
+			return err
+		}
+	}
+	if err := cli.DeleteAllOf(ctx, &infraApi.DatabaseClaim{}, client.InNamespace(namespace)); err != nil {
+		return fmt.Errorf("deleting database claims in namespace %q: %w", namespace, err)
+	}
+
+	return waitForListEmpty(ctx, 30*time.Second, 200*time.Millisecond, func(ctx context.Context) (bool, error) {
+		current := &infraApi.DatabaseClaimList{}
+		if err := cli.List(ctx, current, client.InNamespace(namespace)); err != nil {
+			return false, fmt.Errorf("listing database claims in namespace %q: %w", namespace, err)
+		}
+		return len(current.Items) == 0, nil
+	}, "database claims")
+}
+
+func cleanupSecrets(ctx context.Context, cli client.Client, namespace string) error {
+	list := &corev1.SecretList{}
+	if err := cli.List(ctx, list, client.InNamespace(namespace)); err != nil {
+		return fmt.Errorf("listing secrets in namespace %q: %w", namespace, err)
+	}
+	for i := range list.Items {
+		if err := clearFinalizers(ctx, cli, &list.Items[i]); err != nil {
+			return err
+		}
+	}
+	if err := cli.DeleteAllOf(ctx, &corev1.Secret{}, client.InNamespace(namespace)); err != nil {
+		return fmt.Errorf("deleting secrets in namespace %q: %w", namespace, err)
+	}
+
+	return waitForListEmpty(ctx, 30*time.Second, 200*time.Millisecond, func(ctx context.Context) (bool, error) {
+		current := &corev1.SecretList{}
+		if err := cli.List(ctx, current, client.InNamespace(namespace)); err != nil {
+			return false, fmt.Errorf("listing secrets in namespace %q: %w", namespace, err)
+		}
+		return len(current.Items) == 0, nil
+	}, "secrets")
+}
+
+func clearFinalizers(ctx context.Context, cli client.Client, obj client.Object) error {
+	if len(obj.GetFinalizers()) == 0 {
+		return nil
+	}
+
+	patch := client.MergeFrom(obj.DeepCopyObject().(client.Object))
+	obj.SetFinalizers(nil)
+	if err := cli.Patch(ctx, obj, patch); err != nil && !apierrors.IsNotFound(err) {
+		return fmt.Errorf("clearing finalizers for %s: %w", client.ObjectKeyFromObject(obj), err)
+	}
+
+	return nil
+}
+
+func waitForListEmpty(
+	ctx context.Context,
+	timeout time.Duration,
+	interval time.Duration,
+	check func(context.Context) (bool, error),
+	what string,
+) error {
+	deadline := time.Now().Add(timeout)
+	for {
+		empty, err := check(ctx)
+		if err != nil {
+			return err
+		}
+		if empty {
 			return nil
 		}
-		return err
-	}
-
-	if len(obj.GetFinalizers()) > 0 {
-		patch := client.MergeFrom(obj.DeepCopyObject().(client.Object))
-		obj.SetFinalizers(nil)
-		if err := cli.Patch(ctx, obj, patch); err != nil && !apierrors.IsNotFound(err) {
-			return err
-		}
-	}
-	if err := cli.Delete(ctx, obj); err != nil && !apierrors.IsNotFound(err) {
-		return err
-	}
-
-	deadline := time.Now().Add(30 * time.Second)
-	for {
-		if err := cli.Get(ctx, key, obj); err != nil {
-			if apierrors.IsNotFound(err) {
-				return nil
-			}
-			return err
-		}
 		if time.Now().After(deadline) {
-			return fmt.Errorf("timed out waiting for %s to be deleted", key)
+			return fmt.Errorf("timed out waiting for %s to be deleted", what)
 		}
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
-		case <-time.After(200 * time.Millisecond):
+		case <-time.After(interval):
 		}
 	}
-}
-
-func forEachListedObject(list client.ObjectList, fn func(client.Object) error) error {
-	switch items := list.(type) {
-	case *infraApi.DatabaseProviderList:
-		for i := range items.Items {
-			if err := fn(&items.Items[i]); err != nil {
-				return err
-			}
-		}
-	case *infraApi.SchemaClaimList:
-		for i := range items.Items {
-			if err := fn(&items.Items[i]); err != nil {
-				return err
-			}
-		}
-	case *infraApi.DatabaseClaimList:
-		for i := range items.Items {
-			if err := fn(&items.Items[i]); err != nil {
-				return err
-			}
-		}
-	case *corev1.SecretList:
-		for i := range items.Items {
-			if err := fn(&items.Items[i]); err != nil {
-				return err
-			}
-		}
-	default:
-		return fmt.Errorf("unsupported list type %T", list)
-	}
-	return nil
-}
-
-func isClusterScopedList(list client.ObjectList) bool {
-	_, ok := list.(*infraApi.DatabaseProviderList)
-	return ok
-}
-
-func hasAnyPrefix(value string, prefixes ...string) bool {
-	for _, prefix := range prefixes {
-		if strings.HasPrefix(value, prefix) {
-			return true
-		}
-	}
-	return false
 }
 
 // deleteAndWait deletes obj (stripping its finalizers first if needed) and

@@ -46,9 +46,12 @@ func TestApplyManifestFromFileCreatesObject(t *testing.T) {
 	cli := fake.NewClientBuilder().WithScheme(scheme).Build()
 	manifestPath := writeManifestTestFile(t, createConfigMapManifest)
 
-	err := ApplyManifestFromFile(ctx, cli, manifestPath)
+	obj, err := ApplyManifestFromFile(ctx, cli, manifestPath)
 
 	g.Expect(err).NotTo(HaveOccurred())
+	g.Expect(obj.GetKind()).To(Equal("ConfigMap"))
+	g.Expect(obj.GetName()).To(Equal("example"))
+	g.Expect(obj.GetNamespace()).To(Equal("test-ns"))
 
 	stored := &corev1.ConfigMap{}
 	err = cli.Get(ctx, client.ObjectKey{Name: "example", Namespace: "test-ns"}, stored)
@@ -73,9 +76,12 @@ func TestApplyManifestFromFSUpdatesExistingObject(t *testing.T) {
 		},
 	}
 
-	err := ApplyManifestFromFS(ctx, cli, manifests, testManifestPath)
+	obj, err := ApplyManifestFromFS(ctx, cli, manifests, testManifestPath)
 
 	g.Expect(err).NotTo(HaveOccurred())
+	g.Expect(obj.GetKind()).To(Equal("ConfigMap"))
+	g.Expect(obj.GetName()).To(Equal("example"))
+	g.Expect(obj.GetNamespace()).To(Equal("test-ns"))
 
 	stored := &corev1.ConfigMap{}
 	err = cli.Get(ctx, client.ObjectKey{Name: "example", Namespace: "test-ns"}, stored)

@@ -12,6 +12,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
+const DefaultK3sImage = "rancher/k3s:v1.32.9-k3s1"
+
 type K3sOption func(*K3sOptions)
 
 type K3sOptions struct {
