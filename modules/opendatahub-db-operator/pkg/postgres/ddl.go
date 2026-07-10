@@ -202,6 +202,61 @@ func RevokeSchemaPrivileges(ctx context.Context, pool *pgxpool.Pool, schema, rol
 	return fmt.Errorf("revoking schema privileges (partial): %v", errs)
 }
 
+// HasSchemaPrivileges reports whether role already holds the privileges
+// expected for accessMode on schema: USAGE for ReadOnly, USAGE+CREATE for
+// ReadWrite. COALESCE handles the NULL returned when the role is unknown to
+// HAS_SCHEMA_PRIVILEGE (treats it as false).
+func HasSchemaPrivileges(
+	ctx context.Context,
+	pool *pgxpool.Pool,
+	schema string,
+	role string,
+	accessMode infraApi.AccessMode,
+) (bool, error) {
+	var hasUsage bool
+	err := pool.QueryRow(ctx,
+		"SELECT COALESCE(HAS_SCHEMA_PRIVILEGE($1, $2, 'USAGE'), false)", role, schema,
+	).Scan(&hasUsage)
+	if err != nil || !hasUsage {
+		return false, err
+	}
+	if accessMode == infraApi.AccessModeReadOnly {
+		return true, nil
+	}
+	var hasCreate bool
+	err = pool.QueryRow(ctx,
+		"SELECT COALESCE(HAS_SCHEMA_PRIVILEGE($1, $2, 'CREATE'), false)", role, schema,
+	).Scan(&hasCreate)
+	return hasCreate, err
+}
+
+// HasDatabasePrivileges reports whether role already holds the privileges
+// expected for accessMode on database: CONNECT for ReadOnly, CONNECT+CREATE
+// for ReadWrite.
+func HasDatabasePrivileges(
+	ctx context.Context,
+	pool *pgxpool.Pool,
+	database string,
+	role string,
+	accessMode infraApi.AccessMode,
+) (bool, error) {
+	var hasConnect bool
+	err := pool.QueryRow(ctx,
+		"SELECT COALESCE(HAS_DATABASE_PRIVILEGE($1, $2, 'CONNECT'), false)", role, database,
+	).Scan(&hasConnect)
+	if err != nil || !hasConnect {
+		return false, err
+	}
+	if accessMode == infraApi.AccessModeReadOnly {
+		return true, nil
+	}
+	var hasCreate bool
+	err = pool.QueryRow(ctx,
+		"SELECT COALESCE(HAS_DATABASE_PRIVILEGE($1, $2, 'CREATE'), false)", role, database,
+	).Scan(&hasCreate)
+	return hasCreate, err
+}
+
 // DatabaseExists returns true if a database with the given name exists on the
 // server. Used by DatabaseClaim to verify spec.database before provisioning.
 func DatabaseExists(ctx context.Context, pool *pgxpool.Pool, name string) (bool, error) {

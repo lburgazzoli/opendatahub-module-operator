@@ -39,6 +39,7 @@ import (
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/internal/controller/databaseservice"
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/internal/controller/schemaclaim"
 	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/pkg/config"
+	dbcontroller "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/pkg/controller"
 	odhmanager "github.com/opendatahub-io/odh-platform-utilities/framework/manager"
 	libcache "github.com/opendatahub-io/odh-platform-utilities/pkg/cache"
 )
@@ -116,6 +117,12 @@ func New(
 	mgr := odhmanager.New(
 		ctrlMgr,
 	)
+
+	for _, idx := range dbcontroller.FieldIndexers {
+		if err := ctrlMgr.GetFieldIndexer().IndexField(ctx, idx.Obj, idx.Field, idx.Fn); err != nil {
+			return nil, fmt.Errorf("registering field index %q: %w", idx.Field, err)
+		}
+	}
 
 	if err := databaseservice.NewReconciler(ctx, mgr, cfg); err != nil {
 		return nil, fmt.Errorf("creating databaseservice reconciler: %w", err)

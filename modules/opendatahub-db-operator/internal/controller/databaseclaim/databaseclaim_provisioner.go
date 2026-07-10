@@ -98,11 +98,13 @@ func (p DatabaseProvisioner) Ensure(
 		p.buildCredentialsSecret(secret, role, pw)
 	}
 
-	if err := postgres.RevokeDatabasePrivileges(ctx, p.Pool, p.Claim.Spec.Database, role); err != nil {
-		return nil, wrapQuickRetry("revoking database privileges", err)
-	}
-	if err := postgres.GrantDatabasePrivileges(ctx, p.Pool, p.Claim.Spec.Database, role, p.Claim.Spec.Access); err != nil {
-		return nil, wrapQuickRetry("granting database privileges", err)
+	switch ok, err := postgres.HasDatabasePrivileges(ctx, p.Pool, p.Claim.Spec.Database, role, p.Claim.Spec.Access); {
+	case err != nil:
+		return nil, wrapQuickRetry("checking database privileges", err)
+	case !ok:
+		if err := postgres.GrantDatabasePrivileges(ctx, p.Pool, p.Claim.Spec.Database, role, p.Claim.Spec.Access); err != nil {
+			return nil, wrapQuickRetry("granting database privileges", err)
+		}
 	}
 	secret.SetGroupVersionKind(gvk.Secret)
 

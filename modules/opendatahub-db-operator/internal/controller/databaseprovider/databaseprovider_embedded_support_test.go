@@ -376,10 +376,15 @@ func TestReferencedClaimNamespaces_UsesPinnedProvider(t *testing.T) {
 		},
 	}
 
-	cli := fake.NewClientBuilder().
+	builder := fake.NewClientBuilder().
 		WithScheme(scheme).
-		WithRuntimeObjects(alpha, bravo, claim).
-		Build()
+		WithRuntimeObjects(alpha, bravo, claim)
+
+	for _, idx := range dbcontroller.FieldIndexers {
+		builder = builder.WithIndex(idx.Obj, idx.Field, idx.Fn)
+	}
+
+	cli := builder.Build()
 
 	namespaces, err := referencedClaimNamespaces(ctx, cli, bravo)
 	g.Expect(err).NotTo(HaveOccurred())

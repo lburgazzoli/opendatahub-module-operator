@@ -94,11 +94,13 @@ func (p SchemaProvisioner) Ensure(
 		p.buildCredentialsSecret(secret, role, pw, schema)
 	}
 
-	if err := postgres.RevokeSchemaPrivileges(ctx, p.Pool, schema, role); err != nil {
-		return nil, wrapQuickRetry("revoking schema privileges", err)
-	}
-	if err := postgres.GrantSchemaPrivileges(ctx, p.Pool, schema, role, p.Claim.Spec.Access); err != nil {
-		return nil, wrapQuickRetry("granting schema privileges", err)
+	switch ok, err := postgres.HasSchemaPrivileges(ctx, p.Pool, schema, role, p.Claim.Spec.Access); {
+	case err != nil:
+		return nil, wrapQuickRetry("checking schema privileges", err)
+	case !ok:
+		if err := postgres.GrantSchemaPrivileges(ctx, p.Pool, schema, role, p.Claim.Spec.Access); err != nil {
+			return nil, wrapQuickRetry("granting schema privileges", err)
+		}
 	}
 	secret.SetGroupVersionKind(gvk.Secret)
 

@@ -446,4 +446,35 @@ func (st *schemaClaimSuite) testCRDValidation(t *testing.T) {
 		obj.Spec.Schema = "a_different_schema"
 		g.Expect(cli.Update(ctx, obj)).To(HaveOccurred())
 	})
+
+	t.Run("rejects-access-mutation", func(t *testing.T) {
+		g := NewWithT(t)
+		obj := &infraApi.SchemaClaim{
+			ObjectMeta: metav1.ObjectMeta{Name: "sc-immut-access", Namespace: ns},
+			Spec: infraApi.SchemaClaimSpec{
+				Provider: infraApi.ProviderRef{Name: "p"},
+				Access:   infraApi.AccessModeReadWrite,
+			},
+		}
+		g.Expect(cli.Create(ctx, obj)).To(Succeed())
+		t.Cleanup(func() { _ = cli.Delete(ctx, obj) })
+
+		obj.Spec.Access = infraApi.AccessModeReadOnly
+		g.Expect(cli.Update(ctx, obj)).To(HaveOccurred())
+	})
+
+	t.Run("rejects-provider-mutation", func(t *testing.T) {
+		g := NewWithT(t)
+		obj := &infraApi.SchemaClaim{
+			ObjectMeta: metav1.ObjectMeta{Name: "sc-immut-provider", Namespace: ns},
+			Spec: infraApi.SchemaClaimSpec{
+				Provider: infraApi.ProviderRef{Name: "p"},
+			},
+		}
+		g.Expect(cli.Create(ctx, obj)).To(Succeed())
+		t.Cleanup(func() { _ = cli.Delete(ctx, obj) })
+
+		obj.Spec.Provider = infraApi.ProviderRef{Name: "q"}
+		g.Expect(cli.Update(ctx, obj)).To(HaveOccurred())
+	})
 }

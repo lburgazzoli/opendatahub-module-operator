@@ -54,6 +54,7 @@ type SchemaConnectionStatus struct {
 type SchemaClaimSpec struct {
 	// Provider selects the DatabaseProvider to provision against.
 	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="provider is immutable once set"
 	Provider ProviderRef `json:"provider"`
 
 	// SecretName overrides the name of the credentials Secret projected in the
@@ -82,6 +83,7 @@ type SchemaClaimSpec struct {
 	// Access is the privilege level granted to the provisioned user.
 	// +kubebuilder:validation:Enum=ReadWrite;ReadOnly
 	// +kubebuilder:default=ReadWrite
+	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="access is immutable once set"
 	Access AccessMode `json:"access,omitempty"`
 
 	// DeletionPolicy governs schema+data lifecycle on claim deletion.

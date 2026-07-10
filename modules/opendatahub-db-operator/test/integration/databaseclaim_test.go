@@ -400,4 +400,37 @@ func (st *databaseClaimSuite) testCRDValidation(t *testing.T) {
 		obj.Spec.Database = "a_different_database"
 		g.Expect(cli.Update(ctx, obj)).To(HaveOccurred())
 	})
+
+	t.Run("rejects-access-mutation", func(t *testing.T) {
+		g := NewWithT(t)
+		obj := &infraApi.DatabaseClaim{
+			ObjectMeta: metav1.ObjectMeta{Name: "dc-immut-access", Namespace: ns},
+			Spec: infraApi.DatabaseClaimSpec{
+				Provider: infraApi.ProviderRef{Name: "p"},
+				Database: "ai_pipelines",
+				Access:   infraApi.AccessModeReadWrite,
+			},
+		}
+		g.Expect(cli.Create(ctx, obj)).To(Succeed())
+		t.Cleanup(func() { _ = cli.Delete(ctx, obj) })
+
+		obj.Spec.Access = infraApi.AccessModeReadOnly
+		g.Expect(cli.Update(ctx, obj)).To(HaveOccurred())
+	})
+
+	t.Run("rejects-provider-mutation", func(t *testing.T) {
+		g := NewWithT(t)
+		obj := &infraApi.DatabaseClaim{
+			ObjectMeta: metav1.ObjectMeta{Name: "dc-immut-provider", Namespace: ns},
+			Spec: infraApi.DatabaseClaimSpec{
+				Provider: infraApi.ProviderRef{Name: "p"},
+				Database: "ai_pipelines",
+			},
+		}
+		g.Expect(cli.Create(ctx, obj)).To(Succeed())
+		t.Cleanup(func() { _ = cli.Delete(ctx, obj) })
+
+		obj.Spec.Provider = infraApi.ProviderRef{Name: "q"}
+		g.Expect(cli.Update(ctx, obj)).To(HaveOccurred())
+	})
 }

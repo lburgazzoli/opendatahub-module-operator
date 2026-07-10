@@ -18,7 +18,6 @@ package databaseprovider
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"sort"
 	"time"
@@ -252,51 +251,26 @@ func referencedClaimNamespaces(
 	provider *infraApi.DatabaseProvider,
 ) ([]string, error) {
 	namespaces := map[string]struct{}{}
+	providerFilter := client.MatchingFields{dbcontroller.IndexEffectiveProvider: provider.Name}
 
 	schemaClaims := &infraApi.SchemaClaimList{}
-	if err := cli.List(ctx, schemaClaims); err != nil {
+	if err := cli.List(ctx, schemaClaims, providerFilter); err != nil {
 		return nil, err
 	}
 	for i := range schemaClaims.Items {
 		claim := &schemaClaims.Items[i]
-		if !isConditionTrue(claim.Status.Conditions, schemaclaimcontroller.ConditionProvisioned) {
-			continue
-		}
-		matched, err := claimReferencesProvider(
-			ctx,
-			cli,
-			claim.Spec.Provider,
-			claim.Status.Provider,
-			provider.Name,
-		)
-		if err != nil {
-			return nil, err
-		}
-		if matched {
+		if isConditionTrue(claim.Status.Conditions, schemaclaimcontroller.ConditionProvisioned) {
 			namespaces[claim.Namespace] = struct{}{}
 		}
 	}
 
 	databaseClaims := &infraApi.DatabaseClaimList{}
-	if err := cli.List(ctx, databaseClaims); err != nil {
+	if err := cli.List(ctx, databaseClaims, providerFilter); err != nil {
 		return nil, err
 	}
 	for i := range databaseClaims.Items {
 		claim := &databaseClaims.Items[i]
-		if !isConditionTrue(claim.Status.Conditions, dbclaimcontroller.ConditionProvisioned) {
-			continue
-		}
-		matched, err := claimReferencesProvider(
-			ctx,
-			cli,
-			claim.Spec.Provider,
-			claim.Status.Provider,
-			provider.Name,
-		)
-		if err != nil {
-			return nil, err
-		}
-		if matched {
+		if isConditionTrue(claim.Status.Conditions, dbclaimcontroller.ConditionProvisioned) {
 			namespaces[claim.Namespace] = struct{}{}
 		}
 	}
@@ -307,24 +281,6 @@ func referencedClaimNamespaces(
 	}
 	sort.Strings(result)
 	return result, nil
-}
-
-func claimReferencesProvider(
-	ctx context.Context,
-	cli client.Client,
-	ref infraApi.ProviderRef,
-	currentProvider string,
-	providerName string,
-) (bool, error) {
-	resolved, err := dbcontroller.ResolveForCurrent(ctx, cli, ref, currentProvider)
-	if err != nil {
-		var notFound dbcontroller.ErrNotFound
-		if errors.As(err, &notFound) {
-			return false, nil
-		}
-		return false, err
-	}
-	return resolved.Name == providerName, nil
 }
 
 func embeddedStatefulSetKey(provider *infraApi.DatabaseProvider, cfg *moduleconfig.Config) types.NamespacedName {

@@ -56,6 +56,9 @@ spec:
                 - ReadWrite
                 - ReadOnly
                 type: string
+                x-kubernetes-validations:
+                - message: access is immutable once set
+                  rule: self == oldSelf
               deletionPolicy:
                 default: Retain
                 description: DeletionPolicy governs schema+data lifecycle on claim
@@ -122,6 +125,8 @@ spec:
                     x-kubernetes-map-type: atomic
                 type: object
                 x-kubernetes-validations:
+                - message: provider is immutable once set
+                  rule: self == oldSelf
                 - message: exactly one of name or selector must be set
                   rule: '(has(self.name) ? 1 : 0) + (has(self.selector) ? 1 : 0) ==
                     1'
