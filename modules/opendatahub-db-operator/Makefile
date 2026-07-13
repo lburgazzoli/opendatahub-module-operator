@@ -65,21 +65,16 @@ test: manifests generate fmt vet ## Run unit tests.
 
 .PHONY: test-integration
 test-integration: manifests generate ## Run integration tests.
-	INTEGRATION_TEST_NAMESPACE="$(INTEGRATION_TEST_NAMESPACE)" TEST_PLATFORM_VERSION="$(TEST_PLATFORM_VERSION)" go test -ldflags "$(LDFLAGS)" ./test/integration/ -tags=integration -v -timeout 5m -failfast
+	INTEGRATION_TEST_NAMESPACE="$(INTEGRATION_TEST_NAMESPACE)" TEST_PLATFORM_VERSION="$(TEST_PLATFORM_VERSION)" ODH_MODULE_OPERATOR_TEST_CLUSTER_TYPE="$(INTEGRATION_TEST_CLUSTER_TYPE)" ODH_MODULE_OPERATOR_TEST_OPERATOR_INSTALL=false go test -ldflags "$(LDFLAGS)" ./test/integration/ -tags=integration -v -timeout 5m -failfast
 
 .PHONY: test-e2e-run
-test-e2e-run: ## Run e2e tests only (operator must already be deployed).
-	OPERATOR_NAMESPACE="$(OPERATOR_NAMESPACE)" E2E_TEST_NAMESPACE="$(E2E_TEST_NAMESPACE)" \
+test-e2e-run: ## Run e2e tests only (test bootstrap installs the operator).
+	OPERATOR_NAMESPACE="$(OPERATOR_NAMESPACE)" E2E_TEST_NAMESPACE="$(E2E_TEST_NAMESPACE)" ODH_MODULE_OPERATOR_TEST_OPERATOR_INSTALL=true ODH_MODULE_OPERATOR_TEST_OPERATOR_IMAGE="$(E2E_OPERATOR_IMAGE)" \
 		go test -ldflags "$(LDFLAGS)" ./test/e2e/ -v -timeout 10m -failfast
-
-.PHONY: test-e2e-setup
-test-e2e-setup: ## Prepare the cluster for e2e tests.
-	@:
 
 .PHONY: test-e2e
 test-e2e: IMG := ttl.sh/$(shell sh -c 'if [ -r /proc/sys/kernel/random/uuid ]; then cat /proc/sys/kernel/random/uuid; else uuidgen; fi' | tr '[:upper:]' '[:lower:]'):1h
-test-e2e: HELM_EXTRA_ARGS += --set-string platform.type=$(TEST_PLATFORM_TYPE) --set-string platform.version=$(TEST_PLATFORM_VERSION)
-test-e2e: test-e2e-cleanup test-e2e-setup container-build container-push helm deploy-helm test-e2e-run ## Run e2e tests (clean, build, push, deploy, then run).
+test-e2e: container-build container-push helm test-e2e-run ## Run e2e tests (build, push, then let test bootstrap install and run).
 
 .PHONY: test-integration-cleanup
 test-integration-cleanup: ## Clean up integration test resources from the cluster.
@@ -170,7 +165,9 @@ HELM_NAMESPACE ?= odh-db-operator-system
 HELM_RELEASE   ?= odh-db-operator
 OPERATOR_NAMESPACE ?= $(HELM_NAMESPACE)
 INTEGRATION_TEST_NAMESPACE ?= odh-db-operator-integration
+INTEGRATION_TEST_CLUSTER_TYPE ?= k3s
 E2E_TEST_NAMESPACE ?= odh-db-operator-e2e
+E2E_OPERATOR_IMAGE ?= $(IMG)
 HELM_EXTRA_ARGS ?=
 TEST_PLATFORM_TYPE ?= OpenDataHub
 TEST_PLATFORM_VERSION ?= 0.1.0

@@ -149,8 +149,29 @@ make manifests generate
 make lint
 make test
 make test-integration
+make test-e2e
 make install
 make run
+```
+
+`make test-integration` defaults to the embedded `k3s` backend. To run the
+integration suite against another supported cluster backend, override the
+cluster type explicitly:
+
+```bash
+make test-integration INTEGRATION_TEST_CLUSTER_TYPE=external
+```
+
+`make test-e2e` also defaults to `k3s`, but it now builds and pushes an image,
+then bootstraps the operator through the shared test cluster setup flow instead
+of assuming an existing deployment. The operator image comes from
+`E2E_OPERATOR_IMAGE`, which defaults to `$(IMG)` in the composite target. For a
+standalone run against a different cluster backend or image:
+
+```bash
+make test-e2e-run \
+  E2E_OPERATOR_IMAGE=quay.io/example/opendatahub-db-operator:test \
+  ODH_MODULE_OPERATOR_TEST_CLUSTER_TYPE=external
 ```
 
 If you change API types or kubebuilder markers, regenerate before reviewing the

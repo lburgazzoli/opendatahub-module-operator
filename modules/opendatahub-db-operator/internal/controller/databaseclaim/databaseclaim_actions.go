@@ -53,7 +53,7 @@ func (m *Controller) provisionAction(ctx context.Context, rr *odhtypes.Reconcili
 			rr.Conditions.Mark(ConditionProvisioned, metav1.ConditionFalse,
 				conditions.WithError(notFound),
 				conditions.WithReason("ProviderNotFound"))
-			return odherrors.NewStopErrorW(err)
+			return odherrors.NewStopErrorWithRequeueAfterW(m.cfg.DatabaseClaim.RetryInterval, err)
 		}
 		return fmt.Errorf("resolving provider: %w", err)
 	}

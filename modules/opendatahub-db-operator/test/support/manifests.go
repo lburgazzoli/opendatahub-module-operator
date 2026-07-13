@@ -43,7 +43,7 @@ var installCRDs = []string{
 // waits for each one to become established before moving to the next.
 func InstallCRD(ctx context.Context, cli client.Client) error {
 	for _, manifest := range installCRDs {
-		manifestPath, err := modulePath(manifest)
+		manifestPath, err := ModulePath(manifest)
 		if err != nil {
 			return fmt.Errorf("resolving CRD manifest path %q: %w", manifest, err)
 		}
@@ -168,8 +168,8 @@ func isCRDEstablished(
 	return false, nil
 }
 
-func modulePath(parts ...string) (string, error) {
-	root, err := moduleRoot()
+func ModulePath(parts ...string) (string, error) {
+	root, err := ModuleRoot()
 	if err != nil {
 		return "", err
 	}
@@ -177,7 +177,7 @@ func modulePath(parts ...string) (string, error) {
 	return filepath.Join(append([]string{root}, parts...)...), nil
 }
 
-func moduleRoot() (string, error) {
+func ModuleRoot() (string, error) {
 	dir, err := os.Getwd()
 	if err != nil {
 		return "", fmt.Errorf("getting working directory: %w", err)

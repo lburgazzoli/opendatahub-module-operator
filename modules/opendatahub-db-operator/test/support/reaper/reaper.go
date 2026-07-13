@@ -92,6 +92,9 @@ func (r *Reaper) cleanupByGVK(ctx context.Context, resourceGVK schema.GroupVersi
 	list.SetGroupVersionKind(resourceGVK)
 
 	if err := r.cli.List(ctx, list); err != nil {
+		if meta.IsNoMatchError(err) {
+			return nil
+		}
 		return fmt.Errorf("listing %s resources: %w", resourceGVK.Kind, err)
 	}
 

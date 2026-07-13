@@ -8,16 +8,19 @@ import (
 	"github.com/spf13/viper"
 
 	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/pkg/config"
-	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/test/support/cluster"
 )
 
 const (
-	DefaultClusterType                 = cluster.TypeK3s
+	DefaultClusterType                 = ClusterTypeK3s
 	DefaultEventuallyTimeout           = 90 * time.Second
 	DefaultEventuallyPollingInterval   = 2 * time.Second
 	DefaultConsistentlyPollingInterval = 2 * time.Second
+	DefaultOperatorInstall             = false
+	DefaultOperatorLogs                = false
 	DefaultOperatorNamespace           = "odh-db-operator-system"
 	DefaultIntegrationTestNamespace    = "odh-db-operator-integration"
+	DefaultPlatformType                = "OpenDataHub"
+	DefaultPlatformVersion             = "0.1.0"
 
 	testConfigEnvPrefix = "ODH_MODULE_OPERATOR_TEST"
 
@@ -25,21 +28,44 @@ const (
 	keyEventuallyTimeout           = "gomega.eventually-timeout"
 	keyEventuallyPollingInterval   = "gomega.eventually-polling-interval"
 	keyConsistentlyPollingInterval = "gomega.consistently-polling-interval"
+	keyOperatorInstall             = "operator.install"
+	keyOperatorLogs                = "operator.logs"
+	keyOperatorImage               = "operator.image"
+	keyOperatorNamespace           = "operator.namespace"
+	keyOperatorPlatformType        = "operator.platform-type"
+	keyOperatorPlatformVersion     = "operator.platform-version"
+)
+
+type ClusterType string
+
+const (
+	ClusterTypeExternal ClusterType = "external"
+	ClusterTypeK3s      ClusterType = "k3s"
 )
 
 type Config struct {
-	Cluster ClusterConfig `mapstructure:"cluster"`
-	Gomega  GomegaConfig  `mapstructure:"gomega"`
+	Cluster  ClusterConfig  `mapstructure:"cluster"`
+	Gomega   GomegaConfig   `mapstructure:"gomega"`
+	Operator OperatorConfig `mapstructure:"operator"`
 }
 
 type ClusterConfig struct {
-	Type cluster.Type `mapstructure:"type"`
+	Type ClusterType `mapstructure:"type"`
 }
 
 type GomegaConfig struct {
 	EventuallyTimeout           time.Duration `mapstructure:"eventually-timeout"`
 	EventuallyPollingInterval   time.Duration `mapstructure:"eventually-polling-interval"`
 	ConsistentlyPollingInterval time.Duration `mapstructure:"consistently-polling-interval"`
+}
+
+type OperatorConfig struct {
+	Install         bool   `mapstructure:"install"`
+	Logs            bool   `mapstructure:"logs"`
+	Image           string `mapstructure:"image"`
+	Namespace       string `mapstructure:"namespace"`
+	PlatformType    string `mapstructure:"platform-type"`
+	PlatformVersion string `mapstructure:"platform-version"`
 }
 
 func OperatorNamespace() string {
@@ -65,6 +91,11 @@ func LoadConfig() (*Config, error) {
 	v.SetDefault(keyEventuallyTimeout, DefaultEventuallyTimeout)
 	v.SetDefault(keyEventuallyPollingInterval, DefaultEventuallyPollingInterval)
 	v.SetDefault(keyConsistentlyPollingInterval, DefaultConsistentlyPollingInterval)
+	v.SetDefault(keyOperatorInstall, DefaultOperatorInstall)
+	v.SetDefault(keyOperatorLogs, DefaultOperatorLogs)
+	v.SetDefault(keyOperatorNamespace, DefaultOperatorNamespace)
+	v.SetDefault(keyOperatorPlatformType, DefaultPlatformType)
+	v.SetDefault(keyOperatorPlatformVersion, DefaultPlatformVersion)
 
 	if err := moduleconfig.BindEnv(
 		v,
@@ -74,6 +105,12 @@ func LoadConfig() (*Config, error) {
 		keyEventuallyTimeout,
 		keyEventuallyPollingInterval,
 		keyConsistentlyPollingInterval,
+		keyOperatorInstall,
+		keyOperatorLogs,
+		keyOperatorImage,
+		keyOperatorNamespace,
+		keyOperatorPlatformType,
+		keyOperatorPlatformVersion,
 	); err != nil {
 		return nil, err
 	}

@@ -25,11 +25,9 @@ const (
 	externalPostgresDB       = "appdb"
 )
 
-func TestDatabaseOperatorE2EExternal(t *testing.T) {
-	suite := newE2ESuite(t)
-
-	t.Run("external provider serves schema and database claims together", suite.testExternalProviderServesClaims)
-	t.Run("missing provider is surfaced on claims", suite.testMissingProvider)
+func (st *e2eSuite) runExternal(t *testing.T) {
+	t.Run("external provider serves schema and database claims together", st.testExternalProviderServesClaims)
+	t.Run("missing provider is surfaced on claims", st.testMissingProvider)
 }
 
 func (st *e2eSuite) testExternalProviderServesClaims(t *testing.T) {
@@ -146,6 +144,8 @@ func (st *e2eSuite) testMissingProvider(t *testing.T) {
 func (st *e2eSuite) createExternalProviderWithDatabase(t *testing.T) (*infraApi.DatabaseProvider, string) {
 	t.Helper()
 
+	g := NewWithT(t)
+
 	name := "e2e-external-" + xid.New().String()
 	deployment := &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
@@ -178,12 +178,11 @@ func (st *e2eSuite) createExternalProviderWithDatabase(t *testing.T) (*infraApi.
 			},
 		},
 	}
-	NewWithT(t).Expect(st.Client.Create(t.Context(), deployment)).To(Succeed())
+	g.Expect(st.Client.Create(t.Context(), deployment)).To(Succeed())
 	t.Cleanup(func() {
 		st.deleteAndWait(context.Background(), t, deployment)
 	})
 
-	g := NewWithT(t)
 	g.Eventually(t.Context(), k8sm.Get(st.Client, deployment)).Should(
 		WithTransform(func(dep *appsv1.Deployment) int32 {
 			return dep.Status.ReadyReplicas

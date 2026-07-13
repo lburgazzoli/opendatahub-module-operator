@@ -59,7 +59,7 @@ func TestIntegration(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	t.Cleanup(cancel)
 
-	tc, err := startIntegrationCluster(ctx, testCfg.Cluster.Type)
+	tc, err := startIntegrationCluster(ctx, testCfg)
 	g.Expect(err).NotTo(HaveOccurred())
 
 	t.Cleanup(func() {
@@ -138,9 +138,13 @@ func newIntegrationEnv(
 
 func startIntegrationCluster(
 	ctx context.Context,
-	clusterType cluster.Type,
+	cfg *support.Config,
 ) (cluster.Instance, error) {
-	tc, err := cluster.New(ctx, clusterType)
+	if cfg == nil {
+		return nil, fmt.Errorf("config is nil")
+	}
+
+	tc, err := cluster.New(ctx, cfg)
 	if err != nil {
 		return nil, fmt.Errorf("starting integration cluster: %w", err)
 	}
@@ -156,7 +160,7 @@ func startIntegrationCluster(
 		return nil, fmt.Errorf("installing integration CRDs: %w", err)
 	}
 
-	if clusterType == cluster.TypeExternal {
+	if cfg.Cluster.Type == cluster.TypeExternal {
 		r, err := reaper.New(
 			cli,
 		)

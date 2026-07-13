@@ -5,8 +5,6 @@ import (
 	"time"
 
 	. "github.com/onsi/gomega"
-
-	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/test/support/cluster"
 )
 
 func TestLoadConfigUsesDefaults(t *testing.T) {
@@ -15,6 +13,12 @@ func TestLoadConfigUsesDefaults(t *testing.T) {
 	t.Setenv("ODH_MODULE_OPERATOR_TEST_GOMEGA_EVENTUALLY_TIMEOUT", "")
 	t.Setenv("ODH_MODULE_OPERATOR_TEST_GOMEGA_EVENTUALLY_POLLING_INTERVAL", "")
 	t.Setenv("ODH_MODULE_OPERATOR_TEST_GOMEGA_CONSISTENTLY_POLLING_INTERVAL", "")
+	t.Setenv("ODH_MODULE_OPERATOR_TEST_OPERATOR_INSTALL", "")
+	t.Setenv("ODH_MODULE_OPERATOR_TEST_OPERATOR_LOGS", "")
+	t.Setenv("ODH_MODULE_OPERATOR_TEST_OPERATOR_IMAGE", "")
+	t.Setenv("ODH_MODULE_OPERATOR_TEST_OPERATOR_NAMESPACE", "")
+	t.Setenv("ODH_MODULE_OPERATOR_TEST_OPERATOR_PLATFORM_TYPE", "")
+	t.Setenv("ODH_MODULE_OPERATOR_TEST_OPERATOR_PLATFORM_VERSION", "")
 
 	cfg, err := LoadConfig()
 	g.Expect(err).NotTo(HaveOccurred())
@@ -27,6 +31,14 @@ func TestLoadConfigUsesDefaults(t *testing.T) {
 			EventuallyPollingInterval:   DefaultEventuallyPollingInterval,
 			ConsistentlyPollingInterval: DefaultConsistentlyPollingInterval,
 		},
+		Operator: OperatorConfig{
+			Install:         DefaultOperatorInstall,
+			Logs:            DefaultOperatorLogs,
+			Image:           "",
+			Namespace:       DefaultOperatorNamespace,
+			PlatformType:    DefaultPlatformType,
+			PlatformVersion: DefaultPlatformVersion,
+		},
 	}))
 }
 
@@ -36,17 +48,31 @@ func TestLoadConfigUsesEnvironmentOverrides(t *testing.T) {
 	t.Setenv("ODH_MODULE_OPERATOR_TEST_GOMEGA_EVENTUALLY_TIMEOUT", "45s")
 	t.Setenv("ODH_MODULE_OPERATOR_TEST_GOMEGA_EVENTUALLY_POLLING_INTERVAL", "500ms")
 	t.Setenv("ODH_MODULE_OPERATOR_TEST_GOMEGA_CONSISTENTLY_POLLING_INTERVAL", "750ms")
+	t.Setenv("ODH_MODULE_OPERATOR_TEST_OPERATOR_INSTALL", "true")
+	t.Setenv("ODH_MODULE_OPERATOR_TEST_OPERATOR_LOGS", "false")
+	t.Setenv("ODH_MODULE_OPERATOR_TEST_OPERATOR_IMAGE", "quay.io/example/operator:test")
+	t.Setenv("ODH_MODULE_OPERATOR_TEST_OPERATOR_NAMESPACE", "custom-operator")
+	t.Setenv("ODH_MODULE_OPERATOR_TEST_OPERATOR_PLATFORM_TYPE", "RHOAI")
+	t.Setenv("ODH_MODULE_OPERATOR_TEST_OPERATOR_PLATFORM_VERSION", "2.22.0")
 
 	cfg, err := LoadConfig()
 	g.Expect(err).NotTo(HaveOccurred())
 	g.Expect(*cfg).To(Equal(Config{
 		Cluster: ClusterConfig{
-			Type: cluster.TypeExternal,
+			Type: ClusterTypeExternal,
 		},
 		Gomega: GomegaConfig{
 			EventuallyTimeout:           45 * time.Second,
 			EventuallyPollingInterval:   500 * time.Millisecond,
 			ConsistentlyPollingInterval: 750 * time.Millisecond,
+		},
+		Operator: OperatorConfig{
+			Install:         true,
+			Logs:            false,
+			Image:           "quay.io/example/operator:test",
+			Namespace:       "custom-operator",
+			PlatformType:    "RHOAI",
+			PlatformVersion: "2.22.0",
 		},
 	}))
 }

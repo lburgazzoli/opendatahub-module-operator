@@ -18,8 +18,6 @@ package e2e
 
 import (
 	"context"
-	"fmt"
-	"os"
 	"testing"
 
 	"github.com/lburgazzoli/gomega-matchers/pkg/matchers/jq"
@@ -31,7 +29,6 @@ import (
 
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/test/support"
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/test/support/cluster"
-	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/test/support/reaper"
 )
 
 const (
@@ -40,31 +37,31 @@ const (
 	defaultE2ETestNamespace = "odh-db-operator-e2e"
 )
 
-var e2eClusterType = cluster.TypeExternal
+func TestDatabaseOperatorE2E(t *testing.T) {
+	cfg := loadE2EConfig(t)
+	suite := newE2ESuite(t, cfg)
 
-func TestMain(m *testing.M) {
-	os.Exit(runTestMain(m))
+	t.Run("foundation", suite.runFoundation)
+	t.Run("embedded", suite.runEmbedded)
+	t.Run("external", suite.runExternal)
 }
 
-func runTestMain(m *testing.M) int {
-	cfg, err := support.LoadConfig(cluster.TypeExternal)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to load test config: %v\n", err)
-		return 1
+func newE2ESuite(
+	t *testing.T,
+	cfg *support.Config,
+) *e2eSuite {
+	g := NewWithT(t)
+
+	if cfg == nil {
+		t.Fatal("failed to load e2e config")
 	}
 
-	e2eClusterType = cfg.Cluster.Type
-	SetDefaultEventuallyTimeout(cfg.Gomega.EventuallyTimeout)
-	SetDefaultEventuallyPollingInterval(cfg.Gomega.EventuallyPollingInterval)
-	SetDefaultConsistentlyPollingInterval(cfg.Gomega.ConsistentlyPollingInterval)
-
-	return m.Run()
-}
-
-func newE2ESuite(t *testing.T) *e2eSuite {
-	testCluster, err := cluster.New(t.Context(), e2eClusterType)
+	testCluster, err := cluster.New(t.Context(), cfg)
 	if err != nil {
 		t.Fatalf("failed to create e2e cluster: %v", err)
+	}
+	if err := testCluster.Setup(t.Context()); err != nil {
+		t.Fatalf("failed to setup e2e cluster: %v", err)
 	}
 	t.Cleanup(func() {
 		_ = testCluster.Stop(context.Background())
@@ -74,33 +71,38 @@ func newE2ESuite(t *testing.T) *e2eSuite {
 	if cli == nil {
 		t.Fatal("failed to create client")
 	}
-	if e2eClusterType == cluster.TypeExternal {
-		r, err := reaper.New(
-			cli,
-		)
-		if err != nil {
-			t.Fatalf("failed to create e2e reaper: %v", err)
-		}
-		if err := r.Run(t.Context()); err != nil {
-			t.Fatalf("failed to clean e2e fixtures: %v", err)
-		}
-	}
 
 	operatorDeploy := &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      operatorDeploymentName,
-			Namespace: support.OperatorNamespace(),
+			Namespace: cfg.Operator.Namespace,
 		},
 	}
-	NewWithT(t).Eventually(t.Context(), k8sm.Get(cli, operatorDeploy)).Should(
+	g.Eventually(t.Context(), k8sm.Lookup(cli, operatorDeploy)).Should(Succeed())
+	g.Eventually(t.Context(), k8sm.Get(cli, operatorDeploy)).Should(
 		jq.Match(`.status.readyReplicas >= 1`),
 	)
 
 	return &e2eSuite{
 		Client:            cli,
-		operatorNamespace: support.OperatorNamespace(),
+		operatorNamespace: cfg.Operator.Namespace,
 		workloadNamespace: e2eTestNamespace(),
 	}
+}
+
+func loadE2EConfig(t *testing.T) *support.Config {
+	t.Helper()
+
+	cfg, err := support.LoadConfig()
+	if err != nil {
+		t.Fatalf("failed to load e2e config: %v", err)
+	}
+
+	SetDefaultEventuallyTimeout(cfg.Gomega.EventuallyTimeout)
+	SetDefaultEventuallyPollingInterval(cfg.Gomega.EventuallyPollingInterval)
+	SetDefaultConsistentlyPollingInterval(cfg.Gomega.ConsistentlyPollingInterval)
+
+	return cfg
 }
 
 type e2eSuite struct {

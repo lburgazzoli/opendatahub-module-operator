@@ -19,10 +19,8 @@ import (
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/pkg/postgres"
 )
 
-func TestDatabaseOperatorE2EEmbedded(t *testing.T) {
-	suite := newE2ESuite(t)
-
-	t.Run("embedded provider serves schema and database claims together", suite.testEmbeddedProviderServesClaims)
+func (st *e2eSuite) runEmbedded(t *testing.T) {
+	t.Run("embedded provider serves schema and database claims together", st.testEmbeddedProviderServesClaims)
 }
 
 func (st *e2eSuite) testEmbeddedProviderServesClaims(t *testing.T) {
@@ -109,6 +107,8 @@ func (st *e2eSuite) testEmbeddedProviderServesClaims(t *testing.T) {
 func (st *e2eSuite) createEmbeddedProvider(t *testing.T) *infraApi.DatabaseProvider {
 	t.Helper()
 
+	g := NewWithT(t)
+
 	provider := &infraApi.DatabaseProvider{
 		ObjectMeta: metav1.ObjectMeta{Name: "e2e-embedded-" + xid.New().String()},
 		Spec: infraApi.DatabaseProviderSpec{
@@ -122,7 +122,7 @@ func (st *e2eSuite) createEmbeddedProvider(t *testing.T) *infraApi.DatabaseProvi
 		},
 	}
 
-	NewWithT(t).Expect(st.Client.Create(t.Context(), provider)).To(Succeed())
+	g.Expect(st.Client.Create(t.Context(), provider)).To(Succeed())
 	t.Cleanup(func() {
 		st.deleteAndWait(context.Background(), t, provider)
 	})

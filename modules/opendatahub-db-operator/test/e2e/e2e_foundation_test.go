@@ -27,11 +27,9 @@ func e2eTestNamespace() string {
 	return defaultE2ETestNamespace
 }
 
-func TestDatabaseOperatorE2EFoundation(t *testing.T) {
-	suite := newE2ESuite(t)
-
-	t.Run("installs module CRDs", suite.testCRDsInstalled)
-	t.Run("deploys operator config", suite.testOperatorConfigMap)
+func (st *e2eSuite) runFoundation(t *testing.T) {
+	t.Run("installs module CRDs", st.testCRDsInstalled)
+	t.Run("deploys operator config", st.testOperatorConfigMap)
 }
 
 func (st *e2eSuite) testCRDsInstalled(t *testing.T) {
@@ -51,6 +49,8 @@ func (st *e2eSuite) testCRDsInstalled(t *testing.T) {
 }
 
 func (st *e2eSuite) testOperatorConfigMap(t *testing.T) {
+	g := NewWithT(t)
+
 	cm := &corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      operatorConfigMapName,
@@ -58,7 +58,7 @@ func (st *e2eSuite) testOperatorConfigMap(t *testing.T) {
 		},
 	}
 
-	NewWithT(t).Eventually(t.Context(), k8sm.Get(st.Client, cm)).Should(
+	g.Eventually(t.Context(), k8sm.Get(st.Client, cm)).Should(
 		WithTransform(k8sm.Data(), SatisfyAll(
 			HaveKey("platformType"),
 			HaveKey("platformVersion"),
@@ -68,13 +68,16 @@ func (st *e2eSuite) testOperatorConfigMap(t *testing.T) {
 
 func (st *e2eSuite) ensureWorkloadNamespace(t *testing.T) {
 	t.Helper()
-	NewWithT(t).Expect(support.EnsureNamespace(t.Context(), st.Client, st.workloadNamespace)).To(Succeed())
+
+	g := NewWithT(t)
+	g.Expect(support.EnsureNamespace(t.Context(), st.Client, st.workloadNamespace)).To(Succeed())
 }
 
 func (st *e2eSuite) waitProviderReachable(t *testing.T, provider *infraApi.DatabaseProvider) {
 	t.Helper()
 
-	NewWithT(t).Eventually(t.Context(), k8sm.Get(st.Client, provider)).Should(
+	g := NewWithT(t)
+	g.Eventually(t.Context(), k8sm.Get(st.Client, provider)).Should(
 		WithTransform(k8sm.ConditionsOf[metav1.Condition](),
 			ContainElement(condition.Is(databaseprovider.ConditionReachable, metav1.ConditionTrue))),
 	)
@@ -82,5 +85,7 @@ func (st *e2eSuite) waitProviderReachable(t *testing.T, provider *infraApi.Datab
 
 func (st *e2eSuite) deleteAndWait(ctx context.Context, t *testing.T, obj client.Object) {
 	t.Helper()
-	NewWithT(t).Expect(support.DeleteAndWait(ctx, st.Client, obj)).To(Succeed())
+
+	g := NewWithT(t)
+	g.Expect(support.DeleteAndWait(ctx, st.Client, obj)).To(Succeed())
 }

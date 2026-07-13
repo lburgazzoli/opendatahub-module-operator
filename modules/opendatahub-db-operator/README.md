@@ -410,11 +410,31 @@ Useful targets:
 - `make fmt`
 - `make lint`
 - `make test`
-- `make test-integration`
+- `make test-integration` (defaults to `k3s`)
+- `make test-e2e` (defaults to `k3s`)
 - `make install`
 - `make run`
 - `make helm`
 - `make deploy-helm`
+
+To run integration tests against another supported cluster backend, override the
+default cluster type:
+
+```bash
+make test-integration INTEGRATION_TEST_CLUSTER_TYPE=external
+```
+
+`make test-e2e` now builds and pushes an image, then bootstraps the operator
+through the test cluster setup flow inside the selected test cluster. It uses
+`E2E_OPERATOR_IMAGE` for the operator image and defaults that value to `$(IMG)`
+in the composite target. To run only the e2e suite against another cluster
+backend or image, override the test settings explicitly:
+
+```bash
+make test-e2e-run \
+  E2E_OPERATOR_IMAGE=quay.io/example/opendatahub-db-operator:test \
+  ODH_MODULE_OPERATOR_TEST_CLUSTER_TYPE=external
+```
 
 ### Configuration
 
