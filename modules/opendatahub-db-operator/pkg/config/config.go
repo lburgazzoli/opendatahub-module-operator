@@ -18,7 +18,6 @@ package config
 
 import (
 	"fmt"
-	"io/fs"
 	"os"
 	"time"
 
@@ -257,52 +256,38 @@ func NewViper() *viper.Viper {
 //
 // The loading sequence:
 //  1. Set defaults
-//  2. Read ConfigMap files from ODH_MODULE_OPERATOR_CONFIGURATION_PATH (if set)
+//  2. Read ConfigMap files from the explicitly configured filesystem, explicit
+//     path, or ODH_MODULE_OPERATOR_CONFIGURATION_PATH
 //  3. Bind environment variables with the ODH_MODULE_OPERATOR_ prefix
 //  4. Unmarshal into the Config struct
-func Load() (*Config, error) {
-	var configFS fs.FS
-
-	if configPath := os.Getenv(ConfigPathEnvVar); configPath != "" {
-		configFS = os.DirFS(configPath)
+func Load(opts ...Option) (*Config, error) {
+	loadOptions := &LoadOptions{}
+	for _, opt := range opts {
+		if opt != nil {
+			opt.applyOption(loadOptions)
+		}
 	}
 
-	return LoadFromViperFS(NewViper(), configFS)
-}
-
-// LoadFromViper reads operator configuration into Config using the caller's
-// Viper instance. This lets Cobra-bound flags participate in the same config
-// load path as defaults, ConfigMap files, and environment variables.
-func LoadFromViper(v *viper.Viper) (*Config, error) {
-	var configFS fs.FS
-
-	if configPath := os.Getenv(ConfigPathEnvVar); configPath != "" {
-		configFS = os.DirFS(configPath)
-	}
-
-	return LoadFromViperFS(v, configFS)
-}
-
-// LoadFromFS reads operator configuration from the given filesystem.
-// If fsys is nil, only defaults and environment variables are used.
-// This function is the primary entry point for testing.
-func LoadFromFS(fsys fs.FS) (*Config, error) {
-	return LoadFromViperFS(NewViper(), fsys)
-}
-
-// LoadFromViperFS reads operator configuration from the given filesystem using
-// the caller's Viper instance. If v is nil, a fresh defaulted instance is
-// created. If fsys is nil, only defaults, environment variables, and any
-// caller-bound flags are used.
-func LoadFromViperFS(v *viper.Viper, fsys fs.FS) (*Config, error) {
+	v := loadOptions.Viper
 	if v == nil {
 		v = NewViper()
 	} else {
 		setDefaults(v)
 	}
 
-	if fsys != nil {
-		if err := loadFromFS(v, fsys); err != nil {
+	configFS := loadOptions.FS
+	if configFS == nil {
+		configPath := loadOptions.ConfigPath
+		if configPath == "" {
+			configPath = os.Getenv(ConfigPathEnvVar)
+		}
+		if configPath != "" {
+			configFS = os.DirFS(configPath)
+		}
+	}
+
+	if configFS != nil {
+		if err := loadFromFS(v, configFS); err != nil {
 			return nil, fmt.Errorf("loading config from filesystem: %w", err)
 		}
 	}

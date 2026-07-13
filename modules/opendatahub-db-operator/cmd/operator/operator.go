@@ -49,7 +49,7 @@ func NewCommand() *cobra.Command {
 }
 
 func run(cmd *cobra.Command, v *viper.Viper) error {
-	cfg, err := moduleconfig.LoadFromViper(v)
+	cfg, err := moduleconfig.Load(moduleconfig.WithViper(v))
 	if err != nil {
 		return fmt.Errorf("loading operator config: %w", err)
 	}

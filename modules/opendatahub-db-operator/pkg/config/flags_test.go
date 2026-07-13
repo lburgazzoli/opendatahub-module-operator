@@ -48,7 +48,7 @@ func TestRegisterFlags_DerivesFlagNamesFromConfigStruct(t *testing.T) {
 	}
 }
 
-func TestLoadFromViperFS_FlagsOverrideEnvAndConfigMap(t *testing.T) {
+func TestLoad_FlagsOverrideEnvAndConfigMap(t *testing.T) {
 	g := NewWithT(t)
 
 	t.Setenv("ODH_MODULE_OPERATOR_PLATFORM_TYPE", config.PlatformTypeSelfManagedRhoai)
@@ -65,11 +65,16 @@ func TestLoadFromViperFS_FlagsOverrideEnvAndConfigMap(t *testing.T) {
 		"--databaseprovider-retry-interval", "45s",
 	})).To(Succeed())
 
-	cfg, err := config.LoadFromViperFS(v, fstest.MapFS{
-		config.KeyPlatformType:                  {Data: []byte(config.DefaultPlatformType)},
-		config.KeyGracePeriod:                   {Data: []byte("15m")},
-		config.KeyDatabaseProviderRetryInterval: {Data: []byte("3m")},
-	})
+	cfg, err := config.Load(
+		config.LoadOptions{
+			Viper: v,
+			FS: fstest.MapFS{
+				config.KeyPlatformType:                  {Data: []byte(config.DefaultPlatformType)},
+				config.KeyGracePeriod:                   {Data: []byte("15m")},
+				config.KeyDatabaseProviderRetryInterval: {Data: []byte("3m")},
+			},
+		},
+	)
 	g.Expect(err).NotTo(HaveOccurred())
 
 	g.Expect(cfg.PlatformType).To(Equal(config.PlatformTypeManagedRhoai))

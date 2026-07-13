@@ -47,7 +47,7 @@ type integrationEnv struct {
 func TestIntegration(t *testing.T) {
 	g := NewWithT(t)
 
-	testCfg, err := support.LoadConfig(cluster.TypeK3s)
+	testCfg, err := support.LoadConfig()
 	g.Expect(err).NotTo(HaveOccurred())
 
 	SetDefaultEventuallyTimeout(testCfg.Gomega.EventuallyTimeout)
@@ -66,7 +66,7 @@ func TestIntegration(t *testing.T) {
 		_ = tc.Stop(context.Background())
 	})
 
-	moduleCfg, err := moduleconfig.LoadFromFS(nil)
+	moduleCfg, err := moduleconfig.Load()
 	g.Expect(err).NotTo(HaveOccurred())
 
 	moduleCfg.Controller.LeaderElection.Enabled = false
@@ -122,7 +122,7 @@ func newIntegrationEnv(
 	testCluster cluster.Instance,
 	cli client.Client,
 ) (*integrationEnv, error) {
-	moduleCfg, err := moduleconfig.LoadFromFS(nil)
+	moduleCfg, err := moduleconfig.Load()
 	if err != nil {
 		return nil, fmt.Errorf("loading module config: %w", err)
 	}
