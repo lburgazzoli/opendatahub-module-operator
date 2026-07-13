@@ -64,6 +64,50 @@ type ExternalProviderSpec struct {
 	ConnectionSecretRef corev1.SecretReference `json:"connectionSecretRef"`
 }
 
+// CertManagerIssuerRef identifies a cert-manager issuer resource.
+type CertManagerIssuerRef struct {
+	// Name is the metadata.name of the referenced issuer.
+	// +kubebuilder:validation:Required
+	Name string `json:"name"`
+
+	// Kind defaults to Issuer when omitted.
+	// +optional
+	Kind string `json:"kind,omitempty"`
+
+	// Group defaults to cert-manager.io when omitted.
+	// +optional
+	Group string `json:"group,omitempty"`
+}
+
+// EmbeddedProviderTLSCertificateSpec configures the embedded PostgreSQL server
+// certificate request managed by cert-manager.
+type EmbeddedProviderTLSCertificateSpec struct {
+	// SecretName overrides the cert-manager target Secret name.
+	// +optional
+	SecretName string `json:"secretName,omitempty"`
+
+	// Duration overrides the requested certificate lifetime.
+	// +optional
+	Duration *metav1.Duration `json:"duration,omitempty"`
+
+	// RenewBefore overrides how long before expiry cert-manager renews.
+	// +optional
+	RenewBefore *metav1.Duration `json:"renewBefore,omitempty"`
+}
+
+// EmbeddedProviderTLSSpec enables TLS for the embedded PostgreSQL instance.
+// Presence of this block enables TLS; an empty object selects the controller's
+// default self-signed issuer and certificate settings.
+type EmbeddedProviderTLSSpec struct {
+	// IssuerRef overrides the default provider-scoped self-signed issuer.
+	// +optional
+	IssuerRef *CertManagerIssuerRef `json:"issuerRef,omitempty"`
+
+	// Certificate customizes the server certificate request.
+	// +optional
+	Certificate EmbeddedProviderTLSCertificateSpec `json:"certificate,omitempty"`
+}
+
 // ProviderConnectionStatus is the non-secret connection surface for a
 // DatabaseProvider. It intentionally excludes credentials and secret references.
 type ProviderConnectionStatus struct {
@@ -97,13 +141,6 @@ type EmbeddedProviderSpec struct {
 	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="namespace is immutable once set"
 	Namespace string `json:"namespace,omitempty"`
 
-	// DeletionPolicy governs the instance's lifecycle when zero claims
-	// reference this provider (docs/plan.md §7.7) -- distinct from a claim's
-	// own per-schema/database deletionPolicy.
-	// +kubebuilder:validation:Enum=Retain;Delete
-	// +kubebuilder:default=Retain
-	DeletionPolicy DeletionPolicy `json:"deletionPolicy,omitempty"`
-
 	// Storage configures the instance's PersistentVolumeClaim.
 	// +kubebuilder:validation:Required
 	Storage StorageSpec `json:"storage"`
@@ -111,6 +148,11 @@ type EmbeddedProviderSpec struct {
 	// Resources are applied to the Postgres container.
 	// +optional
 	Resources corev1.ResourceRequirements `json:"resources,omitempty"`
+
+	// TLS enables TLS for the embedded PostgreSQL instance. Presence of this
+	// field opts into TLS; an empty object uses controller defaults.
+	// +optional
+	TLS *EmbeddedProviderTLSSpec `json:"tls,omitempty"`
 
 	// Extensions lists PostgreSQL extensions to make available inside the
 	// embedded instance. Each value selects a built-in container image:
@@ -120,6 +162,32 @@ type EmbeddedProviderSpec struct {
 	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="extensions are immutable once set"
 	// +kubebuilder:validation:items:Enum=vector;pg_trgm;uuid_ossp;pgcrypto
 	Extensions []string `json:"extensions,omitempty"`
+}
+
+// ProviderTLSStatus reports the resolved TLS state for a DatabaseProvider.
+type ProviderTLSStatus struct {
+	// Enabled reflects whether TLS is configured for this provider.
+	Enabled bool `json:"enabled"`
+
+	// Ready reports whether the provider's TLS contract is fully configured and
+	// consumable.
+	Ready bool `json:"ready"`
+
+	// Namespace is where the TLS resources for this provider live.
+	// +optional
+	Namespace string `json:"namespace,omitempty"`
+
+	// IssuerRef identifies the issuer used for the current certificate flow.
+	// +optional
+	IssuerRef *CertManagerIssuerRef `json:"issuerRef,omitempty"`
+
+	// CertificateName is the cert-manager Certificate name, when managed.
+	// +optional
+	CertificateName string `json:"certificateName,omitempty"`
+
+	// SecretName is the Secret name holding the server certificate material.
+	// +optional
+	SecretName string `json:"secretName,omitempty"`
 }
 
 // DatabaseProviderSpec defines the desired state of DatabaseProvider.
@@ -153,6 +221,10 @@ type DatabaseProviderStatus struct {
 	// Connection is the non-secret connection surface for the provider.
 	// +optional
 	Connection ProviderConnectionStatus `json:"connection,omitempty"`
+
+	// TLS reports the resolved TLS state for the provider.
+	// +optional
+	TLS *ProviderTLSStatus `json:"tls,omitempty"`
 }
 
 // +kubebuilder:object:root=true

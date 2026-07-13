@@ -37,6 +37,9 @@ const (
 	SecretKeyPassword = "pg.password"
 	SecretKeyDatabase = "pg.database"
 	SecretKeySchema   = "pg.schema"
+	// SecretKeyCA holds PEM-encoded CA data used to verify the server
+	// certificate when pg.sslmode is verify-ca or verify-full.
+	SecretKeyCA = "ca.crt"
 	// SecretKeySSLMode holds the libpq sslmode value (e.g. "disable", "require",
 	// "verify-full"). Optional in the Secret; when absent, callers apply their own
 	// default ("disable" for embedded, "require" for external).
@@ -63,7 +66,28 @@ type Config struct {
 	Password string `mapstructure:"pg.password"`
 	DBName   string `mapstructure:"pg.database"`
 	Schema   string `mapstructure:"pg.schema"`
-	SSLMode  string `mapstructure:"pg.sslmode"`
+	// SSLRootCert stores PEM-encoded CA content from SecretKeyCA. Runtime
+	// helpers build the pgx TLS configuration directly from this content.
+	SSLRootCert string `mapstructure:"ca.crt"`
+	SSLMode     string `mapstructure:"pg.sslmode"`
+}
+
+// TLSEnabled reports whether the connection should use TLS.
+func (c Config) TLSEnabled() bool {
+	return c.SSLMode != "" && c.SSLMode != SSLModeDisable
+}
+
+// TLSReady reports whether the config includes the trust material required by
+// the selected sslmode.
+func (c Config) TLSReady() bool {
+	switch c.SSLMode {
+	case SSLModeVerifyCA, SSLModeVerifyFull:
+		return c.SSLRootCert != ""
+	case "", SSLModeDisable:
+		return false
+	default:
+		return true
+	}
 }
 
 type secretField struct {

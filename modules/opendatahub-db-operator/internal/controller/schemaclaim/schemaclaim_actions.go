@@ -29,6 +29,7 @@ import (
 	infraApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/api/infrastructure/v1alpha1"
 	dbcontroller "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/pkg/controller"
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/pkg/postgres"
+	api "github.com/opendatahub-io/odh-platform-utilities/framework/api"
 	odherrors "github.com/opendatahub-io/odh-platform-utilities/framework/controller/actions/errors"
 	"github.com/opendatahub-io/odh-platform-utilities/framework/controller/conditions"
 	odhtypes "github.com/opendatahub-io/odh-platform-utilities/framework/controller/types"
@@ -57,6 +58,9 @@ func (m *Controller) provisionAction(ctx context.Context, rr *odhtypes.Reconcili
 			rr.Conditions.Mark(ConditionProvisioned, metav1.ConditionFalse,
 				conditions.WithError(notFound),
 				conditions.WithReason("ProviderNotFound"))
+			rr.Conditions.Mark(ConditionTLSConfiguration, metav1.ConditionUnknown,
+				conditions.WithReason("ProviderNotFound"),
+				conditions.WithMessage("%s", notFound.Error()))
 			return odherrors.NewStopErrorWithRequeueAfterW(m.cfg.SchemaClaim.RetryInterval, err)
 		}
 		return fmt.Errorf("resolving provider: %w", err)
@@ -70,12 +74,31 @@ func (m *Controller) provisionAction(ctx context.Context, rr *odhtypes.Reconcili
 	if err != nil {
 		rr.Conditions.Mark(ConditionProvisioned, metav1.ConditionFalse,
 			conditions.WithError(err))
+		rr.Conditions.Mark(ConditionTLSConfiguration, metav1.ConditionUnknown,
+			conditions.WithReason(dbcontroller.ReasonTLSProvisioning),
+			conditions.WithMessage("%s", err.Error()))
 		if retryErr := dbcontroller.StopWithQuickRetryIfConnectionRefused(err); retryErr != nil {
 			return retryErr
 		}
 		return odherrors.NewStopErrorW(err)
 	}
 	defer pool.Close()
+
+	switch {
+	case !cfg.TLSEnabled():
+		rr.Conditions.Mark(ConditionTLSConfiguration, metav1.ConditionFalse,
+			conditions.WithSeverity(api.ConditionSeverityInfo),
+			conditions.WithReason(dbcontroller.ReasonTLSNotEnabled),
+			conditions.WithMessage("TLS is not enabled"))
+	case cfg.TLSReady():
+		rr.Conditions.Mark(ConditionTLSConfiguration, metav1.ConditionTrue,
+			conditions.WithReason(dbcontroller.ReasonTLSConfigured),
+			conditions.WithMessage("TLS configuration is ready"))
+	default:
+		rr.Conditions.Mark(ConditionTLSConfiguration, metav1.ConditionFalse,
+			conditions.WithReason(dbcontroller.ReasonTLSProvisioning),
+			conditions.WithMessage("TLS configuration is pending"))
+	}
 
 	// 3. Ensure claim credentials and connection details.
 	provisioner := SchemaProvisioner{
@@ -84,7 +107,7 @@ func (m *Controller) provisionAction(ctx context.Context, rr *odhtypes.Reconcili
 		Pool:   pool,
 		Config: cfg,
 	}
-	schema := provisioner.Schema()
+
 	secret, err := provisioner.Ensure(ctx)
 	if err != nil {
 		return err
@@ -96,12 +119,28 @@ func (m *Controller) provisionAction(ctx context.Context, rr *odhtypes.Reconcili
 	}
 
 	// 5. Update status.
-	connection := provisioner.ConnectionStatus(schema)
-	obj.Status.Schema = schema
-	obj.Status.Connection = connection
+	obj.Status.Schema = provisioner.Schema()
+	obj.Status.Connection = provisioner.ConnectionStatus(obj.Status.Schema)
+
 	rr.Conditions.Mark(ConditionProvisioned, metav1.ConditionTrue,
 		conditions.WithReason("SchemaReady"),
-		conditions.WithMessage("Schema %q provisioned on provider %q", connection.Schema, provider.Name))
+		conditions.WithMessage("Schema %q provisioned on provider %q", obj.Status.Schema, provider.Name))
+
+	switch {
+	case !cfg.TLSEnabled():
+		rr.Conditions.Mark(ConditionTLSConfiguration, metav1.ConditionFalse,
+			conditions.WithSeverity(api.ConditionSeverityInfo),
+			conditions.WithReason(dbcontroller.ReasonTLSNotEnabled),
+			conditions.WithMessage("TLS is not enabled"))
+	case cfg.TLSReady():
+		rr.Conditions.Mark(ConditionTLSConfiguration, metav1.ConditionTrue,
+			conditions.WithReason(dbcontroller.ReasonTLSConfigured),
+			conditions.WithMessage("TLS configuration is ready"))
+	default:
+		rr.Conditions.Mark(ConditionTLSConfiguration, metav1.ConditionFalse,
+			conditions.WithReason(dbcontroller.ReasonTLSProvisioning),
+			conditions.WithMessage("TLS configuration is pending"))
+	}
 
 	return nil
 }

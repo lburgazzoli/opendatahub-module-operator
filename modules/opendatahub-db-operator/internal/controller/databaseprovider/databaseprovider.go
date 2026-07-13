@@ -22,7 +22,9 @@ import (
 	infraApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/api/infrastructure/v1alpha1"
 	"github.com/opendatahub-io/odh-platform-utilities/framework/controller/actions/deploy"
 	fwtemplate "github.com/opendatahub-io/odh-platform-utilities/framework/controller/actions/render/template"
+	"github.com/opendatahub-io/odh-platform-utilities/framework/controller/handlers"
 	fwpredicates "github.com/opendatahub-io/odh-platform-utilities/framework/controller/predicates"
+	dependentpred "github.com/opendatahub-io/odh-platform-utilities/framework/controller/predicates/dependent"
 	resourcespredicates "github.com/opendatahub-io/odh-platform-utilities/framework/controller/predicates/resources"
 	odhtypes "github.com/opendatahub-io/odh-platform-utilities/framework/controller/types"
 	appsv1 "k8s.io/api/apps/v1"
@@ -33,6 +35,7 @@ import (
 
 	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/pkg/config"
 	dbcontroller "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/pkg/controller"
+	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/pkg/resources/gvk"
 	"github.com/opendatahub-io/odh-platform-utilities/framework/controller/reconciler"
 )
 
@@ -69,6 +72,7 @@ func NewController(cfg *moduleconfig.Config, fns ...Option) *Controller {
 // +kubebuilder:rbac:groups="",resources=configmaps,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=networking.k8s.io,resources=networkpolicies,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=cert-manager.io,resources=issuers;certificates,verbs=get;list;watch;create;update;patch;delete
 
 func NewReconciler(
 	ctx context.Context,
@@ -86,12 +90,25 @@ func NewReconciler(
 		Owns(&corev1.Service{}).
 		Owns(&corev1.ConfigMap{}).
 		Owns(&corev1.Secret{}).
+		Watches(
+			&corev1.Secret{},
+			reconciler.WithEventHandler(handlers.LabelToName("db.infrastructure.opendatahub.io/provider")),
+		).
 		Owns(&networkingv1.NetworkPolicy{}).
+		WatchesGVK(
+			gvk.CertManagerIssuer,
+			reconciler.Dynamic(reconciler.CrdExists(gvk.CertManagerIssuer)),
+			reconciler.WithPredicates(dependentpred.New()),
+		).
+		WatchesGVK(
+			gvk.CertManagerCertificate,
+			reconciler.Dynamic(reconciler.CrdExists(gvk.CertManagerCertificate)),
+			reconciler.WithPredicates(dependentpred.New(dependentpred.WithWatchStatus(true))),
+		).
 		WithReconcilerOpts(
 			reconciler.WithRelease(m.platformRelease),
 			reconciler.WithDefaultRequeueAfter(cfg.DatabaseProvider.RetryInterval),
 		).
-		WithAction(dbcontroller.UpgradeIfNeeded()).
 		WithAction(m.reconcileExternalAction).
 		WithAction(m.reconcileEmbeddedAction).
 		WithAction(fwtemplate.NewAction(
@@ -114,8 +131,7 @@ func NewReconciler(
 			deploy.WithApplyOrder(),
 		)).
 		WithAction(m.embeddedReadinessAction).
-		WithAction(m.embeddedIdleCleanupAction).
-		WithConditions(ConditionReachable).
+		WithConditions(ConditionReachable, ConditionTLSConfiguration).
 		Build(ctx)
 
 	return err

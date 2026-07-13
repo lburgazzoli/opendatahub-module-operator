@@ -81,7 +81,6 @@ func NewReconciler(
 			reconciler.WithDefaultRequeueAfter(cfg.SchemaClaim.RetryInterval),
 			reconciler.WithFinalizerName(FinalizerName),
 		).
-		WithAction(dbcontroller.UpgradeIfNeeded()).
 		WithFinalizer(m.cleanupAction).
 		WithAction(m.provisionAction).
 		WithAction(deploy.NewAction(
@@ -89,7 +88,7 @@ func NewReconciler(
 			deploy.WithApplyOrder(),
 			deploy.WithLabel("app.opendatahub.io/db-operator", "true"),
 		)).
-		WithConditions(ConditionProvisioned).
+		WithConditions(ConditionProvisioned, ConditionTLSConfiguration).
 		Build(ctx)
 
 	return err

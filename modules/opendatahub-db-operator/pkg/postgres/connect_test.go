@@ -18,10 +18,18 @@ package postgres
 
 import (
 	"context"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/x509"
+	"crypto/x509/pkix"
+	"encoding/pem"
 	"fmt"
+	"math/big"
 	"testing"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgxpool"
 	. "github.com/onsi/gomega"
 	tcpostgres "github.com/testcontainers/testcontainers-go/modules/postgres"
 )
@@ -68,7 +76,7 @@ func TestPing_ClosesPoolOnPingError(t *testing.T) {
 
 	pool := &stubPingPool{pingErr: fmt.Errorf("boom")}
 	previous := openPingPool
-	openPingPool = func(context.Context, string) (poolPinger, error) {
+	openPingPool = func(context.Context, *pgxpool.Config) (poolPinger, error) {
 		return pool, nil
 	}
 	defer func() {
@@ -92,7 +100,7 @@ func TestPing_ClosesPoolOnSuccess(t *testing.T) {
 
 	pool := &stubPingPool{}
 	previous := openPingPool
-	openPingPool = func(context.Context, string) (poolPinger, error) {
+	openPingPool = func(context.Context, *pgxpool.Config) (poolPinger, error) {
 		return pool, nil
 	}
 	defer func() {
@@ -150,4 +158,87 @@ func TestPing_UnreachableHostTimesOut(t *testing.T) {
 		ContainSubstring("timeout"),
 		ContainSubstring("deadline exceeded"),
 	))
+}
+
+func TestPoolConfigFor_ConfiguresVerifyFullFromCAData(t *testing.T) {
+	g := NewWithT(t)
+
+	poolConfig, err := poolConfigFor(Config{
+		Host:        "db.example.test",
+		Port:        5432,
+		User:        "user",
+		Password:    "secret",
+		DBName:      "db",
+		SSLMode:     SSLModeVerifyFull,
+		SSLRootCert: string(testRootCA(t)),
+	})
+
+	g.Expect(err).NotTo(HaveOccurred())
+	g.Expect(poolConfig.ConnConfig.TLSConfig).NotTo(BeNil())
+	g.Expect(poolConfig.ConnConfig.TLSConfig.RootCAs).NotTo(BeNil())
+	g.Expect(poolConfig.ConnConfig.TLSConfig.InsecureSkipVerify).To(BeFalse())
+	g.Expect(poolConfig.ConnConfig.TLSConfig.VerifyPeerCertificate).To(BeNil())
+	g.Expect(poolConfig.ConnConfig.TLSConfig.ServerName).To(Equal("db.example.test"))
+}
+
+func TestPoolConfigFor_ConfiguresVerifyCAFromCAData(t *testing.T) {
+	g := NewWithT(t)
+
+	poolConfig, err := poolConfigFor(Config{
+		Host:        "db.example.test",
+		Port:        5432,
+		User:        "user",
+		Password:    "secret",
+		DBName:      "db",
+		SSLMode:     SSLModeVerifyCA,
+		SSLRootCert: string(testRootCA(t)),
+	})
+
+	g.Expect(err).NotTo(HaveOccurred())
+	g.Expect(poolConfig.ConnConfig.TLSConfig).NotTo(BeNil())
+	g.Expect(poolConfig.ConnConfig.TLSConfig.RootCAs).NotTo(BeNil())
+	g.Expect(poolConfig.ConnConfig.TLSConfig.InsecureSkipVerify).To(BeTrue())
+	g.Expect(poolConfig.ConnConfig.TLSConfig.VerifyPeerCertificate).NotTo(BeNil())
+}
+
+func TestPoolConfigFor_RejectsInvalidCAData(t *testing.T) {
+	g := NewWithT(t)
+
+	_, err := poolConfigFor(Config{
+		Host:        "db.example.test",
+		Port:        5432,
+		User:        "user",
+		Password:    "secret",
+		DBName:      "db",
+		SSLMode:     SSLModeVerifyFull,
+		SSLRootCert: "not a pem bundle",
+	})
+
+	g.Expect(err).To(MatchError(ContainSubstring("unable to add CA to cert pool")))
+}
+
+func testRootCA(t *testing.T) []byte {
+	t.Helper()
+
+	g := NewWithT(t)
+
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	g.Expect(err).NotTo(HaveOccurred())
+
+	template := &x509.Certificate{
+		SerialNumber: big.NewInt(1),
+		Subject: pkix.Name{
+			CommonName: "odh-db-operator-test-ca",
+		},
+		NotBefore:             time.Now().Add(-time.Hour),
+		NotAfter:              time.Now().Add(time.Hour),
+		IsCA:                  true,
+		BasicConstraintsValid: true,
+		KeyUsage:              x509.KeyUsageCertSign | x509.KeyUsageCRLSign,
+	}
+
+	der, err := x509.CreateCertificate(rand.Reader, template, template, &key.PublicKey, key)
+	g.Expect(err).NotTo(HaveOccurred())
+
+	return pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der})
 }

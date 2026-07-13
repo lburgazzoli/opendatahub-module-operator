@@ -18,44 +18,39 @@ package databaseprovider
 
 import (
 	"context"
+	"crypto/sha256"
 	"fmt"
-	"maps"
 	"sort"
-	"time"
 
 	"github.com/rs/xid"
-	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
-	networkingv1 "k8s.io/api/networking/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	infraApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/api/infrastructure/v1alpha1"
 	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/pkg/config"
 	dbcontroller "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/pkg/controller"
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/pkg/postgres"
-	common "github.com/opendatahub-io/odh-platform-utilities/api/common"
+	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/pkg/resources/gvk"
+	dbmaps "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/pkg/utils/maps"
+	"github.com/opendatahub-io/odh-platform-utilities/framework/controller/conditions"
 	odhtypes "github.com/opendatahub-io/odh-platform-utilities/framework/controller/types"
 )
 
 const (
-	// instanceHashAnnotation holds an opaque random token on the admin Secret.
-	// It is generated once on Secret creation, preserved on subsequent reconciles,
-	// and changes only when the Secret is deleted and recreated. The token is
-	// written into the StatefulSet pod-template annotation so that any Secret
-	// recreation triggers a rolling restart — without exposing the password.
-	instanceHashAnnotation = dbcontroller.EmbeddedInstanceHashAnnotation
-
-	// extKeyInstanceHash is the rr.Extensions key that carries the credential ID
-	// between reconcileEmbeddedAction and embeddedTemplateData.
-	extKeyInstanceHash = "embedded/instanceHash"
+	// extKeyAdminSecretKey is the rr.Extensions key that carries the embedded
+	// admin Secret rollout token between reconcileEmbeddedAction and
+	// embeddedTemplateData.
+	extKeyAdminSecretKey = "embedded/adminSecretKey"
+	extKeyTLSSecretHash  = "embedded/tlsSecretHash"
 
 	reasonAdminSecretUnavailable = "AdminSecretUnavailable"
 	reasonInstanceRunning        = "InstanceRunning"
 	reasonProvisioning           = "Provisioning"
-	reasonIdle                   = "Idle"
+	reasonTLSNotEnabled          = "TLSNotEnabled"
+	reasonTLSProvisioning        = "TLSProvisioning"
+	reasonTLSConfigured          = "TLSConfigured"
 	defaultEmbeddedAdminUser     = "postgres"
 	defaultEmbeddedAdminDatabase = "postgres"
 )
@@ -67,6 +62,15 @@ var (
 		"pgcrypto":  {},
 	}
 )
+
+type TLSState struct {
+	Enabled       bool
+	Ready         bool
+	TLSSecret     *corev1.Secret
+	TLSSecretHash string
+	CAData        []byte
+	AdminSecret   *corev1.Secret
+}
 
 func embeddedTemplateData(
 	ctx context.Context,
@@ -88,16 +92,24 @@ func embeddedTemplateData(
 		return nil, err
 	}
 
-	credHash, _ := rr.Extensions[extKeyInstanceHash].(string)
+	adminSecretKey, _ := rr.Extensions[extKeyAdminSecretKey].(string)
+	tlsHash, _ := rr.Extensions[extKeyTLSSecretHash].(string)
 
 	return map[string]any{
-		"ResolvedImage":       resolvedImage,
-		"AdminSecretName":     dbcontroller.EmbeddedAdminSecretName(obj.Name),
-		"ServiceName":         dbcontroller.EmbeddedServiceName(obj.Name),
-		"PVCName":             dbcontroller.EmbeddedPVCName(obj.Name),
-		"InitDBConfigMapName": dbcontroller.EmbeddedInitDBConfigMapName(obj.Name),
-		"AllowedNamespaces":   namespaces,
-		"InstanceHash":        credHash,
+		"ResolvedImage":        resolvedImage,
+		"AdminSecretName":      dbcontroller.EmbeddedAdminSecretName(obj.Name),
+		"ServiceName":          dbcontroller.EmbeddedServiceName(obj.Name),
+		"PVCName":              dbcontroller.EmbeddedPVCName(obj.Name),
+		"InitDBConfigMapName":  dbcontroller.EmbeddedInitDBConfigMapName(obj.Name),
+		"TLSIssuerName":        dbcontroller.EmbeddedTLSIssuerName(obj.Name),
+		"TLSCertificateName":   embeddedTLSCertificateName(obj),
+		"TLSIssuerRef":         embeddedTLSIssuerRef(obj),
+		"AllowedNamespaces":    namespaces,
+		"InstanceHash":         adminSecretKey,
+		"TLSEnabled":           embeddedTLSEnabled(obj),
+		"TLSUsesManagedIssuer": embeddedTLSUsesManagedIssuer(obj),
+		"TLSSecretName":        embeddedTLSSecretName(obj),
+		"TLSSecretHash":        tlsHash,
 	}, nil
 }
 
@@ -128,58 +140,244 @@ func resolveEmbeddedImage(obj *infraApi.DatabaseProvider, cfg *moduleconfig.Conf
 	}
 }
 
-// computeEmbeddedAdminSecret returns the desired admin Secret for the embedded
-// provider. If the Secret already exists it is returned as-is. If it is absent
-// fresh credentials are generated. The caller adds it to rr.Resources so the
-// deploy action creates or updates it via SSA.
-func computeEmbeddedAdminSecret(
+func embeddedTLSEnabled(provider *infraApi.DatabaseProvider) bool {
+	return provider != nil && provider.Spec.Embedded != nil && provider.Spec.Embedded.TLS != nil
+}
+
+func embeddedTLSUsesManagedIssuer(provider *infraApi.DatabaseProvider) bool {
+	if !embeddedTLSEnabled(provider) {
+		return false
+	}
+
+	ref := provider.Spec.Embedded.TLS.IssuerRef
+	return ref == nil || ref.Name == ""
+}
+
+func embeddedTLSSecretName(provider *infraApi.DatabaseProvider) string {
+	if !embeddedTLSEnabled(provider) {
+		return ""
+	}
+
+	if name := provider.Spec.Embedded.TLS.Certificate.SecretName; name != "" {
+		return name
+	}
+
+	return dbcontroller.EmbeddedTLSSecretName(provider.Name)
+}
+
+func embeddedTLSCertificateName(provider *infraApi.DatabaseProvider) string {
+	if provider == nil {
+		return ""
+	}
+
+	return dbcontroller.EmbeddedTLSCertificateName(provider.Name)
+}
+
+func embeddedTLSIssuerRef(provider *infraApi.DatabaseProvider) *infraApi.CertManagerIssuerRef {
+	if !embeddedTLSEnabled(provider) {
+		return nil
+	}
+
+	if embeddedTLSUsesManagedIssuer(provider) {
+		return &infraApi.CertManagerIssuerRef{
+			Name:  dbcontroller.EmbeddedTLSIssuerName(provider.Name),
+			Kind:  gvk.CertManagerIssuer.Kind,
+			Group: gvk.CertManagerIssuer.Group,
+		}
+	}
+
+	ref := *provider.Spec.Embedded.TLS.IssuerRef
+	if ref.Kind == "" {
+		ref.Kind = gvk.CertManagerIssuer.Kind
+	}
+	if ref.Group == "" {
+		ref.Group = gvk.CertManagerIssuer.Group
+	}
+
+	return &ref
+}
+
+func embeddedTLSStatus(
+	provider *infraApi.DatabaseProvider,
+	cfg *moduleconfig.Config,
+	ready bool,
+) *infraApi.ProviderTLSStatus {
+	if provider == nil {
+		return nil
+	}
+
+	return &infraApi.ProviderTLSStatus{
+		Enabled:         embeddedTLSEnabled(provider),
+		Ready:           ready,
+		Namespace:       dbcontroller.EmbeddedNamespace(provider, cfg.OperatorNamespace),
+		IssuerRef:       embeddedTLSIssuerRef(provider),
+		CertificateName: embeddedTLSCertificateName(provider),
+		SecretName:      embeddedTLSSecretName(provider),
+	}
+}
+
+func embeddedTLSSecret(
 	ctx context.Context,
 	cli client.Client,
 	provider *infraApi.DatabaseProvider,
 	cfg *moduleconfig.Config,
 ) (*corev1.Secret, error) {
+	if !embeddedTLSEnabled(provider) {
+		return nil, nil
+	}
+
+	secret := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      embeddedTLSSecretName(provider),
+			Namespace: dbcontroller.EmbeddedNamespace(provider, cfg.OperatorNamespace),
+		},
+	}
+	if err := cli.Get(ctx, client.ObjectKeyFromObject(secret), secret); err != nil {
+		if apierrors.IsNotFound(err) {
+			return nil, nil
+		}
+
+		return nil, fmt.Errorf("reading embedded TLS Secret: %w", err)
+	}
+
+	return secret, nil
+}
+
+func embeddedTLSCAData(secret *corev1.Secret) []byte {
+	if secret == nil {
+		return nil
+	}
+
+	if ca := secret.Data[postgres.SecretKeyCA]; len(ca) != 0 {
+		return ca
+	}
+
+	return secret.Data["tls.crt"]
+}
+
+func embeddedTLSSecretHash(secret *corev1.Secret) string {
+	if secret == nil {
+		return ""
+	}
+
+	h := sha256.New()
+	keys := []string{"ca.crt", "tls.crt", "tls.key"}
+	for _, key := range keys {
+		if value := secret.Data[key]; len(value) != 0 {
+			_, _ = h.Write([]byte(key))
+			_, _ = h.Write(value)
+		}
+	}
+
+	return fmt.Sprintf("%x", h.Sum(nil))
+}
+
+func resolveEmbeddedTLSState(
+	ctx context.Context,
+	cli client.Client,
+	provider *infraApi.DatabaseProvider,
+	cfg *moduleconfig.Config,
+) (TLSState, error) {
+	state := TLSState{
+		Enabled: embeddedTLSEnabled(provider),
+	}
+	if !state.Enabled {
+		return state, nil
+	}
+
+	secret, err := embeddedTLSSecret(ctx, cli, provider, cfg)
+	if err != nil {
+		return state, err
+	}
+	if secret == nil {
+		return state, nil
+	}
+
+	state.TLSSecret = secret
+	state.CAData = append([]byte(nil), embeddedTLSCAData(secret)...)
+	state.Ready = len(state.CAData) != 0
+	state.TLSSecretHash = embeddedTLSSecretHash(secret)
+
+	return state, nil
+}
+
+// computeEmbeddedAdminSecret returns the resolved TLS state for the embedded
+// provider, including the desired admin Secret projection. If the admin Secret
+// already exists its password is preserved; otherwise fresh credentials are
+// generated. The caller adds TLSState.AdminSecret to rr.Resources so the deploy
+// action creates or updates it via SSA.
+func computeEmbeddedAdminSecret(
+	ctx context.Context,
+	cli client.Client,
+	provider *infraApi.DatabaseProvider,
+	cfg *moduleconfig.Config,
+) (TLSState, error) {
+	res, err := resolveEmbeddedTLSState(ctx, cli, provider, cfg)
+	if err != nil {
+		return res, err
+	}
 
 	existing := &corev1.Secret{}
 	existing.Name = dbcontroller.EmbeddedAdminSecretName(provider.Name)
 	existing.Namespace = dbcontroller.EmbeddedNamespace(provider, cfg.OperatorNamespace)
 
-	err := cli.Get(ctx, client.ObjectKeyFromObject(existing), existing)
-	switch {
-	case err == nil:
-		// Secret found — project a clean desired state with only the fields we own.
-		// Returning existing as-is would carry over server-side metadata that SSA
-		// should not manage (ResourceVersion, owner references from other actors, etc.).
-		res := &corev1.Secret{}
-		res.Name = existing.Name
-		res.Namespace = existing.Namespace
-		res.Annotations = map[string]string{
-			instanceHashAnnotation: existing.Annotations[instanceHashAnnotation],
-		}
-		res.Data = maps.Clone(existing.Data)
-
-		return res, nil
-	case apierrors.IsNotFound(err):
-		password, err := postgres.GeneratePassword(24)
-		if err != nil {
-			return nil, fmt.Errorf("generating admin password: %w", err)
-		}
-
-		existing.Annotations = map[string]string{
-			instanceHashAnnotation: xid.New().String(),
-		}
-
-		existing.Data = map[string][]byte{
-			postgres.SecretKeyHost:     []byte(dbcontroller.EmbeddedServiceHost(provider, cfg.OperatorNamespace)),
-			postgres.SecretKeyPort:     fmt.Appendf(nil, "%d", postgres.DefaultPort),
-			postgres.SecretKeyUser:     []byte(defaultEmbeddedAdminUser),
-			postgres.SecretKeyPassword: []byte(password),
-			postgres.SecretKeyDatabase: []byte(defaultEmbeddedAdminDatabase),
-		}
-
-		return existing, nil
-	default:
-		return nil, err
+	err = cli.Get(ctx, client.ObjectKeyFromObject(existing), existing)
+	if err != nil && !apierrors.IsNotFound(err) {
+		return res, err
 	}
+
+	password := existing.Data[postgres.SecretKeyPassword]
+	if len(password) == 0 {
+		pwd, err := postgres.GeneratePassword(24)
+		if err != nil {
+			return res, fmt.Errorf("generating admin password: %w", err)
+		}
+
+		password = []byte(pwd)
+	}
+
+	instanceHash := existing.Annotations[dbcontroller.EmbeddedAdminSecretKeyAnnotation]
+	if len(instanceHash) == 0 {
+		instanceHash = xid.New().String()
+	}
+
+	res.AdminSecret = desiredEmbeddedAdminSecret(provider, cfg, password, res)
+	res.AdminSecret.Annotations = dbmaps.Set(
+		res.AdminSecret.Annotations,
+		dbcontroller.EmbeddedAdminSecretKeyAnnotation,
+		instanceHash,
+	)
+
+	return res, nil
+}
+
+func desiredEmbeddedAdminSecret(
+	provider *infraApi.DatabaseProvider,
+	cfg *moduleconfig.Config,
+	password []byte,
+	tlsState TLSState,
+) *corev1.Secret {
+	res := &corev1.Secret{}
+	res.Name = dbcontroller.EmbeddedAdminSecretName(provider.Name)
+	res.Namespace = dbcontroller.EmbeddedNamespace(provider, cfg.OperatorNamespace)
+	res.Data = map[string][]byte{
+		postgres.SecretKeyHost:     []byte(dbcontroller.EmbeddedServiceHost(provider, cfg.OperatorNamespace)),
+		postgres.SecretKeyPort:     fmt.Appendf(nil, "%d", postgres.DefaultPort),
+		postgres.SecretKeyUser:     []byte(defaultEmbeddedAdminUser),
+		postgres.SecretKeyPassword: password,
+		postgres.SecretKeyDatabase: []byte(defaultEmbeddedAdminDatabase),
+	}
+
+	if !embeddedTLSEnabled(provider) {
+		return res
+	}
+
+	res.Data[postgres.SecretKeySSLMode] = []byte(postgres.SSLModeVerifyFull)
+	if len(tlsState.CAData) != 0 {
+		res.Data[postgres.SecretKeyCA] = append([]byte(nil), tlsState.CAData...)
+	}
+
+	return res
 }
 
 func referencedClaimNamespaces(
@@ -198,7 +396,7 @@ func referencedClaimNamespaces(
 		if schemaClaimEffectiveProvider(claim) != provider.Name {
 			continue
 		}
-		if isConditionTrue(claim.Status.Conditions, dbcontroller.ConditionProvisioned) {
+		if conditions.IsStatusConditionTrue(claim, dbcontroller.ConditionProvisioned) {
 			namespaces[claim.Namespace] = struct{}{}
 		}
 	}
@@ -212,7 +410,7 @@ func referencedClaimNamespaces(
 		if databaseClaimEffectiveProvider(claim) != provider.Name {
 			continue
 		}
-		if isConditionTrue(claim.Status.Conditions, dbcontroller.ConditionProvisioned) {
+		if conditions.IsStatusConditionTrue(claim, dbcontroller.ConditionProvisioned) {
 			namespaces[claim.Namespace] = struct{}{}
 		}
 	}
@@ -237,69 +435,4 @@ func databaseClaimEffectiveProvider(claim *infraApi.DatabaseClaim) string {
 		return claim.Spec.Provider.Name
 	}
 	return claim.Status.Provider
-}
-
-func embeddedStatefulSetKey(provider *infraApi.DatabaseProvider, cfg *moduleconfig.Config) types.NamespacedName {
-	operatorNamespace := cfg.OperatorNamespace
-	return types.NamespacedName{
-		Namespace: dbcontroller.EmbeddedNamespace(provider, operatorNamespace),
-		Name:      dbcontroller.EmbeddedServiceName(provider.Name),
-	}
-}
-
-func embeddedChildResources(provider *infraApi.DatabaseProvider, cfg *moduleconfig.Config) []client.Object {
-	namespace := dbcontroller.EmbeddedNamespace(provider, cfg.OperatorNamespace)
-	return []client.Object{
-		&appsv1.StatefulSet{ObjectMeta: metav1.ObjectMeta{Namespace: namespace, Name: dbcontroller.EmbeddedServiceName(provider.Name)}},
-		&corev1.PersistentVolumeClaim{ObjectMeta: metav1.ObjectMeta{Namespace: namespace, Name: dbcontroller.EmbeddedPVCName(provider.Name)}},
-		&corev1.Service{ObjectMeta: metav1.ObjectMeta{Namespace: namespace, Name: dbcontroller.EmbeddedServiceName(provider.Name)}},
-		&corev1.ConfigMap{ObjectMeta: metav1.ObjectMeta{Namespace: namespace, Name: dbcontroller.EmbeddedInitDBConfigMapName(provider.Name)}},
-		&networkingv1.NetworkPolicy{ObjectMeta: metav1.ObjectMeta{Namespace: namespace, Name: dbcontroller.EmbeddedServiceName(provider.Name)}},
-	}
-}
-
-func deleteEmbeddedChildResources(
-	ctx context.Context,
-	cli client.Client,
-	provider *infraApi.DatabaseProvider,
-	cfg *moduleconfig.Config,
-) error {
-	for _, obj := range embeddedChildResources(provider, cfg) {
-		if err := cli.Delete(ctx, obj); client.IgnoreNotFound(err) != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func shouldTearDownIdleInstance(provider *infraApi.DatabaseProvider, gracePeriod time.Duration) bool {
-	condition := findCondition(provider.Status.Conditions, ConditionReachable)
-	if condition == nil || condition.Reason != reasonIdle {
-		return false
-	}
-	return time.Since(condition.LastTransitionTime.Time) >= gracePeriod
-}
-
-func wantsIdleDeletion(provider *infraApi.DatabaseProvider) bool {
-	if provider.Spec.Embedded == nil {
-		return false
-	}
-	if provider.Spec.Embedded.DeletionPolicy == "" {
-		return false
-	}
-	return provider.Spec.Embedded.DeletionPolicy == infraApi.DeletionPolicyDelete
-}
-
-func isConditionTrue(conditions []common.Condition, conditionType string) bool {
-	condition := findCondition(conditions, conditionType)
-	return condition != nil && condition.Status == metav1.ConditionTrue
-}
-
-func findCondition(conditions []common.Condition, conditionType string) *common.Condition {
-	for i := range conditions {
-		if conditions[i].Type == conditionType {
-			return &conditions[i]
-		}
-	}
-	return nil
 }

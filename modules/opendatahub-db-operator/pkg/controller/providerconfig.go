@@ -32,11 +32,11 @@ import (
 const (
 	OperatorNamespaceAnnotation = "db.infrastructure.opendatahub.io/operator-namespace"
 
-	// EmbeddedInstanceHashAnnotation is the annotation key on the embedded admin
-	// Secret that holds an opaque token identifying the credential generation.
-	// The same token is written into the StatefulSet pod-template annotation so
-	// that Secret recreation triggers a rolling restart.
-	EmbeddedInstanceHashAnnotation = "db.infrastructure.opendatahub.io/instance-hash"
+	// EmbeddedAdminSecretKeyAnnotation is the annotation key on the embedded
+	// admin Secret that holds an opaque rollout token. The same token is written
+	// into the StatefulSet pod-template annotation so that Secret recreation
+	// triggers a rolling restart.
+	EmbeddedAdminSecretKeyAnnotation = "db.infrastructure.opendatahub.io/admin-secret-key"
 )
 
 func OperatorNamespace(cfg *moduleconfig.Config) string {
@@ -113,8 +113,15 @@ func loadEmbeddedProviderConfig(
 	if err != nil {
 		return postgres.Config{}, fmt.Errorf("parsing embedded admin Secret: %w", err)
 	}
-	// Embedded PostgreSQL runs inside the cluster without TLS certificates.
-	cfg.SSLMode = postgres.SSLModeDisable
+
+	if provider.Spec.Embedded == nil || provider.Spec.Embedded.TLS == nil {
+		cfg.SSLMode = postgres.SSLModeDisable
+		return cfg, nil
+	}
+	if cfg.SSLMode == "" {
+		cfg.SSLMode = postgres.SSLModeVerifyFull
+	}
+
 	return cfg, nil
 }
 

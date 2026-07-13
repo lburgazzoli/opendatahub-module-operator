@@ -9,6 +9,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/test/support"
+	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/test/support/addons"
 	supportlogger "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/test/support/logger"
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/test/support/reaper"
 )
@@ -79,6 +80,10 @@ func (b *Base) SetUp(ctx context.Context) error {
 	}
 	if err := r.Run(ctx); err != nil {
 		return fmt.Errorf("cleaning fixtures: %w", err)
+	}
+
+	if err := addons.EnsureCertManager(ctx, b.cfg, b.cli); err != nil {
+		return fmt.Errorf("ensuring cert-manager: %w", err)
 	}
 
 	if testCfg.Operator.Install {

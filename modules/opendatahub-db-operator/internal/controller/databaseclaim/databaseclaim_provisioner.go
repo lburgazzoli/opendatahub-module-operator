@@ -140,4 +140,10 @@ func (p DatabaseProvisioner) buildCredentialsSecret(
 		postgres.SecretKeyPassword: []byte(password),
 		postgres.SecretKeyDatabase: []byte(p.Claim.Spec.Database),
 	}
+	if p.Config.SSLMode != "" {
+		secret.Data[postgres.SecretKeySSLMode] = []byte(p.Config.SSLMode)
+	}
+	if p.Config.SSLRootCert != "" {
+		secret.Data[postgres.SecretKeyCA] = []byte(p.Config.SSLRootCert)
+	}
 }

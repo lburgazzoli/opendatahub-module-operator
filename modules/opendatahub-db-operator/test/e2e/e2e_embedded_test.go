@@ -11,9 +11,11 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	infraApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/api/infrastructure/v1alpha1"
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/internal/controller/databaseclaim"
+	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/internal/controller/databaseprovider"
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/internal/controller/schemaclaim"
 	dbcontroller "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/pkg/controller"
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/pkg/postgres"
@@ -21,6 +23,7 @@ import (
 
 func (st *e2eSuite) runEmbedded(t *testing.T) {
 	t.Run("embedded provider serves schema and database claims together", st.testEmbeddedProviderServesClaims)
+	t.Run("embedded provider propagates tls credentials to claims", st.testEmbeddedProviderServesTLSClaims)
 }
 
 func (st *e2eSuite) testEmbeddedProviderServesClaims(t *testing.T) {
@@ -104,7 +107,107 @@ func (st *e2eSuite) testEmbeddedProviderServesClaims(t *testing.T) {
 	g.Expect(schemaCfg.User).NotTo(Equal(databaseCfg.User))
 }
 
-func (st *e2eSuite) createEmbeddedProvider(t *testing.T) *infraApi.DatabaseProvider {
+func (st *e2eSuite) testEmbeddedProviderServesTLSClaims(t *testing.T) {
+	g := NewWithT(t)
+	st.ensureWorkloadNamespace(t)
+
+	provider := st.createEmbeddedProvider(t, func(provider *infraApi.DatabaseProvider) {
+		provider.Spec.Embedded.TLS = &infraApi.EmbeddedProviderTLSSpec{}
+	})
+	st.waitProviderReachable(t, provider)
+
+	g.Eventually(func(g Gomega) {
+		g.Expect(st.Client.Get(t.Context(), client.ObjectKeyFromObject(provider), provider)).To(Succeed())
+		g.Expect(provider.Status.Conditions).To(SatisfyAll(
+			ContainElement(condition.Is(databaseprovider.ConditionReachable, metav1.ConditionTrue)),
+			ContainElement(condition.Is(databaseprovider.ConditionTLSConfiguration, metav1.ConditionTrue)),
+		))
+		g.Expect(provider.Status.TLS).NotTo(BeNil())
+		g.Expect(provider.Status.TLS.Enabled).To(BeTrue())
+		g.Expect(provider.Status.TLS.Ready).To(BeTrue())
+		g.Expect(provider.Status.TLS.SecretName).To(Equal(dbcontroller.EmbeddedTLSSecretName(provider.Name)))
+		g.Expect(provider.Status.TLS.CertificateName).To(Equal(dbcontroller.EmbeddedTLSCertificateName(provider.Name)))
+		g.Expect(provider.Status.TLS.IssuerRef).NotTo(BeNil())
+		g.Expect(provider.Status.TLS.IssuerRef.Name).To(Equal(dbcontroller.EmbeddedTLSIssuerName(provider.Name)))
+	}).WithContext(t.Context()).Should(Succeed())
+
+	schemaClaim := &infraApi.SchemaClaim{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "e2e-sc-tls-" + xid.New().String(),
+			Namespace: st.workloadNamespace,
+		},
+		Spec: infraApi.SchemaClaimSpec{
+			Provider: infraApi.ProviderRef{Name: provider.Name},
+		},
+	}
+	databaseClaim := &infraApi.DatabaseClaim{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "e2e-dc-tls-" + xid.New().String(),
+			Namespace: st.workloadNamespace,
+		},
+		Spec: infraApi.DatabaseClaimSpec{
+			Provider: infraApi.ProviderRef{Name: provider.Name},
+			Database: "postgres",
+		},
+	}
+	g.Expect(st.Client.Create(t.Context(), schemaClaim)).To(Succeed())
+	t.Cleanup(func() {
+		st.deleteAndWait(context.Background(), t, schemaClaim)
+	})
+	g.Expect(st.Client.Create(t.Context(), databaseClaim)).To(Succeed())
+	t.Cleanup(func() {
+		st.deleteAndWait(context.Background(), t, databaseClaim)
+	})
+
+	g.Eventually(t.Context(), k8sm.Get(st.Client, schemaClaim)).Should(
+		WithTransform(k8sm.ConditionsOf[metav1.Condition](), SatisfyAll(
+			ContainElement(condition.Is(schemaclaim.ConditionProvisioned, metav1.ConditionTrue)),
+			ContainElement(condition.Is(schemaclaim.ConditionTLSConfiguration, metav1.ConditionTrue)),
+		)),
+	)
+	g.Eventually(t.Context(), k8sm.Get(st.Client, databaseClaim)).Should(
+		WithTransform(k8sm.ConditionsOf[metav1.Condition](), SatisfyAll(
+			ContainElement(condition.Is(databaseclaim.ConditionProvisioned, metav1.ConditionTrue)),
+			ContainElement(condition.Is(databaseclaim.ConditionTLSConfiguration, metav1.ConditionTrue)),
+		)),
+	)
+
+	schemaSecret := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{Name: schemaClaim.Name, Namespace: st.workloadNamespace},
+	}
+	databaseSecret := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{Name: databaseClaim.Name, Namespace: st.workloadNamespace},
+	}
+	g.Eventually(t.Context(), k8sm.Get(st.Client, schemaSecret)).Should(
+		WithTransform(k8sm.Data(), SatisfyAll(
+			HaveKeyWithValue(postgres.SecretKeySSLMode, []byte(postgres.SSLModeVerifyFull)),
+			HaveKey(postgres.SecretKeyCA),
+			HaveKey(postgres.SecretKeySchema),
+		)),
+	)
+	g.Eventually(t.Context(), k8sm.Get(st.Client, databaseSecret)).Should(
+		WithTransform(k8sm.Data(), SatisfyAll(
+			HaveKeyWithValue(postgres.SecretKeySSLMode, []byte(postgres.SSLModeVerifyFull)),
+			HaveKey(postgres.SecretKeyCA),
+		)),
+	)
+	g.Eventually(t.Context(), k8sm.Lookup(st.Client, schemaSecret)).To(Succeed())
+	g.Eventually(t.Context(), k8sm.Lookup(st.Client, databaseSecret)).To(Succeed())
+
+	schemaCfg, err := postgres.ParseSecret(schemaSecret.Data)
+	g.Expect(err).NotTo(HaveOccurred())
+	databaseCfg, err := postgres.ParseSecret(databaseSecret.Data)
+	g.Expect(err).NotTo(HaveOccurred())
+	g.Expect(schemaCfg.TLSEnabled()).To(BeTrue())
+	g.Expect(schemaCfg.TLSReady()).To(BeTrue())
+	g.Expect(databaseCfg.TLSEnabled()).To(BeTrue())
+	g.Expect(databaseCfg.TLSReady()).To(BeTrue())
+}
+
+func (st *e2eSuite) createEmbeddedProvider(
+	t *testing.T,
+	opts ...func(*infraApi.DatabaseProvider),
+) *infraApi.DatabaseProvider {
 	t.Helper()
 
 	g := NewWithT(t)
@@ -120,6 +223,9 @@ func (st *e2eSuite) createEmbeddedProvider(t *testing.T) *infraApi.DatabaseProvi
 				Extensions: []string{"pg_trgm"},
 			},
 		},
+	}
+	for _, opt := range opts {
+		opt(provider)
 	}
 
 	g.Expect(st.Client.Create(t.Context(), provider)).To(Succeed())

@@ -20,13 +20,29 @@ spec:
         db.infrastructure.opendatahub.io/provider: {{.Component.Name}}
 {{- if .InstanceHash}}
       annotations:
-        db.infrastructure.opendatahub.io/instance-hash: {{.InstanceHash}}
+        db.infrastructure.opendatahub.io/admin-secret-key: {{.InstanceHash}}
+{{- if and .TLSEnabled .TLSSecretHash}}
+        db.infrastructure.opendatahub.io/tls-secret-hash: {{.TLSSecretHash}}
+{{- end}}
 {{- end}}
     spec:
+{{- if .TLSEnabled}}
+      securityContext:
+        fsGroup: 999
+{{- end}}
       containers:
         - name: postgres
           image: {{.ResolvedImage}}
           imagePullPolicy: IfNotPresent
+{{- if .TLSEnabled}}
+          args:
+            - -c
+            - ssl=on
+            - -c
+            - ssl_cert_file=/var/lib/postgresql/tls/tls.crt
+            - -c
+            - ssl_key_file=/var/lib/postgresql/tls/tls.key
+{{- end}}
           ports:
             - name: postgres
               containerPort: 5432
@@ -73,6 +89,11 @@ spec:
               mountPath: /var/lib/postgresql/data
             - name: initdb
               mountPath: /docker-entrypoint-initdb.d
+{{- if .TLSEnabled}}
+            - name: tls
+              mountPath: /var/lib/postgresql/tls
+              readOnly: true
+{{- end}}
       volumes:
         - name: data
           persistentVolumeClaim:
@@ -80,3 +101,9 @@ spec:
         - name: initdb
           configMap:
             name: {{.InitDBConfigMapName}}
+{{- if .TLSEnabled}}
+        - name: tls
+          secret:
+            secretName: {{.TLSSecretName}}
+            defaultMode: 416
+{{- end}}

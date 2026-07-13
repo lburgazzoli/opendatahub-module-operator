@@ -32,6 +32,7 @@ import (
 	dbcontroller "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/pkg/controller"
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/pkg/postgres"
 	dbmaps "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/pkg/utils/maps"
+	api "github.com/opendatahub-io/odh-platform-utilities/framework/api"
 	"github.com/opendatahub-io/odh-platform-utilities/framework/controller/conditions"
 	odhtypes "github.com/opendatahub-io/odh-platform-utilities/framework/controller/types"
 )
@@ -51,13 +52,36 @@ func (m *Controller) reconcileExternalAction(
 	cfg, err := loadExternalConfig(ctx, rr.Client, obj)
 	if err != nil {
 		obj.Status.Connection = infraApi.ProviderConnectionStatus{}
+		obj.Status.TLS = nil
 		rr.Conditions.Mark(ConditionReachable, metav1.ConditionFalse,
+			conditions.WithReason(externalFailureReason(err)),
+			conditions.WithMessage("%s", err.Error()))
+		rr.Conditions.Mark(ConditionTLSConfiguration, metav1.ConditionUnknown,
 			conditions.WithReason(externalFailureReason(err)),
 			conditions.WithMessage("%s", err.Error()))
 		return nil
 	}
 
 	obj.Status.Connection = providerConnectionStatus(cfg)
+	obj.Status.TLS = &infraApi.ProviderTLSStatus{
+		Enabled: cfg.TLSEnabled(),
+		Ready:   cfg.TLSReady(),
+	}
+	switch {
+	case !cfg.TLSEnabled():
+		rr.Conditions.Mark(ConditionTLSConfiguration, metav1.ConditionFalse,
+			conditions.WithSeverity(api.ConditionSeverityInfo),
+			conditions.WithReason(reasonTLSNotEnabled),
+			conditions.WithMessage("TLS is not enabled for this external provider"))
+	case cfg.TLSReady():
+		rr.Conditions.Mark(ConditionTLSConfiguration, metav1.ConditionTrue,
+			conditions.WithReason(reasonTLSConfigured),
+			conditions.WithMessage("External provider TLS configuration resolved"))
+	default:
+		rr.Conditions.Mark(ConditionTLSConfiguration, metav1.ConditionFalse,
+			conditions.WithReason(reasonTLSProvisioning),
+			conditions.WithMessage("External provider TLS configuration is pending"))
+	}
 
 	if err := postgres.Ping(ctx, cfg); err != nil {
 		rr.Conditions.Mark(ConditionReachable, metav1.ConditionFalse,
@@ -88,7 +112,8 @@ func (m *Controller) reconcileEmbeddedAction(
 		return nil
 	}
 
-	adminSecret, err := computeEmbeddedAdminSecret(ctx, rr.Client, obj, m.cfg)
+	tlsState, err := computeEmbeddedAdminSecret(ctx, rr.Client, obj, m.cfg)
+	obj.Status.TLS = embeddedTLSStatus(obj, m.cfg, tlsState.Ready)
 	if err != nil {
 		obj.Status.Connection = infraApi.ProviderConnectionStatus{}
 
@@ -96,27 +121,61 @@ func (m *Controller) reconcileEmbeddedAction(
 			conditions.WithReason(reasonAdminSecretUnavailable),
 			conditions.WithMessage("%s", err.Error()))
 
+		if tlsState.Enabled {
+			rr.Conditions.Mark(ConditionTLSConfiguration, metav1.ConditionFalse,
+				conditions.WithReason(reasonTLSProvisioning),
+				conditions.WithMessage("%s", err.Error()))
+		} else {
+			rr.Conditions.Mark(ConditionTLSConfiguration, metav1.ConditionFalse,
+				conditions.WithSeverity(api.ConditionSeverityInfo),
+				conditions.WithReason(reasonTLSNotEnabled),
+				conditions.WithMessage("TLS is not enabled for this embedded provider"))
+		}
+
 		return fmt.Errorf("ensuring embedded admin Secret: %w", err)
 	}
 
-	if err := rr.AddResources(adminSecret); err != nil {
+	if err := rr.AddResources(tlsState.AdminSecret); err != nil {
 		return fmt.Errorf("adding embedded admin Secret to resources: %w", err)
 	}
 
-	rr.Extensions = dbmaps.Set(rr.Extensions, extKeyInstanceHash, any(adminSecret.Annotations[instanceHashAnnotation]))
+	if key := tlsState.AdminSecret.Annotations[dbcontroller.EmbeddedAdminSecretKeyAnnotation]; len(key) != 0 {
+		rr.Extensions = dbmaps.Set(rr.Extensions, extKeyAdminSecretKey, any(key))
+	}
+	if key := tlsState.TLSSecretHash; len(key) != 0 {
+		rr.Extensions = dbmaps.Set(rr.Extensions, extKeyTLSSecretHash, any(key))
+	}
 
 	// Build connection status from the in-memory secret so it is available on
 	// first reconcile before the deploy action has persisted the Secret.
 	obj.Status.Connection = infraApi.ProviderConnectionStatus{
-		Host:     string(adminSecret.Data[postgres.SecretKeyHost]),
+		Host:     string(tlsState.AdminSecret.Data[postgres.SecretKeyHost]),
 		Port:     postgres.DefaultPort,
-		Database: string(adminSecret.Data[postgres.SecretKeyDatabase]),
+		Database: string(tlsState.AdminSecret.Data[postgres.SecretKeyDatabase]),
+	}
+
+	switch {
+	case !tlsState.Enabled:
+		rr.Conditions.Mark(ConditionTLSConfiguration, metav1.ConditionFalse,
+			conditions.WithSeverity(api.ConditionSeverityInfo),
+			conditions.WithReason(reasonTLSNotEnabled),
+			conditions.WithMessage("TLS is not enabled for this embedded provider"))
+	case tlsState.Ready:
+		rr.Conditions.Mark(ConditionTLSConfiguration, metav1.ConditionTrue,
+			conditions.WithReason(reasonTLSConfigured),
+			conditions.WithMessage("Embedded provider TLS configuration resolved"))
+	default:
+		rr.Conditions.Mark(ConditionTLSConfiguration, metav1.ConditionFalse,
+			conditions.WithReason(reasonTLSProvisioning),
+			conditions.WithMessage("Embedded provider TLS configuration is pending"))
 	}
 
 	rr.Templates = []odhtypes.TemplateInfo{
 		{FS: assets.Manifests, Path: "manifests/embedded/pvc.yaml.tmpl"},
 		{FS: assets.Manifests, Path: "manifests/embedded/service.yaml.tmpl"},
 		{FS: assets.Manifests, Path: "manifests/embedded/initdb-configmap.yaml.tmpl"},
+		{FS: assets.Manifests, Path: "manifests/embedded/issuer.yaml.tmpl"},
+		{FS: assets.Manifests, Path: "manifests/embedded/certificate.yaml.tmpl"},
 		{FS: assets.Manifests, Path: "manifests/embedded/statefulset.yaml.tmpl"},
 		{FS: assets.Manifests, Path: "manifests/embedded/networkpolicy.yaml.tmpl"},
 	}
@@ -137,7 +196,10 @@ func (m *Controller) embeddedReadinessAction(
 	}
 
 	sts := &appsv1.StatefulSet{}
-	if err := rr.Client.Get(ctx, embeddedStatefulSetKey(obj, m.cfg), sts); err != nil {
+	sts.Namespace = dbcontroller.EmbeddedNamespace(obj, m.cfg.OperatorNamespace)
+	sts.Name = dbcontroller.EmbeddedServiceName(obj.Name)
+
+	if err := rr.Client.Get(ctx, client.ObjectKeyFromObject(sts), sts); err != nil {
 		if apierrors.IsNotFound(err) {
 			rr.Conditions.Mark(ConditionReachable, metav1.ConditionFalse,
 				conditions.WithReason(reasonProvisioning),
@@ -157,45 +219,6 @@ func (m *Controller) embeddedReadinessAction(
 	rr.Conditions.Mark(ConditionReachable, metav1.ConditionTrue,
 		conditions.WithReason(reasonInstanceRunning),
 		conditions.WithMessage("Embedded PostgreSQL instance is ready"))
-
-	return nil
-}
-
-func (m *Controller) embeddedIdleCleanupAction(
-	ctx context.Context,
-	rr *odhtypes.ReconciliationRequest,
-) error {
-	obj, ok := rr.Instance.(*infraApi.DatabaseProvider)
-	if !ok {
-		return fmt.Errorf("instance is not a DatabaseProvider")
-	}
-	if obj.Spec.Type != infraApi.ProviderTypeEmbedded || !wantsIdleDeletion(obj) {
-		return nil
-	}
-
-	sts := &appsv1.StatefulSet{}
-	if err := rr.Client.Get(ctx, embeddedStatefulSetKey(obj, m.cfg), sts); err != nil {
-		return client.IgnoreNotFound(err)
-	}
-
-	namespaces, err := referencedClaimNamespaces(ctx, rr.Client, obj)
-	if err != nil {
-		return fmt.Errorf("listing referenced claim namespaces: %w", err)
-	}
-	if len(namespaces) != 0 {
-		return nil
-	}
-
-	rr.Conditions.Mark(ConditionReachable, metav1.ConditionFalse,
-		conditions.WithReason(reasonIdle),
-		conditions.WithMessage("No claims currently reference this embedded provider"))
-	if !shouldTearDownIdleInstance(obj, m.cfg.GracePeriod) {
-		return nil
-	}
-
-	if err := deleteEmbeddedChildResources(ctx, rr.Client, obj, m.cfg); err != nil {
-		return fmt.Errorf("deleting idle embedded resources: %w", err)
-	}
 
 	return nil
 }

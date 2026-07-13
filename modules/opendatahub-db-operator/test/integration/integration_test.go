@@ -35,7 +35,6 @@ import (
 	modulemanager "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/pkg/manager"
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/test/support"
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/test/support/cluster"
-	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/test/support/reaper"
 )
 
 type integrationEnv struct {
@@ -160,23 +159,14 @@ func startIntegrationCluster(
 		return nil, fmt.Errorf("integration client is nil")
 	}
 
+	if err := tc.Setup(ctx); err != nil {
+		_ = tc.Stop(ctx)
+		return nil, fmt.Errorf("setting up integration cluster: %w", err)
+	}
+
 	if err := support.InstallCRD(ctx, cli); err != nil {
 		_ = tc.Stop(ctx)
 		return nil, fmt.Errorf("installing integration CRDs: %w", err)
-	}
-
-	if cfg.Cluster.Type == cluster.TypeExternal {
-		r, err := reaper.New(
-			cli,
-		)
-		if err != nil {
-			_ = tc.Stop(ctx)
-			return nil, fmt.Errorf("creating integration reaper: %w", err)
-		}
-		if err := r.Run(ctx); err != nil {
-			_ = tc.Stop(ctx)
-			return nil, fmt.Errorf("cleaning integration fixtures: %w", err)
-		}
 	}
 
 	return tc, nil

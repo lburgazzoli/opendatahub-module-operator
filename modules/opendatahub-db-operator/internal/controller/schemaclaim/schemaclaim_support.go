@@ -35,6 +35,11 @@ const (
 	// code in this package can reference it locally without an extra import.
 	ConditionProvisioned = dbcontroller.ConditionProvisioned
 
+	// ConditionTLSConfiguration is re-exported from pkg/controller so that
+	// action code in this package can reference it locally without an extra
+	// import.
+	ConditionTLSConfiguration = dbcontroller.ConditionTLSConfiguration
+
 	// FinalizerName is registered on every SchemaClaim before DDL runs so that
 	// deletion always triggers the cleanup action.
 	FinalizerName = "infrastructure.opendatahub.io/schemaclaim-cleanup"

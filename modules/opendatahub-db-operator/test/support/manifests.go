@@ -150,13 +150,12 @@ func isCRDEstablished(
 	cli client.Client,
 	name string,
 ) (bool, error) {
-	crd := &apiextensionsv1.CustomResourceDefinition{}
-	if err := cli.Get(ctx, client.ObjectKey{Name: name}, crd); err != nil {
-		if k8serr.IsNotFound(err) {
-			return false, nil
-		}
-
-		return false, fmt.Errorf("getting CRD %q: %w", name, err)
+	present, crd, err := lookupCRD(ctx, cli, name)
+	if err != nil {
+		return false, err
+	}
+	if !present {
+		return false, nil
 	}
 
 	for _, cond := range crd.Status.Conditions {
@@ -166,6 +165,32 @@ func isCRDEstablished(
 	}
 
 	return false, nil
+}
+
+func HasCRD(
+	ctx context.Context,
+	cli client.Client,
+	name string,
+) (bool, error) {
+	present, _, err := lookupCRD(ctx, cli, name)
+	return present, err
+}
+
+func lookupCRD(
+	ctx context.Context,
+	cli client.Client,
+	name string,
+) (bool, *apiextensionsv1.CustomResourceDefinition, error) {
+	crd := &apiextensionsv1.CustomResourceDefinition{}
+	if err := cli.Get(ctx, client.ObjectKey{Name: name}, crd); err != nil {
+		if k8serr.IsNotFound(err) {
+			return false, nil, nil
+		}
+
+		return false, nil, fmt.Errorf("getting CRD %q: %w", name, err)
+	}
+
+	return true, crd, nil
 }
 
 func ModulePath(parts ...string) (string, error) {

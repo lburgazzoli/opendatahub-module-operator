@@ -59,6 +59,19 @@ rules:
   verbs:
   - create
 - apiGroups:
+  - cert-manager.io
+  resources:
+  - certificates
+  - issuers
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
   - infrastructure.opendatahub.io
   resources:
   - databaseclaims

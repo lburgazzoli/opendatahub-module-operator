@@ -33,17 +33,16 @@ const (
 	AccessModeReadOnly AccessMode = "ReadOnly"
 )
 
-// DeletionPolicy governs schema/data lifecycle on claim or provider deletion
-// (docs/plan.md §5, §7.7).
+// DeletionPolicy governs schema/data lifecycle on claim deletion.
+// (docs/plan.md §5).
 type DeletionPolicy string
 
 const (
-	// DeletionPolicyRetain leaves the underlying schema/data/instance intact
-	// on deletion (the default).
+	// DeletionPolicyRetain leaves the underlying schema/data intact on claim
+	// deletion (the default).
 	DeletionPolicyRetain DeletionPolicy = "Retain"
 
-	// DeletionPolicyDelete drops the underlying schema/data/instance on
-	// deletion.
+	// DeletionPolicyDelete drops the underlying schema/data on claim deletion.
 	DeletionPolicyDelete DeletionPolicy = "Delete"
 )
 

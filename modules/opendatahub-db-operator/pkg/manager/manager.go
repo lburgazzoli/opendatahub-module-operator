@@ -22,6 +22,7 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
@@ -38,6 +39,7 @@ import (
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/internal/controller/databaseservice"
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/internal/controller/schemaclaim"
 	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/pkg/config"
+	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/pkg/resources/gvk"
 	odhmanager "github.com/opendatahub-io/odh-platform-utilities/framework/manager"
 	libcache "github.com/opendatahub-io/odh-platform-utilities/pkg/cache"
 )
@@ -86,6 +88,10 @@ func New(
 	if err != nil {
 		return nil, err
 	}
+	issuer := &unstructured.Unstructured{}
+	issuer.SetGroupVersionKind(gvk.CertManagerIssuer)
+	certificate := &unstructured.Unstructured{}
+	certificate.SetGroupVersionKind(gvk.CertManagerCertificate)
 
 	mgrOpts := ctrl.Options{
 		Scheme: scheme,
@@ -108,6 +114,8 @@ func New(
 				DisableFor: []client.Object{
 					&corev1.ConfigMap{},
 					&corev1.Secret{},
+					issuer,
+					certificate,
 				},
 			},
 		},

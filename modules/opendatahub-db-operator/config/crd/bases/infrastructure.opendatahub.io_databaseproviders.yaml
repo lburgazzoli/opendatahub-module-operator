@@ -61,16 +61,6 @@ spec:
                   Embedded configures a controller-owned instance. Mutually exclusive
                   with External.
                 properties:
-                  deletionPolicy:
-                    default: Retain
-                    description: |-
-                      DeletionPolicy governs the instance's lifecycle when zero claims
-                      reference this provider (docs/plan.md §7.7) -- distinct from a claim's
-                      own per-schema/database deletionPolicy.
-                    enum:
-                    - Retain
-                    - Delete
-                    type: string
                   extensions:
                     description: |-
                       Extensions lists PostgreSQL extensions to make available inside the
@@ -175,6 +165,46 @@ spec:
                     x-kubernetes-validations:
                     - message: storage.size must be greater than zero
                       rule: quantity(self.size).isGreaterThan(quantity('0'))
+                  tls:
+                    description: |-
+                      TLS enables TLS for the embedded PostgreSQL instance. Presence of this
+                      field opts into TLS; an empty object uses controller defaults.
+                    properties:
+                      certificate:
+                        description: Certificate customizes the server certificate
+                          request.
+                        properties:
+                          duration:
+                            description: Duration overrides the requested certificate
+                              lifetime.
+                            type: string
+                          renewBefore:
+                            description: RenewBefore overrides how long before expiry
+                              cert-manager renews.
+                            type: string
+                          secretName:
+                            description: SecretName overrides the cert-manager target
+                              Secret name.
+                            type: string
+                        type: object
+                      issuerRef:
+                        description: IssuerRef overrides the default provider-scoped
+                          self-signed issuer.
+                        properties:
+                          group:
+                            description: Group defaults to cert-manager.io when omitted.
+                            type: string
+                          kind:
+                            description: Kind defaults to Issuer when omitted.
+                            type: string
+                          name:
+                            description: Name is the metadata.name of the referenced
+                              issuer.
+                            type: string
+                        required:
+                        - name
+                        type: object
+                    type: object
                 required:
                 - storage
                 type: object
@@ -333,6 +363,50 @@ spec:
                 x-kubernetes-list-map-keys:
                 - name
                 x-kubernetes-list-type: map
+              tls:
+                description: TLS reports the resolved TLS state for the provider.
+                properties:
+                  certificateName:
+                    description: CertificateName is the cert-manager Certificate name,
+                      when managed.
+                    type: string
+                  enabled:
+                    description: Enabled reflects whether TLS is configured for this
+                      provider.
+                    type: boolean
+                  issuerRef:
+                    description: IssuerRef identifies the issuer used for the current
+                      certificate flow.
+                    properties:
+                      group:
+                        description: Group defaults to cert-manager.io when omitted.
+                        type: string
+                      kind:
+                        description: Kind defaults to Issuer when omitted.
+                        type: string
+                      name:
+                        description: Name is the metadata.name of the referenced issuer.
+                        type: string
+                    required:
+                    - name
+                    type: object
+                  namespace:
+                    description: Namespace is where the TLS resources for this provider
+                      live.
+                    type: string
+                  ready:
+                    description: |-
+                      Ready reports whether the provider's TLS contract is fully configured and
+                      consumable.
+                    type: boolean
+                  secretName:
+                    description: SecretName is the Secret name holding the server
+                      certificate material.
+                    type: string
+                required:
+                - enabled
+                - ready
+                type: object
             type: object
         type: object
     served: true

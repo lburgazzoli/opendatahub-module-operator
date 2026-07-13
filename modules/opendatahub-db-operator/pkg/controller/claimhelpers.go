@@ -23,23 +23,17 @@ import (
 	"regexp"
 	"time"
 
-	"github.com/jackc/pgx/v5/pgxpool"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/client-go/tools/events"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
+	"github.com/jackc/pgx/v5/pgxpool"
 	infraApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/api/infrastructure/v1alpha1"
 	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/pkg/config"
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/pkg/postgres"
 )
 
 const (
-	// ConditionProvisioned is the primary machine-readable condition that
-	// consumers gate on (docs/plan.md §5 status contract). Declared here so
-	// schemaclaim, databaseclaim, and databaseprovider can share a single
-	// source of truth without cross-importing each other's packages.
-	ConditionProvisioned = "Provisioned"
-
 	// maxRoleNameLen is PostgreSQL's identifier length limit.
 	maxRoleNameLen = 63
 )
@@ -71,7 +65,7 @@ func OpenPool(
 	if err != nil {
 		return postgres.Config{}, nil, err
 	}
-	pool, err := pgxpool.New(ctx, providerCfg.DSN())
+	pool, err := postgres.OpenPool(ctx, providerCfg)
 	if err != nil {
 		return postgres.Config{}, nil, fmt.Errorf(
 			"opening pool: %w",

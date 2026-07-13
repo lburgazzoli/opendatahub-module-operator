@@ -76,8 +76,8 @@ const (
 	KeyPgvectorImage = "embedded.pgvector-image"
 
 	// KeyGracePeriod is a generic grace period used wherever the operator needs
-	// to wait before taking a destructive action (Embedded provider idle teardown,
-	// claim cleanup retry timeout, etc.).
+	// to wait before taking a destructive action (claim cleanup retry timeout,
+	// etc.).
 	KeyGracePeriod = "grace-period"
 
 	// Periodic-retry intervals (docs/plan.md §6), one per reconciler
@@ -164,14 +164,13 @@ type Config struct {
 	DatabaseProvider  RetryConfig      `mapstructure:"databaseprovider"`
 	DatabaseService   RetryConfig      `mapstructure:"databaseservice"`
 	// GracePeriod is a generic operator-wide timeout used wherever a destructive
-	// action should be deferred: Embedded provider idle teardown, claim cleanup
-	// retry ceiling, etc. Defaults to DefaultGracePeriod.
+	// action should be deferred, such as the claim cleanup retry ceiling.
+	// Defaults to DefaultGracePeriod.
 	GracePeriod time.Duration `mapstructure:"grace-period"`
 }
 
 // EmbeddedConfig holds the Embedded DatabaseProvider's operator-wide image
 // defaults (docs/plan.md §7.1). Never referenced as literals in controller code.
-// The idle teardown grace period is now the top-level Config.GracePeriod.
 type EmbeddedConfig struct {
 	PostgresImage string `mapstructure:"postgres-image"`
 	PgvectorImage string `mapstructure:"pgvector-image"`

@@ -36,6 +36,7 @@ var (
 	RoleBinding                    = fwgvk.RoleBinding
 	MutatingWebhookConfiguration   = fwgvk.MutatingWebhookConfiguration
 	ValidatingWebhookConfiguration = fwgvk.ValidatingWebhookConfiguration
+	CertManagerIssuer              = fwgvk.CertManagerIssuer
 	CertManagerCertificate         = fwgvk.CertManagerCertificate
 	Secret                         = fwgvk.Secret
 )

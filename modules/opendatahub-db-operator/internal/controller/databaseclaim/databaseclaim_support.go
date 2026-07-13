@@ -29,6 +29,11 @@ const (
 	// code in this package can reference it locally without an extra import.
 	ConditionProvisioned = dbcontroller.ConditionProvisioned
 
+	// ConditionTLSConfiguration is re-exported from pkg/controller so that
+	// action code in this package can reference it locally without an extra
+	// import.
+	ConditionTLSConfiguration = dbcontroller.ConditionTLSConfiguration
+
 	FinalizerName = "infrastructure.opendatahub.io/databaseclaim-cleanup"
 )
 

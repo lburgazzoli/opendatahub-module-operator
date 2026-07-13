@@ -29,12 +29,14 @@ import (
 	networkingv1 "k8s.io/api/networking/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	infraApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/api/infrastructure/v1alpha1"
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/internal/controller/databaseprovider"
 	dbcontroller "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/pkg/controller"
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/pkg/postgres"
+	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/pkg/resources/gvk"
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/test/support"
 )
 
@@ -52,6 +54,7 @@ func (st *embeddedDatabaseProviderSuite) Run(t *testing.T) {
 	t.Run("crd validation", st.testCRDValidation)
 	t.Run("creates embedded postgres resources", st.testProvisioning)
 	t.Run("creates embedded postgres resources in configured namespace", st.testProvisioningCustomNamespace)
+	t.Run("creates embedded postgres tls resources", st.testProvisioningTLS)
 	t.Run("deleted admin secret is surfaced", st.testAdminSecretDeleted)
 }
 
@@ -159,6 +162,17 @@ func (st *embeddedDatabaseProviderSuite) testProvisioningCustomNamespace(t *test
 	st.expectProvisionedInNamespace(t, provider, namespace)
 }
 
+func (st *embeddedDatabaseProviderSuite) testProvisioningTLS(t *testing.T) {
+	provider := st.createEmbeddedProvider(
+		t,
+		"embedded-"+xid.New().String(),
+		[]string{"pg_trgm"},
+		withEmbeddedTLS(),
+	)
+
+	st.expectProvisionedTLSInNamespace(t, provider, st.env.Config.OperatorNamespace)
+}
+
 func (st *embeddedDatabaseProviderSuite) testAdminSecretDeleted(t *testing.T) {
 	g := NewWithT(t)
 
@@ -172,7 +186,7 @@ func (st *embeddedDatabaseProviderSuite) testAdminSecretDeleted(t *testing.T) {
 		},
 	}
 	g.Expect(st.env.Client.Get(t.Context(), client.ObjectKeyFromObject(adminSecret), adminSecret)).To(Succeed())
-	initialHash := adminSecret.Annotations[dbcontroller.EmbeddedInstanceHashAnnotation]
+	initialHash := adminSecret.Annotations[dbcontroller.EmbeddedAdminSecretKeyAnnotation]
 	g.Expect(initialHash).NotTo(BeEmpty())
 
 	g.Expect(support.DeleteAndWait(t.Context(), st.env.Client, adminSecret)).To(Succeed())
@@ -186,7 +200,7 @@ func (st *embeddedDatabaseProviderSuite) testAdminSecretDeleted(t *testing.T) {
 	}}
 	g.Eventually(t.Context(), k8sm.Get(st.env.Client, refreshed)).Should(
 		WithTransform(func(s *corev1.Secret) string {
-			return s.Annotations[dbcontroller.EmbeddedInstanceHashAnnotation]
+			return s.Annotations[dbcontroller.EmbeddedAdminSecretKeyAnnotation]
 		}, SatisfyAll(
 			Not(BeEmpty()),
 			Not(Equal(initialHash)),
@@ -207,7 +221,6 @@ func (st *embeddedDatabaseProviderSuite) createEmbeddedProvider(
 		Spec: infraApi.DatabaseProviderSpec{
 			Type: infraApi.ProviderTypeEmbedded,
 			Embedded: &infraApi.EmbeddedProviderSpec{
-				DeletionPolicy: infraApi.DeletionPolicyRetain,
 				Storage: infraApi.StorageSpec{
 					Size: resource.MustParse("1Gi"),
 				},
@@ -267,9 +280,94 @@ func (st *embeddedDatabaseProviderSuite) expectProvisionedInNamespace(
 
 }
 
+func (st *embeddedDatabaseProviderSuite) expectProvisionedTLSInNamespace(
+	t *testing.T,
+	provider *infraApi.DatabaseProvider,
+	namespace string,
+) {
+	t.Helper()
+
+	g := NewWithT(t)
+	st.expectProvisionedInNamespace(t, provider, namespace)
+
+	issuer := &unstructured.Unstructured{}
+	issuer.SetGroupVersionKind(gvk.CertManagerIssuer)
+	issuer.SetNamespace(namespace)
+	issuer.SetName(dbcontroller.EmbeddedTLSIssuerName(provider.Name))
+	g.Eventually(t.Context(), k8sm.Lookup(st.env.Client, issuer)).To(Succeed())
+
+	certificate := &unstructured.Unstructured{}
+	certificate.SetGroupVersionKind(gvk.CertManagerCertificate)
+	certificate.SetNamespace(namespace)
+	certificate.SetName(dbcontroller.EmbeddedTLSCertificateName(provider.Name))
+	g.Eventually(t.Context(), k8sm.Lookup(st.env.Client, certificate)).To(Succeed())
+
+	tlsSecret := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace: namespace,
+			Name:      dbcontroller.EmbeddedTLSSecretName(provider.Name),
+		},
+	}
+	g.Eventually(t.Context(), k8sm.Lookup(st.env.Client, tlsSecret)).To(Succeed())
+	g.Eventually(func(g Gomega) {
+		g.Expect(st.env.Client.Get(t.Context(), client.ObjectKeyFromObject(tlsSecret), tlsSecret)).To(Succeed())
+		g.Expect(tlsSecret.Data["tls.crt"]).NotTo(BeEmpty())
+		g.Expect(tlsSecret.Data["tls.key"]).NotTo(BeEmpty())
+		g.Expect(tlsSecret.Data["ca.crt"]).NotTo(BeEmpty())
+	}).WithContext(t.Context()).Should(Succeed())
+
+	adminSecret := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace: namespace,
+			Name:      dbcontroller.EmbeddedAdminSecretName(provider.Name),
+		},
+	}
+	g.Eventually(func(g Gomega) {
+		g.Expect(st.env.Client.Get(t.Context(), client.ObjectKeyFromObject(adminSecret), adminSecret)).To(Succeed())
+		g.Expect(adminSecret.Data[postgres.SecretKeySSLMode]).To(Equal([]byte(postgres.SSLModeVerifyFull)))
+		g.Expect(adminSecret.Data[postgres.SecretKeyCA]).NotTo(BeEmpty())
+	}).WithContext(t.Context()).Should(Succeed())
+
+	statefulSet := &appsv1.StatefulSet{
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace: namespace,
+			Name:      dbcontroller.EmbeddedServiceName(provider.Name),
+		},
+	}
+	g.Eventually(func(g Gomega) {
+		g.Expect(st.env.Client.Get(t.Context(), client.ObjectKeyFromObject(statefulSet), statefulSet)).To(Succeed())
+		g.Expect(statefulSet.Spec.Template.Spec.Containers).NotTo(BeEmpty())
+		g.Expect(statefulSet.Spec.Template.Spec.Containers[0].Args).To(ContainElements(
+			"ssl=on",
+			"ssl_cert_file=/var/lib/postgresql/tls/tls.crt",
+			"ssl_key_file=/var/lib/postgresql/tls/tls.key",
+		))
+	}).WithContext(t.Context()).Should(Succeed())
+
+	g.Eventually(func(g Gomega) {
+		g.Expect(st.env.Client.Get(t.Context(), client.ObjectKeyFromObject(provider), provider)).To(Succeed())
+		g.Expect(provider.Status.TLS).NotTo(BeNil())
+		g.Expect(provider.Status.TLS.Enabled).To(BeTrue())
+		g.Expect(provider.Status.TLS.Ready).To(BeTrue())
+		g.Expect(provider.Status.TLS.SecretName).To(Equal(dbcontroller.EmbeddedTLSSecretName(provider.Name)))
+		g.Expect(provider.Status.TLS.CertificateName).To(Equal(dbcontroller.EmbeddedTLSCertificateName(provider.Name)))
+		g.Expect(provider.Status.TLS.IssuerRef).NotTo(BeNil())
+		g.Expect(provider.Status.TLS.IssuerRef.Name).To(Equal(dbcontroller.EmbeddedTLSIssuerName(provider.Name)))
+		g.Expect(provider.Status.Conditions).To(ContainElement(
+			condition.Is(databaseprovider.ConditionTLSConfiguration, metav1.ConditionTrue),
+		))
+	}).WithContext(t.Context()).Should(Succeed())
+}
+
 func withEmbeddedNamespace(namespace string) func(*infraApi.DatabaseProvider) {
 	return func(provider *infraApi.DatabaseProvider) {
 		provider.Spec.Embedded.Namespace = namespace
+	}
+}
+
+func withEmbeddedTLS() func(*infraApi.DatabaseProvider) {
+	return func(provider *infraApi.DatabaseProvider) {
+		provider.Spec.Embedded.TLS = &infraApi.EmbeddedProviderTLSSpec{}
 	}
 }
 

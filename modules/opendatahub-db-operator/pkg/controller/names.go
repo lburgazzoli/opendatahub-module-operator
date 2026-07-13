@@ -60,6 +60,18 @@ func EmbeddedInitDBConfigMapName(providerName string) string {
 	return providerName + "-initdb"
 }
 
+func EmbeddedTLSIssuerName(providerName string) string {
+	return providerName + "-tls"
+}
+
+func EmbeddedTLSCertificateName(providerName string) string {
+	return providerName + "-tls"
+}
+
+func EmbeddedTLSSecretName(providerName string) string {
+	return providerName + "-tls"
+}
+
 func EmbeddedNamespace(provider *infraApi.DatabaseProvider, operatorNamespace string) string {
 	if provider != nil && provider.Spec.Embedded != nil && provider.Spec.Embedded.Namespace != "" {
 		return provider.Spec.Embedded.Namespace

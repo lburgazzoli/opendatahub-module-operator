@@ -25,10 +25,15 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	infraApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/api/infrastructure/v1alpha1"
+	dbcontroller "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/pkg/controller"
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/pkg/postgres"
 )
 
-const ConditionReachable = "Reachable"
+const (
+	ConditionReachable = "Reachable"
+
+	ConditionTLSConfiguration = dbcontroller.ConditionTLSConfiguration
+)
 
 type ErrConnectionSecretUnavailable struct {
 	Ref   corev1.SecretReference

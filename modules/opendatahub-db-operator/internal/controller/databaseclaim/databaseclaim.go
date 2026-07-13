@@ -82,14 +82,13 @@ func NewReconciler(
 			reconciler.WithFinalizerName(FinalizerName),
 		).
 		WithFinalizer(m.cleanupAction).
-		WithAction(dbcontroller.UpgradeIfNeeded()).
 		WithAction(m.provisionAction).
 		WithAction(deploy.NewAction(
 			deploy.WithCache(),
 			deploy.WithApplyOrder(),
 			deploy.WithLabel("app.opendatahub.io/db-operator", "true"),
 		)).
-		WithConditions(ConditionProvisioned).
+		WithConditions(ConditionProvisioned, ConditionTLSConfiguration).
 		Build(ctx)
 
 	return err

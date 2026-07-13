@@ -105,9 +105,11 @@ func TestComputeEmbeddedAdminSecret_GeneratesCredentialsOnFirstReconcile(t *test
 
 	cli := fake.NewClientBuilder().WithScheme(scheme).WithRuntimeObjects(provider).Build()
 
-	secret, err := computeEmbeddedAdminSecret(ctx, cli, provider, cfg)
+	tlsState, err := computeEmbeddedAdminSecret(ctx, cli, provider, cfg)
 	g.Expect(err).NotTo(HaveOccurred())
-	g.Expect(secret.Data).To(SatisfyAll(
+	g.Expect(tlsState.Enabled).To(BeFalse())
+	g.Expect(tlsState.AdminSecret).NotTo(BeNil())
+	g.Expect(tlsState.AdminSecret.Data).To(SatisfyAll(
 		HaveKey(postgres.SecretKeyHost),
 		HaveKey(postgres.SecretKeyUser),
 		HaveKey(postgres.SecretKeyPassword),
@@ -151,11 +153,60 @@ func TestComputeEmbeddedAdminSecret_PreservesExistingPassword(t *testing.T) {
 
 	first, err := computeEmbeddedAdminSecret(ctx, cli, provider, cfg)
 	g.Expect(err).NotTo(HaveOccurred())
-	g.Expect(first.Data[postgres.SecretKeyPassword]).To(Equal([]byte("stable-password")))
+	g.Expect(first.Enabled).To(BeFalse())
+	g.Expect(first.AdminSecret).NotTo(BeNil())
+	g.Expect(first.AdminSecret.Data[postgres.SecretKeyPassword]).To(Equal([]byte("stable-password")))
 
 	second, err := computeEmbeddedAdminSecret(ctx, cli, provider, cfg)
 	g.Expect(err).NotTo(HaveOccurred())
-	g.Expect(second.Data).To(Equal(first.Data))
+	g.Expect(second.Enabled).To(BeFalse())
+	g.Expect(second.AdminSecret).NotTo(BeNil())
+	g.Expect(second.AdminSecret.Data).To(Equal(first.AdminSecret.Data))
+}
+
+func TestComputeEmbeddedAdminSecret_ProjectsResolvedTLSState(t *testing.T) {
+	g := NewWithT(t)
+	ctx := context.Background()
+
+	scheme := runtime.NewScheme()
+	g.Expect(appsv1.AddToScheme(scheme)).To(Succeed())
+	g.Expect(corev1.AddToScheme(scheme)).To(Succeed())
+	g.Expect(infraApi.AddToScheme(scheme)).To(Succeed())
+
+	cfg := &moduleconfig.Config{OperatorNamespace: "operator-ns"}
+	provider := &infraApi.DatabaseProvider{
+		ObjectMeta: metav1.ObjectMeta{Name: "embedded"},
+		Spec: infraApi.DatabaseProviderSpec{
+			Type: infraApi.ProviderTypeEmbedded,
+			Embedded: &infraApi.EmbeddedProviderSpec{
+				TLS: &infraApi.EmbeddedProviderTLSSpec{},
+			},
+		},
+	}
+	tlsSecret := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace: cfg.OperatorNamespace,
+			Name:      dbcontroller.EmbeddedTLSSecretName(provider.Name),
+		},
+		Data: map[string][]byte{
+			"ca.crt":  []byte("ca-bytes"),
+			"tls.crt": []byte("server-cert"),
+			"tls.key": []byte("server-key"),
+		},
+	}
+
+	cli := fake.NewClientBuilder().WithScheme(scheme).WithRuntimeObjects(provider, tlsSecret).Build()
+
+	tlsState, err := computeEmbeddedAdminSecret(ctx, cli, provider, cfg)
+	g.Expect(err).NotTo(HaveOccurred())
+	g.Expect(tlsState.Enabled).To(BeTrue())
+	g.Expect(tlsState.Ready).To(BeTrue())
+	g.Expect(tlsState.CAData).To(Equal([]byte("ca-bytes")))
+	g.Expect(tlsState.TLSSecretHash).NotTo(BeEmpty())
+	g.Expect(tlsState.TLSSecret).NotTo(BeNil())
+	g.Expect(tlsState.AdminSecret).NotTo(BeNil())
+	g.Expect(tlsState.AdminSecret.Data[postgres.SecretKeySSLMode]).To(Equal([]byte(postgres.SSLModeVerifyFull)))
+	g.Expect(tlsState.AdminSecret.Data[postgres.SecretKeyCA]).To(Equal([]byte("ca-bytes")))
 }
 
 func TestEmbeddedNamespace_UsesOverride(t *testing.T) {
