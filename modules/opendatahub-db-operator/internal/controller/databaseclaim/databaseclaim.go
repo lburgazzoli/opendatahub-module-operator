@@ -21,6 +21,7 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
 	infraApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/api/infrastructure/v1alpha1"
 	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/pkg/config"
@@ -69,9 +70,12 @@ func NewReconciler(
 
 	_, err := reconciler.ReconcilerFor(mgr, &infraApi.DatabaseClaim{}).
 		Owns(&corev1.Secret{}).
-		Watches(&infraApi.DatabaseProvider{}, reconciler.WithEventMapper(
-			dbcontroller.BroadcastListMapper(mgr.GetClient(), &infraApi.DatabaseClaimList{}),
-		)).
+		Watches(
+			&infraApi.DatabaseProvider{},
+			reconciler.WithPredicates(predicate.ResourceVersionChangedPredicate{}),
+			reconciler.WithEventMapper(
+				dbcontroller.BroadcastListMapper(mgr.GetClient(), &infraApi.DatabaseClaimList{}),
+			)).
 		WithReconcilerOpts(
 			reconciler.WithRelease(m.platformRelease),
 			reconciler.WithDefaultRequeueAfter(cfg.DatabaseClaim.RetryInterval),
