@@ -29,14 +29,6 @@ import (
 	fwapi "github.com/opendatahub-io/odh-platform-utilities/framework/api"
 )
 
-var decodeHook = viper.DecodeHook(
-	mapstructure.ComposeDecodeHookFunc(
-		mapstructure.TextUnmarshallerHookFunc(),
-		mapstructure.StringToTimeDurationHookFunc(),
-		mapstructure.StringToSliceHookFunc(","),
-	),
-)
-
 // PlatformVersion wraps semver.Version and implements encoding.TextUnmarshaler
 // so mapstructure can decode the platformVersion ConfigMap key directly.
 type PlatformVersion struct {
@@ -297,7 +289,12 @@ func Load(opts ...Option) (*Config, error) {
 	}
 
 	cfg := &Config{}
-	if err := v.Unmarshal(cfg, decodeHook); err != nil {
+	if err := Decode(
+		v,
+		cfg,
+		mapstructure.TextUnmarshallerHookFunc(),
+		mapstructure.StringToSliceHookFunc(","),
+	); err != nil {
 		return nil, fmt.Errorf("unmarshaling config: %w", err)
 	}
 

@@ -22,6 +22,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/go-viper/mapstructure/v2"
 	"github.com/spf13/viper"
 )
 
@@ -58,17 +59,72 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault(KeyDatabaseServiceRetryInterval, DefaultRetryInterval)
 }
 
-func bindEnv(v *viper.Viper) error {
-	v.SetEnvPrefix(EnvPrefix)
-	v.SetEnvKeyReplacer(strings.NewReplacer("-", "_", ".", "_"))
+// BindEnv configures Viper to read environment variables for the given
+// keys so decoding through AllSettings() sees env overrides as well.
+func BindEnv(
+	v *viper.Viper,
+	envPrefix string,
+	replacer *strings.Replacer,
+	keys ...string,
+) error {
+	if v == nil {
+		return fmt.Errorf("viper is nil")
+	}
+
+	v.SetEnvPrefix(envPrefix)
+	if replacer != nil {
+		v.SetEnvKeyReplacer(replacer)
+	}
 	v.AutomaticEnv()
 
-	// Explicit BindEnv so Unmarshal picks up env vars.
-	// AutomaticEnv only works with Get(), not Unmarshal().
-	for _, key := range v.AllKeys() {
+	for _, key := range keys {
 		if err := v.BindEnv(key); err != nil {
 			return fmt.Errorf("binding env for key %s: %w", key, err)
 		}
+	}
+
+	return nil
+}
+
+func bindEnv(v *viper.Viper) error {
+	// Explicit BindEnv so Unmarshal picks up env vars.
+	// AutomaticEnv only works with Get(), not Unmarshal().
+	return BindEnv(
+		v,
+		EnvPrefix,
+		strings.NewReplacer("-", "_", ".", "_"),
+		v.AllKeys()...,
+	)
+}
+
+// Decode decodes Viper settings into target using mapstructure.
+func Decode(
+	v *viper.Viper,
+	target any,
+	hooks ...mapstructure.DecodeHookFunc,
+) error {
+	if v == nil {
+		return fmt.Errorf("viper is nil")
+	}
+	if target == nil {
+		return fmt.Errorf("decode target is nil")
+	}
+
+	allHooks := make([]mapstructure.DecodeHookFunc, 0, 1+len(hooks))
+	allHooks = append(allHooks, mapstructure.StringToTimeDurationHookFunc())
+	allHooks = append(allHooks, hooks...)
+
+	decoder, err := mapstructure.NewDecoder(&mapstructure.DecoderConfig{
+		Result:           target,
+		WeaklyTypedInput: true,
+		TagName:          "mapstructure",
+		DecodeHook:       mapstructure.ComposeDecodeHookFunc(allHooks...),
+	})
+	if err != nil {
+		return fmt.Errorf("building config decoder: %w", err)
+	}
+	if err := decoder.Decode(v.AllSettings()); err != nil {
+		return fmt.Errorf("decoding config settings: %w", err)
 	}
 
 	return nil

@@ -16,11 +16,11 @@ func TestLoadConfigUsesDefaults(t *testing.T) {
 	t.Setenv("ODH_MODULE_OPERATOR_TEST_GOMEGA_EVENTUALLY_POLLING_INTERVAL", "")
 	t.Setenv("ODH_MODULE_OPERATOR_TEST_GOMEGA_CONSISTENTLY_POLLING_INTERVAL", "")
 
-	cfg, err := LoadConfig(cluster.TypeK3s)
+	cfg, err := LoadConfig()
 	g.Expect(err).NotTo(HaveOccurred())
 	g.Expect(*cfg).To(Equal(Config{
 		Cluster: ClusterConfig{
-			Type: cluster.TypeK3s,
+			Type: DefaultClusterType,
 		},
 		Gomega: GomegaConfig{
 			EventuallyTimeout:           DefaultEventuallyTimeout,
@@ -37,7 +37,7 @@ func TestLoadConfigUsesEnvironmentOverrides(t *testing.T) {
 	t.Setenv("ODH_MODULE_OPERATOR_TEST_GOMEGA_EVENTUALLY_POLLING_INTERVAL", "500ms")
 	t.Setenv("ODH_MODULE_OPERATOR_TEST_GOMEGA_CONSISTENTLY_POLLING_INTERVAL", "750ms")
 
-	cfg, err := LoadConfig(cluster.TypeK3s)
+	cfg, err := LoadConfig()
 	g.Expect(err).NotTo(HaveOccurred())
 	g.Expect(*cfg).To(Equal(Config{
 		Cluster: ClusterConfig{

@@ -1,17 +1,17 @@
 package support
 
 import (
-	"fmt"
 	"strings"
 	"time"
 
-	"github.com/go-viper/mapstructure/v2"
 	"github.com/spf13/viper"
 
+	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/pkg/config"
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/test/support/cluster"
 )
 
 const (
+	DefaultClusterType                 = cluster.TypeK3s
 	DefaultEventuallyTimeout           = 90 * time.Second
 	DefaultEventuallyPollingInterval   = 2 * time.Second
 	DefaultConsistentlyPollingInterval = 2 * time.Second
@@ -39,49 +39,36 @@ type GomegaConfig struct {
 	ConsistentlyPollingInterval time.Duration `mapstructure:"consistently-polling-interval"`
 }
 
-func LoadConfig(defaultClusterType cluster.Type) (*Config, error) {
+func LoadConfig() (*Config, error) {
 	v := viper.New()
-	v.SetEnvPrefix(testConfigEnvPrefix)
-	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_", "-", "_"))
-	v.AutomaticEnv()
 
-	v.SetDefault(keyClusterType, string(defaultClusterType))
+	v.SetDefault(keyClusterType, string(DefaultClusterType))
 	v.SetDefault(keyEventuallyTimeout, DefaultEventuallyTimeout)
 	v.SetDefault(keyEventuallyPollingInterval, DefaultEventuallyPollingInterval)
 	v.SetDefault(keyConsistentlyPollingInterval, DefaultConsistentlyPollingInterval)
 
-	for _, key := range []string{
+	if err := moduleconfig.BindEnv(
+		v,
+		testConfigEnvPrefix,
+		strings.NewReplacer(".", "_", "-", "_"),
 		keyClusterType,
 		keyEventuallyTimeout,
 		keyEventuallyPollingInterval,
 		keyConsistentlyPollingInterval,
-	} {
-		if err := v.BindEnv(key); err != nil {
-			return nil, fmt.Errorf("binding env for %s: %w", key, err)
-		}
+	); err != nil {
+		return nil, err
 	}
 
 	cfg := &Config{}
-	decoder, err := mapstructure.NewDecoder(&mapstructure.DecoderConfig{
-		Result:           cfg,
-		WeaklyTypedInput: true,
-		TagName:          "mapstructure",
-		DecodeHook: mapstructure.ComposeDecodeHookFunc(
-			mapstructure.StringToTimeDurationHookFunc(),
-		),
-	})
-	if err != nil {
-		return nil, fmt.Errorf("building config decoder: %w", err)
-	}
-	if err := decoder.Decode(v.AllSettings()); err != nil {
-		return nil, fmt.Errorf("decoding test config: %w", err)
+	if err := moduleconfig.Decode(v, cfg); err != nil {
+		return nil, err
 	}
 
 	return cfg, nil
 }
 
 func LoadGomegaConfig() (*GomegaConfig, error) {
-	cfg, err := LoadConfig(cluster.TypeExternal)
+	cfg, err := LoadConfig()
 	if err != nil {
 		return nil, err
 	}
