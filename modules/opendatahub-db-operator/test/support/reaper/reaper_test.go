@@ -3,6 +3,7 @@ package reaper
 import (
 	"context"
 	"testing"
+	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -25,13 +26,31 @@ func TestNewRejectsNilClient(t *testing.T) {
 	g.Expect(r).To(BeNil())
 }
 
+func TestNewAppliesOptions(t *testing.T) {
+	t.Parallel()
+
+	g := NewWithT(t)
+	cli := fake.NewClientBuilder().Build()
+
+	r, err := New(
+		cli,
+		WithTimeout(5*time.Second),
+		WithPollingInterval(100*time.Millisecond),
+	)
+
+	g.Expect(err).NotTo(HaveOccurred())
+	g.Expect(r.timeout).To(Equal(5 * time.Second))
+	g.Expect(r.pollingInterval).To(Equal(100 * time.Millisecond))
+}
+
 func TestRunCleansManagedResources(t *testing.T) {
 	t.Parallel()
 
 	g := NewWithT(t)
 	ctx := context.Background()
 	namespace := "test-ns"
-	scheme := modulemanager.NewScheme()
+	scheme, err := modulemanager.NewScheme()
+	g.Expect(err).NotTo(HaveOccurred())
 
 	provider := &infraApi.DatabaseProvider{
 		ObjectMeta: metav1.ObjectMeta{

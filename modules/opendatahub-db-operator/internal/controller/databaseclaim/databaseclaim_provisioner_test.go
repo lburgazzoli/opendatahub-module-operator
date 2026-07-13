@@ -32,8 +32,8 @@ import (
 
 	infraApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/api/infrastructure/v1alpha1"
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/internal/controller/databaseclaim"
+	modulemanager "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/pkg/manager"
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/pkg/postgres"
-	testsupport "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/test/support"
 )
 
 func startPostgres(t *testing.T) postgres.Config {
@@ -73,7 +73,7 @@ func openPool(t *testing.T, cfg postgres.Config) *pgxpool.Pool {
 
 func newFakeClient(t *testing.T) *fake.ClientBuilder {
 	t.Helper()
-	scheme, err := testsupport.NewScheme()
+	scheme, err := modulemanager.NewScheme()
 	if err != nil {
 		t.Fatalf("building scheme: %v", err)
 	}

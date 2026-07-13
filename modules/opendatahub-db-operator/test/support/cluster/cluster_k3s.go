@@ -6,29 +6,27 @@ import (
 
 	"github.com/testcontainers/testcontainers-go"
 	tck3s "github.com/testcontainers/testcontainers-go/modules/k3s"
-	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-const DefaultK3sImage = "rancher/k3s:v1.36.2-k3s1"
+const defaultK3sImage = "rancher/k3s:v1.36.2-k3s1"
 
-type K3sOption func(*K3sOptions)
+type k3sOption func(*k3sOptions)
 
-type K3sOptions struct {
+type k3sOptions struct {
 	Image       string
 	Customizers []testcontainers.ContainerCustomizer
 }
 
-type K3s struct {
+type k3sInstance struct {
 	cfg       *rest.Config
 	cli       client.Client
 	container *tck3s.K3sContainer
-	scheme    *runtime.Scheme
 }
 
-func NewK3s(ctx context.Context, opts ...K3sOption) (Instance, error) {
+func newK3s(ctx context.Context, opts ...k3sOption) (Instance, error) {
 	if ctx == nil {
 		return nil, fmt.Errorf("context is nil")
 	}
@@ -60,23 +58,26 @@ func NewK3s(ctx context.Context, opts ...K3sOption) (Instance, error) {
 		return nil, fmt.Errorf("creating rest config from kubeconfig: %w", err)
 	}
 
-	scheme := newScheme()
+	scheme, err := newScheme()
+	if err != nil {
+		_ = testcontainers.TerminateContainer(container)
+		return nil, err
+	}
 	cli, err := newClient(cfg, scheme)
 	if err != nil {
 		_ = testcontainers.TerminateContainer(container)
 		return nil, err
 	}
 
-	return &K3s{
+	return &k3sInstance{
 		cfg:       cfg,
 		cli:       cli,
 		container: container,
-		scheme:    scheme,
 	}, nil
 }
 
-func WithK3sImage(image string) K3sOption {
-	return func(opts *K3sOptions) {
+func withK3sImage(image string) k3sOption {
+	return func(opts *k3sOptions) {
 		if opts == nil || image == "" {
 			return
 		}
@@ -85,8 +86,8 @@ func WithK3sImage(image string) K3sOption {
 	}
 }
 
-func WithContainerCustomizer(customizer testcontainers.ContainerCustomizer) K3sOption {
-	return func(opts *K3sOptions) {
+func withContainerCustomizer(customizer testcontainers.ContainerCustomizer) k3sOption {
+	return func(opts *k3sOptions) {
 		if opts == nil || customizer == nil {
 			return
 		}
@@ -95,7 +96,7 @@ func WithContainerCustomizer(customizer testcontainers.ContainerCustomizer) K3sO
 	}
 }
 
-func (k *K3s) Config() *rest.Config {
+func (k *k3sInstance) Config() *rest.Config {
 	if k == nil || k.cfg == nil {
 		return nil
 	}
@@ -103,15 +104,7 @@ func (k *K3s) Config() *rest.Config {
 	return rest.CopyConfig(k.cfg)
 }
 
-func (k *K3s) Scheme() *runtime.Scheme {
-	if k == nil {
-		return nil
-	}
-
-	return k.scheme
-}
-
-func (k *K3s) Client() client.Client {
+func (k *k3sInstance) Client() client.Client {
 	if k == nil {
 		return nil
 	}
@@ -119,7 +112,7 @@ func (k *K3s) Client() client.Client {
 	return k.cli
 }
 
-func (k *K3s) Stop(ctx context.Context) error {
+func (k *k3sInstance) Stop(ctx context.Context) error {
 	if k == nil || k.container == nil {
 		return nil
 	}
@@ -130,8 +123,8 @@ func (k *K3s) Stop(ctx context.Context) error {
 	return k.container.Terminate(ctx)
 }
 
-func defaultK3sOptions() K3sOptions {
-	return K3sOptions{
-		Image: DefaultK3sImage,
+func defaultK3sOptions() k3sOptions {
+	return k3sOptions{
+		Image: defaultK3sImage,
 	}
 }

@@ -46,7 +46,7 @@ func TestApplyManifestFromFileCreatesObject(t *testing.T) {
 	cli := fake.NewClientBuilder().WithScheme(scheme).Build()
 	manifestPath := writeManifestTestFile(t, createConfigMapManifest)
 
-	obj, err := ApplyManifestFromFile(ctx, cli, manifestPath)
+	obj, err := applyManifestFromFile(ctx, cli, manifestPath)
 
 	g.Expect(err).NotTo(HaveOccurred())
 	g.Expect(obj.GetKind()).To(Equal("ConfigMap"))
@@ -76,7 +76,7 @@ func TestApplyManifestFromFSUpdatesExistingObject(t *testing.T) {
 		},
 	}
 
-	obj, err := ApplyManifestFromFS(ctx, cli, manifests, testManifestPath)
+	obj, err := applyManifestFromFS(ctx, cli, manifests, testManifestPath)
 
 	g.Expect(err).NotTo(HaveOccurred())
 	g.Expect(obj.GetKind()).To(Equal("ConfigMap"))

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -16,6 +17,20 @@ const (
 	defaultDeleteTimeout      = 30 * time.Second
 	defaultDeletePollInterval = 200 * time.Millisecond
 )
+
+// EnsureNamespace creates a namespace if it does not already exist.
+func EnsureNamespace(
+	ctx context.Context,
+	cli client.Client,
+	name string,
+) error {
+	ns := &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: name}}
+	if err := cli.Create(ctx, ns); err != nil && !errors.IsAlreadyExists(err) {
+		return fmt.Errorf("creating namespace %s: %w", name, err)
+	}
+
+	return nil
+}
 
 // ClearFinalizersAndDelete removes finalizers when present, then deletes the
 // object using foreground propagation. Missing objects are ignored.

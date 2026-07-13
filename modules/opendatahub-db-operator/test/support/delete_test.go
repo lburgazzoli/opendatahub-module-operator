@@ -12,6 +12,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
+	modulemanager "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/pkg/manager"
 	. "github.com/onsi/gomega"
 )
 
@@ -21,7 +22,7 @@ func TestClearFinalizersAndDeleteDeletesObject(t *testing.T) {
 	g := NewWithT(t)
 	ctx := context.Background()
 
-	scheme, err := NewScheme()
+	scheme, err := modulemanager.NewScheme()
 	g.Expect(err).NotTo(HaveOccurred())
 
 	obj := &corev1.Secret{
@@ -50,7 +51,7 @@ func TestClearFinalizersAndDeleteIgnoresMissingObject(t *testing.T) {
 	g := NewWithT(t)
 	ctx := context.Background()
 
-	scheme, err := NewScheme()
+	scheme, err := modulemanager.NewScheme()
 	g.Expect(err).NotTo(HaveOccurred())
 
 	obj := &corev1.Secret{
@@ -73,7 +74,7 @@ func TestDeleteAndWaitDeletesObjectAndResetsFields(t *testing.T) {
 	g := NewWithT(t)
 	ctx := context.Background()
 
-	scheme, err := NewScheme()
+	scheme, err := modulemanager.NewScheme()
 	g.Expect(err).NotTo(HaveOccurred())
 
 	obj := &corev1.Secret{
@@ -108,7 +109,7 @@ func TestDeleteAndWaitIgnoresMissingObject(t *testing.T) {
 	g := NewWithT(t)
 	ctx := context.Background()
 
-	scheme, err := NewScheme()
+	scheme, err := modulemanager.NewScheme()
 	g.Expect(err).NotTo(HaveOccurred())
 
 	obj := &corev1.Secret{
@@ -139,7 +140,7 @@ func TestDeleteAndWaitTreatsRecreatedObjectAsDeleted(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	scheme, err := NewScheme()
+	scheme, err := modulemanager.NewScheme()
 	g.Expect(err).NotTo(HaveOccurred())
 
 	obj := &corev1.Secret{

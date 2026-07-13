@@ -1,6 +1,7 @@
 package support
 
 import (
+	"os"
 	"strings"
 	"time"
 
@@ -15,6 +16,8 @@ const (
 	DefaultEventuallyTimeout           = 90 * time.Second
 	DefaultEventuallyPollingInterval   = 2 * time.Second
 	DefaultConsistentlyPollingInterval = 2 * time.Second
+	DefaultOperatorNamespace           = "odh-db-operator-system"
+	DefaultIntegrationTestNamespace    = "odh-db-operator-integration"
 
 	testConfigEnvPrefix = "ODH_MODULE_OPERATOR_TEST"
 
@@ -37,6 +40,22 @@ type GomegaConfig struct {
 	EventuallyTimeout           time.Duration `mapstructure:"eventually-timeout"`
 	EventuallyPollingInterval   time.Duration `mapstructure:"eventually-polling-interval"`
 	ConsistentlyPollingInterval time.Duration `mapstructure:"consistently-polling-interval"`
+}
+
+func OperatorNamespace() string {
+	if namespace := os.Getenv("OPERATOR_NAMESPACE"); namespace != "" {
+		return namespace
+	}
+
+	return DefaultOperatorNamespace
+}
+
+func IntegrationTestNamespace() string {
+	if namespace := os.Getenv("INTEGRATION_TEST_NAMESPACE"); namespace != "" {
+		return namespace
+	}
+
+	return DefaultIntegrationTestNamespace
 }
 
 func LoadConfig() (*Config, error) {
@@ -65,13 +84,4 @@ func LoadConfig() (*Config, error) {
 	}
 
 	return cfg, nil
-}
-
-func LoadGomegaConfig() (*GomegaConfig, error) {
-	cfg, err := LoadConfig()
-	if err != nil {
-		return nil, err
-	}
-
-	return &cfg.Gomega, nil
 }

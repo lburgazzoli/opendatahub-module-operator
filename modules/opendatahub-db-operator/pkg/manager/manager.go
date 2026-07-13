@@ -23,7 +23,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -51,15 +50,23 @@ const (
 type Option func(*ctrl.Options)
 
 // NewScheme registers all types this module needs.
-func NewScheme() *runtime.Scheme {
+func NewScheme() (*runtime.Scheme, error) {
 	scheme := runtime.NewScheme()
 
-	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
-	utilruntime.Must(apiextensionsv1.AddToScheme(scheme))
-	utilruntime.Must(infraApi.AddToScheme(scheme))
-	utilruntime.Must(servicesv1alpha1.AddToScheme(scheme))
+	if err := clientgoscheme.AddToScheme(scheme); err != nil {
+		return nil, fmt.Errorf("adding client-go scheme: %w", err)
+	}
+	if err := apiextensionsv1.AddToScheme(scheme); err != nil {
+		return nil, fmt.Errorf("adding apiextensions scheme: %w", err)
+	}
+	if err := infraApi.AddToScheme(scheme); err != nil {
+		return nil, fmt.Errorf("adding infrastructure scheme: %w", err)
+	}
+	if err := servicesv1alpha1.AddToScheme(scheme); err != nil {
+		return nil, fmt.Errorf("adding services scheme: %w", err)
+	}
 
-	return scheme
+	return scheme, nil
 }
 
 func New(
@@ -75,7 +82,11 @@ func New(
 		return nil, fmt.Errorf("config is nil")
 	}
 
-	scheme := NewScheme()
+	scheme, err := NewScheme()
+	if err != nil {
+		return nil, err
+	}
+
 	mgrOpts := ctrl.Options{
 		Scheme: scheme,
 		Metrics: metricsserver.Options{
