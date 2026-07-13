@@ -24,6 +24,7 @@ import (
 	"os"
 	"testing"
 
+	"github.com/go-logr/logr"
 	. "github.com/onsi/gomega"
 	"k8s.io/client-go/rest"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -54,7 +55,11 @@ func TestIntegration(t *testing.T) {
 	SetDefaultEventuallyPollingInterval(testCfg.Gomega.EventuallyPollingInterval)
 	SetDefaultConsistentlyPollingInterval(testCfg.Gomega.ConsistentlyPollingInterval)
 
-	ctrl.SetLogger(zap.New(zap.UseDevMode(true)))
+	if testCfg.Operator.Logs {
+		ctrl.SetLogger(zap.New(zap.UseDevMode(true)))
+	} else {
+		ctrl.SetLogger(logr.Discard())
+	}
 
 	ctx, cancel := context.WithCancel(t.Context())
 	t.Cleanup(cancel)
