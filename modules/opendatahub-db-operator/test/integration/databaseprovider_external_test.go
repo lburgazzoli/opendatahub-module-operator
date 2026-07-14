@@ -144,13 +144,23 @@ func (st *databaseProviderSuite) testAuthFailure(t *testing.T) {
 	g := NewWithT(t)
 
 	g.Eventually(func() error {
-		return postgres.Ping(t.Context(), st.db.Config())
+		cli, err := postgres.NewClient(t.Context(), st.db.Config())
+		if err != nil {
+			return err
+		}
+		defer cli.Close()
+		return cli.Ping(t.Context())
 	}).Should(Succeed())
 
 	cfg := st.db.Config()
 	cfg.Password = "wrong-password-sentinel"
 	g.Eventually(func() error {
-		return postgres.Ping(t.Context(), cfg)
+		cli, err := postgres.NewClient(t.Context(), cfg)
+		if err != nil {
+			return err
+		}
+		defer cli.Close()
+		return cli.Ping(t.Context())
 	}).Should(MatchError(ContainSubstring("password authentication failed")))
 
 	secret := st.createConnectionSecret(t, "provider-secret-"+xid.New().String(), cfg)

@@ -22,7 +22,6 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/jackc/pgx/v5/pgxpool"
 	. "github.com/onsi/gomega"
 	tcpostgres "github.com/testcontainers/testcontainers-go/modules/postgres"
 	corev1 "k8s.io/api/core/v1"
@@ -61,14 +60,14 @@ func startPostgres(t *testing.T) postgres.Config {
 	return cfg
 }
 
-func openPool(t *testing.T, cfg postgres.Config) *pgxpool.Pool {
+func openPostgresClient(t *testing.T, cfg postgres.Config) *postgres.Client {
 	t.Helper()
-	pool, err := pgxpool.New(t.Context(), cfg.DSN())
+	pgClient, err := postgres.NewClient(t.Context(), cfg)
 	if err != nil {
-		t.Fatalf("opening pool: %v", err)
+		t.Fatalf("opening postgres client: %v", err)
 	}
-	t.Cleanup(pool.Close)
-	return pool
+	t.Cleanup(pgClient.Close)
+	return pgClient
 }
 
 func newFakeClient(t *testing.T) *fake.ClientBuilder {
@@ -83,7 +82,7 @@ func newFakeClient(t *testing.T) *fake.ClientBuilder {
 func TestDatabaseProvisioner_Ensure(t *testing.T) {
 	g := NewWithT(t)
 	cfg := startPostgres(t)
-	pool := openPool(t, cfg)
+	pgClient := openPostgresClient(t, cfg)
 
 	claim := &infraApi.DatabaseClaim{
 		ObjectMeta: metav1.ObjectMeta{
@@ -97,10 +96,9 @@ func TestDatabaseProvisioner_Ensure(t *testing.T) {
 	cli := newFakeClient(t).Build()
 
 	provisioner := databaseclaim.DatabaseProvisioner{
-		Client: cli,
-		Claim:  claim,
-		Pool:   pool,
-		Config: cfg,
+		Client:   cli,
+		Claim:    claim,
+		Postgres: pgClient,
 	}
 
 	secret, err := provisioner.Ensure(t.Context())
@@ -113,7 +111,8 @@ func TestDatabaseProvisioner_Ensure(t *testing.T) {
 
 	claimCfg, err := postgres.ParseSecret(secret.Data)
 	g.Expect(err).NotTo(HaveOccurred())
-	g.Expect(postgres.Ping(t.Context(), claimCfg)).To(Succeed())
+	claimClient := openPostgresClient(t, claimCfg)
+	g.Expect(claimClient.Ping(t.Context())).To(Succeed())
 
 	g.Expect(cli.Create(t.Context(), secret.DeepCopy())).To(Succeed())
 
@@ -126,7 +125,7 @@ func TestDatabaseProvisioner_Ensure(t *testing.T) {
 func TestDatabaseProvisioner_Ensure_UsesSecretNameOverride(t *testing.T) {
 	g := NewWithT(t)
 	cfg := startPostgres(t)
-	pool := openPool(t, cfg)
+	pgClient := openPostgresClient(t, cfg)
 
 	claim := &infraApi.DatabaseClaim{
 		ObjectMeta: metav1.ObjectMeta{
@@ -141,10 +140,9 @@ func TestDatabaseProvisioner_Ensure_UsesSecretNameOverride(t *testing.T) {
 	cli := newFakeClient(t).Build()
 
 	provisioner := databaseclaim.DatabaseProvisioner{
-		Client: cli,
-		Claim:  claim,
-		Pool:   pool,
-		Config: cfg,
+		Client:   cli,
+		Claim:    claim,
+		Postgres: pgClient,
 	}
 
 	secret, err := provisioner.Ensure(t.Context())
@@ -172,7 +170,7 @@ func TestDatabaseProvisioner_Ensure_UsesSecretNameOverride(t *testing.T) {
 func TestDatabaseProvisioner_Ensure_DatabaseMissing(t *testing.T) {
 	g := NewWithT(t)
 	cfg := startPostgres(t)
-	pool := openPool(t, cfg)
+	pgClient := openPostgresClient(t, cfg)
 
 	claim := &infraApi.DatabaseClaim{
 		ObjectMeta: metav1.ObjectMeta{
@@ -186,10 +184,9 @@ func TestDatabaseProvisioner_Ensure_DatabaseMissing(t *testing.T) {
 	cli := newFakeClient(t).Build()
 
 	provisioner := databaseclaim.DatabaseProvisioner{
-		Client: cli,
-		Claim:  claim,
-		Pool:   pool,
-		Config: cfg,
+		Client:   cli,
+		Claim:    claim,
+		Postgres: pgClient,
 	}
 
 	_, err := provisioner.Ensure(t.Context())
@@ -203,7 +200,7 @@ func TestDatabaseProvisioner_Ensure_DatabaseMissing(t *testing.T) {
 func TestDatabaseProvisioner_Ensure_ReconcilesAccessChanges(t *testing.T) {
 	g := NewWithT(t)
 	cfg := startPostgres(t)
-	pool := openPool(t, cfg)
+	pgClient := openPostgresClient(t, cfg)
 
 	claim := &infraApi.DatabaseClaim{
 		ObjectMeta: metav1.ObjectMeta{
@@ -218,10 +215,9 @@ func TestDatabaseProvisioner_Ensure_ReconcilesAccessChanges(t *testing.T) {
 	cli := newFakeClient(t).Build()
 
 	provisioner := databaseclaim.DatabaseProvisioner{
-		Client: cli,
-		Claim:  claim,
-		Pool:   pool,
-		Config: cfg,
+		Client:   cli,
+		Claim:    claim,
+		Postgres: pgClient,
 	}
 
 	secret, err := provisioner.Ensure(t.Context())
@@ -230,7 +226,7 @@ func TestDatabaseProvisioner_Ensure_ReconcilesAccessChanges(t *testing.T) {
 
 	claimCfg, err := postgres.ParseSecret(secret.Data)
 	g.Expect(err).NotTo(HaveOccurred())
-	rolePool := openPool(t, claimCfg)
+	rolePool := openPostgresClient(t, claimCfg)
 
 	_, err = rolePool.Exec(
 		t.Context(),
@@ -248,5 +244,5 @@ func TestDatabaseProvisioner_Ensure_ReconcilesAccessChanges(t *testing.T) {
 		fmt.Sprintf("CREATE SCHEMA %s", postgres.QuoteIdentifier(schemaName)),
 	)
 	g.Expect(err).NotTo(HaveOccurred())
-	t.Cleanup(func() { _ = postgres.DropSchemaCascade(context.Background(), pool, schemaName) })
+	t.Cleanup(func() { _ = postgres.DropSchemaCascade(context.Background(), pgClient, schemaName) })
 }

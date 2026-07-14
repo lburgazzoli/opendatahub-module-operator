@@ -46,6 +46,16 @@ func (st *databaseClaimSuite) Run(t *testing.T) {
 	t.Run("provider creation wakes pending claim", st.testProviderCreationWakesPendingClaim)
 }
 
+func pingConfig(ctx context.Context, cfg postgres.Config) error {
+	cli, err := postgres.NewClient(ctx, cfg)
+	if err != nil {
+		return err
+	}
+	defer cli.Close()
+
+	return cli.Ping(ctx)
+}
+
 func (st *databaseClaimSuite) testProvisioning(t *testing.T) {
 	g := NewWithT(t)
 	ctx := t.Context()
@@ -67,7 +77,7 @@ func (st *databaseClaimSuite) testProvisioning(t *testing.T) {
 	credCfg, err := postgres.ParseSecret(secret.Data)
 	g.Expect(err).NotTo(HaveOccurred())
 	g.Expect(credCfg.DBName).To(Equal(database))
-	g.Expect(postgres.Ping(ctx, credCfg)).To(Succeed())
+	g.Expect(pingConfig(ctx, credCfg)).To(Succeed())
 }
 
 func (st *databaseClaimSuite) testAccessModeEnforcement(t *testing.T) {
@@ -96,11 +106,11 @@ func (st *databaseClaimSuite) testAccessModeEnforcement(t *testing.T) {
 	readOnlyCfg, err := postgres.ParseSecret(readOnlySecret.Data)
 	g.Expect(err).NotTo(HaveOccurred())
 
-	readWritePool, err := postgres.OpenPool(ctx, readWriteCfg)
+	readWritePool, err := postgres.NewClient(ctx, readWriteCfg)
 	g.Expect(err).NotTo(HaveOccurred())
 	t.Cleanup(readWritePool.Close)
 
-	readOnlyPool, err := postgres.OpenPool(ctx, readOnlyCfg)
+	readOnlyPool, err := postgres.NewClient(ctx, readOnlyCfg)
 	g.Expect(err).NotTo(HaveOccurred())
 	t.Cleanup(readOnlyPool.Close)
 
@@ -111,10 +121,10 @@ func (st *databaseClaimSuite) testAccessModeEnforcement(t *testing.T) {
 	)
 	g.Expect(err).NotTo(HaveOccurred())
 
-	adminPool := st.db.Pool()
-	g.Expect(adminPool).NotTo(BeNil())
+	adminClient := st.db.Client()
+	g.Expect(adminClient).NotTo(BeNil())
 	t.Cleanup(func() {
-		_ = postgres.DropSchemaCascade(ctx, adminPool, readWriteSchema)
+		_ = postgres.DropSchemaCascade(ctx, adminClient, readWriteSchema)
 	})
 
 	_, err = readOnlyPool.Exec(
@@ -149,7 +159,7 @@ func (st *databaseClaimSuite) testSecretNameOverride(t *testing.T) {
 	credCfg, err := postgres.ParseSecret(secret.Data)
 	g.Expect(err).NotTo(HaveOccurred())
 	g.Expect(credCfg.DBName).To(Equal(database))
-	g.Expect(postgres.Ping(ctx, credCfg)).To(Succeed())
+	g.Expect(pingConfig(ctx, credCfg)).To(Succeed())
 }
 
 func (st *databaseClaimSuite) testIdempotency(t *testing.T) {
@@ -204,8 +214,8 @@ func (st *databaseClaimSuite) testSecretDeletionRecovery(t *testing.T) {
 
 	newCfg, err := postgres.ParseSecret(recovered.Data)
 	g.Expect(err).NotTo(HaveOccurred())
-	g.Expect(postgres.Ping(ctx, newCfg)).To(Succeed())
-	g.Expect(postgres.Ping(ctx, oldCfg)).To(HaveOccurred())
+	g.Expect(pingConfig(ctx, newCfg)).To(Succeed())
+	g.Expect(pingConfig(ctx, oldCfg)).To(HaveOccurred())
 }
 
 func (st *databaseClaimSuite) testRoleDeletionRecovery(t *testing.T) {
@@ -238,8 +248,8 @@ func (st *databaseClaimSuite) testRoleDeletionRecovery(t *testing.T) {
 
 	newCfg, err := postgres.ParseSecret(recovered.Data)
 	g.Expect(err).NotTo(HaveOccurred())
-	g.Expect(postgres.Ping(ctx, newCfg)).To(Succeed())
-	g.Expect(postgres.Ping(ctx, oldCfg)).To(HaveOccurred())
+	g.Expect(pingConfig(ctx, newCfg)).To(Succeed())
+	g.Expect(pingConfig(ctx, oldCfg)).To(HaveOccurred())
 }
 
 func (st *databaseClaimSuite) testDatabaseNotFound(t *testing.T) {
@@ -287,8 +297,8 @@ func (st *databaseClaimSuite) testDeletionKeepsPeerUserAndDatabase(t *testing.T)
 	g.Expect(err).NotTo(HaveOccurred())
 
 	g.Expect(cfgA.User).NotTo(Equal(cfgB.User))
-	g.Expect(postgres.Ping(ctx, cfgA)).To(Succeed())
-	g.Expect(postgres.Ping(ctx, cfgB)).To(Succeed())
+	g.Expect(pingConfig(ctx, cfgA)).To(Succeed())
+	g.Expect(pingConfig(ctx, cfgB)).To(Succeed())
 
 	st.deleteClaimAndWait(t, claimA)
 	st.expectNoCredentialsSecret(t, nameA)
@@ -296,7 +306,7 @@ func (st *databaseClaimSuite) testDeletionKeepsPeerUserAndDatabase(t *testing.T)
 	g.Expect(st.databaseExists(t, database)).To(BeTrue())
 	g.Expect(st.roleExists(t, databaseClaimRoleName(st.env.Namespace, nameA))).To(BeFalse())
 	g.Expect(st.roleExists(t, databaseClaimRoleName(st.env.Namespace, nameB))).To(BeTrue())
-	g.Expect(postgres.Ping(ctx, cfgB)).To(Succeed())
+	g.Expect(pingConfig(ctx, cfgB)).To(Succeed())
 }
 
 func (st *databaseClaimSuite) testProviderNotFound(t *testing.T) {

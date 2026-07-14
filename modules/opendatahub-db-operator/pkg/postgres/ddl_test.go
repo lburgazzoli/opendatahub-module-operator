@@ -20,18 +20,17 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/jackc/pgx/v5/pgxpool"
 	. "github.com/onsi/gomega"
 
 	infraApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/api/infrastructure/v1alpha1"
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/pkg/postgres"
 )
 
-func openPool(t *testing.T, cfg postgres.Config) *pgxpool.Pool {
+func openPool(t *testing.T, cfg postgres.Config) *postgres.Client {
 	t.Helper()
-	pool, err := pgxpool.New(t.Context(), cfg.DSN())
+	pool, err := postgres.NewClient(t.Context(), cfg)
 	if err != nil {
-		t.Fatalf("opening pool: %v", err)
+		t.Fatalf("opening client: %v", err)
 	}
 	t.Cleanup(pool.Close)
 	return pool
@@ -76,14 +75,16 @@ func TestDDL_EnsureDropRole(t *testing.T) {
 		Host: cfg.Host, Port: cfg.Port,
 		User: "testrole", Password: pw, DBName: cfg.DBName,
 	}
-	g.Expect(postgres.Ping(ctx, roleCfg)).To(Succeed())
+	roleClient := openPool(t, roleCfg)
+	g.Expect(roleClient.Ping(ctx)).To(Succeed())
 
 	// Idempotent drop
 	g.Expect(postgres.DropRole(ctx, pool, "testrole")).To(Succeed())
 	g.Expect(postgres.DropRole(ctx, pool, "testrole")).To(Succeed())
 
 	// Connection with dropped role must fail
-	err = postgres.Ping(ctx, roleCfg)
+	roleClient = openPool(t, roleCfg)
+	err = roleClient.Ping(ctx)
 	g.Expect(err).To(HaveOccurred())
 }
 
@@ -127,15 +128,17 @@ func TestDDL_GrantSchemaPrivileges(t *testing.T) {
 				Host: cfg.Host, Port: cfg.Port,
 				User: role, Password: pw, DBName: cfg.DBName,
 			}
-			rolePool, err := pgxpool.New(ctx, roleCfg.DSN())
+			rolePool, err := postgres.NewClient(ctx, roleCfg)
 			g.Expect(err).NotTo(HaveOccurred())
 			defer rolePool.Close()
 
 			// SELECT must always work
 			var count int
-			g.Expect(rolePool.QueryRow(ctx,
+			row, err := rolePool.QueryRow(ctx,
 				fmt.Sprintf("SELECT count(*) FROM %s.t", postgres.QuoteIdentifier(schema)),
-			).Scan(&count)).To(Succeed())
+			)
+			g.Expect(err).NotTo(HaveOccurred())
+			g.Expect(row.Scan(&count)).To(Succeed())
 			g.Expect(count).To(Equal(1))
 
 			// CREATE TABLE: allowed for ReadWrite, must fail for ReadOnly.
@@ -183,7 +186,7 @@ func TestDDL_GrantDatabasePrivileges(t *testing.T) {
 				Password: password,
 				DBName:   cfg.DBName,
 			}
-			rolePool, err := pgxpool.New(ctx, roleCfg.DSN())
+			rolePool, err := postgres.NewClient(ctx, roleCfg)
 			g.Expect(err).NotTo(HaveOccurred())
 			defer rolePool.Close()
 

@@ -17,7 +17,6 @@ limitations under the License.
 package postgres
 
 import (
-	"context"
 	"crypto/tls"
 	"crypto/x509"
 	"errors"
@@ -26,51 +25,6 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
-
-type poolPinger interface {
-	Ping(ctx context.Context) error
-	Close()
-}
-
-func OpenPool(ctx context.Context, cfg Config) (*pgxpool.Pool, error) {
-	poolConfig, err := poolConfigFor(cfg)
-	if err != nil {
-		return nil, sanitize(fmt.Errorf("building pool config: %w", err), cfg.Password)
-	}
-
-	pool, err := pgxpool.NewWithConfig(ctx, poolConfig)
-	if err != nil {
-		return nil, sanitize(fmt.Errorf("opening pool: %w", err), cfg.Password)
-	}
-
-	return pool, nil
-}
-
-// Ping opens a short-lived connection to verify the server is reachable, then
-// closes it immediately. It is a liveness check, not a long-lived pool.
-// The returned error message never contains the password.
-func Ping(ctx context.Context, cfg Config) error {
-	poolConfig, err := poolConfigFor(cfg)
-	if err != nil {
-		return sanitize(fmt.Errorf("building pool config: %w", err), cfg.Password)
-	}
-
-	pool, err := openPingPool(ctx, poolConfig)
-	if err != nil {
-		return sanitize(err, cfg.Password)
-	}
-	defer pool.Close()
-
-	if err := pool.Ping(ctx); err != nil {
-		return sanitize(err, cfg.Password)
-	}
-
-	return nil
-}
-
-var openPingPool = func(ctx context.Context, poolConfig *pgxpool.Config) (poolPinger, error) {
-	return pgxpool.NewWithConfig(ctx, poolConfig)
-}
 
 func poolConfigFor(cfg Config) (*pgxpool.Config, error) {
 	poolConfig, err := pgxpool.ParseConfig(cfg.DSN())

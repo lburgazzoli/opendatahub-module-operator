@@ -22,11 +22,20 @@ import (
 	"fmt"
 
 	"github.com/jackc/pgerrcode"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
-	"github.com/jackc/pgx/v5/pgxpool"
 
 	infraApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/api/infrastructure/v1alpha1"
 )
+
+type sqlClient interface {
+	Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error)
+	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
+}
+
+type rowClient interface {
+	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
+}
 
 // SQL statement templates. Each uses %s placeholders for already-quoted
 // identifiers/literals -- never for raw strings. Placing them as named
@@ -74,27 +83,27 @@ $$`
 const sqlSetRolePassword = `ALTER ROLE %s WITH PASSWORD %s`
 
 // CreateSchema creates a schema if it doesn't already exist. Idempotent.
-func CreateSchema(ctx context.Context, pool *pgxpool.Pool, schema string) error {
-	_, err := pool.Exec(ctx, fmt.Sprintf(sqlCreateSchemaIfNotExists, QuoteIdentifier(schema)))
+func CreateSchema(ctx context.Context, cli sqlClient, schema string) error {
+	_, err := cli.Exec(ctx, fmt.Sprintf(sqlCreateSchemaIfNotExists, QuoteIdentifier(schema)))
 	return err
 }
 
 // DropSchemaCascade drops a schema and all its contained objects. Used for
 // DeletionPolicy=Delete (docs/plan.md §6).
-func DropSchemaCascade(ctx context.Context, pool *pgxpool.Pool, schema string) error {
-	_, err := pool.Exec(ctx, fmt.Sprintf(sqlDropSchemaCascade, QuoteIdentifier(schema)))
+func DropSchemaCascade(ctx context.Context, cli sqlClient, schema string) error {
+	_, err := cli.Exec(ctx, fmt.Sprintf(sqlDropSchemaCascade, QuoteIdentifier(schema)))
 	return err
 }
 
 // EnsureRole creates a PostgreSQL login role with the given password if it does
 // not already exist. It is a true CREATE-only idempotent operation — it never
 // alters an existing role's password. Use SetRolePassword for explicit rotation.
-func EnsureRole(ctx context.Context, pool *pgxpool.Pool, role, password string) error {
+func EnsureRole(ctx context.Context, cli sqlClient, role, password string) error {
 	stmt := fmt.Sprintf(sqlEnsureRole,
 		QuoteLiteral(role),
 		QuoteIdentifier(role), QuoteLiteral(password),
 	)
-	_, err := pool.Exec(ctx, stmt)
+	_, err := cli.Exec(ctx, stmt)
 	return err
 }
 
@@ -102,14 +111,14 @@ func EnsureRole(ctx context.Context, pool *pgxpool.Pool, role, password string) 
 // Callers must ensure this is intentional — rotating breaks all active connections
 // that use the old credentials. Only call this when a credentials Secret has been
 // lost and an explicit rotation is required to restore a known-good state.
-func SetRolePassword(ctx context.Context, pool *pgxpool.Pool, role, password string) error {
-	_, err := pool.Exec(ctx, fmt.Sprintf(sqlSetRolePassword, QuoteIdentifier(role), QuoteLiteral(password)))
+func SetRolePassword(ctx context.Context, cli sqlClient, role, password string) error {
+	_, err := cli.Exec(ctx, fmt.Sprintf(sqlSetRolePassword, QuoteIdentifier(role), QuoteLiteral(password)))
 	return err
 }
 
 // DropRole drops a PostgreSQL role if it exists. Idempotent.
-func DropRole(ctx context.Context, pool *pgxpool.Pool, role string) error {
-	_, err := pool.Exec(ctx, fmt.Sprintf(sqlDropRole, QuoteIdentifier(role)))
+func DropRole(ctx context.Context, cli sqlClient, role string) error {
+	_, err := cli.Exec(ctx, fmt.Sprintf(sqlDropRole, QuoteIdentifier(role)))
 	return err
 }
 
@@ -119,14 +128,14 @@ func DropRole(ctx context.Context, pool *pgxpool.Pool, role string) error {
 // sets default privileges so future admin-created tables are covered.
 func GrantSchemaPrivileges(
 	ctx context.Context,
-	pool *pgxpool.Pool,
+	cli sqlClient,
 	schema string,
 	role string,
 	accessMode infraApi.AccessMode,
 ) error {
 	q := QuoteIdentifier
 
-	if _, err := pool.Exec(ctx, fmt.Sprintf(sqlGrantUsageOnSchema, q(schema), q(role))); err != nil {
+	if _, err := cli.Exec(ctx, fmt.Sprintf(sqlGrantUsageOnSchema, q(schema), q(role))); err != nil {
 		return fmt.Errorf("grant usage on schema: %w", err)
 	}
 
@@ -135,17 +144,17 @@ func GrantSchemaPrivileges(
 		tableGrant = sqlGrantSelectOnTables
 		defaultPriv = sqlDefaultPrivGrantSelect
 	} else {
-		if _, err := pool.Exec(ctx, fmt.Sprintf(sqlGrantCreateOnSchema, q(schema), q(role))); err != nil {
+		if _, err := cli.Exec(ctx, fmt.Sprintf(sqlGrantCreateOnSchema, q(schema), q(role))); err != nil {
 			return fmt.Errorf("grant create on schema: %w", err)
 		}
 		tableGrant = sqlGrantDMLOnTables
 		defaultPriv = sqlDefaultPrivGrantDML
 	}
 
-	if _, err := pool.Exec(ctx, fmt.Sprintf(tableGrant, q(schema), q(role))); err != nil {
+	if _, err := cli.Exec(ctx, fmt.Sprintf(tableGrant, q(schema), q(role))); err != nil {
 		return fmt.Errorf("grant on tables: %w", err)
 	}
-	if _, err := pool.Exec(ctx, fmt.Sprintf(defaultPriv, q(schema), q(role))); err != nil {
+	if _, err := cli.Exec(ctx, fmt.Sprintf(defaultPriv, q(schema), q(role))); err != nil {
 		return fmt.Errorf("alter default privileges: %w", err)
 	}
 	return nil
@@ -156,17 +165,17 @@ func GrantSchemaPrivileges(
 // CONNECT and CREATE.
 func GrantDatabasePrivileges(
 	ctx context.Context,
-	pool *pgxpool.Pool,
+	cli sqlClient,
 	database string,
 	role string,
 	accessMode infraApi.AccessMode,
 ) error {
 	q := QuoteIdentifier
-	if _, err := pool.Exec(ctx, fmt.Sprintf(sqlGrantConnectOnDatabase, q(database), q(role))); err != nil {
+	if _, err := cli.Exec(ctx, fmt.Sprintf(sqlGrantConnectOnDatabase, q(database), q(role))); err != nil {
 		return fmt.Errorf("grant connect on database: %w", err)
 	}
 	if accessMode != infraApi.AccessModeReadOnly {
-		if _, err := pool.Exec(ctx, fmt.Sprintf(sqlGrantCreateOnDatabase, q(database), q(role))); err != nil {
+		if _, err := cli.Exec(ctx, fmt.Sprintf(sqlGrantCreateOnDatabase, q(database), q(role))); err != nil {
 			return fmt.Errorf("grant create on database: %w", err)
 		}
 	}
@@ -189,14 +198,14 @@ func IsUndefinedObject(err error) bool {
 }
 
 // RevokeDatabasePrivileges revokes the privileges granted by GrantDatabasePrivileges.
-func RevokeDatabasePrivileges(ctx context.Context, pool *pgxpool.Pool, database, role string) error {
+func RevokeDatabasePrivileges(ctx context.Context, cli sqlClient, database, role string) error {
 	q := QuoteIdentifier
 	var errs []error
 	for _, stmt := range []string{
 		fmt.Sprintf(sqlRevokeCreateOnDB, q(database), q(role)),
 		fmt.Sprintf(sqlRevokeConnectOnDB, q(database), q(role)),
 	} {
-		if _, err := pool.Exec(ctx, stmt); err != nil && !IsUndefinedObject(err) {
+		if _, err := cli.Exec(ctx, stmt); err != nil && !IsUndefinedObject(err) {
 			errs = append(errs, err)
 		}
 	}
@@ -210,7 +219,7 @@ func RevokeDatabasePrivileges(ctx context.Context, pool *pgxpool.Pool, database,
 // All three revocations are attempted in order; errors are joined and returned
 // so the caller is aware of partial failures, but revocation continues even if
 // one step fails (the role or schema may already be gone during deletion).
-func RevokeSchemaPrivileges(ctx context.Context, pool *pgxpool.Pool, schema, role string) error {
+func RevokeSchemaPrivileges(ctx context.Context, cli sqlClient, schema, role string) error {
 	q := QuoteIdentifier
 	var errs []error
 	for _, stmt := range []string{
@@ -218,7 +227,7 @@ func RevokeSchemaPrivileges(ctx context.Context, pool *pgxpool.Pool, schema, rol
 		fmt.Sprintf(sqlRevokeAllOnTables, q(schema), q(role)),
 		fmt.Sprintf(sqlRevokeAllOnSchema, q(schema), q(role)),
 	} {
-		if _, err := pool.Exec(ctx, stmt); err != nil && !IsUndefinedObject(err) {
+		if _, err := cli.Exec(ctx, stmt); err != nil && !IsUndefinedObject(err) {
 			errs = append(errs, err)
 		}
 	}
@@ -244,15 +253,19 @@ func RevokeSchemaPrivileges(ctx context.Context, pool *pgxpool.Pool, schema, rol
 // per-table grants independently.
 func HasSchemaPrivileges(
 	ctx context.Context,
-	pool *pgxpool.Pool,
+	cli sqlClient,
 	schema string,
 	role string,
 	accessMode infraApi.AccessMode,
 ) (bool, error) {
 	var hasUsage bool
-	err := pool.QueryRow(ctx,
+	row, err := queryRow(ctx, cli,
 		"SELECT COALESCE(HAS_SCHEMA_PRIVILEGE($1, $2, 'USAGE'), false)", role, schema,
-	).Scan(&hasUsage)
+	)
+	if err != nil {
+		return false, err
+	}
+	err = row.Scan(&hasUsage)
 	if err != nil || !hasUsage {
 		return false, err
 	}
@@ -260,9 +273,13 @@ func HasSchemaPrivileges(
 		return true, nil
 	}
 	var hasCreate bool
-	err = pool.QueryRow(ctx,
+	row, err = queryRow(ctx, cli,
 		"SELECT COALESCE(HAS_SCHEMA_PRIVILEGE($1, $2, 'CREATE'), false)", role, schema,
-	).Scan(&hasCreate)
+	)
+	if err != nil {
+		return false, err
+	}
+	err = row.Scan(&hasCreate)
 	return hasCreate, err
 }
 
@@ -271,15 +288,19 @@ func HasSchemaPrivileges(
 // for ReadWrite.
 func HasDatabasePrivileges(
 	ctx context.Context,
-	pool *pgxpool.Pool,
+	cli sqlClient,
 	database string,
 	role string,
 	accessMode infraApi.AccessMode,
 ) (bool, error) {
 	var hasConnect bool
-	err := pool.QueryRow(ctx,
+	row, err := queryRow(ctx, cli,
 		"SELECT COALESCE(HAS_DATABASE_PRIVILEGE($1, $2, 'CONNECT'), false)", role, database,
-	).Scan(&hasConnect)
+	)
+	if err != nil {
+		return false, err
+	}
+	err = row.Scan(&hasConnect)
 	if err != nil || !hasConnect {
 		return false, err
 	}
@@ -287,43 +308,76 @@ func HasDatabasePrivileges(
 		return true, nil
 	}
 	var hasCreate bool
-	err = pool.QueryRow(ctx,
+	row, err = queryRow(ctx, cli,
 		"SELECT COALESCE(HAS_DATABASE_PRIVILEGE($1, $2, 'CREATE'), false)", role, database,
-	).Scan(&hasCreate)
+	)
+	if err != nil {
+		return false, err
+	}
+	err = row.Scan(&hasCreate)
 	return hasCreate, err
 }
 
 // DatabaseExists returns true if a database with the given name exists on the
 // server. Used by DatabaseClaim to verify spec.database before provisioning.
-func DatabaseExists(ctx context.Context, pool *pgxpool.Pool, name string) (bool, error) {
+func DatabaseExists(ctx context.Context, cli sqlClient, name string) (bool, error) {
 	var exists bool
-	err := pool.QueryRow(ctx, sqlDatabaseExists, name).Scan(&exists)
+	row, err := queryRow(ctx, cli, sqlDatabaseExists, name)
+	if err != nil {
+		return false, err
+	}
+	err = row.Scan(&exists)
 	return exists, err
 }
 
 // SchemaExists returns true if a schema with the given name exists.
-func SchemaExists(ctx context.Context, pool *pgxpool.Pool, name string) (bool, error) {
+func SchemaExists(ctx context.Context, cli sqlClient, name string) (bool, error) {
 	var exists bool
-	err := pool.QueryRow(ctx, sqlSchemaExists, name).Scan(&exists)
+	row, err := queryRow(ctx, cli, sqlSchemaExists, name)
+	if err != nil {
+		return false, err
+	}
+	err = row.Scan(&exists)
 	return exists, err
 }
 
 // RoleExists returns true if a PostgreSQL role with the given name exists.
-func RoleExists(ctx context.Context, pool *pgxpool.Pool, name string) (bool, error) {
+func RoleExists(ctx context.Context, cli sqlClient, name string) (bool, error) {
 	var exists bool
-	err := pool.QueryRow(ctx,
+	row, err := queryRow(ctx, cli,
 		"SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = $1)", name,
-	).Scan(&exists)
+	)
+	if err != nil {
+		return false, err
+	}
+	err = row.Scan(&exists)
 	return exists, err
 }
 
 // CreateExtensionIfNotExists runs CREATE EXTENSION IF NOT EXISTS for each name.
 // Used by the Embedded provider's bootstrap step (task-08).
-func CreateExtensionIfNotExists(ctx context.Context, pool *pgxpool.Pool, extensions []string) error {
+func CreateExtensionIfNotExists(ctx context.Context, cli sqlClient, extensions []string) error {
 	for _, ext := range extensions {
-		if _, err := pool.Exec(ctx, fmt.Sprintf(sqlCreateExtensionIfNotExists, QuoteIdentifier(ext))); err != nil {
+		if _, err := cli.Exec(ctx, fmt.Sprintf(sqlCreateExtensionIfNotExists, QuoteIdentifier(ext))); err != nil {
 			return fmt.Errorf("creating extension %q: %w", ext, err)
 		}
 	}
 	return nil
+}
+
+func queryRow(
+	ctx context.Context,
+	cli sqlClient,
+	sql string,
+	args ...any,
+) (pgx.Row, error) {
+	if pgClient, ok := cli.(*Client); ok {
+		return pgClient.QueryRow(ctx, sql, args...)
+	}
+
+	if rower, ok := cli.(rowClient); ok {
+		return rower.QueryRow(ctx, sql, args...), nil
+	}
+
+	return nil, fmt.Errorf("client does not support QueryRow")
 }

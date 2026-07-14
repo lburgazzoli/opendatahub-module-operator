@@ -131,25 +131,33 @@ func TestConfigDSN_EscapesSpecialCharacters(t *testing.T) {
 	g.Expect(parsed.ConnConfig.Database).To(Equal(cfg.DBName))
 }
 
-// TestPing_Success tests a real connection against a testcontainers Postgres.
-func TestPing_Success(t *testing.T) {
+// TestClientPing_Success tests a real connection against a testcontainers Postgres.
+func TestClientPing_Success(t *testing.T) {
 	g := NewWithT(t)
 	cfg := startPostgres(t)
 
-	err := postgres.Ping(t.Context(), cfg)
+	cli, err := postgres.NewClient(t.Context(), cfg)
+	g.Expect(err).NotTo(HaveOccurred())
+	t.Cleanup(cli.Close)
+
+	err = cli.Ping(t.Context())
 	g.Expect(err).NotTo(HaveOccurred())
 }
 
-// TestPing_WrongPassword verifies that a failed connection returns an error
+// TestClientPing_WrongPassword verifies that a failed connection returns an error
 // that does NOT contain the password literal.
-func TestPing_WrongPassword(t *testing.T) {
+func TestClientPing_WrongPassword(t *testing.T) {
 	g := NewWithT(t)
 	cfg := startPostgres(t)
 
 	bad := cfg
 	bad.Password = "totally-wrong-password-sentinel"
 
-	err := postgres.Ping(t.Context(), bad)
+	cli, err := postgres.NewClient(t.Context(), bad)
+	g.Expect(err).NotTo(HaveOccurred())
+	t.Cleanup(cli.Close)
+
+	err = cli.Ping(t.Context())
 	g.Expect(err).To(HaveOccurred())
 	g.Expect(err).NotTo(MatchError(ContainSubstring(bad.Password)),
 		"error message must not contain the password literal")

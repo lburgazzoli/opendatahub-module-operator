@@ -23,7 +23,6 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/jackc/pgx/v5/pgxpool"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	dbcontroller "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/pkg/controller"
@@ -55,12 +54,12 @@ var nonIdentRe = regexp.MustCompile(`[^a-z0-9_]`)
 
 // ensureSchema creates the schema if needed and reports whether it already
 // existed before this reconciliation.
-func ensureSchema(ctx context.Context, pool *pgxpool.Pool, schema string) (bool, error) {
-	schemaExists, err := postgres.SchemaExists(ctx, pool, schema)
+func ensureSchema(ctx context.Context, pgClient *postgres.Client, schema string) (bool, error) {
+	schemaExists, err := postgres.SchemaExists(ctx, pgClient, schema)
 	if err != nil {
 		return false, dbcontroller.WrapQuickRetry("checking schema existence", err)
 	}
-	if err := postgres.CreateSchema(ctx, pool, schema); err != nil {
+	if err := postgres.CreateSchema(ctx, pgClient, schema); err != nil {
 		return false, dbcontroller.WrapQuickRetry("creating schema", err)
 	}
 	return schemaExists, nil

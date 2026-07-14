@@ -83,7 +83,19 @@ func (m *Controller) reconcileExternalAction(
 			conditions.WithMessage("External provider TLS configuration is pending"))
 	}
 
-	if err := postgres.Ping(ctx, cfg); err != nil {
+	pgClient, err := postgres.NewClient(ctx, cfg)
+	if err != nil {
+		rr.Conditions.Mark(ConditionReachable, metav1.ConditionFalse,
+			conditions.WithReason(externalFailureReason(err)),
+			conditions.WithMessage("%s", err.Error()))
+		if retryErr := dbcontroller.StopWithQuickRetryIfConnectionRefused(err); retryErr != nil {
+			return retryErr
+		}
+		return nil
+	}
+	defer pgClient.Close()
+
+	if err := pgClient.Ping(ctx); err != nil {
 		rr.Conditions.Mark(ConditionReachable, metav1.ConditionFalse,
 			conditions.WithReason(externalFailureReason(err)),
 			conditions.WithMessage("%s", err.Error()))

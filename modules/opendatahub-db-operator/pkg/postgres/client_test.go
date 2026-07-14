@@ -24,28 +24,14 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/pem"
-	"fmt"
 	"math/big"
 	"testing"
 	"time"
 
-	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/jackc/pgx/v5/pgconn"
 	. "github.com/onsi/gomega"
 	tcpostgres "github.com/testcontainers/testcontainers-go/modules/postgres"
 )
-
-type stubPingPool struct {
-	pingErr error
-	closed  bool
-}
-
-func (p *stubPingPool) Ping(context.Context) error {
-	return p.pingErr
-}
-
-func (p *stubPingPool) Close() {
-	p.closed = true
-}
 
 func startPingPostgres(t *testing.T) Config {
 	t.Helper()
@@ -71,93 +57,113 @@ func startPingPostgres(t *testing.T) Config {
 	return cfg
 }
 
-func TestPing_ClosesPoolOnPingError(t *testing.T) {
-	g := NewWithT(t)
-
-	pool := &stubPingPool{pingErr: fmt.Errorf("boom")}
-	previous := openPingPool
-	openPingPool = func(context.Context, *pgxpool.Config) (poolPinger, error) {
-		return pool, nil
-	}
-	defer func() {
-		openPingPool = previous
-	}()
-
-	err := Ping(t.Context(), Config{
-		Host:     "localhost",
-		Port:     5432,
-		User:     "user",
-		Password: "secret",
-		DBName:   "db",
-	})
-
-	g.Expect(err).To(HaveOccurred())
-	g.Expect(pool.closed).To(BeTrue())
-}
-
-func TestPing_ClosesPoolOnSuccess(t *testing.T) {
-	g := NewWithT(t)
-
-	pool := &stubPingPool{}
-	previous := openPingPool
-	openPingPool = func(context.Context, *pgxpool.Config) (poolPinger, error) {
-		return pool, nil
-	}
-	defer func() {
-		openPingPool = previous
-	}()
-
-	err := Ping(t.Context(), Config{
-		Host:     "localhost",
-		Port:     5432,
-		User:     "user",
-		Password: "secret",
-		DBName:   "db",
-	})
-
-	g.Expect(err).NotTo(HaveOccurred())
-	g.Expect(pool.closed).To(BeTrue())
-}
-
-func TestPing_Success(t *testing.T) {
+func TestClient_Ping_Success(t *testing.T) {
 	g := NewWithT(t)
 	cfg := startPingPostgres(t)
 
-	err := Ping(t.Context(), cfg)
+	cli, err := NewClient(t.Context(), cfg)
+	g.Expect(err).NotTo(HaveOccurred())
+	t.Cleanup(cli.Close)
+
+	err = cli.Ping(t.Context())
 	g.Expect(err).NotTo(HaveOccurred())
 }
 
-func TestPing_WrongPassword(t *testing.T) {
+func TestClient_Ping_WrongPassword(t *testing.T) {
 	g := NewWithT(t)
 	cfg := startPingPostgres(t)
 
 	bad := cfg
 	bad.Password = "totally-wrong-password-sentinel"
 
-	err := Ping(t.Context(), bad)
+	cli, err := NewClient(t.Context(), bad)
+	g.Expect(err).NotTo(HaveOccurred())
+	t.Cleanup(cli.Close)
+
+	err = cli.Ping(t.Context())
 	g.Expect(err).To(HaveOccurred())
 	g.Expect(err).NotTo(MatchError(ContainSubstring(bad.Password)))
 }
 
-func TestPing_UnreachableHostTimesOut(t *testing.T) {
+func TestNewClient_UnreachableHostTimesOut(t *testing.T) {
 	g := NewWithT(t)
 
 	ctx, cancel := context.WithTimeout(t.Context(), time.Second)
 	defer cancel()
 
-	err := Ping(ctx, Config{
+	cli, err := NewClient(ctx, Config{
 		Host:     "203.0.113.1",
 		Port:     5432,
 		User:     "user",
 		Password: "secret",
 		DBName:   "db",
 	})
+	g.Expect(err).NotTo(HaveOccurred())
+	t.Cleanup(cli.Close)
+
+	err = cli.Ping(ctx)
 
 	g.Expect(err).To(HaveOccurred())
 	g.Expect(err.Error()).To(SatisfyAny(
 		ContainSubstring("timeout"),
 		ContainSubstring("deadline exceeded"),
 	))
+}
+
+func TestNewClient_ExecQueryAndQueryRow(t *testing.T) {
+	g := NewWithT(t)
+	cfg := startPingPostgres(t)
+
+	cli, err := NewClient(t.Context(), cfg)
+	g.Expect(err).NotTo(HaveOccurred())
+	t.Cleanup(cli.Close)
+
+	_, err = cli.Exec(t.Context(), "CREATE TABLE IF NOT EXISTS client_api_test (id int)")
+	g.Expect(err).NotTo(HaveOccurred())
+
+	_, err = cli.Exec(t.Context(), "TRUNCATE client_api_test")
+	g.Expect(err).NotTo(HaveOccurred())
+
+	tag, err := cli.Exec(t.Context(), "INSERT INTO client_api_test (id) VALUES ($1)", 7)
+	g.Expect(err).NotTo(HaveOccurred())
+	g.Expect(tag).To(Equal(pgconn.NewCommandTag("INSERT 0 1")))
+
+	var count int
+	row, err := cli.QueryRow(t.Context(), "SELECT count(*) FROM client_api_test")
+	g.Expect(err).NotTo(HaveOccurred())
+	err = row.Scan(&count)
+	g.Expect(err).NotTo(HaveOccurred())
+	g.Expect(count).To(Equal(1))
+
+	rows, err := cli.Query(t.Context(), "SELECT id FROM client_api_test")
+	g.Expect(err).NotTo(HaveOccurred())
+	defer rows.Close()
+
+	g.Expect(rows.Next()).To(BeTrue())
+
+	var id int
+	err = rows.Scan(&id)
+	g.Expect(err).NotTo(HaveOccurred())
+	g.Expect(id).To(Equal(7))
+	g.Expect(rows.Next()).To(BeFalse())
+	g.Expect(rows.Err()).NotTo(HaveOccurred())
+}
+
+func TestClient_CloseMakesFurtherOperationsFail(t *testing.T) {
+	g := NewWithT(t)
+	cfg := startPingPostgres(t)
+
+	cli, err := NewClient(t.Context(), cfg)
+	g.Expect(err).NotTo(HaveOccurred())
+	cli.Close()
+	cli.Close()
+
+	_, err = cli.Exec(t.Context(), "SELECT 1")
+	g.Expect(err).To(MatchError(ContainSubstring("not open")))
+
+	row, err := cli.QueryRow(t.Context(), "SELECT 1")
+	g.Expect(row).To(BeNil())
+	g.Expect(err).To(MatchError(ContainSubstring("not open")))
 }
 
 func TestPoolConfigFor_ConfiguresVerifyFullFromCAData(t *testing.T) {

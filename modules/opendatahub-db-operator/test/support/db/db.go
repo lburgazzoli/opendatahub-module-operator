@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/jackc/pgx/v5/pgxpool"
 	tcpostgres "github.com/testcontainers/testcontainers-go/modules/postgres"
 
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/pkg/postgres"
@@ -12,7 +11,7 @@ import (
 
 type Instance struct {
 	cfg       postgres.Config
-	pool      *pgxpool.Pool
+	client    *postgres.Client
 	terminate func(context.Context) error
 }
 
@@ -45,18 +44,18 @@ func Start(ctx context.Context) (*Instance, error) {
 		return nil, fmt.Errorf("parsing postgres DSN: %w", err)
 	}
 
-	pool, err := postgres.OpenPool(ctx, cfg)
+	client, err := postgres.NewClient(ctx, cfg)
 	if err != nil {
 		if ctr != nil {
 			_ = ctr.Terminate(ctx)
 		}
 
-		return nil, fmt.Errorf("opening postgres admin pool: %w", err)
+		return nil, fmt.Errorf("opening postgres client: %w", err)
 	}
 
 	return &Instance{
-		cfg:  cfg,
-		pool: pool,
+		cfg:    cfg,
+		client: client,
 		terminate: func(ctx context.Context) error {
 			if ctr == nil {
 				return nil
@@ -75,12 +74,12 @@ func (db *Instance) Config() postgres.Config {
 	return db.cfg
 }
 
-func (db *Instance) Pool() *pgxpool.Pool {
+func (db *Instance) Client() *postgres.Client {
 	if db == nil {
 		return nil
 	}
 
-	return db.pool
+	return db.client
 }
 
 func (db *Instance) Close(ctx context.Context) error {
@@ -88,9 +87,9 @@ func (db *Instance) Close(ctx context.Context) error {
 		return nil
 	}
 
-	if db.pool != nil {
-		db.pool.Close()
-		db.pool = nil
+	if db.client != nil {
+		db.client.Close()
+		db.client = nil
 	}
 
 	if db.terminate == nil {

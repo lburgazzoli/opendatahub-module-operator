@@ -22,7 +22,6 @@ import (
 	"maps"
 	"testing"
 
-	"github.com/jackc/pgx/v5/pgxpool"
 	k8sm "github.com/lburgazzoli/gomega-matchers/pkg/matchers/k8s"
 	"github.com/lburgazzoli/gomega-matchers/pkg/matchers/k8s/condition"
 	infraApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/api/infrastructure/v1alpha1"
@@ -77,29 +76,29 @@ func (st *schemaClaimSuite) createDatabase(t *testing.T, name string) {
 	t.Helper()
 
 	g := NewWithT(t)
-	pool := st.db.Pool()
-	g.Expect(pool).NotTo(BeNil())
+	pgClient := st.db.Client()
+	g.Expect(pgClient).NotTo(BeNil())
 
-	exists, err := postgres.DatabaseExists(t.Context(), pool, name)
+	exists, err := postgres.DatabaseExists(t.Context(), pgClient, name)
 	g.Expect(err).NotTo(HaveOccurred())
 	if exists {
 		return
 	}
 
-	_, err = pool.Exec(t.Context(), fmt.Sprintf("CREATE DATABASE %s", postgres.QuoteIdentifier(name)))
+	_, err = pgClient.Exec(t.Context(), fmt.Sprintf("CREATE DATABASE %s", postgres.QuoteIdentifier(name)))
 	g.Expect(err).NotTo(HaveOccurred())
 }
 
-func (st *schemaClaimSuite) openProviderAdminPool(ctx context.Context) (*pgxpool.Pool, error) {
+func (st *schemaClaimSuite) openProviderAdminClient(ctx context.Context) (*postgres.Client, error) {
 	cfg := st.db.Config()
 	cfg.DBName = st.databaseName
 
-	pool, err := postgres.OpenPool(ctx, cfg)
+	pgClient, err := postgres.NewClient(ctx, cfg)
 	if err != nil {
-		return nil, fmt.Errorf("opening provider admin pool: %w", err)
+		return nil, fmt.Errorf("opening provider admin client: %w", err)
 	}
 
-	return pool, nil
+	return pgClient, nil
 }
 
 func (st *schemaClaimSuite) createProvider(t *testing.T) {
@@ -292,10 +291,10 @@ func (st *schemaClaimSuite) roleExists(t *testing.T, role string) bool {
 	t.Helper()
 
 	g := NewWithT(t)
-	pool := st.db.Pool()
-	g.Expect(pool).NotTo(BeNil())
+	pgClient := st.db.Client()
+	g.Expect(pgClient).NotTo(BeNil())
 
-	exists, err := postgres.RoleExists(t.Context(), pool, role)
+	exists, err := postgres.RoleExists(t.Context(), pgClient, role)
 	g.Expect(err).NotTo(HaveOccurred())
 	return exists
 }
@@ -304,11 +303,11 @@ func (st *schemaClaimSuite) schemaExists(t *testing.T, schema string) bool {
 	t.Helper()
 
 	g := NewWithT(t)
-	pool, err := st.openProviderAdminPool(t.Context())
+	pgClient, err := st.openProviderAdminClient(t.Context())
 	g.Expect(err).NotTo(HaveOccurred())
-	t.Cleanup(pool.Close)
+	t.Cleanup(pgClient.Close)
 
-	exists, err := postgres.SchemaExists(t.Context(), pool, schema)
+	exists, err := postgres.SchemaExists(t.Context(), pgClient, schema)
 	g.Expect(err).NotTo(HaveOccurred())
 	return exists
 }
@@ -317,23 +316,23 @@ func (st *schemaClaimSuite) dropRole(t *testing.T, role string, schema string) {
 	t.Helper()
 
 	g := NewWithT(t)
-	pool, err := st.openProviderAdminPool(t.Context())
+	pgClient, err := st.openProviderAdminClient(t.Context())
 	g.Expect(err).NotTo(HaveOccurred())
-	t.Cleanup(pool.Close)
+	t.Cleanup(pgClient.Close)
 
-	g.Expect(postgres.RevokeSchemaPrivileges(t.Context(), pool, schema, role)).To(Succeed())
-	g.Expect(postgres.DropRole(t.Context(), pool, role)).To(Succeed())
+	g.Expect(postgres.RevokeSchemaPrivileges(t.Context(), pgClient, schema, role)).To(Succeed())
+	g.Expect(postgres.DropRole(t.Context(), pgClient, role)).To(Succeed())
 }
 
 func (st *schemaClaimSuite) dropSchema(t *testing.T, schema string) {
 	t.Helper()
 
 	g := NewWithT(t)
-	pool, err := st.openProviderAdminPool(t.Context())
+	pgClient, err := st.openProviderAdminClient(t.Context())
 	g.Expect(err).NotTo(HaveOccurred())
-	t.Cleanup(pool.Close)
+	t.Cleanup(pgClient.Close)
 
-	g.Expect(postgres.DropSchemaCascade(t.Context(), pool, schema)).To(Succeed())
+	g.Expect(postgres.DropSchemaCascade(t.Context(), pgClient, schema)).To(Succeed())
 }
 
 func (st *schemaClaimSuite) triggerReconcile(t *testing.T, claim *infraApi.SchemaClaim) {

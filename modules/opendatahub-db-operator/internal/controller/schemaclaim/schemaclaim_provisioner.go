@@ -21,7 +21,6 @@ import (
 	"fmt"
 	"strconv"
 
-	"github.com/jackc/pgx/v5/pgxpool"
 	corev1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -33,10 +32,9 @@ import (
 
 // SchemaProvisioner provisions schema-scoped credentials for a SchemaClaim.
 type SchemaProvisioner struct {
-	Client client.Client
-	Claim  *infraApi.SchemaClaim
-	Pool   *pgxpool.Pool
-	Config postgres.Config
+	Client   client.Client
+	Claim    *infraApi.SchemaClaim
+	Postgres *postgres.Client
 }
 
 // Schema returns the resolved schema name for the claim.
@@ -49,10 +47,10 @@ func (p SchemaProvisioner) ConnectionStatus(schema string) infraApi.SchemaConnec
 	return infraApi.SchemaConnectionStatus{
 		ConnectionStatus: infraApi.ConnectionStatus{
 			SecretRef: corev1.LocalObjectReference{Name: dbcontroller.SecretNameForSchemaClaim(p.Claim)},
-			Host:      p.Config.Host,
-			Port:      int32(p.Config.Port),
+			Host:      p.Postgres.Config().Host,
+			Port:      int32(p.Postgres.Config().Port),
 		},
-		Database: p.Config.DBName,
+		Database: p.Postgres.Config().DBName,
 		Schema:   schema,
 	}
 }
@@ -63,13 +61,13 @@ func (p SchemaProvisioner) Ensure(
 	ctx context.Context,
 ) (*corev1.Secret, error) {
 	schema := p.Schema()
-	schemaExists, err := ensureSchema(ctx, p.Pool, schema)
+	schemaExists, err := ensureSchema(ctx, p.Postgres, schema)
 	if err != nil {
 		return nil, err
 	}
 
 	role := dbcontroller.RoleNameFor(p.Claim.Namespace, p.Claim.Name)
-	roleExists, err := postgres.RoleExists(ctx, p.Pool, role)
+	roleExists, err := postgres.RoleExists(ctx, p.Postgres, role)
 	if err != nil {
 		return nil, dbcontroller.WrapQuickRetry("checking role existence", err)
 	}
@@ -89,7 +87,7 @@ func (p SchemaProvisioner) Ensure(
 		if err != nil {
 			return nil, fmt.Errorf("generating password: %w", err)
 		}
-		if err := postgres.EnsureRole(ctx, p.Pool, role, pw); err != nil {
+		if err := postgres.EnsureRole(ctx, p.Postgres, role, pw); err != nil {
 			return nil, dbcontroller.WrapQuickRetry("creating role", err)
 		}
 		p.buildCredentialsSecret(secret, role, pw, schema)
@@ -103,17 +101,17 @@ func (p SchemaProvisioner) Ensure(
 		if err != nil {
 			return nil, fmt.Errorf("generating password: %w", err)
 		}
-		if err := postgres.SetRolePassword(ctx, p.Pool, role, pw); err != nil {
+		if err := postgres.SetRolePassword(ctx, p.Postgres, role, pw); err != nil {
 			return nil, dbcontroller.WrapQuickRetry("rotating role password", err)
 		}
 		p.buildCredentialsSecret(secret, role, pw, schema)
 	}
 
-	switch ok, err := postgres.HasSchemaPrivileges(ctx, p.Pool, schema, role, p.Claim.Spec.Access); {
+	switch ok, err := postgres.HasSchemaPrivileges(ctx, p.Postgres, schema, role, p.Claim.Spec.Access); {
 	case err != nil:
 		return nil, dbcontroller.WrapQuickRetry("checking schema privileges", err)
 	case !ok:
-		if err := postgres.GrantSchemaPrivileges(ctx, p.Pool, schema, role, p.Claim.Spec.Access); err != nil {
+		if err := postgres.GrantSchemaPrivileges(ctx, p.Postgres, schema, role, p.Claim.Spec.Access); err != nil {
 			return nil, dbcontroller.WrapQuickRetry("granting schema privileges", err)
 		}
 	}
@@ -131,17 +129,17 @@ func (p SchemaProvisioner) buildCredentialsSecret(
 	secret.SetGroupVersionKind(gvk.Secret)
 	secret.Type = corev1.SecretTypeOpaque
 	secret.Data = map[string][]byte{
-		postgres.SecretKeyHost:     []byte(p.Config.Host),
-		postgres.SecretKeyPort:     []byte(strconv.Itoa(p.Config.Port)),
+		postgres.SecretKeyHost:     []byte(p.Postgres.Config().Host),
+		postgres.SecretKeyPort:     []byte(strconv.Itoa(p.Postgres.Config().Port)),
 		postgres.SecretKeyUser:     []byte(role),
 		postgres.SecretKeyPassword: []byte(password),
-		postgres.SecretKeyDatabase: []byte(p.Config.DBName),
+		postgres.SecretKeyDatabase: []byte(p.Postgres.Config().DBName),
 		postgres.SecretKeySchema:   []byte(schema),
 	}
-	if p.Config.SSLMode != "" {
-		secret.Data[postgres.SecretKeySSLMode] = []byte(p.Config.SSLMode)
+	if p.Postgres.Config().SSLMode != "" {
+		secret.Data[postgres.SecretKeySSLMode] = []byte(p.Postgres.Config().SSLMode)
 	}
-	if p.Config.SSLRootCert != "" {
-		secret.Data[postgres.SecretKeyCA] = []byte(p.Config.SSLRootCert)
+	if p.Postgres.Config().SSLRootCert != "" {
+		secret.Data[postgres.SecretKeyCA] = []byte(p.Postgres.Config().SSLRootCert)
 	}
 }

@@ -16,7 +16,7 @@ limitations under the License.
 
 // Package schemaclaim reconciles schemaclaim objects.
 // Action implementations (provisionAction, cleanupAction) live here.
-// Helper functions (dbcontroller.OpenPool, roleNameFor, etc.) live in schemaclaim_support.go.
+// Helper functions (dbcontroller.NewClient, roleNameFor, etc.) live in schemaclaim_support.go.
 package schemaclaim
 
 import (
@@ -70,7 +70,7 @@ func (m *Controller) provisionAction(ctx context.Context, rr *odhtypes.Reconcili
 	}
 
 	// 2. Open connection to provider.
-	cfg, pool, err := dbcontroller.OpenPool(ctx, rr.Client, provider, m.cfg)
+	pgClient, err := dbcontroller.NewClient(ctx, rr.Client, provider, m.cfg)
 	if err != nil {
 		rr.Conditions.Mark(ConditionProvisioned, metav1.ConditionFalse,
 			conditions.WithError(err))
@@ -82,7 +82,9 @@ func (m *Controller) provisionAction(ctx context.Context, rr *odhtypes.Reconcili
 		}
 		return odherrors.NewStopErrorW(err)
 	}
-	defer pool.Close()
+	defer pgClient.Close()
+
+	cfg := pgClient.Config()
 
 	switch {
 	case !cfg.TLSEnabled():
@@ -102,10 +104,9 @@ func (m *Controller) provisionAction(ctx context.Context, rr *odhtypes.Reconcili
 
 	// 3. Ensure claim credentials and connection details.
 	provisioner := SchemaProvisioner{
-		Client: rr.Client,
-		Claim:  obj,
-		Pool:   pool,
-		Config: cfg,
+		Client:   rr.Client,
+		Claim:    obj,
+		Postgres: pgClient,
 	}
 
 	secret, err := provisioner.Ensure(ctx)
@@ -172,13 +173,13 @@ func (m *Controller) cleanupAction(ctx context.Context, rr *odhtypes.Reconciliat
 				return err
 			}
 
-			_, pool, err := dbcontroller.OpenPool(ctx, rr.Client, provider, m.cfg)
+			pgClient, err := dbcontroller.NewClient(ctx, rr.Client, provider, m.cfg)
 			if err != nil {
-				return fmt.Errorf("opening pool for provider %q: %w", provider.Name, err)
+				return fmt.Errorf("opening postgres client for provider %q: %w", provider.Name, err)
 			}
-			defer pool.Close()
+			defer pgClient.Close()
 
-			roleExists, err := postgres.RoleExists(ctx, pool, role)
+			roleExists, err := postgres.RoleExists(ctx, pgClient, role)
 			if err != nil {
 				return fmt.Errorf("checking role %q existence: %w", role, err)
 			}
@@ -186,20 +187,20 @@ func (m *Controller) cleanupAction(ctx context.Context, rr *odhtypes.Reconciliat
 				return nil
 			}
 
-			if err := postgres.RevokeSchemaPrivileges(ctx, pool, schema, role); err != nil {
+			if err := postgres.RevokeSchemaPrivileges(ctx, pgClient, schema, role); err != nil {
 				return fmt.Errorf("revoking schema privileges for role %q: %w", role, err)
 			}
 
 			switch obj.Spec.DeletionPolicy {
 			case infraApi.DeletionPolicyDelete:
-				if err := postgres.DropSchemaCascade(ctx, pool, schema); err != nil {
+				if err := postgres.DropSchemaCascade(ctx, pgClient, schema); err != nil {
 					return fmt.Errorf("dropping schema %q: %w", schema, err)
 				}
-				if err := postgres.DropRole(ctx, pool, role); err != nil {
+				if err := postgres.DropRole(ctx, pgClient, role); err != nil {
 					return fmt.Errorf("dropping role %q: %w", role, err)
 				}
 			default: // Retain
-				if err := postgres.DropRole(ctx, pool, role); err != nil {
+				if err := postgres.DropRole(ctx, pgClient, role); err != nil {
 					return fmt.Errorf("dropping role %q: %w", role, err)
 				}
 			}

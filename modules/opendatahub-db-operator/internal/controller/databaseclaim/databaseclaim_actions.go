@@ -66,7 +66,7 @@ func (m *Controller) provisionAction(ctx context.Context, rr *odhtypes.Reconcili
 	}
 
 	// 2. Open connection to provider.
-	cfg, pool, err := dbcontroller.OpenPool(ctx, rr.Client, provider, m.cfg)
+	pgClient, err := dbcontroller.NewClient(ctx, rr.Client, provider, m.cfg)
 	if err != nil {
 		rr.Conditions.Mark(ConditionProvisioned, metav1.ConditionFalse,
 			conditions.WithError(err))
@@ -78,7 +78,9 @@ func (m *Controller) provisionAction(ctx context.Context, rr *odhtypes.Reconcili
 		}
 		return odherrors.NewStopErrorW(err)
 	}
-	defer pool.Close()
+	defer pgClient.Close()
+
+	cfg := pgClient.Config()
 	switch {
 	case !cfg.TLSEnabled():
 		rr.Conditions.Mark(ConditionTLSConfiguration, metav1.ConditionFalse,
@@ -97,10 +99,9 @@ func (m *Controller) provisionAction(ctx context.Context, rr *odhtypes.Reconcili
 
 	// 3. Ensure claim credentials and connection details.
 	provisioner := DatabaseProvisioner{
-		Client: rr.Client,
-		Claim:  obj,
-		Pool:   pool,
-		Config: cfg,
+		Client:   rr.Client,
+		Claim:    obj,
+		Postgres: pgClient,
 	}
 	secret, err := provisioner.Ensure(ctx)
 	if notFound, ok := errors.AsType[ErrDatabaseNotFound](err); ok {
@@ -167,13 +168,13 @@ func (m *Controller) cleanupAction(ctx context.Context, rr *odhtypes.Reconciliat
 				return err
 			}
 
-			_, pool, err := dbcontroller.OpenPool(ctx, rr.Client, provider, m.cfg)
+			pgClient, err := dbcontroller.NewClient(ctx, rr.Client, provider, m.cfg)
 			if err != nil {
-				return fmt.Errorf("opening pool for provider %q: %w", provider.Name, err)
+				return fmt.Errorf("opening postgres client for provider %q: %w", provider.Name, err)
 			}
-			defer pool.Close()
+			defer pgClient.Close()
 
-			roleExists, err := postgres.RoleExists(ctx, pool, role)
+			roleExists, err := postgres.RoleExists(ctx, pgClient, role)
 			if err != nil {
 				return fmt.Errorf("checking role %q existence: %w", role, err)
 			}
@@ -181,12 +182,12 @@ func (m *Controller) cleanupAction(ctx context.Context, rr *odhtypes.Reconciliat
 				return nil
 			}
 
-			if err := postgres.RevokeDatabasePrivileges(ctx, pool, obj.Spec.Database, role); err != nil {
+			if err := postgres.RevokeDatabasePrivileges(ctx, pgClient, obj.Spec.Database, role); err != nil {
 				return fmt.Errorf("revoking privileges from role %q on database %q: %w", role, obj.Spec.Database, err)
 			}
 
 			// Drop only the role. NEVER issue DROP DATABASE.
-			if err := postgres.DropRole(ctx, pool, role); err != nil {
+			if err := postgres.DropRole(ctx, pgClient, role); err != nil {
 				return fmt.Errorf("dropping role %q: %w", role, err)
 			}
 			return nil

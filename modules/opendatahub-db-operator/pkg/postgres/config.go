@@ -114,15 +114,15 @@ func (c Config) Validate() error {
 }
 
 // ParseSecret decodes a Secret's data map ([]byte values) into a Config using
-// mapstructure. The inline hook promotes []byte → string first so that
-// WeaklyTypedInput can then handle string → int for PGPORT. PGPORT defaults to
+// mapstructure. The inline hook promotes []byte -> string first so that
+// WeaklyTypedInput can then handle string -> int for PGPORT. PGPORT defaults to
 // DefaultPort when absent.
 func ParseSecret(data map[string][]byte) (Config, error) {
 	cfg := Config{Port: DefaultPort}
 
 	dec, err := mapstructure.NewDecoder(&mapstructure.DecoderConfig{
 		Result:           &cfg,
-		WeaklyTypedInput: true, // converts string "5432" → int
+		WeaklyTypedInput: true, // converts string "5432" -> int
 		TagName:          "mapstructure",
 		DecodeHook: mapstructure.ComposeDecodeHookFunc(
 			func(f reflect.Type, _ reflect.Type, v any) (any, error) {

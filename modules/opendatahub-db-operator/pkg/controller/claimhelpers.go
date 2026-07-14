@@ -27,7 +27,6 @@ import (
 	"k8s.io/client-go/tools/events"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	"github.com/jackc/pgx/v5/pgxpool"
 	infraApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/api/infrastructure/v1alpha1"
 	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/pkg/config"
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/pkg/postgres"
@@ -53,26 +52,26 @@ func RoleNameFor(namespace, name string) string {
 	return safe
 }
 
-// OpenPool loads the provider's admin connection config and opens a pgxpool.Pool.
+// NewClient loads the provider's admin connection config and opens a postgres.Client.
 // Extracted from the identical openPool helpers in schemaclaim and databaseclaim.
-func OpenPool(
+func NewClient(
 	ctx context.Context,
 	cli client.Client,
 	provider *infraApi.DatabaseProvider,
 	cfg *moduleconfig.Config,
-) (postgres.Config, *pgxpool.Pool, error) {
+) (*postgres.Client, error) {
 	providerCfg, err := LoadProviderConfig(ctx, cli, provider, cfg.OperatorNamespace)
 	if err != nil {
-		return postgres.Config{}, nil, err
+		return nil, err
 	}
-	pool, err := postgres.OpenPool(ctx, providerCfg)
+	dbClient, err := postgres.NewClient(ctx, providerCfg)
 	if err != nil {
-		return postgres.Config{}, nil, fmt.Errorf(
-			"opening pool: %w",
+		return nil, fmt.Errorf(
+			"opening postgres client: %w",
 			postgres.SanitizeError(err, providerCfg.Password),
 		)
 	}
-	return providerCfg, pool, nil
+	return dbClient, nil
 }
 
 // WrapQuickRetry wraps err with an operation label and upgrades it to a

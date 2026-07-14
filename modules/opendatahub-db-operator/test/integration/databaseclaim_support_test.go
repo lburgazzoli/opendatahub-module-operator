@@ -155,16 +155,16 @@ func (st *databaseClaimSuite) createDatabase(t *testing.T, name string) {
 	t.Helper()
 
 	g := NewWithT(t)
-	pool := st.db.Pool()
-	g.Expect(pool).NotTo(BeNil())
+	pgClient := st.db.Client()
+	g.Expect(pgClient).NotTo(BeNil())
 
-	exists, err := postgres.DatabaseExists(t.Context(), pool, name)
+	exists, err := postgres.DatabaseExists(t.Context(), pgClient, name)
 	g.Expect(err).NotTo(HaveOccurred())
 	if exists {
 		return
 	}
 
-	_, err = pool.Exec(t.Context(), fmt.Sprintf("CREATE DATABASE %s", postgres.QuoteIdentifier(name)))
+	_, err = pgClient.Exec(t.Context(), fmt.Sprintf("CREATE DATABASE %s", postgres.QuoteIdentifier(name)))
 	g.Expect(err).NotTo(HaveOccurred())
 }
 
@@ -172,10 +172,10 @@ func (st *databaseClaimSuite) roleExists(t *testing.T, role string) bool {
 	t.Helper()
 
 	g := NewWithT(t)
-	pool := st.db.Pool()
-	g.Expect(pool).NotTo(BeNil())
+	pgClient := st.db.Client()
+	g.Expect(pgClient).NotTo(BeNil())
 
-	exists, err := postgres.RoleExists(t.Context(), pool, role)
+	exists, err := postgres.RoleExists(t.Context(), pgClient, role)
 	g.Expect(err).NotTo(HaveOccurred())
 	return exists
 }
@@ -184,10 +184,10 @@ func (st *databaseClaimSuite) databaseExists(t *testing.T, name string) bool {
 	t.Helper()
 
 	g := NewWithT(t)
-	pool := st.db.Pool()
-	g.Expect(pool).NotTo(BeNil())
+	pgClient := st.db.Client()
+	g.Expect(pgClient).NotTo(BeNil())
 
-	exists, err := postgres.DatabaseExists(t.Context(), pool, name)
+	exists, err := postgres.DatabaseExists(t.Context(), pgClient, name)
 	g.Expect(err).NotTo(HaveOccurred())
 	return exists
 }
@@ -303,11 +303,11 @@ func (st *databaseClaimSuite) dropRole(t *testing.T, role string, database strin
 	t.Helper()
 
 	g := NewWithT(t)
-	pool := st.db.Pool()
-	g.Expect(pool).NotTo(BeNil())
+	pgClient := st.db.Client()
+	g.Expect(pgClient).NotTo(BeNil())
 
-	g.Expect(postgres.RevokeDatabasePrivileges(t.Context(), pool, database, role)).To(Succeed())
-	g.Expect(postgres.DropRole(t.Context(), pool, role)).To(Succeed())
+	g.Expect(postgres.RevokeDatabasePrivileges(t.Context(), pgClient, database, role)).To(Succeed())
+	g.Expect(postgres.DropRole(t.Context(), pgClient, role)).To(Succeed())
 }
 
 func (st *databaseClaimSuite) triggerReconcile(t *testing.T, claim *infraApi.DatabaseClaim) {
