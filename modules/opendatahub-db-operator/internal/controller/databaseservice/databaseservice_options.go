@@ -18,6 +18,8 @@ limitations under the License.
 package databaseservice
 
 import (
+	"k8s.io/client-go/tools/events"
+
 	fwapi "github.com/opendatahub-io/odh-platform-utilities/framework/api"
 
 	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/pkg/config"
@@ -37,6 +39,7 @@ type Option interface {
 type Options struct {
 	cfg             *moduleconfig.Config
 	platformRelease fwapi.Release
+	Recorder        events.EventRecorder
 }
 
 func (o Options) applyOption(target *Options) {
@@ -49,5 +52,27 @@ func (o Options) applyOption(target *Options) {
 	if o.platformRelease.Name != "" || !o.platformRelease.Version.EQ(o.platformRelease.Version) {
 		target.platformRelease = o.platformRelease
 	}
-	// Add field-by-field assignments here as Options grows with task-specific fields.
+	if o.Recorder != nil {
+		target.Recorder = o.Recorder
+	}
+}
+
+type optionFunc func(*Options)
+
+func (fn optionFunc) applyOption(target *Options) {
+	if fn == nil {
+		return
+	}
+
+	fn(target)
+}
+
+func WithRecorder(recorder events.EventRecorder) Option {
+	return optionFunc(func(target *Options) {
+		if target == nil || recorder == nil {
+			return
+		}
+
+		target.Recorder = recorder
+	})
 }

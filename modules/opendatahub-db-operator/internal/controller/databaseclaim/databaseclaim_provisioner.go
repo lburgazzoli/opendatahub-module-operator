@@ -41,17 +41,19 @@ func (e ErrDatabaseNotFound) Error() string {
 
 // DatabaseProvisioner provisions database-scoped credentials for a DatabaseClaim.
 type DatabaseProvisioner struct {
-	Client   client.Client
-	Claim    *infraApi.DatabaseClaim
-	Postgres *postgres.Client
+	Client          client.Client
+	Claim           *infraApi.DatabaseClaim
+	Postgres        *postgres.Client
+	PublishedConfig postgres.Config
 }
 
 // ConnectionStatus returns the desired connection status for the claim.
 func (p DatabaseProvisioner) ConnectionStatus() infraApi.DatabaseConnectionStatus {
+	publishedCfg := p.connectionConfig()
 	return infraApi.DatabaseConnectionStatus{
 		SecretRef: corev1.LocalObjectReference{Name: dbcontroller.SecretNameForDatabaseClaim(p.Claim)},
-		Host:      p.Postgres.Config().Host,
-		Port:      int32(p.Postgres.Config().Port),
+		Host:      publishedCfg.Host,
+		Port:      int32(publishedCfg.Port),
 		Database:  p.Claim.Spec.Database,
 	}
 }
@@ -131,17 +133,30 @@ func (p DatabaseProvisioner) buildCredentialsSecret(
 ) {
 	secret.SetGroupVersionKind(gvk.Secret)
 	secret.Type = corev1.SecretTypeOpaque
+	publishedCfg := p.connectionConfig()
 	secret.Data = map[string][]byte{
-		postgres.SecretKeyHost:     []byte(p.Postgres.Config().Host),
-		postgres.SecretKeyPort:     []byte(strconv.Itoa(p.Postgres.Config().Port)),
+		postgres.SecretKeyHost:     []byte(publishedCfg.Host),
+		postgres.SecretKeyPort:     []byte(strconv.Itoa(publishedCfg.Port)),
 		postgres.SecretKeyUser:     []byte(role),
 		postgres.SecretKeyPassword: []byte(password),
 		postgres.SecretKeyDatabase: []byte(p.Claim.Spec.Database),
 	}
-	if p.Postgres.Config().SSLMode != "" {
-		secret.Data[postgres.SecretKeySSLMode] = []byte(p.Postgres.Config().SSLMode)
+	if publishedCfg.SSLMode != "" {
+		secret.Data[postgres.SecretKeySSLMode] = []byte(publishedCfg.SSLMode)
 	}
-	if p.Postgres.Config().SSLRootCert != "" {
-		secret.Data[postgres.SecretKeyCA] = []byte(p.Postgres.Config().SSLRootCert)
+	if publishedCfg.SSLRootCert != "" {
+		secret.Data[postgres.SecretKeyCA] = []byte(publishedCfg.SSLRootCert)
 	}
+}
+
+func (p DatabaseProvisioner) connectionConfig() postgres.Config {
+	if p.PublishedConfig.Host != "" || p.PublishedConfig.Port != 0 {
+		return p.PublishedConfig
+	}
+
+	if p.Postgres == nil {
+		return postgres.Config{}
+	}
+
+	return p.Postgres.Config()
 }

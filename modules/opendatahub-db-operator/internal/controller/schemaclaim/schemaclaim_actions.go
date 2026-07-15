@@ -70,7 +70,13 @@ func (m *Controller) provisionAction(ctx context.Context, rr *odhtypes.Reconcili
 	}
 
 	// 2. Open connection to provider.
-	pgClient, err := dbcontroller.NewClient(ctx, rr.Client, provider, m.cfg)
+	pgClient, resolvedCfg, err := dbcontroller.NewClient(
+		ctx,
+		rr.Client,
+		provider,
+		m.cfg,
+		m.PostgresConnectionConfigResolver,
+	)
 	if err != nil {
 		rr.Conditions.Mark(ConditionProvisioned, metav1.ConditionFalse,
 			conditions.WithError(err))
@@ -104,9 +110,10 @@ func (m *Controller) provisionAction(ctx context.Context, rr *odhtypes.Reconcili
 
 	// 3. Ensure claim credentials and connection details.
 	provisioner := SchemaProvisioner{
-		Client:   rr.Client,
-		Claim:    obj,
-		Postgres: pgClient,
+		Client:          rr.Client,
+		Claim:           obj,
+		Postgres:        pgClient,
+		PublishedConfig: resolvedCfg.Published,
 	}
 
 	secret, err := provisioner.Ensure(ctx)
@@ -173,7 +180,13 @@ func (m *Controller) cleanupAction(ctx context.Context, rr *odhtypes.Reconciliat
 				return err
 			}
 
-			pgClient, err := dbcontroller.NewClient(ctx, rr.Client, provider, m.cfg)
+			pgClient, _, err := dbcontroller.NewClient(
+				ctx,
+				rr.Client,
+				provider,
+				m.cfg,
+				m.PostgresConnectionConfigResolver,
+			)
 			if err != nil {
 				return fmt.Errorf("opening postgres client for provider %q: %w", provider.Name, err)
 			}

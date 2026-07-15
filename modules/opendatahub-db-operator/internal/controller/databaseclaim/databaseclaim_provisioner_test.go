@@ -167,6 +167,46 @@ func TestDatabaseProvisioner_Ensure_UsesSecretNameOverride(t *testing.T) {
 	g.Expect(cli.Get(t.Context(), client.ObjectKeyFromObject(defaultSecret), defaultSecret)).ToNot(Succeed())
 }
 
+func TestDatabaseProvisioner_Ensure_UsesPublishedConfigForStatusAndSecret(t *testing.T) {
+	g := NewWithT(t)
+	cfg := startPostgres(t)
+	pgClient := openPostgresClient(t, cfg)
+
+	claim := &infraApi.DatabaseClaim{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "example",
+			Namespace: "test-ns",
+		},
+		Spec: infraApi.DatabaseClaimSpec{
+			Database: cfg.DBName,
+		},
+	}
+	cli := newFakeClient(t).Build()
+
+	publishedCfg := cfg
+	publishedCfg.Host = "provider.test-ns.svc"
+	publishedCfg.Port = 5432
+
+	provisioner := databaseclaim.DatabaseProvisioner{
+		Client:          cli,
+		Claim:           claim,
+		Postgres:        pgClient,
+		PublishedConfig: publishedCfg,
+	}
+
+	secret, err := provisioner.Ensure(t.Context())
+	g.Expect(err).NotTo(HaveOccurred())
+
+	status := provisioner.ConnectionStatus()
+	g.Expect(status.Host).To(Equal("provider.test-ns.svc"))
+	g.Expect(status.Port).To(Equal(int32(5432)))
+
+	claimCfg, err := postgres.ParseSecret(secret.Data)
+	g.Expect(err).NotTo(HaveOccurred())
+	g.Expect(claimCfg.Host).To(Equal("provider.test-ns.svc"))
+	g.Expect(claimCfg.Port).To(Equal(5432))
+}
+
 func TestDatabaseProvisioner_Ensure_DatabaseMissing(t *testing.T) {
 	g := NewWithT(t)
 	cfg := startPostgres(t)

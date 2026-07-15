@@ -93,6 +93,34 @@ func loadExternalConfig(
 	return cfg, nil
 }
 
+func resolveExternalConfig(
+	ctx context.Context,
+	cli client.Client,
+	provider *infraApi.DatabaseProvider,
+	resolver dbcontroller.PostgresConnectionConfigResolver,
+) (dbcontroller.ResolvedProviderConfig, error) {
+	cfg, err := loadExternalConfig(ctx, cli, provider)
+	if err != nil {
+		return dbcontroller.ResolvedProviderConfig{}, err
+	}
+
+	resolved := dbcontroller.ResolvedProviderConfig{
+		Published:  cfg,
+		Connection: cfg,
+	}
+	if resolver == nil {
+		return resolved, nil
+	}
+
+	connectionCfg, err := resolver.Resolve(ctx, provider, cfg)
+	if err != nil {
+		return dbcontroller.ResolvedProviderConfig{}, err
+	}
+
+	resolved.Connection = connectionCfg
+	return resolved, nil
+}
+
 func externalFailureReason(err error) string {
 	if _, ok := errors.AsType[ErrConnectionSecretUnavailable](err); ok {
 		return "ConnectionSecretUnavailable"

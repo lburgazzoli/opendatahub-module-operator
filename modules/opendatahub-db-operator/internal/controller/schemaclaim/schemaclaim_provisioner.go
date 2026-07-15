@@ -32,9 +32,10 @@ import (
 
 // SchemaProvisioner provisions schema-scoped credentials for a SchemaClaim.
 type SchemaProvisioner struct {
-	Client   client.Client
-	Claim    *infraApi.SchemaClaim
-	Postgres *postgres.Client
+	Client          client.Client
+	Claim           *infraApi.SchemaClaim
+	Postgres        *postgres.Client
+	PublishedConfig postgres.Config
 }
 
 // Schema returns the resolved schema name for the claim.
@@ -44,13 +45,14 @@ func (p SchemaProvisioner) Schema() string {
 
 // ConnectionStatus returns the desired connection status for the claim.
 func (p SchemaProvisioner) ConnectionStatus(schema string) infraApi.SchemaConnectionStatus {
+	publishedCfg := p.connectionConfig()
 	return infraApi.SchemaConnectionStatus{
 		ConnectionStatus: infraApi.ConnectionStatus{
 			SecretRef: corev1.LocalObjectReference{Name: dbcontroller.SecretNameForSchemaClaim(p.Claim)},
-			Host:      p.Postgres.Config().Host,
-			Port:      int32(p.Postgres.Config().Port),
+			Host:      publishedCfg.Host,
+			Port:      int32(publishedCfg.Port),
 		},
-		Database: p.Postgres.Config().DBName,
+		Database: publishedCfg.DBName,
 		Schema:   schema,
 	}
 }
@@ -128,18 +130,31 @@ func (p SchemaProvisioner) buildCredentialsSecret(
 ) {
 	secret.SetGroupVersionKind(gvk.Secret)
 	secret.Type = corev1.SecretTypeOpaque
+	publishedCfg := p.connectionConfig()
 	secret.Data = map[string][]byte{
-		postgres.SecretKeyHost:     []byte(p.Postgres.Config().Host),
-		postgres.SecretKeyPort:     []byte(strconv.Itoa(p.Postgres.Config().Port)),
+		postgres.SecretKeyHost:     []byte(publishedCfg.Host),
+		postgres.SecretKeyPort:     []byte(strconv.Itoa(publishedCfg.Port)),
 		postgres.SecretKeyUser:     []byte(role),
 		postgres.SecretKeyPassword: []byte(password),
-		postgres.SecretKeyDatabase: []byte(p.Postgres.Config().DBName),
+		postgres.SecretKeyDatabase: []byte(publishedCfg.DBName),
 		postgres.SecretKeySchema:   []byte(schema),
 	}
-	if p.Postgres.Config().SSLMode != "" {
-		secret.Data[postgres.SecretKeySSLMode] = []byte(p.Postgres.Config().SSLMode)
+	if publishedCfg.SSLMode != "" {
+		secret.Data[postgres.SecretKeySSLMode] = []byte(publishedCfg.SSLMode)
 	}
-	if p.Postgres.Config().SSLRootCert != "" {
-		secret.Data[postgres.SecretKeyCA] = []byte(p.Postgres.Config().SSLRootCert)
+	if publishedCfg.SSLRootCert != "" {
+		secret.Data[postgres.SecretKeyCA] = []byte(publishedCfg.SSLRootCert)
 	}
+}
+
+func (p SchemaProvisioner) connectionConfig() postgres.Config {
+	if p.PublishedConfig.Host != "" || p.PublishedConfig.Port != 0 {
+		return p.PublishedConfig
+	}
+
+	if p.Postgres == nil {
+		return postgres.Config{}
+	}
+
+	return p.Postgres.Config()
 }

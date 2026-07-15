@@ -41,15 +41,15 @@ type Module struct {
 }
 
 // NewModule creates a Module with one-shot computed state.
-func NewModule(cfg *moduleconfig.Config, fns ...Option) *Module {
+func NewModule(cfg *moduleconfig.Config, opts ...Option) *Module {
 	r := &Module{
 		Options: Options{
 			cfg:             cfg,
 			platformRelease: cfg.PlatformRelease(),
 		},
 	}
-	for _, fn := range fns {
-		fn.applyOption(&r.Options)
+	for _, opt := range opts {
+		opt.applyOption(&r.Options)
 	}
 	return r
 }
@@ -69,8 +69,9 @@ func NewReconciler(
 	ctx context.Context,
 	mgr ctrl.Manager,
 	cfg *moduleconfig.Config,
+	opts ...Option,
 ) error {
-	m := NewModule(cfg)
+	m := NewModule(cfg, opts...)
 
 	_, err := reconciler.ReconcilerFor(mgr, &servicesv1alpha1.DatabaseService{}).
 		WithReconcilerOpts(

@@ -45,7 +45,7 @@ func New(
 			kindcluster.CreateWithWaitForReady(defaultWaitForReady),
 		},
 		LogFn: func(format string, args ...any) {
-			_, _ = os.Stderr.WriteString(fmt.Sprintf(format+"\n", args...))
+			_, _ = fmt.Fprintf(os.Stderr, format+"\n", args...)
 		},
 	}
 

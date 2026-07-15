@@ -47,15 +47,15 @@ type Controller struct {
 	Options
 }
 
-func NewController(cfg *moduleconfig.Config, fns ...Option) *Controller {
+func NewController(cfg *moduleconfig.Config, opts ...Option) *Controller {
 	r := &Controller{
 		Options: Options{
 			cfg:             cfg,
 			platformRelease: cfg.PlatformRelease(),
 		},
 	}
-	for _, fn := range fns {
-		fn.applyOption(&r.Options)
+	for _, opt := range opts {
+		opt.applyOption(&r.Options)
 	}
 	return r
 }
@@ -78,8 +78,9 @@ func NewReconciler(
 	ctx context.Context,
 	mgr ctrl.Manager,
 	cfg *moduleconfig.Config,
+	fns ...Option,
 ) error {
-	m := NewController(cfg)
+	m := NewController(cfg, fns...)
 
 	_, err := reconciler.ReconcilerFor(mgr, &infraApi.DatabaseProvider{}).
 		Owns(&appsv1.StatefulSet{}, reconciler.WithPredicates(predicate.Or(

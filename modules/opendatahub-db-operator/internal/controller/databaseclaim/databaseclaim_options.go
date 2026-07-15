@@ -23,6 +23,7 @@ import (
 	fwapi "github.com/opendatahub-io/odh-platform-utilities/framework/api"
 
 	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/pkg/config"
+	dbcontroller "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/pkg/controller"
 )
 
 // Option is implemented by both the Options struct literal and the named
@@ -37,9 +38,10 @@ type Option interface {
 // dependencies (e.g., a pgxpool in task-05, admin secret name in task-08)
 // with corresponding With* constructors below.
 type Options struct {
-	cfg             *moduleconfig.Config
-	platformRelease fwapi.Release
-	Recorder        events.EventRecorder
+	cfg                              *moduleconfig.Config
+	platformRelease                  fwapi.Release
+	Recorder                         events.EventRecorder
+	PostgresConnectionConfigResolver dbcontroller.PostgresConnectionConfigResolver
 }
 
 func (o Options) applyOption(target *Options) {
@@ -52,4 +54,37 @@ func (o Options) applyOption(target *Options) {
 	if o.Recorder != nil {
 		target.Recorder = o.Recorder
 	}
+	if o.PostgresConnectionConfigResolver != nil {
+		target.PostgresConnectionConfigResolver = o.PostgresConnectionConfigResolver
+	}
+}
+
+type optionFunc func(*Options)
+
+func (fn optionFunc) applyOption(target *Options) {
+	if fn == nil {
+		return
+	}
+
+	fn(target)
+}
+
+func WithPostgresConnectionConfigResolver(resolver dbcontroller.PostgresConnectionConfigResolver) Option {
+	return optionFunc(func(target *Options) {
+		if target == nil || resolver == nil {
+			return
+		}
+
+		target.PostgresConnectionConfigResolver = resolver
+	})
+}
+
+func WithRecorder(recorder events.EventRecorder) Option {
+	return optionFunc(func(target *Options) {
+		if target == nil || recorder == nil {
+			return
+		}
+
+		target.Recorder = recorder
+	})
 }

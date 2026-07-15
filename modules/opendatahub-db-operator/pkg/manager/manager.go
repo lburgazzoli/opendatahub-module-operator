@@ -20,9 +20,9 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/opendatahub-io/odh-platform-utilities/framework/resources"
 	corev1 "k8s.io/api/core/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
-	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
@@ -39,6 +39,7 @@ import (
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/internal/controller/databaseservice"
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/internal/controller/schemaclaim"
 	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/pkg/config"
+	dbcontroller "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/pkg/controller"
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/pkg/resources/gvk"
 	odhmanager "github.com/opendatahub-io/odh-platform-utilities/framework/manager"
 	libcache "github.com/opendatahub-io/odh-platform-utilities/pkg/cache"
@@ -48,8 +49,6 @@ const (
 	healthCheckName = "healthz"
 	readyCheckName  = "readyz"
 )
-
-type Option func(*ctrl.Options)
 
 // NewScheme registers all types this module needs.
 func NewScheme() (*runtime.Scheme, error) {
@@ -88,12 +87,17 @@ func New(
 	if err != nil {
 		return nil, err
 	}
-	issuer := &unstructured.Unstructured{}
-	issuer.SetGroupVersionKind(gvk.CertManagerIssuer)
-	certificate := &unstructured.Unstructured{}
-	certificate.SetGroupVersionKind(gvk.CertManagerCertificate)
 
-	mgrOpts := ctrl.Options{
+	managerOpts := Options{
+		PostgresConnectionConfigResolver: dbcontroller.DefaultPostgresConnectionConfigResolver(),
+	}
+	for _, opt := range opts {
+		if opt != nil {
+			opt.applyOption(&managerOpts)
+		}
+	}
+
+	ctrlMgr, err := ctrl.NewManager(kubeConfig, ctrl.Options{
 		Scheme: scheme,
 		Metrics: metricsserver.Options{
 			BindAddress: cfg.Controller.Metrics.BindAddress,
@@ -114,20 +118,13 @@ func New(
 				DisableFor: []client.Object{
 					&corev1.ConfigMap{},
 					&corev1.Secret{},
-					issuer,
-					certificate,
+					resources.GvkToUnstructured(gvk.CertManagerIssuer),
+					resources.GvkToUnstructured(gvk.CertManagerCertificate),
 				},
 			},
 		},
-	}
+	})
 
-	for _, opt := range opts {
-		if opt != nil {
-			opt(&mgrOpts)
-		}
-	}
-
-	ctrlMgr, err := ctrl.NewManager(kubeConfig, mgrOpts)
 	if err != nil {
 		return nil, fmt.Errorf("creating manager: %w", err)
 	}
@@ -136,16 +133,30 @@ func New(
 		ctrlMgr,
 	)
 
-	if err := databaseservice.NewReconciler(ctx, mgr, cfg); err != nil {
+	if err := databaseservice.NewReconciler(ctx, mgr, cfg, databaseservice.Options{
+		Recorder: mgr.GetEventRecorder(servicesv1alpha1.DatabaseServiceResource),
+	}); err != nil {
 		return nil, fmt.Errorf("creating databaseservice reconciler: %w", err)
 	}
-	if err := schemaclaim.NewReconciler(ctx, mgr, cfg); err != nil {
+
+	if err := schemaclaim.NewReconciler(ctx, mgr, cfg, schemaclaim.Options{
+		Recorder:                         mgr.GetEventRecorder(infraApi.SchemaClaimResource),
+		PostgresConnectionConfigResolver: managerOpts.PostgresConnectionConfigResolver,
+	}); err != nil {
 		return nil, fmt.Errorf("creating schemaclaim reconciler: %w", err)
 	}
-	if err := databaseclaim.NewReconciler(ctx, mgr, cfg); err != nil {
+
+	if err := databaseclaim.NewReconciler(ctx, mgr, cfg, databaseclaim.Options{
+		Recorder:                         mgr.GetEventRecorder(infraApi.DatabaseClaimResource),
+		PostgresConnectionConfigResolver: managerOpts.PostgresConnectionConfigResolver,
+	}); err != nil {
 		return nil, fmt.Errorf("creating databaseclaim reconciler: %w", err)
 	}
-	if err := databaseprovider.NewReconciler(ctx, mgr, cfg); err != nil {
+
+	if err := databaseprovider.NewReconciler(ctx, mgr, cfg, databaseprovider.Options{
+		Recorder:                         mgr.GetEventRecorder(infraApi.DatabaseProviderResource),
+		PostgresConnectionConfigResolver: managerOpts.PostgresConnectionConfigResolver,
+	}); err != nil {
 		return nil, fmt.Errorf("creating databaseprovider reconciler: %w", err)
 	}
 

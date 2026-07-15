@@ -38,15 +38,15 @@ type Controller struct {
 	Options
 }
 
-func NewController(cfg *moduleconfig.Config, fns ...Option) *Controller {
+func NewController(cfg *moduleconfig.Config, opts ...Option) *Controller {
 	r := &Controller{
 		Options: Options{
 			cfg:             cfg,
 			platformRelease: cfg.PlatformRelease(),
 		},
 	}
-	for _, fn := range fns {
-		fn.applyOption(&r.Options)
+	for _, opt := range opts {
+		opt.applyOption(&r.Options)
 	}
 	return r
 }
@@ -63,10 +63,9 @@ func NewReconciler(
 	ctx context.Context,
 	mgr ctrl.Manager,
 	cfg *moduleconfig.Config,
+	opts ...Option,
 ) error {
-	m := NewController(cfg, Options{
-		Recorder: mgr.GetEventRecorder(infraApi.DatabaseClaimResource),
-	})
+	m := NewController(cfg, opts...)
 
 	_, err := reconciler.ReconcilerFor(mgr, &infraApi.DatabaseClaim{}).
 		Owns(&corev1.Secret{}).

@@ -59,19 +59,20 @@ func NewClient(
 	cli client.Client,
 	provider *infraApi.DatabaseProvider,
 	cfg *moduleconfig.Config,
-) (*postgres.Client, error) {
-	providerCfg, err := LoadProviderConfig(ctx, cli, provider, cfg.OperatorNamespace)
+	resolver PostgresConnectionConfigResolver,
+) (*postgres.Client, ResolvedProviderConfig, error) {
+	providerCfg, err := ResolveProviderConfig(ctx, cli, provider, cfg.OperatorNamespace, resolver)
 	if err != nil {
-		return nil, err
+		return nil, ResolvedProviderConfig{}, err
 	}
-	dbClient, err := postgres.NewClient(ctx, providerCfg)
+	dbClient, err := postgres.NewClient(ctx, providerCfg.Connection)
 	if err != nil {
-		return nil, fmt.Errorf(
+		return nil, ResolvedProviderConfig{}, fmt.Errorf(
 			"opening postgres client: %w",
-			postgres.SanitizeError(err, providerCfg.Password),
+			postgres.SanitizeError(err, providerCfg.Connection.Password),
 		)
 	}
-	return dbClient, nil
+	return dbClient, providerCfg, nil
 }
 
 // WrapQuickRetry wraps err with an operation label and upgrades it to a

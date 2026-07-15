@@ -173,3 +173,46 @@ func TestSchemaProvisioner_Ensure_UsesSecretNameOverride(t *testing.T) {
 	defaultSecret.Namespace = claim.Namespace
 	g.Expect(cli.Get(t.Context(), client.ObjectKeyFromObject(defaultSecret), defaultSecret)).ToNot(Succeed())
 }
+
+func TestSchemaProvisioner_Ensure_UsesPublishedConfigForStatusAndSecret(t *testing.T) {
+	g := NewWithT(t)
+	cfg := startPostgres(t)
+	pgClient := openPostgresClient(t, cfg)
+
+	claim := &infraApi.SchemaClaim{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "example",
+			Namespace: "test-ns",
+		},
+		Spec: infraApi.SchemaClaimSpec{
+			Access: infraApi.AccessModeReadWrite,
+		},
+	}
+	cli := newFakeClient(t).Build()
+
+	publishedCfg := cfg
+	publishedCfg.Host = "provider.test-ns.svc"
+	publishedCfg.Port = 5432
+
+	provisioner := schemaclaim.SchemaProvisioner{
+		Client:          cli,
+		Claim:           claim,
+		Postgres:        pgClient,
+		PublishedConfig: publishedCfg,
+	}
+
+	schema := provisioner.Schema()
+	secret, err := provisioner.Ensure(t.Context())
+	g.Expect(err).NotTo(HaveOccurred())
+
+	status := provisioner.ConnectionStatus(schema)
+	g.Expect(status.Host).To(Equal("provider.test-ns.svc"))
+	g.Expect(status.Port).To(Equal(int32(5432)))
+	g.Expect(status.Database).To(Equal(cfg.DBName))
+
+	claimCfg, err := postgres.ParseSecret(secret.Data)
+	g.Expect(err).NotTo(HaveOccurred())
+	g.Expect(claimCfg.Host).To(Equal("provider.test-ns.svc"))
+	g.Expect(claimCfg.Port).To(Equal(5432))
+	g.Expect(claimCfg.DBName).To(Equal(cfg.DBName))
+}
