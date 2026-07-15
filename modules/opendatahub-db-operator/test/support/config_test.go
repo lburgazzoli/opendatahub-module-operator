@@ -77,6 +77,15 @@ func TestLoadConfigUsesEnvironmentOverrides(t *testing.T) {
 	}))
 }
 
+func TestLoadConfigSupportsKindClusterType(t *testing.T) {
+	g := NewWithT(t)
+	t.Setenv("ODH_MODULE_OPERATOR_TEST_CLUSTER_TYPE", "kind")
+
+	cfg, err := LoadConfig()
+	g.Expect(err).NotTo(HaveOccurred())
+	g.Expect(cfg.Cluster.Type).To(Equal(ClusterTypeKind))
+}
+
 func TestOperatorNamespaceUsesEnvironmentOverride(t *testing.T) {
 	g := NewWithT(t)
 	t.Setenv("OPERATOR_NAMESPACE", "custom-namespace")

@@ -40,6 +40,7 @@ type ClusterType string
 
 const (
 	ClusterTypeExternal ClusterType = "external"
+	ClusterTypeKind     ClusterType = "kind"
 	ClusterTypeK3s      ClusterType = "k3s"
 )
 

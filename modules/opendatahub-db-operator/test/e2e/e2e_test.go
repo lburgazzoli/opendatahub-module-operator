@@ -56,7 +56,7 @@ func newE2ESuite(
 		t.Fatal("failed to load e2e config")
 	}
 
-	testCluster, err := cluster.New(t.Context(), cfg)
+	testCluster, err := cluster.New(t.Context(), cfg, cluster.WithLogFn(t.Logf))
 	if err != nil {
 		t.Fatalf("failed to create e2e cluster: %v", err)
 	}

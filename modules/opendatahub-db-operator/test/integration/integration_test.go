@@ -63,7 +63,7 @@ func TestIntegration(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	t.Cleanup(cancel)
 
-	tc, err := startIntegrationCluster(ctx, testCfg)
+	tc, err := startIntegrationCluster(ctx, t, testCfg)
 	g.Expect(err).NotTo(HaveOccurred())
 
 	t.Cleanup(func() {
@@ -142,13 +142,14 @@ func newIntegrationEnv(
 
 func startIntegrationCluster(
 	ctx context.Context,
+	t *testing.T,
 	cfg *support.Config,
 ) (cluster.Instance, error) {
 	if cfg == nil {
 		return nil, fmt.Errorf("config is nil")
 	}
 
-	tc, err := cluster.New(ctx, cfg)
+	tc, err := cluster.New(ctx, cfg, cluster.WithLogFn(t.Logf))
 	if err != nil {
 		return nil, fmt.Errorf("starting integration cluster: %w", err)
 	}
