@@ -11,7 +11,7 @@ import (
 )
 
 const (
-	DefaultClusterType                 = ClusterTypeK3s
+	DefaultClusterType                 = ClusterTypeKind
 	DefaultEventuallyTimeout           = 90 * time.Second
 	DefaultEventuallyPollingInterval   = 2 * time.Second
 	DefaultConsistentlyPollingInterval = 2 * time.Second

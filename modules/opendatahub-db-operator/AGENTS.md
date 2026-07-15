@@ -16,6 +16,10 @@ This module manages PostgreSQL access through:
 - Run module commands from `modules/opendatahub-db-operator/`.
 - Read `docs/development.md` before making non-trivial development changes to
   follow this module's options and API design conventions.
+- For test harness or helper package refactors, also follow
+  `docs/development.md`'s functional-options construction and general file
+  layout guidance when deciding whether code belongs in `<name>.go`,
+  `<name>_options.go`, or `<name>_support.go`.
 - After changing API types or kubebuilder markers, run `make manifests generate`.
 - Do not hand-edit generated files:
   - `api/**/zz_generated.deepcopy.go`
