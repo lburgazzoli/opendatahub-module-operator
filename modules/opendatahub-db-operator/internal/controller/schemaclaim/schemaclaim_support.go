@@ -54,7 +54,7 @@ var nonIdentRe = regexp.MustCompile(`[^a-z0-9_]`)
 
 // ensureSchema creates the schema if needed and reports whether it already
 // existed before this reconciliation.
-func ensureSchema(ctx context.Context, pgClient *postgres.Client, schema string) (bool, error) {
+func ensureSchema(ctx context.Context, pgClient postgres.Client, schema string) (bool, error) {
 	schemaExists, err := postgres.SchemaExists(ctx, pgClient, schema)
 	if err != nil {
 		return false, dbcontroller.WrapQuickRetry("checking schema existence", err)

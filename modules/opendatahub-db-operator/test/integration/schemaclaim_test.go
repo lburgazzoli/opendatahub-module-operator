@@ -48,8 +48,8 @@ func (st *schemaClaimSuite) Run(t *testing.T) {
 	t.Run("selector keeps current provider when better match appears", st.testSelectorKeepsCurrentProvider)
 }
 
-func pingClaimConfig(ctx context.Context, cfg postgres.Config) error {
-	cli, err := postgres.NewClient(ctx, cfg)
+func pingClaimConfig(ctx context.Context, factory postgres.ClientFactory, cfg postgres.Config) error {
+	cli, err := factory(ctx, cfg)
 	if err != nil {
 		return err
 	}
@@ -79,7 +79,7 @@ func (st *schemaClaimSuite) testProvisioning(t *testing.T) {
 	credCfg, err := postgres.ParseSecret(secret.Data)
 	g.Expect(err).NotTo(HaveOccurred())
 	g.Expect(credCfg.DBName).To(Equal(st.databaseName))
-	g.Expect(pingClaimConfig(ctx, credCfg)).To(Succeed())
+	g.Expect(pingClaimConfig(ctx, st.env.ClientFactory, credCfg)).To(Succeed())
 }
 
 func (st *schemaClaimSuite) testAccessModeEnforcement(t *testing.T) {
@@ -108,11 +108,11 @@ func (st *schemaClaimSuite) testAccessModeEnforcement(t *testing.T) {
 	readOnlyCfg, err := postgres.ParseSecret(readOnlySecret.Data)
 	g.Expect(err).NotTo(HaveOccurred())
 
-	readWritePool, err := postgres.NewClient(ctx, readWriteCfg)
+	readWritePool, err := st.env.ClientFactory(ctx, readWriteCfg)
 	g.Expect(err).NotTo(HaveOccurred())
 	t.Cleanup(readWritePool.Close)
 
-	readOnlyPool, err := postgres.NewClient(ctx, readOnlyCfg)
+	readOnlyPool, err := st.env.ClientFactory(ctx, readOnlyCfg)
 	g.Expect(err).NotTo(HaveOccurred())
 	t.Cleanup(readOnlyPool.Close)
 
@@ -170,7 +170,7 @@ func (st *schemaClaimSuite) testSecretNameOverride(t *testing.T) {
 	credCfg, err := postgres.ParseSecret(secret.Data)
 	g.Expect(err).NotTo(HaveOccurred())
 	g.Expect(credCfg.DBName).To(Equal(st.databaseName))
-	g.Expect(pingClaimConfig(ctx, credCfg)).To(Succeed())
+	g.Expect(pingClaimConfig(ctx, st.env.ClientFactory, credCfg)).To(Succeed())
 }
 
 // testExplicitSchema verifies spec.schema is respected.
@@ -236,8 +236,8 @@ func (st *schemaClaimSuite) testSecretDeletionRecovery(t *testing.T) {
 
 	newCfg, err := postgres.ParseSecret(recovered.Data)
 	g.Expect(err).NotTo(HaveOccurred())
-	g.Expect(pingClaimConfig(t.Context(), newCfg)).To(Succeed())
-	g.Expect(pingClaimConfig(t.Context(), oldCfg)).To(HaveOccurred())
+	g.Expect(pingClaimConfig(t.Context(), st.env.ClientFactory, newCfg)).To(Succeed())
+	g.Expect(pingClaimConfig(t.Context(), st.env.ClientFactory, oldCfg)).To(HaveOccurred())
 }
 
 func (st *schemaClaimSuite) testRoleDeletionRecovery(t *testing.T) {
@@ -267,8 +267,8 @@ func (st *schemaClaimSuite) testRoleDeletionRecovery(t *testing.T) {
 
 	newCfg, err := postgres.ParseSecret(recovered.Data)
 	g.Expect(err).NotTo(HaveOccurred())
-	g.Expect(pingClaimConfig(t.Context(), newCfg)).To(Succeed())
-	g.Expect(pingClaimConfig(t.Context(), oldCfg)).To(HaveOccurred())
+	g.Expect(pingClaimConfig(t.Context(), st.env.ClientFactory, newCfg)).To(Succeed())
+	g.Expect(pingClaimConfig(t.Context(), st.env.ClientFactory, oldCfg)).To(HaveOccurred())
 }
 
 func (st *schemaClaimSuite) testSchemaDeletionRecovery(t *testing.T) {
@@ -303,8 +303,8 @@ func (st *schemaClaimSuite) testSchemaDeletionRecovery(t *testing.T) {
 
 	newCfg, err := postgres.ParseSecret(recovered.Data)
 	g.Expect(err).NotTo(HaveOccurred())
-	g.Expect(pingClaimConfig(ctx, newCfg)).To(Succeed())
-	g.Expect(pingClaimConfig(ctx, oldCfg)).To(HaveOccurred())
+	g.Expect(pingClaimConfig(ctx, st.env.ClientFactory, newCfg)).To(Succeed())
+	g.Expect(pingClaimConfig(ctx, st.env.ClientFactory, oldCfg)).To(HaveOccurred())
 	g.Expect(st.schemaExists(t, schemaName)).To(BeTrue())
 }
 

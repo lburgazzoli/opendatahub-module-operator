@@ -33,15 +33,19 @@ import (
 
 	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/pkg/config"
 	modulemanager "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/pkg/manager"
+	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/pkg/postgres"
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/test/support"
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/test/support/cluster"
+	testdb "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/test/support/db"
+	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/test/support/portforward"
 )
 
 type integrationEnv struct {
-	Cluster   cluster.Instance
-	Client    client.Client
-	Namespace string
-	Config    *moduleconfig.Config
+	Cluster       cluster.Instance
+	Client        client.Client
+	Namespace     string
+	Config        *moduleconfig.Config
+	ClientFactory postgres.ClientFactory
 }
 
 func TestIntegration(t *testing.T) {
@@ -79,11 +83,24 @@ func TestIntegration(t *testing.T) {
 	moduleCfg.Controller.Pprof.BindAddress = "0"
 	moduleCfg.OperatorNamespace = support.IntegrationTestNamespace()
 
-	_, err = startIntegrationManager(ctx, tc.Config(), moduleCfg)
+	tracker, err := portforward.NewTracker(tc.Config())
+	g.Expect(err).NotTo(HaveOccurred())
+	t.Cleanup(func() {
+		_ = tracker.Close(context.Background())
+	})
+
+	clientFactory := testdb.NewForwardingClientFactory(tracker)
+
+	_, err = startIntegrationManager(
+		ctx,
+		tc.Config(),
+		moduleCfg,
+		modulemanager.WithPostgresClientFactory(clientFactory),
+	)
 	g.Expect(err).NotTo(HaveOccurred())
 
 	t.Run("schema claim", func(t *testing.T) {
-		env, err := newIntegrationEnv(tc, tc.Client())
+		env, err := newIntegrationEnv(tc, tc.Client(), clientFactory)
 		g := NewWithT(t)
 		g.Expect(err).NotTo(HaveOccurred())
 
@@ -93,7 +110,7 @@ func TestIntegration(t *testing.T) {
 	})
 
 	t.Run("database claim", func(t *testing.T) {
-		env, err := newIntegrationEnv(tc, tc.Client())
+		env, err := newIntegrationEnv(tc, tc.Client(), clientFactory)
 		g := NewWithT(t)
 		g.Expect(err).NotTo(HaveOccurred())
 
@@ -103,7 +120,7 @@ func TestIntegration(t *testing.T) {
 	})
 
 	t.Run("database provider external", func(t *testing.T) {
-		env, err := newIntegrationEnv(tc, tc.Client())
+		env, err := newIntegrationEnv(tc, tc.Client(), clientFactory)
 		g := NewWithT(t)
 		g.Expect(err).NotTo(HaveOccurred())
 
@@ -113,7 +130,7 @@ func TestIntegration(t *testing.T) {
 	})
 
 	t.Run("database provider embedded", func(t *testing.T) {
-		env, err := newIntegrationEnv(tc, tc.Client())
+		env, err := newIntegrationEnv(tc, tc.Client(), clientFactory)
 		g := NewWithT(t)
 		g.Expect(err).NotTo(HaveOccurred())
 
@@ -125,6 +142,7 @@ func TestIntegration(t *testing.T) {
 func newIntegrationEnv(
 	testCluster cluster.Instance,
 	cli client.Client,
+	clientFactory postgres.ClientFactory,
 ) (*integrationEnv, error) {
 	moduleCfg, err := moduleconfig.Load()
 	if err != nil {
@@ -133,10 +151,11 @@ func newIntegrationEnv(
 	moduleCfg.OperatorNamespace = support.IntegrationTestNamespace()
 
 	return &integrationEnv{
-		Cluster:   testCluster,
-		Client:    cli,
-		Namespace: support.IntegrationTestNamespace(),
-		Config:    moduleCfg,
+		Cluster:       testCluster,
+		Client:        cli,
+		Namespace:     support.IntegrationTestNamespace(),
+		Config:        moduleCfg,
+		ClientFactory: clientFactory,
 	}, nil
 }
 

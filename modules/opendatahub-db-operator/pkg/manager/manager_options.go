@@ -1,7 +1,7 @@
 package manager
 
 import (
-	dbcontroller "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/pkg/controller"
+	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/pkg/postgres"
 )
 
 type Option interface {
@@ -9,15 +9,15 @@ type Option interface {
 }
 
 type Options struct {
-	PostgresConnectionConfigResolver dbcontroller.PostgresConnectionConfigResolver
+	PostgresClientFactory postgres.ClientFactory
 }
 
 func (o Options) applyOption(target *Options) {
 	if target == nil {
 		return
 	}
-	if o.PostgresConnectionConfigResolver != nil {
-		target.PostgresConnectionConfigResolver = o.PostgresConnectionConfigResolver
+	if o.PostgresClientFactory != nil {
+		target.PostgresClientFactory = o.PostgresClientFactory
 	}
 }
 
@@ -31,12 +31,12 @@ func (fn optionFunc) applyOption(target *Options) {
 	fn(target)
 }
 
-func WithPostgresConnectionConfigResolver(resolver dbcontroller.PostgresConnectionConfigResolver) Option {
+func WithPostgresClientFactory(factory postgres.ClientFactory) Option {
 	return optionFunc(func(target *Options) {
-		if target == nil || resolver == nil {
+		if target == nil || factory == nil {
 			return
 		}
 
-		target.PostgresConnectionConfigResolver = resolver
+		target.PostgresClientFactory = factory
 	})
 }

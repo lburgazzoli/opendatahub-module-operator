@@ -1,6 +1,7 @@
 package portforward
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -72,4 +73,35 @@ func TestSelectReadyPod_ReturnsErrorWhenNoReadyPodExists(t *testing.T) {
 		},
 	})
 	g.Expect(err).To(MatchError("no running ready pod found for port-forward"))
+}
+
+func TestNewTracker_RequiresRestConfig(t *testing.T) {
+	g := NewWithT(t)
+
+	_, err := NewTracker(nil)
+	g.Expect(err).To(MatchError("rest config is nil"))
+}
+
+func TestTrackerClose_ClearsTrackedForwards(t *testing.T) {
+	g := NewWithT(t)
+
+	doneCh := make(chan error, 1)
+	doneCh <- nil
+	close(doneCh)
+
+	tracker := &Tracker{
+		forwards: map[serviceKey]*Forward{
+			{
+				namespace:  "ns",
+				name:       "svc",
+				remotePort: 5432,
+			}: {
+				stopCh: make(chan struct{}),
+				doneCh: doneCh,
+			},
+		},
+	}
+
+	g.Expect(tracker.Close(context.Background())).To(Succeed())
+	g.Expect(tracker.forwards).To(BeEmpty())
 }

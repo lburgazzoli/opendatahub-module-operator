@@ -11,7 +11,7 @@ import (
 
 type Instance struct {
 	cfg       postgres.Config
-	client    *postgres.Client
+	client    postgres.Client
 	terminate func(context.Context) error
 }
 
@@ -74,7 +74,7 @@ func (db *Instance) Config() postgres.Config {
 	return db.cfg
 }
 
-func (db *Instance) Client() *postgres.Client {
+func (db *Instance) Client() postgres.Client {
 	if db == nil {
 		return nil
 	}

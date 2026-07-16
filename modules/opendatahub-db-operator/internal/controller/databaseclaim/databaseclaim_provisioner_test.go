@@ -60,7 +60,7 @@ func startPostgres(t *testing.T) postgres.Config {
 	return cfg
 }
 
-func openPostgresClient(t *testing.T, cfg postgres.Config) *postgres.Client {
+func openPostgresClient(t *testing.T, cfg postgres.Config) postgres.Client {
 	t.Helper()
 	pgClient, err := postgres.NewClient(t.Context(), cfg)
 	if err != nil {
@@ -96,9 +96,10 @@ func TestDatabaseProvisioner_Ensure(t *testing.T) {
 	cli := newFakeClient(t).Build()
 
 	provisioner := databaseclaim.DatabaseProvisioner{
-		Client:   cli,
-		Claim:    claim,
-		Postgres: pgClient,
+		Client:         cli,
+		Claim:          claim,
+		Postgres:       pgClient,
+		ProviderConfig: cfg,
 	}
 
 	secret, err := provisioner.Ensure(t.Context())
@@ -140,9 +141,10 @@ func TestDatabaseProvisioner_Ensure_UsesSecretNameOverride(t *testing.T) {
 	cli := newFakeClient(t).Build()
 
 	provisioner := databaseclaim.DatabaseProvisioner{
-		Client:   cli,
-		Claim:    claim,
-		Postgres: pgClient,
+		Client:         cli,
+		Claim:          claim,
+		Postgres:       pgClient,
+		ProviderConfig: cfg,
 	}
 
 	secret, err := provisioner.Ensure(t.Context())
@@ -167,7 +169,7 @@ func TestDatabaseProvisioner_Ensure_UsesSecretNameOverride(t *testing.T) {
 	g.Expect(cli.Get(t.Context(), client.ObjectKeyFromObject(defaultSecret), defaultSecret)).ToNot(Succeed())
 }
 
-func TestDatabaseProvisioner_Ensure_UsesPublishedConfigForStatusAndSecret(t *testing.T) {
+func TestDatabaseProvisioner_Ensure_UsesProviderConfigForStatusAndSecret(t *testing.T) {
 	g := NewWithT(t)
 	cfg := startPostgres(t)
 	pgClient := openPostgresClient(t, cfg)
@@ -188,10 +190,10 @@ func TestDatabaseProvisioner_Ensure_UsesPublishedConfigForStatusAndSecret(t *tes
 	publishedCfg.Port = 5432
 
 	provisioner := databaseclaim.DatabaseProvisioner{
-		Client:          cli,
-		Claim:           claim,
-		Postgres:        pgClient,
-		PublishedConfig: publishedCfg,
+		Client:         cli,
+		Claim:          claim,
+		Postgres:       pgClient,
+		ProviderConfig: publishedCfg,
 	}
 
 	secret, err := provisioner.Ensure(t.Context())
@@ -224,9 +226,10 @@ func TestDatabaseProvisioner_Ensure_DatabaseMissing(t *testing.T) {
 	cli := newFakeClient(t).Build()
 
 	provisioner := databaseclaim.DatabaseProvisioner{
-		Client:   cli,
-		Claim:    claim,
-		Postgres: pgClient,
+		Client:         cli,
+		Claim:          claim,
+		Postgres:       pgClient,
+		ProviderConfig: cfg,
 	}
 
 	_, err := provisioner.Ensure(t.Context())
@@ -255,9 +258,10 @@ func TestDatabaseProvisioner_Ensure_ReconcilesAccessChanges(t *testing.T) {
 	cli := newFakeClient(t).Build()
 
 	provisioner := databaseclaim.DatabaseProvisioner{
-		Client:   cli,
-		Claim:    claim,
-		Postgres: pgClient,
+		Client:         cli,
+		Claim:          claim,
+		Postgres:       pgClient,
+		ProviderConfig: cfg,
 	}
 
 	secret, err := provisioner.Ensure(t.Context())

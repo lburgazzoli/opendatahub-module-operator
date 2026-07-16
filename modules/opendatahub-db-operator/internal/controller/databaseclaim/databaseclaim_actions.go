@@ -71,7 +71,7 @@ func (m *Controller) provisionAction(ctx context.Context, rr *odhtypes.Reconcili
 		rr.Client,
 		provider,
 		m.cfg,
-		m.PostgresConnectionConfigResolver,
+		m.PostgresClientFactory,
 	)
 	if err != nil {
 		rr.Conditions.Mark(ConditionProvisioned, metav1.ConditionFalse,
@@ -105,10 +105,10 @@ func (m *Controller) provisionAction(ctx context.Context, rr *odhtypes.Reconcili
 
 	// 3. Ensure claim credentials and connection details.
 	provisioner := DatabaseProvisioner{
-		Client:          rr.Client,
-		Claim:           obj,
-		Postgres:        pgClient,
-		PublishedConfig: resolvedCfg.Published,
+		Client:         rr.Client,
+		Claim:          obj,
+		Postgres:       pgClient,
+		ProviderConfig: resolvedCfg,
 	}
 	secret, err := provisioner.Ensure(ctx)
 	if notFound, ok := errors.AsType[ErrDatabaseNotFound](err); ok {
@@ -180,7 +180,7 @@ func (m *Controller) cleanupAction(ctx context.Context, rr *odhtypes.Reconciliat
 				rr.Client,
 				provider,
 				m.cfg,
-				m.PostgresConnectionConfigResolver,
+				m.PostgresClientFactory,
 			)
 			if err != nil {
 				return fmt.Errorf("opening postgres client for provider %q: %w", provider.Name, err)

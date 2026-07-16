@@ -59,17 +59,21 @@ func NewClient(
 	cli client.Client,
 	provider *infraApi.DatabaseProvider,
 	cfg *moduleconfig.Config,
-	resolver PostgresConnectionConfigResolver,
-) (*postgres.Client, ResolvedProviderConfig, error) {
-	providerCfg, err := ResolveProviderConfig(ctx, cli, provider, cfg.OperatorNamespace, resolver)
-	if err != nil {
-		return nil, ResolvedProviderConfig{}, err
+	factory postgres.ClientFactory,
+) (postgres.Client, postgres.Config, error) {
+	if factory == nil {
+		factory = postgres.DefaultClientFactory
 	}
-	dbClient, err := postgres.NewClient(ctx, providerCfg.Connection)
+
+	providerCfg, err := LoadProviderConfig(ctx, cli, provider, cfg.OperatorNamespace)
 	if err != nil {
-		return nil, ResolvedProviderConfig{}, fmt.Errorf(
+		return nil, postgres.Config{}, err
+	}
+	dbClient, err := factory(ctx, providerCfg)
+	if err != nil {
+		return nil, postgres.Config{}, fmt.Errorf(
 			"opening postgres client: %w",
-			postgres.SanitizeError(err, providerCfg.Connection.Password),
+			postgres.SanitizeError(err, providerCfg.Password),
 		)
 	}
 	return dbClient, providerCfg, nil

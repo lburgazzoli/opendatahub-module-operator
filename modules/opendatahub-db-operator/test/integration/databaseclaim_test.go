@@ -46,8 +46,8 @@ func (st *databaseClaimSuite) Run(t *testing.T) {
 	t.Run("provider creation wakes pending claim", st.testProviderCreationWakesPendingClaim)
 }
 
-func pingConfig(ctx context.Context, cfg postgres.Config) error {
-	cli, err := postgres.NewClient(ctx, cfg)
+func pingConfig(ctx context.Context, factory postgres.ClientFactory, cfg postgres.Config) error {
+	cli, err := factory(ctx, cfg)
 	if err != nil {
 		return err
 	}
@@ -77,7 +77,7 @@ func (st *databaseClaimSuite) testProvisioning(t *testing.T) {
 	credCfg, err := postgres.ParseSecret(secret.Data)
 	g.Expect(err).NotTo(HaveOccurred())
 	g.Expect(credCfg.DBName).To(Equal(database))
-	g.Expect(pingConfig(ctx, credCfg)).To(Succeed())
+	g.Expect(pingConfig(ctx, st.env.ClientFactory, credCfg)).To(Succeed())
 }
 
 func (st *databaseClaimSuite) testAccessModeEnforcement(t *testing.T) {
@@ -106,11 +106,11 @@ func (st *databaseClaimSuite) testAccessModeEnforcement(t *testing.T) {
 	readOnlyCfg, err := postgres.ParseSecret(readOnlySecret.Data)
 	g.Expect(err).NotTo(HaveOccurred())
 
-	readWritePool, err := postgres.NewClient(ctx, readWriteCfg)
+	readWritePool, err := st.env.ClientFactory(ctx, readWriteCfg)
 	g.Expect(err).NotTo(HaveOccurred())
 	t.Cleanup(readWritePool.Close)
 
-	readOnlyPool, err := postgres.NewClient(ctx, readOnlyCfg)
+	readOnlyPool, err := st.env.ClientFactory(ctx, readOnlyCfg)
 	g.Expect(err).NotTo(HaveOccurred())
 	t.Cleanup(readOnlyPool.Close)
 
@@ -159,7 +159,7 @@ func (st *databaseClaimSuite) testSecretNameOverride(t *testing.T) {
 	credCfg, err := postgres.ParseSecret(secret.Data)
 	g.Expect(err).NotTo(HaveOccurred())
 	g.Expect(credCfg.DBName).To(Equal(database))
-	g.Expect(pingConfig(ctx, credCfg)).To(Succeed())
+	g.Expect(pingConfig(ctx, st.env.ClientFactory, credCfg)).To(Succeed())
 }
 
 func (st *databaseClaimSuite) testIdempotency(t *testing.T) {
@@ -214,8 +214,8 @@ func (st *databaseClaimSuite) testSecretDeletionRecovery(t *testing.T) {
 
 	newCfg, err := postgres.ParseSecret(recovered.Data)
 	g.Expect(err).NotTo(HaveOccurred())
-	g.Expect(pingConfig(ctx, newCfg)).To(Succeed())
-	g.Expect(pingConfig(ctx, oldCfg)).To(HaveOccurred())
+	g.Expect(pingConfig(ctx, st.env.ClientFactory, newCfg)).To(Succeed())
+	g.Expect(pingConfig(ctx, st.env.ClientFactory, oldCfg)).To(HaveOccurred())
 }
 
 func (st *databaseClaimSuite) testRoleDeletionRecovery(t *testing.T) {
@@ -248,8 +248,8 @@ func (st *databaseClaimSuite) testRoleDeletionRecovery(t *testing.T) {
 
 	newCfg, err := postgres.ParseSecret(recovered.Data)
 	g.Expect(err).NotTo(HaveOccurred())
-	g.Expect(pingConfig(ctx, newCfg)).To(Succeed())
-	g.Expect(pingConfig(ctx, oldCfg)).To(HaveOccurred())
+	g.Expect(pingConfig(ctx, st.env.ClientFactory, newCfg)).To(Succeed())
+	g.Expect(pingConfig(ctx, st.env.ClientFactory, oldCfg)).To(HaveOccurred())
 }
 
 func (st *databaseClaimSuite) testDatabaseNotFound(t *testing.T) {
@@ -297,8 +297,8 @@ func (st *databaseClaimSuite) testDeletionKeepsPeerUserAndDatabase(t *testing.T)
 	g.Expect(err).NotTo(HaveOccurred())
 
 	g.Expect(cfgA.User).NotTo(Equal(cfgB.User))
-	g.Expect(pingConfig(ctx, cfgA)).To(Succeed())
-	g.Expect(pingConfig(ctx, cfgB)).To(Succeed())
+	g.Expect(pingConfig(ctx, st.env.ClientFactory, cfgA)).To(Succeed())
+	g.Expect(pingConfig(ctx, st.env.ClientFactory, cfgB)).To(Succeed())
 
 	st.deleteClaimAndWait(t, claimA)
 	st.expectNoCredentialsSecret(t, nameA)
@@ -306,7 +306,7 @@ func (st *databaseClaimSuite) testDeletionKeepsPeerUserAndDatabase(t *testing.T)
 	g.Expect(st.databaseExists(t, database)).To(BeTrue())
 	g.Expect(st.roleExists(t, databaseClaimRoleName(st.env.Namespace, nameA))).To(BeFalse())
 	g.Expect(st.roleExists(t, databaseClaimRoleName(st.env.Namespace, nameB))).To(BeTrue())
-	g.Expect(pingConfig(ctx, cfgB)).To(Succeed())
+	g.Expect(pingConfig(ctx, st.env.ClientFactory, cfgB)).To(Succeed())
 }
 
 func (st *databaseClaimSuite) testProviderNotFound(t *testing.T) {

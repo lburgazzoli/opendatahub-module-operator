@@ -4,54 +4,70 @@ import (
 	"context"
 	"testing"
 
-	. "github.com/onsi/gomega"
-
-	infraApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/api/infrastructure/v1alpha1"
-	dbcontroller "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/pkg/controller"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/pkg/postgres"
+	. "github.com/onsi/gomega"
 )
 
 func TestOptionsApplyOption_MergesModuleOptions(t *testing.T) {
 	g := NewWithT(t)
 
 	var called bool
-	resolver := dbcontroller.PostgresConnectionConfigResolveFunc(func(
+	factory := postgres.ClientFactory(func(
 		_ context.Context,
-		_ *infraApi.DatabaseProvider,
 		cfg postgres.Config,
-	) (postgres.Config, error) {
+	) (postgres.Client, error) {
 		called = true
-		return cfg, nil
+		return stubClient{config: cfg}, nil
 	})
 
 	target := Options{}
 	Options{
-		PostgresConnectionConfigResolver: resolver,
+		PostgresClientFactory: factory,
 	}.applyOption(&target)
 
-	g.Expect(target.PostgresConnectionConfigResolver).NotTo(BeNil())
+	g.Expect(target.PostgresClientFactory).NotTo(BeNil())
 
-	_, err := target.PostgresConnectionConfigResolver.Resolve(
+	client, err := target.PostgresClientFactory(
 		context.Background(),
-		&infraApi.DatabaseProvider{},
-		postgres.Config{},
+		postgres.Config{Host: "db.example.test"},
 	)
 	g.Expect(err).NotTo(HaveOccurred())
+	g.Expect(client.Config().Host).To(Equal("db.example.test"))
 	g.Expect(called).To(BeTrue())
 }
 
-func TestDefaultPostgresConnectionConfigResolver_IsUsable(t *testing.T) {
+func TestDefaultPostgresClientFactory_IsUsable(t *testing.T) {
 	g := NewWithT(t)
 
-	got, err := dbcontroller.DefaultPostgresConnectionConfigResolver().Resolve(
+	g.Expect(postgres.DefaultClientFactory).NotTo(BeNil())
+	_, err := postgres.DefaultClientFactory(
 		context.Background(),
-		&infraApi.DatabaseProvider{},
 		postgres.Config{
-			Host: "postgres.db-admin.svc",
-			Port: 5432,
+			Host:     "203.0.113.1",
+			Port:     5432,
+			User:     "user",
+			Password: "secret",
+			DBName:   "postgres",
 		},
 	)
 	g.Expect(err).NotTo(HaveOccurred())
-	g.Expect(got.Host).To(Equal("postgres.db-admin.svc"))
-	g.Expect(got.Port).To(Equal(5432))
+}
+
+type stubClient struct {
+	config postgres.Config
+}
+
+func (s stubClient) Config() postgres.Config  { return s.config }
+func (stubClient) Close()                     {}
+func (stubClient) Ping(context.Context) error { return nil }
+func (stubClient) Exec(context.Context, string, ...any) (pgconn.CommandTag, error) {
+	return pgconn.CommandTag{}, nil
+}
+func (stubClient) Query(context.Context, string, ...any) (pgx.Rows, error) {
+	return nil, nil
+}
+func (stubClient) QueryRow(context.Context, string, ...any) (pgx.Row, error) {
+	return nil, nil
 }

@@ -26,7 +26,7 @@ import (
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/pkg/postgres"
 )
 
-func openPool(t *testing.T, cfg postgres.Config) *postgres.Client {
+func openPool(t *testing.T, cfg postgres.Config) postgres.Client {
 	t.Helper()
 	pool, err := postgres.NewClient(t.Context(), cfg)
 	if err != nil {

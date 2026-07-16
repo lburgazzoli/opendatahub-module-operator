@@ -25,27 +25,36 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// Client owns a PostgreSQL pool and is the main way to interact with the database.
-type Client struct {
+// Client owns a PostgreSQL connection and is the main way to interact with the database.
+type Client interface {
+	Config() Config
+	Close()
+	Ping(ctx context.Context) error
+	Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error)
+	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
+	QueryRow(ctx context.Context, sql string, args ...any) (pgx.Row, error)
+}
+
+type pgxClient struct {
 	config Config
 	pool   *pgxpool.Pool
 }
 
 // NewClient opens a long-lived PostgreSQL client with runtime TLS configuration applied.
-func NewClient(ctx context.Context, cfg Config) (*Client, error) {
+func NewClient(ctx context.Context, cfg Config) (Client, error) {
 	pool, err := openPool(ctx, cfg)
 	if err != nil {
 		return nil, err
 	}
 
-	return &Client{
+	return &pgxClient{
 		config: cfg,
 		pool:   pool,
 	}, nil
 }
 
 // Config returns the connection settings used to open the client.
-func (c *Client) Config() Config {
+func (c *pgxClient) Config() Config {
 	if c == nil {
 		return Config{}
 	}
@@ -54,7 +63,7 @@ func (c *Client) Config() Config {
 }
 
 // Close closes the owned pool. It is safe to call more than once.
-func (c *Client) Close() {
+func (c *pgxClient) Close() {
 	if c == nil || c.pool == nil {
 		return
 	}
@@ -64,7 +73,7 @@ func (c *Client) Close() {
 }
 
 // Ping verifies that the open client can reach the server.
-func (c *Client) Ping(ctx context.Context) error {
+func (c *pgxClient) Ping(ctx context.Context) error {
 	if c == nil || c.pool == nil {
 		return fmt.Errorf("postgres client is not open")
 	}
@@ -73,7 +82,7 @@ func (c *Client) Ping(ctx context.Context) error {
 }
 
 // Exec executes a statement through the owned pool.
-func (c *Client) Exec(
+func (c *pgxClient) Exec(
 	ctx context.Context,
 	sql string,
 	args ...any,
@@ -86,7 +95,7 @@ func (c *Client) Exec(
 }
 
 // Query executes a multi-row query through the owned pool.
-func (c *Client) Query(
+func (c *pgxClient) Query(
 	ctx context.Context,
 	sql string,
 	args ...any,
@@ -99,7 +108,7 @@ func (c *Client) Query(
 }
 
 // QueryRow executes a single-row query through the owned pool.
-func (c *Client) QueryRow(
+func (c *pgxClient) QueryRow(
 	ctx context.Context,
 	sql string,
 	args ...any,

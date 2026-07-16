@@ -144,7 +144,7 @@ func (st *databaseProviderSuite) testAuthFailure(t *testing.T) {
 	g := NewWithT(t)
 
 	g.Eventually(func() error {
-		cli, err := postgres.NewClient(t.Context(), st.db.Config())
+		cli, err := st.env.ClientFactory(t.Context(), st.db.Config())
 		if err != nil {
 			return err
 		}
@@ -155,7 +155,7 @@ func (st *databaseProviderSuite) testAuthFailure(t *testing.T) {
 	cfg := st.db.Config()
 	cfg.Password = "wrong-password-sentinel"
 	g.Eventually(func() error {
-		cli, err := postgres.NewClient(t.Context(), cfg)
+		cli, err := st.env.ClientFactory(t.Context(), cfg)
 		if err != nil {
 			return err
 		}

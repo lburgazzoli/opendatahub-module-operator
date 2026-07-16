@@ -28,7 +28,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
 	infraApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/api/infrastructure/v1alpha1"
-	dbcontroller "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/pkg/controller"
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/pkg/postgres"
 )
 
@@ -131,55 +130,4 @@ func TestProviderConnectionStatus(t *testing.T) {
 		Port:     5432,
 		Database: "postgres",
 	}))
-}
-
-func TestResolveExternalConfig_UsesRewriterForConnectionOnly(t *testing.T) {
-	g := NewWithT(t)
-
-	provider := &infraApi.DatabaseProvider{
-		ObjectMeta: metav1.ObjectMeta{Name: "provider"},
-		Spec: infraApi.DatabaseProviderSpec{
-			Type: infraApi.ProviderTypeExternal,
-			External: &infraApi.ExternalProviderSpec{
-				ConnectionSecretRef: corev1.SecretReference{
-					Name:      "admin",
-					Namespace: "ns",
-				},
-			},
-		},
-	}
-	secret := &corev1.Secret{
-		ObjectMeta: metav1.ObjectMeta{Name: "admin", Namespace: "ns"},
-		Data: map[string][]byte{
-			postgres.SecretKeyHost:     []byte("provider.ns.svc"),
-			postgres.SecretKeyPort:     []byte("5432"),
-			postgres.SecretKeyUser:     []byte("admin"),
-			postgres.SecretKeyPassword: []byte("secret"),
-			postgres.SecretKeyDatabase: []byte("postgres"),
-		},
-	}
-
-	scheme := runtime.NewScheme()
-	g.Expect(corev1.AddToScheme(scheme)).To(Succeed())
-	g.Expect(infraApi.AddToScheme(scheme)).To(Succeed())
-
-	resolved, err := resolveExternalConfig(
-		context.Background(),
-		fake.NewClientBuilder().WithScheme(scheme).WithRuntimeObjects(secret).Build(),
-		provider,
-		dbcontroller.PostgresConnectionConfigResolveFunc(func(
-			_ context.Context,
-			_ *infraApi.DatabaseProvider,
-			cfg postgres.Config,
-		) (postgres.Config, error) {
-			cfg.Host = "127.0.0.1"
-			cfg.Port = 15432
-			return cfg, nil
-		}),
-	)
-	g.Expect(err).NotTo(HaveOccurred())
-	g.Expect(resolved.Published.Host).To(Equal("provider.ns.svc"))
-	g.Expect(resolved.Published.Port).To(Equal(5432))
-	g.Expect(resolved.Connection.Host).To(Equal("127.0.0.1"))
-	g.Expect(resolved.Connection.Port).To(Equal(15432))
 }

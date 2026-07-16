@@ -49,7 +49,7 @@ func (m *Controller) reconcileExternalAction(
 		return nil
 	}
 
-	resolvedCfg, err := resolveExternalConfig(ctx, rr.Client, obj, m.PostgresConnectionConfigResolver)
+	cfg, err := loadExternalConfig(ctx, rr.Client, obj)
 	if err != nil {
 		obj.Status.Connection = infraApi.ProviderConnectionStatus{}
 		obj.Status.TLS = nil
@@ -62,18 +62,18 @@ func (m *Controller) reconcileExternalAction(
 		return nil
 	}
 
-	obj.Status.Connection = providerConnectionStatus(resolvedCfg.Published)
+	obj.Status.Connection = providerConnectionStatus(cfg)
 	obj.Status.TLS = &infraApi.ProviderTLSStatus{
-		Enabled: resolvedCfg.Published.TLSEnabled(),
-		Ready:   resolvedCfg.Published.TLSReady(),
+		Enabled: cfg.TLSEnabled(),
+		Ready:   cfg.TLSReady(),
 	}
 	switch {
-	case !resolvedCfg.Published.TLSEnabled():
+	case !cfg.TLSEnabled():
 		rr.Conditions.Mark(ConditionTLSConfiguration, metav1.ConditionFalse,
 			conditions.WithSeverity(api.ConditionSeverityInfo),
 			conditions.WithReason(reasonTLSNotEnabled),
 			conditions.WithMessage("TLS is not enabled for this external provider"))
-	case resolvedCfg.Published.TLSReady():
+	case cfg.TLSReady():
 		rr.Conditions.Mark(ConditionTLSConfiguration, metav1.ConditionTrue,
 			conditions.WithReason(reasonTLSConfigured),
 			conditions.WithMessage("External provider TLS configuration resolved"))
@@ -83,7 +83,12 @@ func (m *Controller) reconcileExternalAction(
 			conditions.WithMessage("External provider TLS configuration is pending"))
 	}
 
-	pgClient, err := postgres.NewClient(ctx, resolvedCfg.Connection)
+	factory := m.PostgresClientFactory
+	if factory == nil {
+		factory = postgres.DefaultClientFactory
+	}
+
+	pgClient, err := factory(ctx, cfg)
 	if err != nil {
 		rr.Conditions.Mark(ConditionReachable, metav1.ConditionFalse,
 			conditions.WithReason(externalFailureReason(err)),

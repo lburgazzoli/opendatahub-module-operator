@@ -58,7 +58,7 @@ func startPostgres(t *testing.T) postgres.Config {
 	return cfg
 }
 
-func openPostgresClient(t *testing.T, cfg postgres.Config) *postgres.Client {
+func openPostgresClient(t *testing.T, cfg postgres.Config) postgres.Client {
 	t.Helper()
 	pgClient, err := postgres.NewClient(t.Context(), cfg)
 	if err != nil {
@@ -94,9 +94,10 @@ func TestSchemaProvisioner_Ensure(t *testing.T) {
 	cli := newFakeClient(t).Build()
 
 	provisioner := schemaclaim.SchemaProvisioner{
-		Client:   cli,
-		Claim:    claim,
-		Postgres: pgClient,
+		Client:         cli,
+		Claim:          claim,
+		Postgres:       pgClient,
+		ProviderConfig: cfg,
 	}
 
 	schema := provisioner.Schema()
@@ -146,9 +147,10 @@ func TestSchemaProvisioner_Ensure_UsesSecretNameOverride(t *testing.T) {
 	cli := newFakeClient(t).Build()
 
 	provisioner := schemaclaim.SchemaProvisioner{
-		Client:   cli,
-		Claim:    claim,
-		Postgres: pgClient,
+		Client:         cli,
+		Claim:          claim,
+		Postgres:       pgClient,
+		ProviderConfig: cfg,
 	}
 
 	schema := provisioner.Schema()
@@ -174,7 +176,7 @@ func TestSchemaProvisioner_Ensure_UsesSecretNameOverride(t *testing.T) {
 	g.Expect(cli.Get(t.Context(), client.ObjectKeyFromObject(defaultSecret), defaultSecret)).ToNot(Succeed())
 }
 
-func TestSchemaProvisioner_Ensure_UsesPublishedConfigForStatusAndSecret(t *testing.T) {
+func TestSchemaProvisioner_Ensure_UsesProviderConfigForStatusAndSecret(t *testing.T) {
 	g := NewWithT(t)
 	cfg := startPostgres(t)
 	pgClient := openPostgresClient(t, cfg)
@@ -195,10 +197,10 @@ func TestSchemaProvisioner_Ensure_UsesPublishedConfigForStatusAndSecret(t *testi
 	publishedCfg.Port = 5432
 
 	provisioner := schemaclaim.SchemaProvisioner{
-		Client:          cli,
-		Claim:           claim,
-		Postgres:        pgClient,
-		PublishedConfig: publishedCfg,
+		Client:         cli,
+		Claim:          claim,
+		Postgres:       pgClient,
+		ProviderConfig: publishedCfg,
 	}
 
 	schema := provisioner.Schema()

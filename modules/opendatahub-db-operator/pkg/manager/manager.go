@@ -39,7 +39,7 @@ import (
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/internal/controller/databaseservice"
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/internal/controller/schemaclaim"
 	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/pkg/config"
-	dbcontroller "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/pkg/controller"
+	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/pkg/postgres"
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/pkg/resources/gvk"
 	odhmanager "github.com/opendatahub-io/odh-platform-utilities/framework/manager"
 	libcache "github.com/opendatahub-io/odh-platform-utilities/pkg/cache"
@@ -89,7 +89,7 @@ func New(
 	}
 
 	managerOpts := Options{
-		PostgresConnectionConfigResolver: dbcontroller.DefaultPostgresConnectionConfigResolver(),
+		PostgresClientFactory: postgres.DefaultClientFactory,
 	}
 	for _, opt := range opts {
 		if opt != nil {
@@ -140,22 +140,22 @@ func New(
 	}
 
 	if err := schemaclaim.NewReconciler(ctx, mgr, cfg, schemaclaim.Options{
-		Recorder:                         mgr.GetEventRecorder(infraApi.SchemaClaimResource),
-		PostgresConnectionConfigResolver: managerOpts.PostgresConnectionConfigResolver,
+		Recorder:              mgr.GetEventRecorder(infraApi.SchemaClaimResource),
+		PostgresClientFactory: managerOpts.PostgresClientFactory,
 	}); err != nil {
 		return nil, fmt.Errorf("creating schemaclaim reconciler: %w", err)
 	}
 
 	if err := databaseclaim.NewReconciler(ctx, mgr, cfg, databaseclaim.Options{
-		Recorder:                         mgr.GetEventRecorder(infraApi.DatabaseClaimResource),
-		PostgresConnectionConfigResolver: managerOpts.PostgresConnectionConfigResolver,
+		Recorder:              mgr.GetEventRecorder(infraApi.DatabaseClaimResource),
+		PostgresClientFactory: managerOpts.PostgresClientFactory,
 	}); err != nil {
 		return nil, fmt.Errorf("creating databaseclaim reconciler: %w", err)
 	}
 
 	if err := databaseprovider.NewReconciler(ctx, mgr, cfg, databaseprovider.Options{
-		Recorder:                         mgr.GetEventRecorder(infraApi.DatabaseProviderResource),
-		PostgresConnectionConfigResolver: managerOpts.PostgresConnectionConfigResolver,
+		Recorder:              mgr.GetEventRecorder(infraApi.DatabaseProviderResource),
+		PostgresClientFactory: managerOpts.PostgresClientFactory,
 	}); err != nil {
 		return nil, fmt.Errorf("creating databaseprovider reconciler: %w", err)
 	}

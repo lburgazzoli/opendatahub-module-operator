@@ -89,11 +89,11 @@ func (st *schemaClaimSuite) createDatabase(t *testing.T, name string) {
 	g.Expect(err).NotTo(HaveOccurred())
 }
 
-func (st *schemaClaimSuite) openProviderAdminClient(ctx context.Context) (*postgres.Client, error) {
+func (st *schemaClaimSuite) openProviderAdminClient(ctx context.Context) (postgres.Client, error) {
 	cfg := st.db.Config()
 	cfg.DBName = st.databaseName
 
-	pgClient, err := postgres.NewClient(ctx, cfg)
+	pgClient, err := st.env.ClientFactory(ctx, cfg)
 	if err != nil {
 		return nil, fmt.Errorf("opening provider admin client: %w", err)
 	}
