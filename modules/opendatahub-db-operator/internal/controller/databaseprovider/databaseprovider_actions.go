@@ -28,10 +28,9 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	infraApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/api/infrastructure/v1alpha1"
-	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/assets"
 	dbcontroller "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/pkg/controller"
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/pkg/postgres"
-	dbmaps "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/pkg/utils/maps"
+	pginstance "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/pkg/postgres/instance"
 	api "github.com/opendatahub-io/odh-platform-utilities/framework/api"
 	"github.com/opendatahub-io/odh-platform-utilities/framework/controller/conditions"
 	odhtypes "github.com/opendatahub-io/odh-platform-utilities/framework/controller/types"
@@ -156,13 +155,6 @@ func (m *Controller) reconcileEmbeddedAction(
 		return fmt.Errorf("adding embedded admin Secret to resources: %w", err)
 	}
 
-	if key := tlsState.AdminSecret.Annotations[dbcontroller.EmbeddedAdminSecretKeyAnnotation]; len(key) != 0 {
-		rr.Extensions = dbmaps.Set(rr.Extensions, extKeyAdminSecretKey, any(key))
-	}
-	if key := tlsState.TLSSecretHash; len(key) != 0 {
-		rr.Extensions = dbmaps.Set(rr.Extensions, extKeyTLSSecretHash, any(key))
-	}
-
 	// Build connection status from the in-memory secret so it is available on
 	// first reconcile before the deploy action has persisted the Secret.
 	obj.Status.Connection = infraApi.ProviderConnectionStatus{
@@ -187,14 +179,20 @@ func (m *Controller) reconcileEmbeddedAction(
 			conditions.WithMessage("Embedded provider TLS configuration is pending"))
 	}
 
-	rr.Templates = []odhtypes.TemplateInfo{
-		{FS: assets.Manifests, Path: "manifests/embedded/pvc.yaml.tmpl"},
-		{FS: assets.Manifests, Path: "manifests/embedded/service.yaml.tmpl"},
-		{FS: assets.Manifests, Path: "manifests/embedded/initdb-configmap.yaml.tmpl"},
-		{FS: assets.Manifests, Path: "manifests/embedded/issuer.yaml.tmpl"},
-		{FS: assets.Manifests, Path: "manifests/embedded/certificate.yaml.tmpl"},
-		{FS: assets.Manifests, Path: "manifests/embedded/statefulset.yaml.tmpl"},
-		{FS: assets.Manifests, Path: "manifests/embedded/networkpolicy.yaml.tmpl"},
+	data, err := resolveEmbeddedData(ctx, rr.Client, obj, m.cfg, tlsState)
+	if err != nil {
+		return fmt.Errorf("resolving embedded resource data: %w", err)
+	}
+
+	pgres, err := pginstance.Resources(ctx, data)
+	if err != nil {
+		return fmt.Errorf("rendering embedded resources: %w", err)
+	}
+
+	for i := range pgres {
+		if err := rr.AddResources(&pgres[i]); err != nil {
+			return fmt.Errorf("adding embedded resources: %w", err)
+		}
 	}
 
 	return nil

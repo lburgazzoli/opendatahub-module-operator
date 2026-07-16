@@ -1,13 +1,13 @@
-{{- if and .TLSEnabled .TLSUsesManagedIssuer }}
+{{- if and .TLS.Enabled .TLS.UsesManagedIssuer }}
 apiVersion: cert-manager.io/v1
 kind: Issuer
 metadata:
-  name: {{.TLSIssuerName}}
-  namespace: {{.AppNamespace}}
+  name: {{.TLS.IssuerName}}
+  namespace: {{.Namespace}}
   labels:
-    app.kubernetes.io/name: {{.ServiceName}}
+    app.kubernetes.io/name: {{.Service.Name}}
     app.kubernetes.io/component: databaseprovider
-    db.infrastructure.opendatahub.io/provider: {{.Component.Name}}
+    db.infrastructure.opendatahub.io/provider: {{.ProviderName}}
 spec:
   selfSigned: {}
 {{- end }}

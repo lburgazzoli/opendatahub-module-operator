@@ -23,14 +23,20 @@ import (
 	. "github.com/onsi/gomega"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	networkingv1 "k8s.io/api/networking/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
 	infraApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/api/infrastructure/v1alpha1"
 	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/pkg/config"
 	dbcontroller "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/pkg/controller"
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/pkg/postgres"
+	pginstance "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/pkg/postgres/instance"
+	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/pkg/resources/gvk"
 	common "github.com/opendatahub-io/odh-platform-utilities/api/common"
 )
 
@@ -279,4 +285,264 @@ func TestReferencedClaimNamespaces_UsesPinnedProvider(t *testing.T) {
 	namespaces, err := referencedClaimNamespaces(ctx, cli, bravo)
 	g.Expect(err).NotTo(HaveOccurred())
 	g.Expect(namespaces).To(Equal([]string{"workloads"}))
+}
+
+func TestResolveEmbeddedData_MapsProviderToTypedData(t *testing.T) {
+	g := NewWithT(t)
+	ctx := context.Background()
+
+	scheme := runtime.NewScheme()
+	g.Expect(infraApi.AddToScheme(scheme)).To(Succeed())
+	g.Expect(corev1.AddToScheme(scheme)).To(Succeed())
+
+	storageClassName := "fast"
+	provider := &infraApi.DatabaseProvider{
+		ObjectMeta: metav1.ObjectMeta{Name: "embedded"},
+		Spec: infraApi.DatabaseProviderSpec{
+			Type: infraApi.ProviderTypeEmbedded,
+			Embedded: &infraApi.EmbeddedProviderSpec{
+				Namespace:  "custom-ns",
+				Storage:    infraApi.StorageSpec{Size: resource.MustParse("10Gi"), StorageClassName: &storageClassName},
+				Resources:  corev1.ResourceRequirements{Requests: corev1.ResourceList{corev1.ResourceCPU: resource.MustParse("250m")}},
+				Extensions: []string{"vector", "pg_trgm"},
+				TLS: &infraApi.EmbeddedProviderTLSSpec{
+					Certificate: infraApi.EmbeddedProviderTLSCertificateSpec{
+						SecretName:  "embedded-tls",
+						Duration:    &metav1.Duration{Duration: 24 * 60 * 60 * 1e9},
+						RenewBefore: &metav1.Duration{Duration: 12 * 60 * 60 * 1e9},
+					},
+				},
+			},
+		},
+	}
+	claim := &infraApi.SchemaClaim{
+		ObjectMeta: metav1.ObjectMeta{Name: "claim", Namespace: "workloads"},
+		Status: infraApi.SchemaClaimStatus{
+			Status: common.Status{
+				Conditions: []common.Condition{{Type: "Provisioned", Status: metav1.ConditionTrue}},
+			},
+			Provider: provider.Name,
+		},
+	}
+
+	cli := fake.NewClientBuilder().WithScheme(scheme).WithRuntimeObjects(provider, claim).Build()
+
+	data, err := resolveEmbeddedData(ctx, cli, provider, &moduleconfig.Config{
+		OperatorNamespace: "operator-ns",
+		Embedded: moduleconfig.EmbeddedConfig{
+			PostgresImage: "postgres:test",
+			PgvectorImage: "pgvector:test",
+		},
+	}, TLSState{
+		Enabled:       true,
+		TLSSecretHash: "tls-hash",
+		AdminSecret: &corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{
+				Annotations: map[string]string{
+					dbcontroller.EmbeddedAdminSecretKeyAnnotation: "instance-hash",
+				},
+			},
+		},
+	})
+	g.Expect(err).NotTo(HaveOccurred())
+	g.Expect(data.Namespace).To(Equal("custom-ns"))
+	g.Expect(data.Service.Name).To(Equal(dbcontroller.EmbeddedServiceName(provider.Name)))
+	g.Expect(data.PVC.Name).To(Equal(dbcontroller.EmbeddedPVCName(provider.Name)))
+	g.Expect(data.PVC.Size).To(Equal("10Gi"))
+	g.Expect(data.PVC.StorageClassName).To(Equal("fast"))
+	g.Expect(data.InitDB.Extensions).To(Equal([]string{"vector", "pg_trgm"}))
+	g.Expect(data.Postgres.Image).To(Equal("pgvector:test"))
+	g.Expect(data.Postgres.AdminSecretName).To(Equal(dbcontroller.EmbeddedAdminSecretName(provider.Name)))
+	g.Expect(data.Postgres.InstanceHash).To(Equal("instance-hash"))
+	g.Expect(data.Network.AllowedNamespaces).To(Equal([]string{"workloads"}))
+	g.Expect(data.TLS.Enabled).To(BeTrue())
+	g.Expect(data.TLS.UsesManagedIssuer).To(BeTrue())
+	g.Expect(data.TLS.SecretName).To(Equal("embedded-tls"))
+	g.Expect(data.TLS.SecretHash).To(Equal("tls-hash"))
+	g.Expect(data.TLS.IssuerName).To(Equal(dbcontroller.EmbeddedTLSIssuerName(provider.Name)))
+	g.Expect(data.TLS.Certificate.Name).To(Equal(dbcontroller.EmbeddedTLSCertificateName(provider.Name)))
+	g.Expect(data.TLS.IssuerRef).NotTo(BeNil())
+}
+
+func TestRenderEmbeddedResources_BuildsNonTLSObjects(t *testing.T) {
+	g := NewWithT(t)
+
+	data := pginstance.Data{
+		Namespace:    "operator-ns",
+		ProviderName: "embedded",
+		Service:      pginstance.Service{Name: "embedded"},
+		PVC: pginstance.PVC{
+			Name: "embedded-pvc",
+			Size: "5Gi",
+		},
+		InitDB: pginstance.InitDB{
+			ConfigMapName: "embedded-initdb",
+			Extensions:    []string{"pg_trgm", "pgcrypto"},
+		},
+		Postgres: pginstance.Postgres{
+			Image:           "postgres:test",
+			AdminSecretName: "embedded-admin",
+			InstanceHash:    "instance-hash",
+		},
+		Network: pginstance.NetworkPolicy{
+			AllowedNamespaces: []string{"workloads"},
+		},
+	}
+
+	resources, err := pginstance.Resources(context.Background(), data)
+	g.Expect(err).NotTo(HaveOccurred())
+	g.Expect(resources).To(HaveLen(5))
+
+	pvc := lookupRenderedResource(g, resources, schema.GroupVersionKind{Version: "v1", Kind: "PersistentVolumeClaim"}, "embedded-pvc")
+	g.Expect(pvc.GetNamespace()).To(Equal("operator-ns"))
+
+	svc := lookupRenderedResource(g, resources, schema.GroupVersionKind{Version: "v1", Kind: "Service"}, "embedded")
+	g.Expect(svc.Object["spec"]).To(HaveKeyWithValue("clusterIP", corev1.ClusterIPNone))
+
+	initdb := lookupRenderedResource(g, resources, schema.GroupVersionKind{Version: "v1", Kind: "ConfigMap"}, "embedded-initdb")
+	g.Expect(initdb.Object["data"]).To(HaveKeyWithValue(
+		"00-init-extensions.sql",
+		"CREATE EXTENSION IF NOT EXISTS pg_trgm;\nCREATE EXTENSION IF NOT EXISTS pgcrypto;\n",
+	))
+
+	statefulSet := lookupRenderedResource(g, resources, appsv1.SchemeGroupVersion.WithKind("StatefulSet"), "embedded")
+	annotations, found, err := unstructured.NestedStringMap(
+		statefulSet.Object,
+		"spec", "template", "metadata", "annotations",
+	)
+	g.Expect(err).NotTo(HaveOccurred())
+	g.Expect(found).To(BeTrue())
+	g.Expect(annotations).To(HaveKeyWithValue(
+		dbcontroller.EmbeddedAdminSecretKeyAnnotation,
+		"instance-hash",
+	))
+
+	networkPolicy := lookupRenderedResource(
+		g,
+		resources,
+		networkingv1.SchemeGroupVersion.WithKind("NetworkPolicy"),
+		"embedded",
+	)
+	ingress, found, err := unstructured.NestedSlice(networkPolicy.Object, "spec", "ingress")
+	g.Expect(err).NotTo(HaveOccurred())
+	g.Expect(found).To(BeTrue())
+	g.Expect(ingress).To(HaveLen(1))
+
+	rule, ok := ingress[0].(map[string]any)
+	g.Expect(ok).To(BeTrue())
+	g.Expect(rule).To(HaveKey("from"))
+}
+
+func TestRenderEmbeddedResources_BuildsTLSObjects(t *testing.T) {
+	g := NewWithT(t)
+
+	data := pginstance.Data{
+		Namespace:    "operator-ns",
+		ProviderName: "embedded",
+		Service:      pginstance.Service{Name: "embedded"},
+		PVC: pginstance.PVC{
+			Name: "embedded-pvc",
+			Size: "5Gi",
+		},
+		InitDB: pginstance.InitDB{
+			ConfigMapName: "embedded-initdb",
+		},
+		Postgres: pginstance.Postgres{
+			Image:           "postgres:test",
+			AdminSecretName: "embedded-admin",
+			InstanceHash:    "instance-hash",
+		},
+		TLS: pginstance.TLS{
+			Enabled:           true,
+			UsesManagedIssuer: true,
+			SecretName:        "embedded-tls",
+			SecretHash:        "tls-hash",
+			IssuerName:        "embedded-issuer",
+			IssuerRef: &infraApi.CertManagerIssuerRef{
+				Name:  "embedded-issuer",
+				Kind:  gvk.CertManagerIssuer.Kind,
+				Group: gvk.CertManagerIssuer.Group,
+			},
+			Certificate: pginstance.Certificate{
+				Name: "embedded-cert",
+			},
+		},
+	}
+
+	resources, err := pginstance.Resources(context.Background(), data)
+	g.Expect(err).NotTo(HaveOccurred())
+	g.Expect(resources).To(HaveLen(7))
+
+	issuer := lookupRenderedResource(g, resources, gvk.CertManagerIssuer, "embedded-issuer")
+	g.Expect(issuer.GetKind()).To(Equal(gvk.CertManagerIssuer.Kind))
+
+	certificate := lookupRenderedResource(g, resources, gvk.CertManagerCertificate, "embedded-cert")
+	g.Expect(certificate.GetKind()).To(Equal(gvk.CertManagerCertificate.Kind))
+
+	statefulSet := lookupRenderedResource(g, resources, appsv1.SchemeGroupVersion.WithKind("StatefulSet"), "embedded")
+	annotations, found, err := unstructured.NestedStringMap(
+		statefulSet.Object,
+		"spec", "template", "metadata", "annotations",
+	)
+	g.Expect(err).NotTo(HaveOccurred())
+	g.Expect(found).To(BeTrue())
+	g.Expect(annotations).To(HaveKeyWithValue(
+		"db.infrastructure.opendatahub.io/tls-secret-hash",
+		"tls-hash",
+	))
+
+	templateSpec, found, err := unstructured.NestedMap(statefulSet.Object, "spec", "template", "spec")
+	g.Expect(err).NotTo(HaveOccurred())
+	g.Expect(found).To(BeTrue())
+	g.Expect(templateSpec).To(HaveKey("securityContext"))
+
+	containers, found, err := unstructured.NestedSlice(statefulSet.Object, "spec", "template", "spec", "containers")
+	g.Expect(err).NotTo(HaveOccurred())
+	g.Expect(found).To(BeTrue())
+	g.Expect(containers).To(HaveLen(1))
+
+	container, ok := containers[0].(map[string]any)
+	g.Expect(ok).To(BeTrue())
+	g.Expect(container).To(HaveKeyWithValue("args", []any{
+		"-c",
+		"ssl=on",
+		"-c",
+		"ssl_cert_file=/var/lib/postgresql/tls/tls.crt",
+		"-c",
+		"ssl_key_file=/var/lib/postgresql/tls/tls.key",
+	}))
+
+	tlsMountFound := false
+	if volumeMounts, ok := container["volumeMounts"].([]any); ok {
+		for _, mount := range volumeMounts {
+			mountMap, ok := mount.(map[string]any)
+			if ok && mountMap["name"] == "tls" {
+				tlsMountFound = true
+				break
+			}
+		}
+	}
+	g.Expect(tlsMountFound).To(BeTrue())
+
+	volumes, found, err := unstructured.NestedSlice(statefulSet.Object, "spec", "template", "spec", "volumes")
+	g.Expect(err).NotTo(HaveOccurred())
+	g.Expect(found).To(BeTrue())
+	g.Expect(volumes).To(HaveLen(3))
+}
+
+func lookupRenderedResource(
+	g Gomega,
+	resources []unstructured.Unstructured,
+	targetGVK schema.GroupVersionKind,
+	name string,
+) unstructured.Unstructured {
+	g.Expect(resources).NotTo(BeEmpty())
+	for _, obj := range resources {
+		if obj.GroupVersionKind() == targetGVK && obj.GetName() == name {
+			return obj
+		}
+	}
+
+	g.Expect(false).To(BeTrue(), "resource %s %s not found", targetGVK.String(), name)
+	return unstructured.Unstructured{}
 }

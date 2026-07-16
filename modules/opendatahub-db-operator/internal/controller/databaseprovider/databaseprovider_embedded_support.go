@@ -32,19 +32,13 @@ import (
 	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/pkg/config"
 	dbcontroller "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/pkg/controller"
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/pkg/postgres"
+	pginstance "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/pkg/postgres/instance"
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/pkg/resources/gvk"
 	dbmaps "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/pkg/utils/maps"
 	"github.com/opendatahub-io/odh-platform-utilities/framework/controller/conditions"
-	odhtypes "github.com/opendatahub-io/odh-platform-utilities/framework/controller/types"
 )
 
 const (
-	// extKeyAdminSecretKey is the rr.Extensions key that carries the embedded
-	// admin Secret rollout token between reconcileEmbeddedAction and
-	// embeddedTemplateData.
-	extKeyAdminSecretKey = "embedded/adminSecretKey"
-	extKeyTLSSecretHash  = "embedded/tlsSecretHash"
-
 	reasonAdminSecretUnavailable = "AdminSecretUnavailable"
 	reasonInstanceRunning        = "InstanceRunning"
 	reasonProvisioning           = "Provisioning"
@@ -72,45 +66,93 @@ type TLSState struct {
 	AdminSecret   *corev1.Secret
 }
 
-func embeddedTemplateData(
+func resolveEmbeddedData(
 	ctx context.Context,
-	rr *odhtypes.ReconciliationRequest,
+	cli client.Client,
+	provider *infraApi.DatabaseProvider,
 	cfg *moduleconfig.Config,
-) (map[string]any, error) {
-	obj, ok := rr.Instance.(*infraApi.DatabaseProvider)
-	if !ok || obj.Spec.Type != infraApi.ProviderTypeEmbedded {
-		return nil, nil
+	tlsState TLSState,
+) (pginstance.Data, error) {
+	if provider == nil {
+		return pginstance.Data{}, fmt.Errorf("provider is nil")
+	}
+	if provider.Spec.Embedded == nil {
+		return pginstance.Data{}, fmt.Errorf("spec.embedded is required for Embedded providers")
 	}
 
-	namespaces, err := referencedClaimNamespaces(ctx, rr.Client, obj)
+	namespaces, err := referencedClaimNamespaces(ctx, cli, provider)
 	if err != nil {
-		return nil, fmt.Errorf("listing referenced claim namespaces: %w", err)
+		return pginstance.Data{}, fmt.Errorf("listing referenced claim namespaces: %w", err)
 	}
 
-	resolvedImage, err := resolveEmbeddedImage(obj, cfg)
+	image, err := resolveEmbeddedImage(provider, cfg)
 	if err != nil {
-		return nil, err
+		return pginstance.Data{}, err
 	}
 
-	adminSecretKey, _ := rr.Extensions[extKeyAdminSecretKey].(string)
-	tlsHash, _ := rr.Extensions[extKeyTLSSecretHash].(string)
+	storageClassName := ""
+	if provider.Spec.Embedded.Storage.StorageClassName != nil {
+		storageClassName = *provider.Spec.Embedded.Storage.StorageClassName
+	}
 
-	return map[string]any{
-		"ResolvedImage":        resolvedImage,
-		"AdminSecretName":      dbcontroller.EmbeddedAdminSecretName(obj.Name),
-		"ServiceName":          dbcontroller.EmbeddedServiceName(obj.Name),
-		"PVCName":              dbcontroller.EmbeddedPVCName(obj.Name),
-		"InitDBConfigMapName":  dbcontroller.EmbeddedInitDBConfigMapName(obj.Name),
-		"TLSIssuerName":        dbcontroller.EmbeddedTLSIssuerName(obj.Name),
-		"TLSCertificateName":   embeddedTLSCertificateName(obj),
-		"TLSIssuerRef":         embeddedTLSIssuerRef(obj),
-		"AllowedNamespaces":    namespaces,
-		"InstanceHash":         adminSecretKey,
-		"TLSEnabled":           embeddedTLSEnabled(obj),
-		"TLSUsesManagedIssuer": embeddedTLSUsesManagedIssuer(obj),
-		"TLSSecretName":        embeddedTLSSecretName(obj),
-		"TLSSecretHash":        tlsHash,
-	}, nil
+	var resourcesPtr *corev1.ResourceRequirements
+	if len(provider.Spec.Embedded.Resources.Limits) > 0 ||
+		len(provider.Spec.Embedded.Resources.Requests) > 0 ||
+		len(provider.Spec.Embedded.Resources.Claims) > 0 {
+		resources := provider.Spec.Embedded.Resources.DeepCopy()
+		resourcesPtr = resources
+	}
+
+	data := pginstance.Data{
+		Namespace:    dbcontroller.EmbeddedNamespace(provider, cfg.OperatorNamespace),
+		ProviderName: provider.Name,
+		Service: pginstance.Service{
+			Name: dbcontroller.EmbeddedServiceName(provider.Name),
+		},
+		PVC: pginstance.PVC{
+			Name:             dbcontroller.EmbeddedPVCName(provider.Name),
+			Size:             provider.Spec.Embedded.Storage.Size.String(),
+			StorageClassName: storageClassName,
+		},
+		InitDB: pginstance.InitDB{
+			ConfigMapName: dbcontroller.EmbeddedInitDBConfigMapName(provider.Name),
+			Extensions:    append([]string(nil), provider.Spec.Embedded.Extensions...),
+		},
+		Postgres: pginstance.Postgres{
+			Image:           image,
+			Resources:       resourcesPtr,
+			AdminSecretName: dbcontroller.EmbeddedAdminSecretName(provider.Name),
+		},
+		Network: pginstance.NetworkPolicy{
+			AllowedNamespaces: namespaces,
+		},
+		TLS: pginstance.TLS{
+			Enabled:           tlsState.Enabled,
+			UsesManagedIssuer: embeddedTLSUsesManagedIssuer(provider),
+			SecretName:        embeddedTLSSecretName(provider),
+			SecretHash:        tlsState.TLSSecretHash,
+			IssuerName:        dbcontroller.EmbeddedTLSIssuerName(provider.Name),
+			IssuerRef:         embeddedTLSIssuerRef(provider),
+			Certificate: pginstance.Certificate{
+				Name: embeddedTLSCertificateName(provider),
+			},
+		},
+	}
+
+	if tlsState.AdminSecret != nil && tlsState.AdminSecret.Annotations != nil {
+		data.Postgres.InstanceHash = tlsState.AdminSecret.Annotations[dbcontroller.EmbeddedAdminSecretKeyAnnotation]
+	}
+
+	if provider.Spec.Embedded.TLS != nil {
+		if duration := provider.Spec.Embedded.TLS.Certificate.Duration; duration != nil {
+			data.TLS.Certificate.Duration = &pginstance.Duration{String: duration.Duration.String()}
+		}
+		if renewBefore := provider.Spec.Embedded.TLS.Certificate.RenewBefore; renewBefore != nil {
+			data.TLS.Certificate.RenewBefore = &pginstance.Duration{String: renewBefore.Duration.String()}
+		}
+	}
+
+	return data, nil
 }
 
 func resolveEmbeddedImage(obj *infraApi.DatabaseProvider, cfg *moduleconfig.Config) (string, error) {

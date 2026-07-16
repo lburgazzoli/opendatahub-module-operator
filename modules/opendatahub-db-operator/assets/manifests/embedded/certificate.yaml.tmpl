@@ -1,33 +1,33 @@
-{{- if .TLSEnabled }}
+{{- if .TLS.Enabled }}
 apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:
-  name: {{.TLSCertificateName}}
-  namespace: {{.AppNamespace}}
+  name: {{.TLS.Certificate.Name}}
+  namespace: {{.Namespace}}
   labels:
-    app.kubernetes.io/name: {{.ServiceName}}
+    app.kubernetes.io/name: {{.Service.Name}}
     app.kubernetes.io/component: databaseprovider
-    db.infrastructure.opendatahub.io/provider: {{.Component.Name}}
+    db.infrastructure.opendatahub.io/provider: {{.ProviderName}}
 spec:
-  secretName: {{.TLSSecretName}}
+  secretName: {{.TLS.SecretName}}
   secretTemplate:
     labels:
-      db.infrastructure.opendatahub.io/provider: {{.Component.Name}}
+      db.infrastructure.opendatahub.io/provider: {{.ProviderName}}
   dnsNames:
-    - {{.ServiceName}}.{{.AppNamespace}}.svc
-    - {{.ServiceName}}.{{.AppNamespace}}.svc.cluster.local
+    - {{.Service.Name}}.{{.Namespace}}.svc
+    - {{.Service.Name}}.{{.Namespace}}.svc.cluster.local
   issuerRef:
-    name: {{.TLSIssuerRef.Name}}
-{{- if .TLSIssuerRef.Kind }}
-    kind: {{.TLSIssuerRef.Kind}}
+    name: {{.TLS.IssuerRef.Name}}
+{{- if .TLS.IssuerRef.Kind }}
+    kind: {{.TLS.IssuerRef.Kind}}
 {{- end }}
-{{- if .TLSIssuerRef.Group }}
-    group: {{.TLSIssuerRef.Group}}
+{{- if .TLS.IssuerRef.Group }}
+    group: {{.TLS.IssuerRef.Group}}
 {{- end }}
-{{- with .Component.Spec.Embedded.TLS.Certificate.Duration }}
-  duration: {{ .Duration.String }}
+{{- with .TLS.Certificate.Duration }}
+  duration: {{ .String }}
 {{- end }}
-{{- with .Component.Spec.Embedded.TLS.Certificate.RenewBefore }}
-  renewBefore: {{ .Duration.String }}
+{{- with .TLS.Certificate.RenewBefore }}
+  renewBefore: {{ .String }}
 {{- end }}
 {{- end }}

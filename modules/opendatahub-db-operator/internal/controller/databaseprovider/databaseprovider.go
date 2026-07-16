@@ -21,12 +21,10 @@ import (
 
 	infraApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/api/infrastructure/v1alpha1"
 	"github.com/opendatahub-io/odh-platform-utilities/framework/controller/actions/deploy"
-	fwtemplate "github.com/opendatahub-io/odh-platform-utilities/framework/controller/actions/render/template"
 	"github.com/opendatahub-io/odh-platform-utilities/framework/controller/handlers"
 	fwpredicates "github.com/opendatahub-io/odh-platform-utilities/framework/controller/predicates"
 	dependentpred "github.com/opendatahub-io/odh-platform-utilities/framework/controller/predicates/dependent"
 	resourcespredicates "github.com/opendatahub-io/odh-platform-utilities/framework/controller/predicates/resources"
-	odhtypes "github.com/opendatahub-io/odh-platform-utilities/framework/controller/types"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
@@ -34,7 +32,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
 	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/pkg/config"
-	dbcontroller "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/pkg/controller"
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/pkg/resources/gvk"
 	"github.com/opendatahub-io/odh-platform-utilities/framework/controller/reconciler"
 )
@@ -112,21 +109,6 @@ func NewReconciler(
 		).
 		WithAction(m.reconcileExternalAction).
 		WithAction(m.reconcileEmbeddedAction).
-		WithAction(fwtemplate.NewAction(
-			fwtemplate.WithNamespaceFn(func(
-				_ context.Context,
-				rr *odhtypes.ReconciliationRequest,
-			) (string, error) {
-				obj, ok := rr.Instance.(*infraApi.DatabaseProvider)
-				if !ok {
-					return cfg.OperatorNamespace, nil
-				}
-				return dbcontroller.EmbeddedNamespace(obj, cfg.OperatorNamespace), nil
-			}),
-			fwtemplate.WithDataFn(func(ctx context.Context, rr *odhtypes.ReconciliationRequest) (map[string]any, error) {
-				return embeddedTemplateData(ctx, rr, cfg)
-			}),
-		)).
 		WithAction(deploy.NewAction(
 			deploy.WithCache(),
 			deploy.WithApplyOrder(),

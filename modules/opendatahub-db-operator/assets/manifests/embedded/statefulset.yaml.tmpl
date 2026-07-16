@@ -1,40 +1,40 @@
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
-  name: {{.ServiceName}}
-  namespace: {{.AppNamespace}}
+  name: {{.Service.Name}}
+  namespace: {{.Namespace}}
   labels:
-    app.kubernetes.io/name: {{.ServiceName}}
+    app.kubernetes.io/name: {{.Service.Name}}
     app.kubernetes.io/component: databaseprovider
-    db.infrastructure.opendatahub.io/provider: {{.Component.Name}}
+    db.infrastructure.opendatahub.io/provider: {{.ProviderName}}
 spec:
   replicas: 1
-  serviceName: {{.ServiceName}}
+  serviceName: {{.Service.Name}}
   selector:
     matchLabels:
-      app.kubernetes.io/name: {{.ServiceName}}
+      app.kubernetes.io/name: {{.Service.Name}}
   template:
     metadata:
       labels:
-        app.kubernetes.io/name: {{.ServiceName}}
-        db.infrastructure.opendatahub.io/provider: {{.Component.Name}}
-{{- if .InstanceHash}}
+        app.kubernetes.io/name: {{.Service.Name}}
+        db.infrastructure.opendatahub.io/provider: {{.ProviderName}}
+{{- if .Postgres.InstanceHash}}
       annotations:
-        db.infrastructure.opendatahub.io/admin-secret-key: {{.InstanceHash}}
-{{- if and .TLSEnabled .TLSSecretHash}}
-        db.infrastructure.opendatahub.io/tls-secret-hash: {{.TLSSecretHash}}
+        db.infrastructure.opendatahub.io/admin-secret-key: {{.Postgres.InstanceHash}}
+{{- if and .TLS.Enabled .TLS.SecretHash}}
+        db.infrastructure.opendatahub.io/tls-secret-hash: {{.TLS.SecretHash}}
 {{- end}}
 {{- end}}
     spec:
-{{- if .TLSEnabled}}
+{{- if .TLS.Enabled}}
       securityContext:
         fsGroup: 999
 {{- end}}
       containers:
         - name: postgres
-          image: {{.ResolvedImage}}
+          image: {{.Postgres.Image}}
           imagePullPolicy: IfNotPresent
-{{- if .TLSEnabled}}
+{{- if .TLS.Enabled}}
           args:
             - -c
             - ssl=on
@@ -51,17 +51,17 @@ spec:
             - name: POSTGRES_USER
               valueFrom:
                 secretKeyRef:
-                  name: {{.AdminSecretName}}
+                  name: {{.Postgres.AdminSecretName}}
                   key: pg.user
             - name: POSTGRES_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: {{.AdminSecretName}}
+                  name: {{.Postgres.AdminSecretName}}
                   key: pg.password
             - name: POSTGRES_DB
               valueFrom:
                 secretKeyRef:
-                  name: {{.AdminSecretName}}
+                  name: {{.Postgres.AdminSecretName}}
                   key: pg.database
             - name: PGDATA
               value: /var/lib/postgresql/data/pgdata
@@ -81,7 +81,7 @@ spec:
                 - pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_DB"
             initialDelaySeconds: 15
             timeoutSeconds: 5
-{{- with .Component.Spec.Embedded.Resources }}
+{{- with .Postgres.Resources }}
           resources:{{ toYaml . | nindent 12 }}
 {{- end }}
           volumeMounts:
@@ -89,7 +89,7 @@ spec:
               mountPath: /var/lib/postgresql/data
             - name: initdb
               mountPath: /docker-entrypoint-initdb.d
-{{- if .TLSEnabled}}
+{{- if .TLS.Enabled}}
             - name: tls
               mountPath: /var/lib/postgresql/tls
               readOnly: true
@@ -97,13 +97,13 @@ spec:
       volumes:
         - name: data
           persistentVolumeClaim:
-            claimName: {{.PVCName}}
+            claimName: {{.PVC.Name}}
         - name: initdb
           configMap:
-            name: {{.InitDBConfigMapName}}
-{{- if .TLSEnabled}}
+            name: {{.InitDB.ConfigMapName}}
+{{- if .TLS.Enabled}}
         - name: tls
           secret:
-            secretName: {{.TLSSecretName}}
+            secretName: {{.TLS.SecretName}}
             defaultMode: 416
 {{- end}}
