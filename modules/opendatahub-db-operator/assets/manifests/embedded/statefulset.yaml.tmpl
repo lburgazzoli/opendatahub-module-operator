@@ -65,6 +65,9 @@ spec:
                   key: pg.database
             - name: PGDATA
               value: /var/lib/postgresql/data/pgdata
+{{- with .Postgres.Envs }}
+{{ toYaml . | nindent 12 }}
+{{- end }}
           readinessProbe:
             exec:
               command:

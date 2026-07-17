@@ -46,6 +46,7 @@ type integrationEnv struct {
 	Namespace     string
 	Config        *moduleconfig.Config
 	ClientFactory postgres.ClientFactory
+	Database      *testdb.Instance
 }
 
 func TestIntegration(t *testing.T) {
@@ -99,8 +100,24 @@ func TestIntegration(t *testing.T) {
 	)
 	g.Expect(err).NotTo(HaveOccurred())
 
+	sharedDB, err := testdb.Start(
+		ctx,
+		testdb.Options{
+			Client:        tc.Client(),
+			ClientFactory: clientFactory,
+			Namespace:     support.IntegrationTestNamespace(),
+			Image:         moduleCfg.Embedded.PostgresImage,
+		},
+	)
+	g.Expect(err).NotTo(HaveOccurred())
+	t.Cleanup(func() {
+		if err := sharedDB.Close(context.Background()); err != nil {
+			t.Errorf("closing integration database: %v", err)
+		}
+	})
+
 	t.Run("schema claim", func(t *testing.T) {
-		env, err := newIntegrationEnv(tc, tc.Client(), clientFactory)
+		env, err := newIntegrationEnv(tc, tc.Client(), clientFactory, sharedDB)
 		g := NewWithT(t)
 		g.Expect(err).NotTo(HaveOccurred())
 
@@ -110,7 +127,7 @@ func TestIntegration(t *testing.T) {
 	})
 
 	t.Run("database claim", func(t *testing.T) {
-		env, err := newIntegrationEnv(tc, tc.Client(), clientFactory)
+		env, err := newIntegrationEnv(tc, tc.Client(), clientFactory, sharedDB)
 		g := NewWithT(t)
 		g.Expect(err).NotTo(HaveOccurred())
 
@@ -120,7 +137,7 @@ func TestIntegration(t *testing.T) {
 	})
 
 	t.Run("database provider external", func(t *testing.T) {
-		env, err := newIntegrationEnv(tc, tc.Client(), clientFactory)
+		env, err := newIntegrationEnv(tc, tc.Client(), clientFactory, sharedDB)
 		g := NewWithT(t)
 		g.Expect(err).NotTo(HaveOccurred())
 
@@ -130,7 +147,7 @@ func TestIntegration(t *testing.T) {
 	})
 
 	t.Run("database provider embedded", func(t *testing.T) {
-		env, err := newIntegrationEnv(tc, tc.Client(), clientFactory)
+		env, err := newIntegrationEnv(tc, tc.Client(), clientFactory, sharedDB)
 		g := NewWithT(t)
 		g.Expect(err).NotTo(HaveOccurred())
 
@@ -143,6 +160,7 @@ func newIntegrationEnv(
 	testCluster cluster.Instance,
 	cli client.Client,
 	clientFactory postgres.ClientFactory,
+	database *testdb.Instance,
 ) (*integrationEnv, error) {
 	moduleCfg, err := moduleconfig.Load()
 	if err != nil {
@@ -156,6 +174,7 @@ func newIntegrationEnv(
 		Namespace:     support.IntegrationTestNamespace(),
 		Config:        moduleCfg,
 		ClientFactory: clientFactory,
+		Database:      database,
 	}, nil
 }
 

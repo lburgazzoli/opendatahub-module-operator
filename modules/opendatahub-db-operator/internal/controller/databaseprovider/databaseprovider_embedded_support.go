@@ -45,8 +45,6 @@ const (
 	reasonTLSNotEnabled          = "TLSNotEnabled"
 	reasonTLSProvisioning        = "TLSProvisioning"
 	reasonTLSConfigured          = "TLSConfigured"
-	defaultEmbeddedAdminUser     = "postgres"
-	defaultEmbeddedAdminDatabase = "postgres"
 )
 
 var (
@@ -399,27 +397,22 @@ func desiredEmbeddedAdminSecret(
 	password []byte,
 	tlsState TLSState,
 ) *corev1.Secret {
-	res := &corev1.Secret{}
-	res.Name = dbcontroller.EmbeddedAdminSecretName(provider.Name)
-	res.Namespace = dbcontroller.EmbeddedNamespace(provider, cfg.OperatorNamespace)
-	res.Data = map[string][]byte{
-		postgres.SecretKeyHost:     []byte(dbcontroller.EmbeddedServiceHost(provider, cfg.OperatorNamespace)),
-		postgres.SecretKeyPort:     fmt.Appendf(nil, "%d", postgres.DefaultPort),
-		postgres.SecretKeyUser:     []byte(defaultEmbeddedAdminUser),
-		postgres.SecretKeyPassword: password,
-		postgres.SecretKeyDatabase: []byte(defaultEmbeddedAdminDatabase),
-	}
-
-	if !embeddedTLSEnabled(provider) {
-		return res
-	}
-
-	res.Data[postgres.SecretKeySSLMode] = []byte(postgres.SSLModeVerifyFull)
-	if len(tlsState.CAData) != 0 {
-		res.Data[postgres.SecretKeyCA] = append([]byte(nil), tlsState.CAData...)
-	}
-
-	return res
+	return pginstance.AdminSecret(
+		pginstance.Data{
+			Namespace: dbcontroller.EmbeddedNamespace(provider, cfg.OperatorNamespace),
+			Service: pginstance.Service{
+				Name: dbcontroller.EmbeddedServiceName(provider.Name),
+			},
+			Postgres: pginstance.Postgres{
+				AdminSecretName: dbcontroller.EmbeddedAdminSecretName(provider.Name),
+			},
+			TLS: pginstance.TLS{
+				Enabled: embeddedTLSEnabled(provider),
+			},
+		},
+		password,
+		tlsState.CAData,
+	)
 }
 
 func referencedClaimNamespaces(

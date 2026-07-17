@@ -54,24 +54,12 @@ func newDatabaseClaimSuite(t *testing.T, env *integrationEnv) (*databaseClaimSui
 
 	suite := &databaseClaimSuite{
 		env:          env,
+		db:           env.Database,
 		providerName: "database-provider-" + xid.New().String(),
 	}
-
-	db, err := testdb.Start(t.Context())
-	if err != nil {
-		return nil, err
+	if suite.db == nil {
+		return nil, fmt.Errorf("integration database is nil")
 	}
-
-	suite.db = db
-	t.Cleanup(func() {
-		if suite.db == nil {
-			return
-		}
-
-		if err := suite.db.Close(context.Background()); err != nil {
-			t.Errorf("closing database: %v", err)
-		}
-	})
 
 	if err := suite.createProvider(t); err != nil {
 		return nil, err

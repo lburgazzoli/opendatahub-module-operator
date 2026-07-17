@@ -52,6 +52,7 @@ type InitDB struct {
 type Postgres struct {
 	Image           string
 	Resources       *corev1.ResourceRequirements
+	Envs            []corev1.EnvVar
 	AdminSecretName string
 	InstanceHash    string
 }

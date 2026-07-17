@@ -14,7 +14,7 @@ import (
 )
 
 const (
-	defaultDeleteTimeout      = 30 * time.Second
+	defaultDeleteTimeout      = 90 * time.Second
 	defaultDeletePollInterval = 200 * time.Millisecond
 )
 

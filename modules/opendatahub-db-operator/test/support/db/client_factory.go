@@ -30,16 +30,16 @@ func NewForwardingClientFactory(tracker *portforward.Tracker) postgres.ClientFac
 			)
 		}
 
-		forwardedCfg, err := ConfigWithForwardTarget(cfg, forward.Host(), forward.Port())
+		fwCfg, err := ConfigWithForwardTarget(cfg, forward.Host(), forward.Port())
 		if err != nil {
 			return nil, err
 		}
 
-		return postgres.NewClient(ctx, forwardedCfg)
+		return postgres.NewClient(ctx, fwCfg)
 	}
 }
 
-func serviceRefForHost(host string) (serviceName string, namespace string, ok bool) {
+func serviceRefForHost(host string) (string, string, bool) {
 	parts := strings.Split(host, ".")
 	if len(parts) < 3 {
 		return "", "", false

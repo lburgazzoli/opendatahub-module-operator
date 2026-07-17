@@ -48,23 +48,13 @@ func newSchemaClaimSuite(t *testing.T, env *integrationEnv) (*schemaClaimSuite, 
 
 	suite := &schemaClaimSuite{
 		env:          env,
+		db:           env.Database,
 		databaseName: "schema_" + xid.New().String(),
 		providerName: "schema-provider-" + xid.New().String(),
 	}
-
-	db, err := testdb.Start(t.Context())
-	if err != nil {
-		return nil, err
+	if suite.db == nil {
+		return nil, fmt.Errorf("integration database is nil")
 	}
-
-	suite.db = db
-	t.Cleanup(func() {
-		if suite.db == nil {
-			return
-		}
-
-		_ = suite.db.Close(context.Background())
-	})
 
 	suite.createDatabase(t, suite.databaseName)
 	suite.createProvider(t)
