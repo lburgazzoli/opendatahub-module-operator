@@ -56,15 +56,40 @@ spec:
           spec:
             description: DatabaseProviderSpec defines the desired state of DatabaseProvider.
             properties:
-              embedded:
+              external:
                 description: |-
-                  Embedded configures a controller-owned instance. Mutually exclusive
+                  External configures a provider pointing at an admin-managed instance.
+                  Mutually exclusive with Internal.
+                properties:
+                  connectionSecretRef:
+                    description: |-
+                      ConnectionSecretRef points at a Secret holding admin-level connection
+                      info, which may live in a different namespace than any claim (unlike
+                      claim credential Secrets, which always live in the claim's own
+                      namespace).
+                    properties:
+                      name:
+                        description: name is unique within a namespace to reference
+                          a secret resource.
+                        type: string
+                      namespace:
+                        description: namespace defines the space within which the
+                          secret name must be unique.
+                        type: string
+                    type: object
+                    x-kubernetes-map-type: atomic
+                required:
+                - connectionSecretRef
+                type: object
+              internal:
+                description: |-
+                  Internal configures a controller-owned instance. Mutually exclusive
                   with External.
                 properties:
                   extensions:
                     description: |-
                       Extensions lists PostgreSQL extensions to make available inside the
-                      embedded instance. Each value selects a built-in container image:
+                      internal instance. Each value selects a built-in container image:
                       "vector" uses the pgvector image; all others use the standard
                       PostgreSQL image. Immutable once set.
                     items:
@@ -80,7 +105,7 @@ spec:
                       rule: self == oldSelf
                   namespace:
                     description: |-
-                      Namespace overrides where the embedded PostgreSQL resources are created.
+                      Namespace overrides where the internal PostgreSQL resources are created.
                       When unset, the operator namespace is used. Immutable once set.
                     type: string
                     x-kubernetes-validations:
@@ -167,7 +192,7 @@ spec:
                       rule: quantity(self.size).isGreaterThan(quantity('0'))
                   tls:
                     description: |-
-                      TLS enables TLS for the embedded PostgreSQL instance. Presence of this
+                      TLS enables TLS for the internal PostgreSQL instance. Presence of this
                       field opts into TLS; an empty object uses controller defaults.
                     properties:
                       certificate:
@@ -208,46 +233,21 @@ spec:
                 required:
                 - storage
                 type: object
-              external:
-                description: |-
-                  External configures a provider pointing at an admin-managed instance.
-                  Mutually exclusive with Embedded.
-                properties:
-                  connectionSecretRef:
-                    description: |-
-                      ConnectionSecretRef points at a Secret holding admin-level connection
-                      info, which may live in a different namespace than any claim (unlike
-                      claim credential Secrets, which always live in the claim's own
-                      namespace).
-                    properties:
-                      name:
-                        description: name is unique within a namespace to reference
-                          a secret resource.
-                        type: string
-                      namespace:
-                        description: namespace defines the space within which the
-                          secret name must be unique.
-                        type: string
-                    type: object
-                    x-kubernetes-map-type: atomic
-                required:
-                - connectionSecretRef
-                type: object
               type:
-                description: Type selects which of External/Embedded below is populated.
+                description: Type selects which of External/Internal below is populated.
                 enum:
                 - External
-                - Embedded
+                - Internal
                 type: string
             required:
             - type
             type: object
             x-kubernetes-validations:
-            - message: exactly one of external or embedded must be set
-              rule: '(has(self.external) ? 1 : 0) + (has(self.embedded) ? 1 : 0) ==
+            - message: exactly one of external or internal must be set
+              rule: '(has(self.external) ? 1 : 0) + (has(self.internal) ? 1 : 0) ==
                 1'
             - message: spec.type must match the set provider type
-              rule: 'self.type == ''External'' ? has(self.external) : has(self.embedded)'
+              rule: 'self.type == ''External'' ? has(self.external) : has(self.internal)'
           status:
             description: |-
               DatabaseProviderStatus defines the observed state of DatabaseProvider.

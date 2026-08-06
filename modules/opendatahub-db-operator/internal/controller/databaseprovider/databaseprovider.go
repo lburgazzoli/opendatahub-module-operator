@@ -62,7 +62,7 @@ func NewController(cfg *moduleconfig.Config, opts ...Option) *Controller {
 // +kubebuilder:rbac:groups=infrastructure.opendatahub.io,resources=databaseproviders/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=infrastructure.opendatahub.io,resources=databaseproviders/finalizers,verbs=update
 
-// Embedded provider owns these (task-08)
+// Internal provider owns these (task-08)
 // +kubebuilder:rbac:groups=apps,resources=statefulsets,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups="",resources=persistentvolumeclaims,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups="",resources=services,verbs=get;list;watch;create;update;patch;delete
@@ -108,12 +108,12 @@ func NewReconciler(
 			reconciler.WithDefaultRequeueAfter(cfg.DatabaseProvider.RetryInterval),
 		).
 		WithAction(m.reconcileExternalAction).
-		WithAction(m.reconcileEmbeddedAction).
+		WithAction(m.reconcileInternalAction).
 		WithAction(deploy.NewAction(
 			deploy.WithCache(),
 			deploy.WithApplyOrder(),
 		)).
-		WithAction(m.embeddedReadinessAction).
+		WithAction(m.internalReadinessAction).
 		WithConditions(ConditionReachable, ConditionTLSConfiguration).
 		Build(ctx)
 

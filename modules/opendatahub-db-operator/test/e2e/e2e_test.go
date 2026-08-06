@@ -42,7 +42,7 @@ func TestDatabaseOperatorE2E(t *testing.T) {
 	suite := newE2ESuite(t, cfg)
 
 	t.Run("foundation", suite.runFoundation)
-	t.Run("embedded", suite.runEmbedded)
+	t.Run("internal", suite.runInternal)
 	t.Run("external", suite.runExternal)
 }
 

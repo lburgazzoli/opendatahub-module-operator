@@ -116,7 +116,7 @@ func (m *Controller) reconcileExternalAction(
 	return nil
 }
 
-func (m *Controller) reconcileEmbeddedAction(
+func (m *Controller) reconcileInternalAction(
 	ctx context.Context,
 	rr *odhtypes.ReconciliationRequest,
 ) error {
@@ -124,12 +124,12 @@ func (m *Controller) reconcileEmbeddedAction(
 	if !ok {
 		return fmt.Errorf("instance is not a DatabaseProvider")
 	}
-	if obj.Spec.Type != infraApi.ProviderTypeEmbedded {
+	if obj.Spec.Type != infraApi.ProviderTypeInternal {
 		return nil
 	}
 
-	tlsState, err := computeEmbeddedAdminSecret(ctx, rr.Client, obj, m.cfg)
-	obj.Status.TLS = embeddedTLSStatus(obj, m.cfg, tlsState.Ready)
+	tlsState, err := computeInternalAdminSecret(ctx, rr.Client, obj, m.cfg)
+	obj.Status.TLS = internalTLSStatus(obj, m.cfg, tlsState.Ready)
 	if err != nil {
 		obj.Status.Connection = infraApi.ProviderConnectionStatus{}
 
@@ -145,14 +145,14 @@ func (m *Controller) reconcileEmbeddedAction(
 			rr.Conditions.Mark(ConditionTLSConfiguration, metav1.ConditionFalse,
 				conditions.WithSeverity(api.ConditionSeverityInfo),
 				conditions.WithReason(reasonTLSNotEnabled),
-				conditions.WithMessage("TLS is not enabled for this embedded provider"))
+				conditions.WithMessage("TLS is not enabled for this internal provider"))
 		}
 
-		return fmt.Errorf("ensuring embedded admin Secret: %w", err)
+		return fmt.Errorf("ensuring internal admin Secret: %w", err)
 	}
 
 	if err := rr.AddResources(tlsState.AdminSecret); err != nil {
-		return fmt.Errorf("adding embedded admin Secret to resources: %w", err)
+		return fmt.Errorf("adding internal admin Secret to resources: %w", err)
 	}
 
 	// Build connection status from the in-memory secret so it is available on
@@ -168,37 +168,37 @@ func (m *Controller) reconcileEmbeddedAction(
 		rr.Conditions.Mark(ConditionTLSConfiguration, metav1.ConditionFalse,
 			conditions.WithSeverity(api.ConditionSeverityInfo),
 			conditions.WithReason(reasonTLSNotEnabled),
-			conditions.WithMessage("TLS is not enabled for this embedded provider"))
+			conditions.WithMessage("TLS is not enabled for this internal provider"))
 	case tlsState.Ready:
 		rr.Conditions.Mark(ConditionTLSConfiguration, metav1.ConditionTrue,
 			conditions.WithReason(reasonTLSConfigured),
-			conditions.WithMessage("Embedded provider TLS configuration resolved"))
+			conditions.WithMessage("Internal provider TLS configuration resolved"))
 	default:
 		rr.Conditions.Mark(ConditionTLSConfiguration, metav1.ConditionFalse,
 			conditions.WithReason(reasonTLSProvisioning),
-			conditions.WithMessage("Embedded provider TLS configuration is pending"))
+			conditions.WithMessage("Internal provider TLS configuration is pending"))
 	}
 
-	data, err := resolveEmbeddedData(ctx, rr.Client, obj, m.cfg, tlsState)
+	data, err := resolveInternalData(ctx, rr.Client, obj, m.cfg, tlsState)
 	if err != nil {
-		return fmt.Errorf("resolving embedded resource data: %w", err)
+		return fmt.Errorf("resolving internal resource data: %w", err)
 	}
 
 	pgres, err := pginstance.Resources(ctx, data)
 	if err != nil {
-		return fmt.Errorf("rendering embedded resources: %w", err)
+		return fmt.Errorf("rendering internal resources: %w", err)
 	}
 
 	for i := range pgres {
 		if err := rr.AddResources(&pgres[i]); err != nil {
-			return fmt.Errorf("adding embedded resources: %w", err)
+			return fmt.Errorf("adding internal resources: %w", err)
 		}
 	}
 
 	return nil
 }
 
-func (m *Controller) embeddedReadinessAction(
+func (m *Controller) internalReadinessAction(
 	ctx context.Context,
 	rr *odhtypes.ReconciliationRequest,
 ) error {
@@ -206,34 +206,34 @@ func (m *Controller) embeddedReadinessAction(
 	if !ok {
 		return fmt.Errorf("instance is not a DatabaseProvider")
 	}
-	if obj.Spec.Type != infraApi.ProviderTypeEmbedded {
+	if obj.Spec.Type != infraApi.ProviderTypeInternal {
 		return nil
 	}
 
 	sts := &appsv1.StatefulSet{}
-	sts.Namespace = dbcontroller.EmbeddedNamespace(obj, m.cfg.OperatorNamespace)
-	sts.Name = dbcontroller.EmbeddedServiceName(obj.Name)
+	sts.Namespace = dbcontroller.InternalNamespace(obj, m.cfg.OperatorNamespace)
+	sts.Name = dbcontroller.InternalServiceName(obj.Name)
 
 	if err := rr.Client.Get(ctx, client.ObjectKeyFromObject(sts), sts); err != nil {
 		if apierrors.IsNotFound(err) {
 			rr.Conditions.Mark(ConditionReachable, metav1.ConditionFalse,
 				conditions.WithReason(reasonProvisioning),
-				conditions.WithMessage("Waiting for embedded PostgreSQL resources"))
+				conditions.WithMessage("Waiting for internal PostgreSQL resources"))
 			return nil
 		}
-		return fmt.Errorf("reading embedded StatefulSet: %w", err)
+		return fmt.Errorf("reading internal StatefulSet: %w", err)
 	}
 
 	if sts.Status.ReadyReplicas != 1 {
 		rr.Conditions.Mark(ConditionReachable, metav1.ConditionFalse,
 			conditions.WithReason(reasonProvisioning),
-			conditions.WithMessage("Waiting for embedded PostgreSQL StatefulSet to become ready"))
+			conditions.WithMessage("Waiting for internal PostgreSQL StatefulSet to become ready"))
 		return nil
 	}
 
 	rr.Conditions.Mark(ConditionReachable, metav1.ConditionTrue,
 		conditions.WithReason(reasonInstanceRunning),
-		conditions.WithMessage("Embedded PostgreSQL instance is ready"))
+		conditions.WithMessage("Internal PostgreSQL instance is ready"))
 
 	return nil
 }

@@ -106,7 +106,7 @@ func TestIntegration(t *testing.T) {
 			Client:        tc.Client(),
 			ClientFactory: clientFactory,
 			Namespace:     support.IntegrationTestNamespace(),
-			Image:         moduleCfg.Embedded.PostgresImage,
+			Image:         moduleCfg.Internal.PostgresImage,
 		},
 	)
 	g.Expect(err).NotTo(HaveOccurred())
@@ -151,7 +151,7 @@ func TestIntegration(t *testing.T) {
 		g := NewWithT(t)
 		g.Expect(err).NotTo(HaveOccurred())
 
-		suite := newEmbeddedDatabaseProviderSuite(t, env)
+		suite := newInternalDatabaseProviderSuite(t, env)
 		suite.Run(t)
 	})
 }

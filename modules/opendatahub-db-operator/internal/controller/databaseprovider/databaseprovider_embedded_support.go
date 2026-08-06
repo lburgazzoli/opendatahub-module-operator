@@ -64,7 +64,7 @@ type TLSState struct {
 	AdminSecret   *corev1.Secret
 }
 
-func resolveEmbeddedData(
+func resolveInternalData(
 	ctx context.Context,
 	cli client.Client,
 	provider *infraApi.DatabaseProvider,
@@ -74,8 +74,8 @@ func resolveEmbeddedData(
 	if provider == nil {
 		return pginstance.Data{}, fmt.Errorf("provider is nil")
 	}
-	if provider.Spec.Embedded == nil {
-		return pginstance.Data{}, fmt.Errorf("spec.embedded is required for Embedded providers")
+	if provider.Spec.Internal == nil {
+		return pginstance.Data{}, fmt.Errorf("spec.internal is required for Internal providers")
 	}
 
 	namespaces, err := referencedClaimNamespaces(ctx, cli, provider)
@@ -83,69 +83,69 @@ func resolveEmbeddedData(
 		return pginstance.Data{}, fmt.Errorf("listing referenced claim namespaces: %w", err)
 	}
 
-	image, err := resolveEmbeddedImage(provider, cfg)
+	image, err := resolveInternalImage(provider, cfg)
 	if err != nil {
 		return pginstance.Data{}, err
 	}
 
 	storageClassName := ""
-	if provider.Spec.Embedded.Storage.StorageClassName != nil {
-		storageClassName = *provider.Spec.Embedded.Storage.StorageClassName
+	if provider.Spec.Internal.Storage.StorageClassName != nil {
+		storageClassName = *provider.Spec.Internal.Storage.StorageClassName
 	}
 
 	var resourcesPtr *corev1.ResourceRequirements
-	if len(provider.Spec.Embedded.Resources.Limits) > 0 ||
-		len(provider.Spec.Embedded.Resources.Requests) > 0 ||
-		len(provider.Spec.Embedded.Resources.Claims) > 0 {
-		resources := provider.Spec.Embedded.Resources.DeepCopy()
+	if len(provider.Spec.Internal.Resources.Limits) > 0 ||
+		len(provider.Spec.Internal.Resources.Requests) > 0 ||
+		len(provider.Spec.Internal.Resources.Claims) > 0 {
+		resources := provider.Spec.Internal.Resources.DeepCopy()
 		resourcesPtr = resources
 	}
 
 	data := pginstance.Data{
-		Namespace:    dbcontroller.EmbeddedNamespace(provider, cfg.OperatorNamespace),
+		Namespace:    dbcontroller.InternalNamespace(provider, cfg.OperatorNamespace),
 		ProviderName: provider.Name,
 		Service: pginstance.Service{
-			Name: dbcontroller.EmbeddedServiceName(provider.Name),
+			Name: dbcontroller.InternalServiceName(provider.Name),
 		},
 		PVC: pginstance.PVC{
-			Name:             dbcontroller.EmbeddedPVCName(provider.Name),
-			Size:             provider.Spec.Embedded.Storage.Size.String(),
+			Name:             dbcontroller.InternalPVCName(provider.Name),
+			Size:             provider.Spec.Internal.Storage.Size.String(),
 			StorageClassName: storageClassName,
 		},
 		InitDB: pginstance.InitDB{
-			ConfigMapName: dbcontroller.EmbeddedInitDBConfigMapName(provider.Name),
-			Extensions:    append([]string(nil), provider.Spec.Embedded.Extensions...),
+			ConfigMapName: dbcontroller.InternalInitDBConfigMapName(provider.Name),
+			Extensions:    append([]string(nil), provider.Spec.Internal.Extensions...),
 		},
 		Postgres: pginstance.Postgres{
 			Image:           image,
 			Resources:       resourcesPtr,
-			AdminSecretName: dbcontroller.EmbeddedAdminSecretName(provider.Name),
+			AdminSecretName: dbcontroller.InternalAdminSecretName(provider.Name),
 		},
 		Network: pginstance.NetworkPolicy{
 			AllowedNamespaces: namespaces,
 		},
 		TLS: pginstance.TLS{
 			Enabled:           tlsState.Enabled,
-			UsesManagedIssuer: embeddedTLSUsesManagedIssuer(provider),
-			SecretName:        embeddedTLSSecretName(provider),
+			UsesManagedIssuer: internalTLSUsesManagedIssuer(provider),
+			SecretName:        internalTLSSecretName(provider),
 			SecretHash:        tlsState.TLSSecretHash,
-			IssuerName:        dbcontroller.EmbeddedTLSIssuerName(provider.Name),
-			IssuerRef:         embeddedTLSIssuerRef(provider),
+			IssuerName:        dbcontroller.InternalTLSIssuerName(provider.Name),
+			IssuerRef:         internalTLSIssuerRef(provider),
 			Certificate: pginstance.Certificate{
-				Name: embeddedTLSCertificateName(provider),
+				Name: internalTLSCertificateName(provider),
 			},
 		},
 	}
 
 	if tlsState.AdminSecret != nil && tlsState.AdminSecret.Annotations != nil {
-		data.Postgres.InstanceHash = tlsState.AdminSecret.Annotations[dbcontroller.EmbeddedAdminSecretKeyAnnotation]
+		data.Postgres.InstanceHash = tlsState.AdminSecret.Annotations[dbcontroller.InternalAdminSecretKeyAnnotation]
 	}
 
-	if provider.Spec.Embedded.TLS != nil {
-		if duration := provider.Spec.Embedded.TLS.Certificate.Duration; duration != nil {
+	if provider.Spec.Internal.TLS != nil {
+		if duration := provider.Spec.Internal.TLS.Certificate.Duration; duration != nil {
 			data.TLS.Certificate.Duration = &pginstance.Duration{String: duration.Duration.String()}
 		}
-		if renewBefore := provider.Spec.Embedded.TLS.Certificate.RenewBefore; renewBefore != nil {
+		if renewBefore := provider.Spec.Internal.TLS.Certificate.RenewBefore; renewBefore != nil {
 			data.TLS.Certificate.RenewBefore = &pginstance.Duration{String: renewBefore.Duration.String()}
 		}
 	}
@@ -153,20 +153,20 @@ func resolveEmbeddedData(
 	return data, nil
 }
 
-func resolveEmbeddedImage(obj *infraApi.DatabaseProvider, cfg *moduleconfig.Config) (string, error) {
-	if obj.Spec.Embedded == nil {
-		return "", fmt.Errorf("spec.embedded is required for Embedded providers")
+func resolveInternalImage(obj *infraApi.DatabaseProvider, cfg *moduleconfig.Config) (string, error) {
+	if obj.Spec.Internal == nil {
+		return "", fmt.Errorf("spec.internal is required for Internal providers")
 	}
 
 	hasVector := false
-	for _, extension := range obj.Spec.Embedded.Extensions {
+	for _, extension := range obj.Spec.Internal.Extensions {
 		if extension == "vector" {
 			hasVector = true
 			continue
 		}
 		if _, ok := stockExtensions[extension]; !ok {
 			return "", fmt.Errorf(
-				"extension %q does not map to a supported embedded image; use an External provider",
+				"extension %q does not map to a supported internal image; use an External provider",
 				extension,
 			)
 		}
@@ -174,59 +174,59 @@ func resolveEmbeddedImage(obj *infraApi.DatabaseProvider, cfg *moduleconfig.Conf
 
 	switch {
 	case hasVector:
-		return cfg.Embedded.PgvectorImage, nil
+		return cfg.Internal.PgvectorImage, nil
 	default:
-		return cfg.Embedded.PostgresImage, nil
+		return cfg.Internal.PostgresImage, nil
 	}
 }
 
-func embeddedTLSEnabled(provider *infraApi.DatabaseProvider) bool {
-	return provider != nil && provider.Spec.Embedded != nil && provider.Spec.Embedded.TLS != nil
+func internalTLSEnabled(provider *infraApi.DatabaseProvider) bool {
+	return provider != nil && provider.Spec.Internal != nil && provider.Spec.Internal.TLS != nil
 }
 
-func embeddedTLSUsesManagedIssuer(provider *infraApi.DatabaseProvider) bool {
-	if !embeddedTLSEnabled(provider) {
+func internalTLSUsesManagedIssuer(provider *infraApi.DatabaseProvider) bool {
+	if !internalTLSEnabled(provider) {
 		return false
 	}
 
-	ref := provider.Spec.Embedded.TLS.IssuerRef
+	ref := provider.Spec.Internal.TLS.IssuerRef
 	return ref == nil || ref.Name == ""
 }
 
-func embeddedTLSSecretName(provider *infraApi.DatabaseProvider) string {
-	if !embeddedTLSEnabled(provider) {
+func internalTLSSecretName(provider *infraApi.DatabaseProvider) string {
+	if !internalTLSEnabled(provider) {
 		return ""
 	}
 
-	if name := provider.Spec.Embedded.TLS.Certificate.SecretName; name != "" {
+	if name := provider.Spec.Internal.TLS.Certificate.SecretName; name != "" {
 		return name
 	}
 
-	return dbcontroller.EmbeddedTLSSecretName(provider.Name)
+	return dbcontroller.InternalTLSSecretName(provider.Name)
 }
 
-func embeddedTLSCertificateName(provider *infraApi.DatabaseProvider) string {
+func internalTLSCertificateName(provider *infraApi.DatabaseProvider) string {
 	if provider == nil {
 		return ""
 	}
 
-	return dbcontroller.EmbeddedTLSCertificateName(provider.Name)
+	return dbcontroller.InternalTLSCertificateName(provider.Name)
 }
 
-func embeddedTLSIssuerRef(provider *infraApi.DatabaseProvider) *infraApi.CertManagerIssuerRef {
-	if !embeddedTLSEnabled(provider) {
+func internalTLSIssuerRef(provider *infraApi.DatabaseProvider) *infraApi.CertManagerIssuerRef {
+	if !internalTLSEnabled(provider) {
 		return nil
 	}
 
-	if embeddedTLSUsesManagedIssuer(provider) {
+	if internalTLSUsesManagedIssuer(provider) {
 		return &infraApi.CertManagerIssuerRef{
-			Name:  dbcontroller.EmbeddedTLSIssuerName(provider.Name),
+			Name:  dbcontroller.InternalTLSIssuerName(provider.Name),
 			Kind:  gvk.CertManagerIssuer.Kind,
 			Group: gvk.CertManagerIssuer.Group,
 		}
 	}
 
-	ref := *provider.Spec.Embedded.TLS.IssuerRef
+	ref := *provider.Spec.Internal.TLS.IssuerRef
 	if ref.Kind == "" {
 		ref.Kind = gvk.CertManagerIssuer.Kind
 	}
@@ -237,7 +237,7 @@ func embeddedTLSIssuerRef(provider *infraApi.DatabaseProvider) *infraApi.CertMan
 	return &ref
 }
 
-func embeddedTLSStatus(
+func internalTLSStatus(
 	provider *infraApi.DatabaseProvider,
 	cfg *moduleconfig.Config,
 	ready bool,
@@ -247,29 +247,29 @@ func embeddedTLSStatus(
 	}
 
 	return &infraApi.ProviderTLSStatus{
-		Enabled:         embeddedTLSEnabled(provider),
+		Enabled:         internalTLSEnabled(provider),
 		Ready:           ready,
-		Namespace:       dbcontroller.EmbeddedNamespace(provider, cfg.OperatorNamespace),
-		IssuerRef:       embeddedTLSIssuerRef(provider),
-		CertificateName: embeddedTLSCertificateName(provider),
-		SecretName:      embeddedTLSSecretName(provider),
+		Namespace:       dbcontroller.InternalNamespace(provider, cfg.OperatorNamespace),
+		IssuerRef:       internalTLSIssuerRef(provider),
+		CertificateName: internalTLSCertificateName(provider),
+		SecretName:      internalTLSSecretName(provider),
 	}
 }
 
-func embeddedTLSSecret(
+func internalTLSSecret(
 	ctx context.Context,
 	cli client.Client,
 	provider *infraApi.DatabaseProvider,
 	cfg *moduleconfig.Config,
 ) (*corev1.Secret, error) {
-	if !embeddedTLSEnabled(provider) {
+	if !internalTLSEnabled(provider) {
 		return nil, nil
 	}
 
 	secret := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      embeddedTLSSecretName(provider),
-			Namespace: dbcontroller.EmbeddedNamespace(provider, cfg.OperatorNamespace),
+			Name:      internalTLSSecretName(provider),
+			Namespace: dbcontroller.InternalNamespace(provider, cfg.OperatorNamespace),
 		},
 	}
 	if err := cli.Get(ctx, client.ObjectKeyFromObject(secret), secret); err != nil {
@@ -277,13 +277,13 @@ func embeddedTLSSecret(
 			return nil, nil
 		}
 
-		return nil, fmt.Errorf("reading embedded TLS Secret: %w", err)
+		return nil, fmt.Errorf("reading internal TLS Secret: %w", err)
 	}
 
 	return secret, nil
 }
 
-func embeddedTLSCAData(secret *corev1.Secret) []byte {
+func internalTLSCAData(secret *corev1.Secret) []byte {
 	if secret == nil {
 		return nil
 	}
@@ -295,7 +295,7 @@ func embeddedTLSCAData(secret *corev1.Secret) []byte {
 	return secret.Data["tls.crt"]
 }
 
-func embeddedTLSSecretHash(secret *corev1.Secret) string {
+func internalTLSSecretHash(secret *corev1.Secret) string {
 	if secret == nil {
 		return ""
 	}
@@ -312,20 +312,20 @@ func embeddedTLSSecretHash(secret *corev1.Secret) string {
 	return fmt.Sprintf("%x", h.Sum(nil))
 }
 
-func resolveEmbeddedTLSState(
+func resolveInternalTLSState(
 	ctx context.Context,
 	cli client.Client,
 	provider *infraApi.DatabaseProvider,
 	cfg *moduleconfig.Config,
 ) (TLSState, error) {
 	state := TLSState{
-		Enabled: embeddedTLSEnabled(provider),
+		Enabled: internalTLSEnabled(provider),
 	}
 	if !state.Enabled {
 		return state, nil
 	}
 
-	secret, err := embeddedTLSSecret(ctx, cli, provider, cfg)
+	secret, err := internalTLSSecret(ctx, cli, provider, cfg)
 	if err != nil {
 		return state, err
 	}
@@ -334,32 +334,32 @@ func resolveEmbeddedTLSState(
 	}
 
 	state.TLSSecret = secret
-	state.CAData = append([]byte(nil), embeddedTLSCAData(secret)...)
+	state.CAData = append([]byte(nil), internalTLSCAData(secret)...)
 	state.Ready = len(state.CAData) != 0
-	state.TLSSecretHash = embeddedTLSSecretHash(secret)
+	state.TLSSecretHash = internalTLSSecretHash(secret)
 
 	return state, nil
 }
 
-// computeEmbeddedAdminSecret returns the resolved TLS state for the embedded
+// computeInternalAdminSecret returns the resolved TLS state for the internal
 // provider, including the desired admin Secret projection. If the admin Secret
 // already exists its password is preserved; otherwise fresh credentials are
 // generated. The caller adds TLSState.AdminSecret to rr.Resources so the deploy
 // action creates or updates it via SSA.
-func computeEmbeddedAdminSecret(
+func computeInternalAdminSecret(
 	ctx context.Context,
 	cli client.Client,
 	provider *infraApi.DatabaseProvider,
 	cfg *moduleconfig.Config,
 ) (TLSState, error) {
-	res, err := resolveEmbeddedTLSState(ctx, cli, provider, cfg)
+	res, err := resolveInternalTLSState(ctx, cli, provider, cfg)
 	if err != nil {
 		return res, err
 	}
 
 	existing := &corev1.Secret{}
-	existing.Name = dbcontroller.EmbeddedAdminSecretName(provider.Name)
-	existing.Namespace = dbcontroller.EmbeddedNamespace(provider, cfg.OperatorNamespace)
+	existing.Name = dbcontroller.InternalAdminSecretName(provider.Name)
+	existing.Namespace = dbcontroller.InternalNamespace(provider, cfg.OperatorNamespace)
 
 	err = cli.Get(ctx, client.ObjectKeyFromObject(existing), existing)
 	if err != nil && !apierrors.IsNotFound(err) {
@@ -376,22 +376,22 @@ func computeEmbeddedAdminSecret(
 		password = []byte(pwd)
 	}
 
-	instanceHash := existing.Annotations[dbcontroller.EmbeddedAdminSecretKeyAnnotation]
+	instanceHash := existing.Annotations[dbcontroller.InternalAdminSecretKeyAnnotation]
 	if len(instanceHash) == 0 {
 		instanceHash = xid.New().String()
 	}
 
-	res.AdminSecret = desiredEmbeddedAdminSecret(provider, cfg, password, res)
+	res.AdminSecret = desiredInternalAdminSecret(provider, cfg, password, res)
 	res.AdminSecret.Annotations = dbmaps.Set(
 		res.AdminSecret.Annotations,
-		dbcontroller.EmbeddedAdminSecretKeyAnnotation,
+		dbcontroller.InternalAdminSecretKeyAnnotation,
 		instanceHash,
 	)
 
 	return res, nil
 }
 
-func desiredEmbeddedAdminSecret(
+func desiredInternalAdminSecret(
 	provider *infraApi.DatabaseProvider,
 	cfg *moduleconfig.Config,
 	password []byte,
@@ -399,15 +399,15 @@ func desiredEmbeddedAdminSecret(
 ) *corev1.Secret {
 	return pginstance.AdminSecret(
 		pginstance.Data{
-			Namespace: dbcontroller.EmbeddedNamespace(provider, cfg.OperatorNamespace),
+			Namespace: dbcontroller.InternalNamespace(provider, cfg.OperatorNamespace),
 			Service: pginstance.Service{
-				Name: dbcontroller.EmbeddedServiceName(provider.Name),
+				Name: dbcontroller.InternalServiceName(provider.Name),
 			},
 			Postgres: pginstance.Postgres{
-				AdminSecretName: dbcontroller.EmbeddedAdminSecretName(provider.Name),
+				AdminSecretName: dbcontroller.InternalAdminSecretName(provider.Name),
 			},
 			TLS: pginstance.TLS{
-				Enabled: embeddedTLSEnabled(provider),
+				Enabled: internalTLSEnabled(provider),
 			},
 		},
 		password,

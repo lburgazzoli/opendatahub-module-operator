@@ -1,6 +1,6 @@
 resources:
 - services_v1alpha1_databaseservice.yaml
-- infrastructure_v1alpha1_databaseprovider_embedded.yaml
+- infrastructure_v1alpha1_databaseprovider_internal.yaml
 - infrastructure_v1alpha1_databaseprovider_external.yaml
 - infrastructure_v1alpha1_schemaclaim.yaml
 - infrastructure_v1alpha1_databaseclaim.yaml

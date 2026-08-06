@@ -21,16 +21,16 @@ import (
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/pkg/postgres"
 )
 
-func (st *e2eSuite) runEmbedded(t *testing.T) {
-	t.Run("embedded provider serves schema and database claims together", st.testEmbeddedProviderServesClaims)
-	t.Run("embedded provider propagates tls credentials to claims", st.testEmbeddedProviderServesTLSClaims)
+func (st *e2eSuite) runInternal(t *testing.T) {
+	t.Run("internal provider serves schema and database claims together", st.testInternalProviderServesClaims)
+	t.Run("internal provider propagates tls credentials to claims", st.testInternalProviderServesTLSClaims)
 }
 
-func (st *e2eSuite) testEmbeddedProviderServesClaims(t *testing.T) {
+func (st *e2eSuite) testInternalProviderServesClaims(t *testing.T) {
 	g := NewWithT(t)
 	st.ensureWorkloadNamespace(t)
 
-	provider := st.createEmbeddedProvider(t)
+	provider := st.createInternalProvider(t)
 	st.waitProviderReachable(t, provider)
 
 	schemaClaim := &infraApi.SchemaClaim{
@@ -101,18 +101,18 @@ func (st *e2eSuite) testEmbeddedProviderServesClaims(t *testing.T) {
 	databaseCfg, err := postgres.ParseSecret(databaseSecret.Data)
 	g.Expect(err).NotTo(HaveOccurred())
 
-	expectedHost := dbcontroller.EmbeddedServiceHost(provider, st.operatorNamespace)
+	expectedHost := dbcontroller.InternalServiceHost(provider, st.operatorNamespace)
 	g.Expect(schemaCfg.Host).To(Equal(expectedHost))
 	g.Expect(databaseCfg.Host).To(Equal(expectedHost))
 	g.Expect(schemaCfg.User).NotTo(Equal(databaseCfg.User))
 }
 
-func (st *e2eSuite) testEmbeddedProviderServesTLSClaims(t *testing.T) {
+func (st *e2eSuite) testInternalProviderServesTLSClaims(t *testing.T) {
 	g := NewWithT(t)
 	st.ensureWorkloadNamespace(t)
 
-	provider := st.createEmbeddedProvider(t, func(provider *infraApi.DatabaseProvider) {
-		provider.Spec.Embedded.TLS = &infraApi.EmbeddedProviderTLSSpec{}
+	provider := st.createInternalProvider(t, func(provider *infraApi.DatabaseProvider) {
+		provider.Spec.Internal.TLS = &infraApi.InternalProviderTLSSpec{}
 	})
 	st.waitProviderReachable(t, provider)
 
@@ -125,10 +125,10 @@ func (st *e2eSuite) testEmbeddedProviderServesTLSClaims(t *testing.T) {
 		g.Expect(provider.Status.TLS).NotTo(BeNil())
 		g.Expect(provider.Status.TLS.Enabled).To(BeTrue())
 		g.Expect(provider.Status.TLS.Ready).To(BeTrue())
-		g.Expect(provider.Status.TLS.SecretName).To(Equal(dbcontroller.EmbeddedTLSSecretName(provider.Name)))
-		g.Expect(provider.Status.TLS.CertificateName).To(Equal(dbcontroller.EmbeddedTLSCertificateName(provider.Name)))
+		g.Expect(provider.Status.TLS.SecretName).To(Equal(dbcontroller.InternalTLSSecretName(provider.Name)))
+		g.Expect(provider.Status.TLS.CertificateName).To(Equal(dbcontroller.InternalTLSCertificateName(provider.Name)))
 		g.Expect(provider.Status.TLS.IssuerRef).NotTo(BeNil())
-		g.Expect(provider.Status.TLS.IssuerRef.Name).To(Equal(dbcontroller.EmbeddedTLSIssuerName(provider.Name)))
+		g.Expect(provider.Status.TLS.IssuerRef.Name).To(Equal(dbcontroller.InternalTLSIssuerName(provider.Name)))
 	}).WithContext(t.Context()).Should(Succeed())
 
 	schemaClaim := &infraApi.SchemaClaim{
@@ -204,7 +204,7 @@ func (st *e2eSuite) testEmbeddedProviderServesTLSClaims(t *testing.T) {
 	g.Expect(databaseCfg.TLSReady()).To(BeTrue())
 }
 
-func (st *e2eSuite) createEmbeddedProvider(
+func (st *e2eSuite) createInternalProvider(
 	t *testing.T,
 	opts ...func(*infraApi.DatabaseProvider),
 ) *infraApi.DatabaseProvider {
@@ -213,10 +213,10 @@ func (st *e2eSuite) createEmbeddedProvider(
 	g := NewWithT(t)
 
 	provider := &infraApi.DatabaseProvider{
-		ObjectMeta: metav1.ObjectMeta{Name: "e2e-embedded-" + xid.New().String()},
+		ObjectMeta: metav1.ObjectMeta{Name: "e2e-internal-" + xid.New().String()},
 		Spec: infraApi.DatabaseProviderSpec{
-			Type: infraApi.ProviderTypeEmbedded,
-			Embedded: &infraApi.EmbeddedProviderSpec{
+			Type: infraApi.ProviderTypeInternal,
+			Internal: &infraApi.InternalProviderSpec{
 				Storage: infraApi.StorageSpec{
 					Size: resource.MustParse("1Gi"),
 				},

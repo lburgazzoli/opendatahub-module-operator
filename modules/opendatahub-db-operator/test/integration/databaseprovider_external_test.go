@@ -67,7 +67,7 @@ func (st *databaseProviderSuite) testCRDValidation(t *testing.T) {
 	externalSpec := infraApi.ExternalProviderSpec{
 		ConnectionSecretRef: corev1.SecretReference{Name: "admin-secret", Namespace: st.env.Namespace},
 	}
-	embeddedSpec := infraApi.EmbeddedProviderSpec{
+	internalSpec := infraApi.InternalProviderSpec{
 		Storage: infraApi.StorageSpec{Size: resource.MustParse("1Gi")},
 	}
 
@@ -80,7 +80,7 @@ func (st *databaseProviderSuite) testCRDValidation(t *testing.T) {
 			spec: infraApi.DatabaseProviderSpec{
 				Type:     infraApi.ProviderTypeExternal,
 				External: &externalSpec,
-				Embedded: &embeddedSpec,
+				Internal: &internalSpec,
 			},
 		},
 		{
@@ -91,7 +91,7 @@ func (st *databaseProviderSuite) testCRDValidation(t *testing.T) {
 			name: "type-mismatch-external",
 			spec: infraApi.DatabaseProviderSpec{
 				Type:     infraApi.ProviderTypeExternal,
-				Embedded: &embeddedSpec,
+				Internal: &internalSpec,
 			},
 		},
 	}

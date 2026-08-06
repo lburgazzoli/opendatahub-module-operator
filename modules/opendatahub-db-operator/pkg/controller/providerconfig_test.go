@@ -39,7 +39,7 @@ func providerConfigScheme() *runtime.Scheme {
 	return scheme
 }
 
-func TestLoadProviderConfig_EmbeddedUsesGeneratedAdminSecret(t *testing.T) {
+func TestLoadProviderConfig_InternalUsesGeneratedAdminSecret(t *testing.T) {
 	g := NewWithT(t)
 
 	provider := &infraApi.DatabaseProvider{
@@ -47,8 +47,8 @@ func TestLoadProviderConfig_EmbeddedUsesGeneratedAdminSecret(t *testing.T) {
 			Name: "sample-embedded",
 		},
 		Spec: infraApi.DatabaseProviderSpec{
-			Type: infraApi.ProviderTypeEmbedded,
-			Embedded: &infraApi.EmbeddedProviderSpec{
+			Type: infraApi.ProviderTypeInternal,
+			Internal: &infraApi.InternalProviderSpec{
 				Namespace: "opendatahub-db",
 			},
 		},
@@ -56,7 +56,7 @@ func TestLoadProviderConfig_EmbeddedUsesGeneratedAdminSecret(t *testing.T) {
 
 	secret := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      controller.EmbeddedAdminSecretName(provider.Name),
+			Name:      controller.InternalAdminSecretName(provider.Name),
 			Namespace: "opendatahub-db",
 		},
 		Data: map[string][]byte{

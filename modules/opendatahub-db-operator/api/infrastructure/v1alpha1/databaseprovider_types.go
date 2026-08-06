@@ -37,7 +37,7 @@ const (
 // builder (docs/plan.md §6), same as every other module's CRD types.
 var _ common.PlatformObject = (*DatabaseProvider)(nil)
 
-// ProviderType selects which of DatabaseProviderSpec.External/Embedded is
+// ProviderType selects which of DatabaseProviderSpec.External/Internal is
 // populated. Mutually exclusive with the other, enforced by CEL rules on
 // DatabaseProviderSpec below (docs/plan.md §5).
 type ProviderType string
@@ -47,9 +47,9 @@ const (
 	// not own or manage the lifecycle of.
 	ProviderTypeExternal ProviderType = "External"
 
-	// ProviderTypeEmbedded is a controller-managed, single-instance
+	// ProviderTypeInternal is a controller-managed, single-instance
 	// PostgreSQL convenience -- not a DBaaS (docs/plan.md §2, §7).
-	ProviderTypeEmbedded ProviderType = "Embedded"
+	ProviderTypeInternal ProviderType = "Internal"
 )
 
 // ExternalProviderSpec points at an admin-managed PostgreSQL instance this
@@ -79,9 +79,9 @@ type CertManagerIssuerRef struct {
 	Group string `json:"group,omitempty"`
 }
 
-// EmbeddedProviderTLSCertificateSpec configures the embedded PostgreSQL server
+// InternalProviderTLSCertificateSpec configures the internal PostgreSQL server
 // certificate request managed by cert-manager.
-type EmbeddedProviderTLSCertificateSpec struct {
+type InternalProviderTLSCertificateSpec struct {
 	// SecretName overrides the cert-manager target Secret name.
 	// +optional
 	SecretName string `json:"secretName,omitempty"`
@@ -95,17 +95,17 @@ type EmbeddedProviderTLSCertificateSpec struct {
 	RenewBefore *metav1.Duration `json:"renewBefore,omitempty"`
 }
 
-// EmbeddedProviderTLSSpec enables TLS for the embedded PostgreSQL instance.
+// InternalProviderTLSSpec enables TLS for the internal PostgreSQL instance.
 // Presence of this block enables TLS; an empty object selects the controller's
 // default self-signed issuer and certificate settings.
-type EmbeddedProviderTLSSpec struct {
+type InternalProviderTLSSpec struct {
 	// IssuerRef overrides the default provider-scoped self-signed issuer.
 	// +optional
 	IssuerRef *CertManagerIssuerRef `json:"issuerRef,omitempty"`
 
 	// Certificate customizes the server certificate request.
 	// +optional
-	Certificate EmbeddedProviderTLSCertificateSpec `json:"certificate,omitempty"`
+	Certificate InternalProviderTLSCertificateSpec `json:"certificate,omitempty"`
 }
 
 // ProviderConnectionStatus is the non-secret connection surface for a
@@ -116,7 +116,7 @@ type ProviderConnectionStatus struct {
 	Database string `json:"database,omitempty"`
 }
 
-// StorageSpec configures the Embedded provider's PersistentVolumeClaim
+// StorageSpec configures the Internal provider's PersistentVolumeClaim
 // (docs/plan.md §7.3).
 // +kubebuilder:validation:XValidation:rule="quantity(self.size).isGreaterThan(quantity('0'))",message="storage.size must be greater than zero"
 type StorageSpec struct {
@@ -129,13 +129,13 @@ type StorageSpec struct {
 	StorageClassName *string `json:"storageClassName,omitempty"`
 }
 
-// EmbeddedProviderSpec configures a controller-owned, single-instance
+// InternalProviderSpec configures a controller-owned, single-instance
 // PostgreSQL StatefulSet (docs/plan.md §7). There is deliberately no image
 // field -- letting admins point a platform-managed instance at an arbitrary
 // image reopens supply-chain and support-surface problems; the image is
 // resolved from Extensions via pkg/config compiled defaults (task-08).
-type EmbeddedProviderSpec struct {
-	// Namespace overrides where the embedded PostgreSQL resources are created.
+type InternalProviderSpec struct {
+	// Namespace overrides where the internal PostgreSQL resources are created.
 	// When unset, the operator namespace is used. Immutable once set.
 	// +optional
 	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="namespace is immutable once set"
@@ -149,13 +149,13 @@ type EmbeddedProviderSpec struct {
 	// +optional
 	Resources corev1.ResourceRequirements `json:"resources,omitempty"`
 
-	// TLS enables TLS for the embedded PostgreSQL instance. Presence of this
+	// TLS enables TLS for the internal PostgreSQL instance. Presence of this
 	// field opts into TLS; an empty object uses controller defaults.
 	// +optional
-	TLS *EmbeddedProviderTLSSpec `json:"tls,omitempty"`
+	TLS *InternalProviderTLSSpec `json:"tls,omitempty"`
 
 	// Extensions lists PostgreSQL extensions to make available inside the
-	// embedded instance. Each value selects a built-in container image:
+	// internal instance. Each value selects a built-in container image:
 	// "vector" uses the pgvector image; all others use the standard
 	// PostgreSQL image. Immutable once set.
 	// +optional
@@ -192,23 +192,23 @@ type ProviderTLSStatus struct {
 
 // DatabaseProviderSpec defines the desired state of DatabaseProvider.
 //
-// +kubebuilder:validation:XValidation:rule="(has(self.external) ? 1 : 0) + (has(self.embedded) ? 1 : 0) == 1",message="exactly one of external or embedded must be set"
-// +kubebuilder:validation:XValidation:rule="self.type == 'External' ? has(self.external) : has(self.embedded)",message="spec.type must match the set provider type"
+// +kubebuilder:validation:XValidation:rule="(has(self.external) ? 1 : 0) + (has(self.internal) ? 1 : 0) == 1",message="exactly one of external or internal must be set"
+// +kubebuilder:validation:XValidation:rule="self.type == 'External' ? has(self.external) : has(self.internal)",message="spec.type must match the set provider type"
 type DatabaseProviderSpec struct {
-	// Type selects which of External/Embedded below is populated.
+	// Type selects which of External/Internal below is populated.
 	// +kubebuilder:validation:Required
-	// +kubebuilder:validation:Enum=External;Embedded
+	// +kubebuilder:validation:Enum=External;Internal
 	Type ProviderType `json:"type"`
 
 	// External configures a provider pointing at an admin-managed instance.
-	// Mutually exclusive with Embedded.
+	// Mutually exclusive with Internal.
 	// +optional
 	External *ExternalProviderSpec `json:"external,omitempty"`
 
-	// Embedded configures a controller-owned instance. Mutually exclusive
+	// Internal configures a controller-owned instance. Mutually exclusive
 	// with External.
 	// +optional
-	Embedded *EmbeddedProviderSpec `json:"embedded,omitempty"`
+	Internal *InternalProviderSpec `json:"internal,omitempty"`
 }
 
 // DatabaseProviderStatus defines the observed state of DatabaseProvider.

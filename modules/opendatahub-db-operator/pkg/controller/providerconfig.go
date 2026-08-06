@@ -32,11 +32,11 @@ import (
 const (
 	OperatorNamespaceAnnotation = "db.infrastructure.opendatahub.io/operator-namespace"
 
-	// EmbeddedAdminSecretKeyAnnotation is the annotation key on the embedded
+	// InternalAdminSecretKeyAnnotation is the annotation key on the internal
 	// admin Secret that holds an opaque rollout token. The same token is written
 	// into the StatefulSet pod-template annotation so that Secret recreation
 	// triggers a rolling restart.
-	EmbeddedAdminSecretKeyAnnotation = "db.infrastructure.opendatahub.io/admin-secret-key"
+	InternalAdminSecretKeyAnnotation = "db.infrastructure.opendatahub.io/admin-secret-key"
 )
 
 func OperatorNamespace(cfg *moduleconfig.Config) string {
@@ -55,8 +55,8 @@ func LoadProviderConfig(
 	switch provider.Spec.Type {
 	case infraApi.ProviderTypeExternal:
 		return loadExternalProviderConfig(ctx, cli, provider)
-	case infraApi.ProviderTypeEmbedded:
-		return loadEmbeddedProviderConfig(ctx, cli, provider, operatorNamespace)
+	case infraApi.ProviderTypeInternal:
+		return loadInternalProviderConfig(ctx, cli, provider, operatorNamespace)
 	default:
 		return postgres.Config{}, fmt.Errorf("unsupported provider type %q", provider.Spec.Type)
 	}
@@ -93,15 +93,15 @@ func loadExternalProviderConfig(
 	}
 }
 
-func loadEmbeddedProviderConfig(
+func loadInternalProviderConfig(
 	ctx context.Context,
 	cli client.Client,
 	provider *infraApi.DatabaseProvider,
 	operatorNamespace string,
 ) (postgres.Config, error) {
 	ref := corev1.SecretReference{
-		Namespace: EmbeddedNamespace(provider, operatorNamespace),
-		Name:      EmbeddedAdminSecretName(provider.Name),
+		Namespace: InternalNamespace(provider, operatorNamespace),
+		Name:      InternalAdminSecretName(provider.Name),
 	}
 
 	secret, err := readSecretRef(ctx, cli, ref)
@@ -111,10 +111,10 @@ func loadEmbeddedProviderConfig(
 
 	cfg, err := postgres.ParseSecret(secret.Data)
 	if err != nil {
-		return postgres.Config{}, fmt.Errorf("parsing embedded admin Secret: %w", err)
+		return postgres.Config{}, fmt.Errorf("parsing internal admin Secret: %w", err)
 	}
 
-	if provider.Spec.Embedded == nil || provider.Spec.Embedded.TLS == nil {
+	if provider.Spec.Internal == nil || provider.Spec.Internal.TLS == nil {
 		cfg.SSLMode = postgres.SSLModeDisable
 		return cfg, nil
 	}

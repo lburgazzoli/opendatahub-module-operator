@@ -40,53 +40,53 @@ import (
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/test/support"
 )
 
-type embeddedDatabaseProviderSuite struct {
+type internalDatabaseProviderSuite struct {
 	env *integrationEnv
 }
 
-func newEmbeddedDatabaseProviderSuite(t *testing.T, env *integrationEnv) *embeddedDatabaseProviderSuite {
+func newInternalDatabaseProviderSuite(t *testing.T, env *integrationEnv) *internalDatabaseProviderSuite {
 	t.Helper()
 
-	return &embeddedDatabaseProviderSuite{env: env}
+	return &internalDatabaseProviderSuite{env: env}
 }
 
-func (st *embeddedDatabaseProviderSuite) Run(t *testing.T) {
+func (st *internalDatabaseProviderSuite) Run(t *testing.T) {
 	t.Run("crd validation", st.testCRDValidation)
-	t.Run("creates embedded postgres resources", st.testProvisioning)
-	t.Run("creates embedded postgres resources in configured namespace", st.testProvisioningCustomNamespace)
-	t.Run("creates embedded postgres tls resources", st.testProvisioningTLS)
+	t.Run("creates internal postgres resources", st.testProvisioning)
+	t.Run("creates internal postgres resources in configured namespace", st.testProvisioningCustomNamespace)
+	t.Run("creates internal postgres tls resources", st.testProvisioningTLS)
 	t.Run("deleted admin secret is surfaced", st.testAdminSecretDeleted)
 }
 
-func (st *embeddedDatabaseProviderSuite) testCRDValidation(t *testing.T) {
+func (st *internalDatabaseProviderSuite) testCRDValidation(t *testing.T) {
 	ctx := t.Context()
 	cli := st.env.Client
 	externalSpec := infraApi.ExternalProviderSpec{
 		ConnectionSecretRef: corev1.SecretReference{Name: "admin-secret", Namespace: st.env.Namespace},
 	}
-	embeddedSpec := infraApi.EmbeddedProviderSpec{
+	internalSpec := infraApi.InternalProviderSpec{
 		Storage: infraApi.StorageSpec{Size: resource.MustParse("1Gi")},
 	}
 
-	t.Run("rejects-type-mismatch-embedded", func(t *testing.T) {
+	t.Run("rejects-type-mismatch-internal", func(t *testing.T) {
 		g := NewWithT(t)
 		obj := &infraApi.DatabaseProvider{
-			ObjectMeta: metav1.ObjectMeta{Name: "dbp-type-mismatch-embedded"},
+			ObjectMeta: metav1.ObjectMeta{Name: "dbp-type-mismatch-internal"},
 			Spec: infraApi.DatabaseProviderSpec{
-				Type:     infraApi.ProviderTypeEmbedded,
+				Type:     infraApi.ProviderTypeInternal,
 				External: &externalSpec,
 			},
 		}
 		g.Expect(cli.Create(ctx, obj)).To(HaveOccurred())
 	})
 
-	t.Run("accepts-valid-embedded", func(t *testing.T) {
+	t.Run("accepts-valid-internal", func(t *testing.T) {
 		g := NewWithT(t)
 		obj := &infraApi.DatabaseProvider{
-			ObjectMeta: metav1.ObjectMeta{Name: "dbp-valid-embedded"},
+			ObjectMeta: metav1.ObjectMeta{Name: "dbp-valid-internal"},
 			Spec: infraApi.DatabaseProviderSpec{
-				Type:     infraApi.ProviderTypeEmbedded,
-				Embedded: &embeddedSpec,
+				Type:     infraApi.ProviderTypeInternal,
+				Internal: &internalSpec,
 			},
 		}
 		g.Expect(cli.Create(ctx, obj)).To(Succeed())
@@ -95,13 +95,13 @@ func (st *embeddedDatabaseProviderSuite) testCRDValidation(t *testing.T) {
 
 	t.Run("rejects-invalid-extension-name", func(t *testing.T) {
 		g := NewWithT(t)
-		bad := embeddedSpec
+		bad := internalSpec
 		bad.Extensions = []string{"Not-Valid!"}
 		obj := &infraApi.DatabaseProvider{
 			ObjectMeta: metav1.ObjectMeta{Name: "dbp-bad-extension"},
 			Spec: infraApi.DatabaseProviderSpec{
-				Type:     infraApi.ProviderTypeEmbedded,
-				Embedded: &bad,
+				Type:     infraApi.ProviderTypeInternal,
+				Internal: &bad,
 			},
 		}
 		g.Expect(cli.Create(ctx, obj)).To(HaveOccurred())
@@ -109,13 +109,13 @@ func (st *embeddedDatabaseProviderSuite) testCRDValidation(t *testing.T) {
 
 	t.Run("rejects-unsupported-extension", func(t *testing.T) {
 		g := NewWithT(t)
-		bad := embeddedSpec
+		bad := internalSpec
 		bad.Extensions = []string{"postgis"}
 		obj := &infraApi.DatabaseProvider{
 			ObjectMeta: metav1.ObjectMeta{Name: "dbp-unsupported-extension"},
 			Spec: infraApi.DatabaseProviderSpec{
-				Type:     infraApi.ProviderTypeEmbedded,
-				Embedded: &bad,
+				Type:     infraApi.ProviderTypeInternal,
+				Internal: &bad,
 			},
 		}
 		g.Expect(cli.Create(ctx, obj)).To(HaveOccurred())
@@ -123,27 +123,27 @@ func (st *embeddedDatabaseProviderSuite) testCRDValidation(t *testing.T) {
 
 	t.Run("rejects-zero-storage-size", func(t *testing.T) {
 		g := NewWithT(t)
-		bad := embeddedSpec
+		bad := internalSpec
 		bad.Storage.Size = resource.MustParse("0")
 		obj := &infraApi.DatabaseProvider{
 			ObjectMeta: metav1.ObjectMeta{Name: "dbp-zero-storage"},
 			Spec: infraApi.DatabaseProviderSpec{
-				Type:     infraApi.ProviderTypeEmbedded,
-				Embedded: &bad,
+				Type:     infraApi.ProviderTypeInternal,
+				Internal: &bad,
 			},
 		}
 		g.Expect(cli.Create(ctx, obj)).To(HaveOccurred())
 	})
 }
 
-func (st *embeddedDatabaseProviderSuite) testProvisioning(t *testing.T) {
-	provider := st.createEmbeddedProvider(t, "embedded-"+xid.New().String(), []string{"vector", "pg_trgm"})
+func (st *internalDatabaseProviderSuite) testProvisioning(t *testing.T) {
+	provider := st.createInternalProvider(t, "internal-"+xid.New().String(), []string{"vector", "pg_trgm"})
 
 	st.expectProvisionedInNamespace(t, provider, st.env.Config.OperatorNamespace)
 }
 
-func (st *embeddedDatabaseProviderSuite) testProvisioningCustomNamespace(t *testing.T) {
-	namespace := "embedded-" + xid.New().String()
+func (st *internalDatabaseProviderSuite) testProvisioningCustomNamespace(t *testing.T) {
+	namespace := "internal-" + xid.New().String()
 	ns := &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: namespace}}
 	NewWithT(t).Expect(st.env.Client.Create(t.Context(), ns)).To(Succeed())
 	t.Cleanup(func() {
@@ -152,41 +152,41 @@ func (st *embeddedDatabaseProviderSuite) testProvisioningCustomNamespace(t *test
 		}
 	})
 
-	provider := st.createEmbeddedProvider(
+	provider := st.createInternalProvider(
 		t,
-		"embedded-"+xid.New().String(),
+		"internal-"+xid.New().String(),
 		[]string{"vector", "pg_trgm"},
-		withEmbeddedNamespace(namespace),
+		withInternalNamespace(namespace),
 	)
 
 	st.expectProvisionedInNamespace(t, provider, namespace)
 }
 
-func (st *embeddedDatabaseProviderSuite) testProvisioningTLS(t *testing.T) {
-	provider := st.createEmbeddedProvider(
+func (st *internalDatabaseProviderSuite) testProvisioningTLS(t *testing.T) {
+	provider := st.createInternalProvider(
 		t,
-		"embedded-"+xid.New().String(),
+		"internal-"+xid.New().String(),
 		[]string{"pg_trgm"},
-		withEmbeddedTLS(),
+		withInternalTLS(),
 	)
 
 	st.expectProvisionedTLSInNamespace(t, provider, st.env.Config.OperatorNamespace)
 }
 
-func (st *embeddedDatabaseProviderSuite) testAdminSecretDeleted(t *testing.T) {
+func (st *internalDatabaseProviderSuite) testAdminSecretDeleted(t *testing.T) {
 	g := NewWithT(t)
 
-	provider := st.createEmbeddedProvider(t, "embedded-"+xid.New().String(), []string{"pg_trgm"})
+	provider := st.createInternalProvider(t, "internal-"+xid.New().String(), []string{"pg_trgm"})
 	st.waitReachable(t, provider)
 
 	adminSecret := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Namespace: st.env.Config.OperatorNamespace,
-			Name:      dbcontroller.EmbeddedAdminSecretName(provider.Name),
+			Name:      dbcontroller.InternalAdminSecretName(provider.Name),
 		},
 	}
 	g.Expect(st.env.Client.Get(t.Context(), client.ObjectKeyFromObject(adminSecret), adminSecret)).To(Succeed())
-	initialHash := adminSecret.Annotations[dbcontroller.EmbeddedAdminSecretKeyAnnotation]
+	initialHash := adminSecret.Annotations[dbcontroller.InternalAdminSecretKeyAnnotation]
 	g.Expect(initialHash).NotTo(BeEmpty())
 
 	g.Expect(support.DeleteAndWait(t.Context(), st.env.Client, adminSecret)).To(Succeed())
@@ -196,11 +196,11 @@ func (st *embeddedDatabaseProviderSuite) testAdminSecretDeleted(t *testing.T) {
 	// from the original so the StatefulSet rolls to pick up the new credentials.
 	refreshed := &corev1.Secret{ObjectMeta: metav1.ObjectMeta{
 		Namespace: st.env.Config.OperatorNamespace,
-		Name:      dbcontroller.EmbeddedAdminSecretName(provider.Name),
+		Name:      dbcontroller.InternalAdminSecretName(provider.Name),
 	}}
 	g.Eventually(t.Context(), k8sm.Get(st.env.Client, refreshed)).Should(
 		WithTransform(func(s *corev1.Secret) string {
-			return s.Annotations[dbcontroller.EmbeddedAdminSecretKeyAnnotation]
+			return s.Annotations[dbcontroller.InternalAdminSecretKeyAnnotation]
 		}, SatisfyAll(
 			Not(BeEmpty()),
 			Not(Equal(initialHash)),
@@ -208,7 +208,7 @@ func (st *embeddedDatabaseProviderSuite) testAdminSecretDeleted(t *testing.T) {
 	)
 }
 
-func (st *embeddedDatabaseProviderSuite) createEmbeddedProvider(
+func (st *internalDatabaseProviderSuite) createInternalProvider(
 	t *testing.T,
 	name string,
 	extensions []string,
@@ -219,8 +219,8 @@ func (st *embeddedDatabaseProviderSuite) createEmbeddedProvider(
 	provider := &infraApi.DatabaseProvider{
 		ObjectMeta: metav1.ObjectMeta{Name: name},
 		Spec: infraApi.DatabaseProviderSpec{
-			Type: infraApi.ProviderTypeEmbedded,
-			Embedded: &infraApi.EmbeddedProviderSpec{
+			Type: infraApi.ProviderTypeInternal,
+			Internal: &infraApi.InternalProviderSpec{
 				Storage: infraApi.StorageSpec{
 					Size: resource.MustParse("1Gi"),
 				},
@@ -242,7 +242,7 @@ func (st *embeddedDatabaseProviderSuite) createEmbeddedProvider(
 	return provider
 }
 
-func (st *embeddedDatabaseProviderSuite) expectProvisionedInNamespace(
+func (st *internalDatabaseProviderSuite) expectProvisionedInNamespace(
 	t *testing.T,
 	provider *infraApi.DatabaseProvider,
 	namespace string,
@@ -255,7 +255,7 @@ func (st *embeddedDatabaseProviderSuite) expectProvisionedInNamespace(
 	statefulSet := &appsv1.StatefulSet{
 		ObjectMeta: metav1.ObjectMeta{
 			Namespace: namespace,
-			Name:      dbcontroller.EmbeddedServiceName(provider.Name),
+			Name:      dbcontroller.InternalServiceName(provider.Name),
 		},
 	}
 	g.Eventually(t.Context(), k8sm.Lookup(st.env.Client, statefulSet)).To(Succeed())
@@ -264,7 +264,7 @@ func (st *embeddedDatabaseProviderSuite) expectProvisionedInNamespace(
 	adminSecret := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Namespace: namespace,
-			Name:      dbcontroller.EmbeddedAdminSecretName(provider.Name),
+			Name:      dbcontroller.InternalAdminSecretName(provider.Name),
 		},
 	}
 	g.Eventually(t.Context(), k8sm.Lookup(st.env.Client, adminSecret)).To(Succeed())
@@ -273,14 +273,14 @@ func (st *embeddedDatabaseProviderSuite) expectProvisionedInNamespace(
 	networkPolicy := &networkingv1.NetworkPolicy{
 		ObjectMeta: metav1.ObjectMeta{
 			Namespace: namespace,
-			Name:      dbcontroller.EmbeddedServiceName(provider.Name),
+			Name:      dbcontroller.InternalServiceName(provider.Name),
 		},
 	}
 	g.Eventually(t.Context(), k8sm.Lookup(st.env.Client, networkPolicy)).To(Succeed())
 
 }
 
-func (st *embeddedDatabaseProviderSuite) expectProvisionedTLSInNamespace(
+func (st *internalDatabaseProviderSuite) expectProvisionedTLSInNamespace(
 	t *testing.T,
 	provider *infraApi.DatabaseProvider,
 	namespace string,
@@ -293,19 +293,19 @@ func (st *embeddedDatabaseProviderSuite) expectProvisionedTLSInNamespace(
 	issuer := &unstructured.Unstructured{}
 	issuer.SetGroupVersionKind(gvk.CertManagerIssuer)
 	issuer.SetNamespace(namespace)
-	issuer.SetName(dbcontroller.EmbeddedTLSIssuerName(provider.Name))
+	issuer.SetName(dbcontroller.InternalTLSIssuerName(provider.Name))
 	g.Eventually(t.Context(), k8sm.Lookup(st.env.Client, issuer)).To(Succeed())
 
 	certificate := &unstructured.Unstructured{}
 	certificate.SetGroupVersionKind(gvk.CertManagerCertificate)
 	certificate.SetNamespace(namespace)
-	certificate.SetName(dbcontroller.EmbeddedTLSCertificateName(provider.Name))
+	certificate.SetName(dbcontroller.InternalTLSCertificateName(provider.Name))
 	g.Eventually(t.Context(), k8sm.Lookup(st.env.Client, certificate)).To(Succeed())
 
 	tlsSecret := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Namespace: namespace,
-			Name:      dbcontroller.EmbeddedTLSSecretName(provider.Name),
+			Name:      dbcontroller.InternalTLSSecretName(provider.Name),
 		},
 	}
 	g.Eventually(t.Context(), k8sm.Lookup(st.env.Client, tlsSecret)).To(Succeed())
@@ -319,7 +319,7 @@ func (st *embeddedDatabaseProviderSuite) expectProvisionedTLSInNamespace(
 	adminSecret := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Namespace: namespace,
-			Name:      dbcontroller.EmbeddedAdminSecretName(provider.Name),
+			Name:      dbcontroller.InternalAdminSecretName(provider.Name),
 		},
 	}
 	g.Eventually(func(g Gomega) {
@@ -331,7 +331,7 @@ func (st *embeddedDatabaseProviderSuite) expectProvisionedTLSInNamespace(
 	statefulSet := &appsv1.StatefulSet{
 		ObjectMeta: metav1.ObjectMeta{
 			Namespace: namespace,
-			Name:      dbcontroller.EmbeddedServiceName(provider.Name),
+			Name:      dbcontroller.InternalServiceName(provider.Name),
 		},
 	}
 	g.Eventually(func(g Gomega) {
@@ -349,29 +349,29 @@ func (st *embeddedDatabaseProviderSuite) expectProvisionedTLSInNamespace(
 		g.Expect(provider.Status.TLS).NotTo(BeNil())
 		g.Expect(provider.Status.TLS.Enabled).To(BeTrue())
 		g.Expect(provider.Status.TLS.Ready).To(BeTrue())
-		g.Expect(provider.Status.TLS.SecretName).To(Equal(dbcontroller.EmbeddedTLSSecretName(provider.Name)))
-		g.Expect(provider.Status.TLS.CertificateName).To(Equal(dbcontroller.EmbeddedTLSCertificateName(provider.Name)))
+		g.Expect(provider.Status.TLS.SecretName).To(Equal(dbcontroller.InternalTLSSecretName(provider.Name)))
+		g.Expect(provider.Status.TLS.CertificateName).To(Equal(dbcontroller.InternalTLSCertificateName(provider.Name)))
 		g.Expect(provider.Status.TLS.IssuerRef).NotTo(BeNil())
-		g.Expect(provider.Status.TLS.IssuerRef.Name).To(Equal(dbcontroller.EmbeddedTLSIssuerName(provider.Name)))
+		g.Expect(provider.Status.TLS.IssuerRef.Name).To(Equal(dbcontroller.InternalTLSIssuerName(provider.Name)))
 		g.Expect(provider.Status.Conditions).To(ContainElement(
 			condition.Is(databaseprovider.ConditionTLSConfiguration, metav1.ConditionTrue),
 		))
 	}).WithContext(t.Context()).Should(Succeed())
 }
 
-func withEmbeddedNamespace(namespace string) func(*infraApi.DatabaseProvider) {
+func withInternalNamespace(namespace string) func(*infraApi.DatabaseProvider) {
 	return func(provider *infraApi.DatabaseProvider) {
-		provider.Spec.Embedded.Namespace = namespace
+		provider.Spec.Internal.Namespace = namespace
 	}
 }
 
-func withEmbeddedTLS() func(*infraApi.DatabaseProvider) {
+func withInternalTLS() func(*infraApi.DatabaseProvider) {
 	return func(provider *infraApi.DatabaseProvider) {
-		provider.Spec.Embedded.TLS = &infraApi.EmbeddedProviderTLSSpec{}
+		provider.Spec.Internal.TLS = &infraApi.InternalProviderTLSSpec{}
 	}
 }
 
-func (st *embeddedDatabaseProviderSuite) waitReachable(t *testing.T, provider *infraApi.DatabaseProvider) {
+func (st *internalDatabaseProviderSuite) waitReachable(t *testing.T, provider *infraApi.DatabaseProvider) {
 	t.Helper()
 
 	NewWithT(t).Eventually(t.Context(), k8sm.Get(st.env.Client, provider)).Should(

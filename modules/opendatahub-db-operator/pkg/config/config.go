@@ -66,14 +66,14 @@ const (
 	KeyPprofEnabled       = "controller.pprof.enabled"
 	KeyPprofBindAddr      = "controller.pprof.bind-address"
 
-	// Embedded provider images and timing (docs/plan.md §7.1/§7.7/§6). Never
+	// Internal provider images and timing (docs/plan.md §7.1/§7.7/§6). Never
 	// referenced as literals in controller code -- always through Config.
 	// Named "*-image", not "default-*-image": there is no CRD override field
 	// for either image (spec.md is explicit: no image override field, ever),
 	// so there's nothing for this config value to be a fallback *from* --
 	// it's simply the image, and this key is the only way to change it.
-	KeyPostgresImage = "embedded.postgres-image"
-	KeyPgvectorImage = "embedded.pgvector-image"
+	KeyPostgresImage = "internal.postgres-image"
+	KeyPgvectorImage = "internal.pgvector-image"
 
 	// KeyGracePeriod is a generic grace period used wherever the operator needs
 	// to wait before taking a destructive action (claim cleanup retry timeout,
@@ -158,7 +158,7 @@ type Config struct {
 	PlatformType      string           `mapstructure:"platformType"`
 	PlatformVersion   PlatformVersion  `mapstructure:"platformVersion"`
 	Controller        ControllerConfig `mapstructure:"controller"`
-	Embedded          EmbeddedConfig   `mapstructure:"embedded"`
+	Internal          InternalConfig   `mapstructure:"internal"`
 	SchemaClaim       RetryConfig      `mapstructure:"schemaclaim"`
 	DatabaseClaim     RetryConfig      `mapstructure:"databaseclaim"`
 	DatabaseProvider  RetryConfig      `mapstructure:"databaseprovider"`
@@ -169,9 +169,9 @@ type Config struct {
 	GracePeriod time.Duration `mapstructure:"grace-period"`
 }
 
-// EmbeddedConfig holds the Embedded DatabaseProvider's operator-wide image
+// InternalConfig holds the Internal DatabaseProvider's operator-wide image
 // defaults (docs/plan.md §7.1). Never referenced as literals in controller code.
-type EmbeddedConfig struct {
+type InternalConfig struct {
 	PostgresImage string `mapstructure:"postgres-image"`
 	PgvectorImage string `mapstructure:"pgvector-image"`
 }

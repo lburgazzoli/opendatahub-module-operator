@@ -40,9 +40,9 @@ import (
 	common "github.com/opendatahub-io/odh-platform-utilities/api/common"
 )
 
-func TestResolveEmbeddedImage(t *testing.T) {
+func TestResolveInternalImage(t *testing.T) {
 	cfg := &moduleconfig.Config{
-		Embedded: moduleconfig.EmbeddedConfig{
+		Internal: moduleconfig.InternalConfig{
 			PostgresImage: "postgres:test",
 			PgvectorImage: "pgvector:test",
 		},
@@ -77,21 +77,21 @@ func TestResolveEmbeddedImage(t *testing.T) {
 			provider := &infraApi.DatabaseProvider{
 				ObjectMeta: metav1.ObjectMeta{Name: "provider"},
 				Spec: infraApi.DatabaseProviderSpec{
-					Type: infraApi.ProviderTypeEmbedded,
-					Embedded: &infraApi.EmbeddedProviderSpec{
+					Type: infraApi.ProviderTypeInternal,
+					Internal: &infraApi.InternalProviderSpec{
 						Extensions: tc.extensions,
 					},
 				},
 			}
 
-			image, err := resolveEmbeddedImage(provider, cfg)
+			image, err := resolveInternalImage(provider, cfg)
 			g.Expect(err).NotTo(HaveOccurred())
 			g.Expect(image).To(Equal(tc.wantImage))
 		})
 	}
 }
 
-func TestComputeEmbeddedAdminSecret_GeneratesCredentialsOnFirstReconcile(t *testing.T) {
+func TestComputeInternalAdminSecret_GeneratesCredentialsOnFirstReconcile(t *testing.T) {
 	g := NewWithT(t)
 	ctx := context.Background()
 
@@ -102,16 +102,16 @@ func TestComputeEmbeddedAdminSecret_GeneratesCredentialsOnFirstReconcile(t *test
 
 	cfg := &moduleconfig.Config{OperatorNamespace: "operator-ns"}
 	provider := &infraApi.DatabaseProvider{
-		ObjectMeta: metav1.ObjectMeta{Name: "embedded"},
+		ObjectMeta: metav1.ObjectMeta{Name: "internal"},
 		Spec: infraApi.DatabaseProviderSpec{
-			Type:     infraApi.ProviderTypeEmbedded,
-			Embedded: &infraApi.EmbeddedProviderSpec{},
+			Type:     infraApi.ProviderTypeInternal,
+			Internal: &infraApi.InternalProviderSpec{},
 		},
 	}
 
 	cli := fake.NewClientBuilder().WithScheme(scheme).WithRuntimeObjects(provider).Build()
 
-	tlsState, err := computeEmbeddedAdminSecret(ctx, cli, provider, cfg)
+	tlsState, err := computeInternalAdminSecret(ctx, cli, provider, cfg)
 	g.Expect(err).NotTo(HaveOccurred())
 	g.Expect(tlsState.Enabled).To(BeFalse())
 	g.Expect(tlsState.AdminSecret).NotTo(BeNil())
@@ -123,7 +123,7 @@ func TestComputeEmbeddedAdminSecret_GeneratesCredentialsOnFirstReconcile(t *test
 	))
 }
 
-func TestComputeEmbeddedAdminSecret_PreservesExistingPassword(t *testing.T) {
+func TestComputeInternalAdminSecret_PreservesExistingPassword(t *testing.T) {
 	g := NewWithT(t)
 	ctx := context.Background()
 
@@ -134,20 +134,20 @@ func TestComputeEmbeddedAdminSecret_PreservesExistingPassword(t *testing.T) {
 
 	cfg := &moduleconfig.Config{OperatorNamespace: "operator-ns"}
 	provider := &infraApi.DatabaseProvider{
-		ObjectMeta: metav1.ObjectMeta{Name: "embedded"},
+		ObjectMeta: metav1.ObjectMeta{Name: "internal"},
 		Spec: infraApi.DatabaseProviderSpec{
-			Type:     infraApi.ProviderTypeEmbedded,
-			Embedded: &infraApi.EmbeddedProviderSpec{},
+			Type:     infraApi.ProviderTypeInternal,
+			Internal: &infraApi.InternalProviderSpec{},
 		},
 	}
 	// Simulate deploy action having already created the Secret.
 	existing := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Namespace: cfg.OperatorNamespace,
-			Name:      dbcontroller.EmbeddedAdminSecretName(provider.Name),
+			Name:      dbcontroller.InternalAdminSecretName(provider.Name),
 		},
 		Data: map[string][]byte{
-			postgres.SecretKeyHost:     []byte("embedded.operator-ns.svc"),
+			postgres.SecretKeyHost:     []byte("internal.operator-ns.svc"),
 			postgres.SecretKeyPort:     []byte("5432"),
 			postgres.SecretKeyUser:     []byte("postgres"),
 			postgres.SecretKeyPassword: []byte("stable-password"),
@@ -157,20 +157,20 @@ func TestComputeEmbeddedAdminSecret_PreservesExistingPassword(t *testing.T) {
 
 	cli := fake.NewClientBuilder().WithScheme(scheme).WithRuntimeObjects(provider, existing).Build()
 
-	first, err := computeEmbeddedAdminSecret(ctx, cli, provider, cfg)
+	first, err := computeInternalAdminSecret(ctx, cli, provider, cfg)
 	g.Expect(err).NotTo(HaveOccurred())
 	g.Expect(first.Enabled).To(BeFalse())
 	g.Expect(first.AdminSecret).NotTo(BeNil())
 	g.Expect(first.AdminSecret.Data[postgres.SecretKeyPassword]).To(Equal([]byte("stable-password")))
 
-	second, err := computeEmbeddedAdminSecret(ctx, cli, provider, cfg)
+	second, err := computeInternalAdminSecret(ctx, cli, provider, cfg)
 	g.Expect(err).NotTo(HaveOccurred())
 	g.Expect(second.Enabled).To(BeFalse())
 	g.Expect(second.AdminSecret).NotTo(BeNil())
 	g.Expect(second.AdminSecret.Data).To(Equal(first.AdminSecret.Data))
 }
 
-func TestComputeEmbeddedAdminSecret_ProjectsResolvedTLSState(t *testing.T) {
+func TestComputeInternalAdminSecret_ProjectsResolvedTLSState(t *testing.T) {
 	g := NewWithT(t)
 	ctx := context.Background()
 
@@ -181,18 +181,18 @@ func TestComputeEmbeddedAdminSecret_ProjectsResolvedTLSState(t *testing.T) {
 
 	cfg := &moduleconfig.Config{OperatorNamespace: "operator-ns"}
 	provider := &infraApi.DatabaseProvider{
-		ObjectMeta: metav1.ObjectMeta{Name: "embedded"},
+		ObjectMeta: metav1.ObjectMeta{Name: "internal"},
 		Spec: infraApi.DatabaseProviderSpec{
-			Type: infraApi.ProviderTypeEmbedded,
-			Embedded: &infraApi.EmbeddedProviderSpec{
-				TLS: &infraApi.EmbeddedProviderTLSSpec{},
+			Type: infraApi.ProviderTypeInternal,
+			Internal: &infraApi.InternalProviderSpec{
+				TLS: &infraApi.InternalProviderTLSSpec{},
 			},
 		},
 	}
 	tlsSecret := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Namespace: cfg.OperatorNamespace,
-			Name:      dbcontroller.EmbeddedTLSSecretName(provider.Name),
+			Name:      dbcontroller.InternalTLSSecretName(provider.Name),
 		},
 		Data: map[string][]byte{
 			"ca.crt":  []byte("ca-bytes"),
@@ -203,7 +203,7 @@ func TestComputeEmbeddedAdminSecret_ProjectsResolvedTLSState(t *testing.T) {
 
 	cli := fake.NewClientBuilder().WithScheme(scheme).WithRuntimeObjects(provider, tlsSecret).Build()
 
-	tlsState, err := computeEmbeddedAdminSecret(ctx, cli, provider, cfg)
+	tlsState, err := computeInternalAdminSecret(ctx, cli, provider, cfg)
 	g.Expect(err).NotTo(HaveOccurred())
 	g.Expect(tlsState.Enabled).To(BeTrue())
 	g.Expect(tlsState.Ready).To(BeTrue())
@@ -215,22 +215,22 @@ func TestComputeEmbeddedAdminSecret_ProjectsResolvedTLSState(t *testing.T) {
 	g.Expect(tlsState.AdminSecret.Data[postgres.SecretKeyCA]).To(Equal([]byte("ca-bytes")))
 }
 
-func TestEmbeddedNamespace_UsesOverride(t *testing.T) {
+func TestInternalNamespace_UsesOverride(t *testing.T) {
 	g := NewWithT(t)
 
 	cfg := &moduleconfig.Config{OperatorNamespace: "operator-ns"}
 	provider := &infraApi.DatabaseProvider{
-		ObjectMeta: metav1.ObjectMeta{Name: "embedded"},
+		ObjectMeta: metav1.ObjectMeta{Name: "internal"},
 		Spec: infraApi.DatabaseProviderSpec{
-			Type: infraApi.ProviderTypeEmbedded,
-			Embedded: &infraApi.EmbeddedProviderSpec{
+			Type: infraApi.ProviderTypeInternal,
+			Internal: &infraApi.InternalProviderSpec{
 				Namespace: "custom-ns",
 			},
 		},
 	}
 
-	g.Expect(dbcontroller.EmbeddedNamespace(provider, cfg.OperatorNamespace)).To(Equal("custom-ns"))
-	g.Expect(dbcontroller.EmbeddedServiceHost(provider, cfg.OperatorNamespace)).To(Equal("embedded.custom-ns.svc"))
+	g.Expect(dbcontroller.InternalNamespace(provider, cfg.OperatorNamespace)).To(Equal("custom-ns"))
+	g.Expect(dbcontroller.InternalServiceHost(provider, cfg.OperatorNamespace)).To(Equal("internal.custom-ns.svc"))
 }
 
 func TestReferencedClaimNamespaces_UsesPinnedProvider(t *testing.T) {
@@ -287,7 +287,7 @@ func TestReferencedClaimNamespaces_UsesPinnedProvider(t *testing.T) {
 	g.Expect(namespaces).To(Equal([]string{"workloads"}))
 }
 
-func TestResolveEmbeddedData_MapsProviderToTypedData(t *testing.T) {
+func TestResolveInternalData_MapsProviderToTypedData(t *testing.T) {
 	g := NewWithT(t)
 	ctx := context.Background()
 
@@ -297,17 +297,17 @@ func TestResolveEmbeddedData_MapsProviderToTypedData(t *testing.T) {
 
 	storageClassName := "fast"
 	provider := &infraApi.DatabaseProvider{
-		ObjectMeta: metav1.ObjectMeta{Name: "embedded"},
+		ObjectMeta: metav1.ObjectMeta{Name: "internal"},
 		Spec: infraApi.DatabaseProviderSpec{
-			Type: infraApi.ProviderTypeEmbedded,
-			Embedded: &infraApi.EmbeddedProviderSpec{
+			Type: infraApi.ProviderTypeInternal,
+			Internal: &infraApi.InternalProviderSpec{
 				Namespace:  "custom-ns",
 				Storage:    infraApi.StorageSpec{Size: resource.MustParse("10Gi"), StorageClassName: &storageClassName},
 				Resources:  corev1.ResourceRequirements{Requests: corev1.ResourceList{corev1.ResourceCPU: resource.MustParse("250m")}},
 				Extensions: []string{"vector", "pg_trgm"},
-				TLS: &infraApi.EmbeddedProviderTLSSpec{
-					Certificate: infraApi.EmbeddedProviderTLSCertificateSpec{
-						SecretName:  "embedded-tls",
+				TLS: &infraApi.InternalProviderTLSSpec{
+					Certificate: infraApi.InternalProviderTLSCertificateSpec{
+						SecretName:  "internal-tls",
 						Duration:    &metav1.Duration{Duration: 24 * 60 * 60 * 1e9},
 						RenewBefore: &metav1.Duration{Duration: 12 * 60 * 60 * 1e9},
 					},
@@ -327,9 +327,9 @@ func TestResolveEmbeddedData_MapsProviderToTypedData(t *testing.T) {
 
 	cli := fake.NewClientBuilder().WithScheme(scheme).WithRuntimeObjects(provider, claim).Build()
 
-	data, err := resolveEmbeddedData(ctx, cli, provider, &moduleconfig.Config{
+	data, err := resolveInternalData(ctx, cli, provider, &moduleconfig.Config{
 		OperatorNamespace: "operator-ns",
-		Embedded: moduleconfig.EmbeddedConfig{
+		Internal: moduleconfig.InternalConfig{
 			PostgresImage: "postgres:test",
 			PgvectorImage: "pgvector:test",
 		},
@@ -339,28 +339,28 @@ func TestResolveEmbeddedData_MapsProviderToTypedData(t *testing.T) {
 		AdminSecret: &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
 				Annotations: map[string]string{
-					dbcontroller.EmbeddedAdminSecretKeyAnnotation: "instance-hash",
+					dbcontroller.InternalAdminSecretKeyAnnotation: "instance-hash",
 				},
 			},
 		},
 	})
 	g.Expect(err).NotTo(HaveOccurred())
 	g.Expect(data.Namespace).To(Equal("custom-ns"))
-	g.Expect(data.Service.Name).To(Equal(dbcontroller.EmbeddedServiceName(provider.Name)))
-	g.Expect(data.PVC.Name).To(Equal(dbcontroller.EmbeddedPVCName(provider.Name)))
+	g.Expect(data.Service.Name).To(Equal(dbcontroller.InternalServiceName(provider.Name)))
+	g.Expect(data.PVC.Name).To(Equal(dbcontroller.InternalPVCName(provider.Name)))
 	g.Expect(data.PVC.Size).To(Equal("10Gi"))
 	g.Expect(data.PVC.StorageClassName).To(Equal("fast"))
 	g.Expect(data.InitDB.Extensions).To(Equal([]string{"vector", "pg_trgm"}))
 	g.Expect(data.Postgres.Image).To(Equal("pgvector:test"))
-	g.Expect(data.Postgres.AdminSecretName).To(Equal(dbcontroller.EmbeddedAdminSecretName(provider.Name)))
+	g.Expect(data.Postgres.AdminSecretName).To(Equal(dbcontroller.InternalAdminSecretName(provider.Name)))
 	g.Expect(data.Postgres.InstanceHash).To(Equal("instance-hash"))
 	g.Expect(data.Network.AllowedNamespaces).To(Equal([]string{"workloads"}))
 	g.Expect(data.TLS.Enabled).To(BeTrue())
 	g.Expect(data.TLS.UsesManagedIssuer).To(BeTrue())
-	g.Expect(data.TLS.SecretName).To(Equal("embedded-tls"))
+	g.Expect(data.TLS.SecretName).To(Equal("internal-tls"))
 	g.Expect(data.TLS.SecretHash).To(Equal("tls-hash"))
-	g.Expect(data.TLS.IssuerName).To(Equal(dbcontroller.EmbeddedTLSIssuerName(provider.Name)))
-	g.Expect(data.TLS.Certificate.Name).To(Equal(dbcontroller.EmbeddedTLSCertificateName(provider.Name)))
+	g.Expect(data.TLS.IssuerName).To(Equal(dbcontroller.InternalTLSIssuerName(provider.Name)))
+	g.Expect(data.TLS.Certificate.Name).To(Equal(dbcontroller.InternalTLSCertificateName(provider.Name)))
 	g.Expect(data.TLS.IssuerRef).NotTo(BeNil())
 }
 
@@ -413,7 +413,7 @@ func TestRenderEmbeddedResources_BuildsNonTLSObjects(t *testing.T) {
 	g.Expect(err).NotTo(HaveOccurred())
 	g.Expect(found).To(BeTrue())
 	g.Expect(annotations).To(HaveKeyWithValue(
-		dbcontroller.EmbeddedAdminSecretKeyAnnotation,
+		dbcontroller.InternalAdminSecretKeyAnnotation,
 		"instance-hash",
 	))
 

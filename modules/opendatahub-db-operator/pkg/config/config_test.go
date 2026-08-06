@@ -117,19 +117,19 @@ func TestComponentRelease_EmptyVersion(t *testing.T) {
 	g.Expect(rel.Version).To(Equal("0.0.0"))
 }
 
-// Embedded image / retry-interval config keys (docs/plan.md §6, §7.1, §7.7) --
+// Internal image / retry-interval config keys (docs/plan.md §6, §7.1, §7.7) --
 // these must always be config-driven, never hardcoded literals in controller
 // code, so their three-layer precedence (compiled default -> ConfigMap ->
 // env var) is exercised explicitly.
 
-func TestLoad_EmbeddedAndRetryDefaults(t *testing.T) {
+func TestLoad_InternalAndRetryDefaults(t *testing.T) {
 	g := NewWithT(t)
 
 	cfg, err := config.Load()
 	g.Expect(err).NotTo(HaveOccurred())
 
-	g.Expect(cfg.Embedded.PostgresImage).To(Equal(config.DefaultPostgresImage))
-	g.Expect(cfg.Embedded.PgvectorImage).To(Equal(config.DefaultPgvectorImage))
+	g.Expect(cfg.Internal.PostgresImage).To(Equal(config.DefaultPostgresImage))
+	g.Expect(cfg.Internal.PgvectorImage).To(Equal(config.DefaultPgvectorImage))
 	g.Expect(cfg.GracePeriod).To(Equal(config.DefaultGracePeriod))
 
 	// All four reconcilers share the same compiled default, but each is its
@@ -140,7 +140,7 @@ func TestLoad_EmbeddedAndRetryDefaults(t *testing.T) {
 	g.Expect(cfg.DatabaseService.RetryInterval).To(Equal(config.DefaultRetryInterval))
 }
 
-func TestLoad_EmbeddedImages_ConfigMapOverride(t *testing.T) {
+func TestLoad_InternalImages_ConfigMapOverride(t *testing.T) {
 	g := NewWithT(t)
 
 	cfg, err := config.Load(config.WithFS(fstest.MapFS{
@@ -149,10 +149,10 @@ func TestLoad_EmbeddedImages_ConfigMapOverride(t *testing.T) {
 	}))
 	g.Expect(err).NotTo(HaveOccurred())
 
-	g.Expect(cfg.Embedded.PostgresImage).To(Equal("registry.redhat.io/rhel9/postgresql-16"))
+	g.Expect(cfg.Internal.PostgresImage).To(Equal("registry.redhat.io/rhel9/postgresql-16"))
 	g.Expect(cfg.GracePeriod).To(Equal(15 * time.Minute))
 	// Untouched keys keep their compiled defaults.
-	g.Expect(cfg.Embedded.PgvectorImage).To(Equal(config.DefaultPgvectorImage))
+	g.Expect(cfg.Internal.PgvectorImage).To(Equal(config.DefaultPgvectorImage))
 }
 
 func TestLoad_RetryIntervals_AreIndependentAndEnvOverridesConfigMap(t *testing.T) {

@@ -229,18 +229,18 @@ spec:
       namespace: opendatahub-db
 ```
 
-### Embedded provider
+### Internal provider
 
 ```yaml
 apiVersion: infrastructure.opendatahub.io/v1alpha1
 kind: DatabaseProvider
 metadata:
-  name: shared-embedded
+  name: shared-internal
   labels:
     db.infrastructure.opendatahub.io/capability-pgvector: "true"
 spec:
-  type: Embedded
-  embedded:
+  type: Internal
+  internal:
     namespace: opendatahub-db
     deletionPolicy: Retain
     storage:
@@ -262,7 +262,7 @@ metadata:
   namespace: team-a
 spec:
   provider:
-    name: shared-embedded
+    name: shared-internal
   secretName: notebooks-credentials
   access: ReadWrite
   deletionPolicy: Retain
@@ -308,10 +308,10 @@ connection information for the provisioned database user.
 ### Use `External` provider when
 
 - PostgreSQL is already managed elsewhere
-- you need functionality outside this module's embedded scope
+- you need functionality outside this module's internal scope
 - you want the operator to provision access, not manage database lifecycle
 
-### Use `Embedded` provider when
+### Use `Internal` provider when
 
 - you want a simple in-cluster PostgreSQL backend
 - one instance is enough
@@ -335,7 +335,7 @@ the standard PostgreSQL keys used by this module:
 The Secret name defaults to the claim name, but `spec.secretName` can override
 it.
 
-More operational details, including resource ownership and embedded namespace
+More operational details, including resource ownership and internal namespace
 resolution, are in `docs/operations.md`.
 
 ## Provider Selection
@@ -447,8 +447,8 @@ Configuration is loaded from:
 Important keys:
 
 - `operator-namespace`
-- `embedded.postgres-image`
-- `embedded.pgvector-image`
+- `internal.postgres-image`
+- `internal.pgvector-image`
 - `grace-period`
 - `schemaclaim.retry-interval`
 - `databaseclaim.retry-interval`

@@ -41,7 +41,7 @@ func TestRegisterFlags_DerivesFlagNamesFromConfigStruct(t *testing.T) {
 		"platform-version",
 		"controller-metrics-bind-address",
 		"controller-leader-election-enabled",
-		"embedded-postgres-image",
+		"internal-postgres-image",
 		"databaseprovider-retry-interval",
 	} {
 		g.Expect(cmd.Flags().Lookup(name)).NotTo(BeNil(), name)

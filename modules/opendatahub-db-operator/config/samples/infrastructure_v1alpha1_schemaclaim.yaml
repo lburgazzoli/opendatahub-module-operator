@@ -5,7 +5,7 @@ metadata:
   namespace: team-a
 spec:
   provider:
-    name: sample-embedded
+    name: sample-internal
   secretName: sample-schema-credentials
   access: ReadWrite
   deletionPolicy: Retain

@@ -58,8 +58,8 @@ func TestRunCleansManagedResources(t *testing.T) {
 			Finalizers: []string{"test/finalizer"},
 		},
 		Spec: infraApi.DatabaseProviderSpec{
-			Type: infraApi.ProviderTypeEmbedded,
-			Embedded: &infraApi.EmbeddedProviderSpec{
+			Type: infraApi.ProviderTypeInternal,
+			Internal: &infraApi.InternalProviderSpec{
 				Storage: infraApi.StorageSpec{},
 			},
 		},

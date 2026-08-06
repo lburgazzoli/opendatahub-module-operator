@@ -44,48 +44,48 @@ func SecretNameForDatabaseClaim(claim *infraApi.DatabaseClaim) string {
 	}
 }
 
-func EmbeddedAdminSecretName(providerName string) string {
+func InternalAdminSecretName(providerName string) string {
 	return providerName + "-admin"
 }
 
-func EmbeddedServiceName(providerName string) string {
+func InternalServiceName(providerName string) string {
 	return providerName
 }
 
-func EmbeddedPVCName(providerName string) string {
+func InternalPVCName(providerName string) string {
 	return providerName
 }
 
-func EmbeddedInitDBConfigMapName(providerName string) string {
+func InternalInitDBConfigMapName(providerName string) string {
 	return providerName + "-initdb"
 }
 
-func EmbeddedTLSIssuerName(providerName string) string {
+func InternalTLSIssuerName(providerName string) string {
 	return providerName + "-tls"
 }
 
-func EmbeddedTLSCertificateName(providerName string) string {
+func InternalTLSCertificateName(providerName string) string {
 	return providerName + "-tls"
 }
 
-func EmbeddedTLSSecretName(providerName string) string {
+func InternalTLSSecretName(providerName string) string {
 	return providerName + "-tls"
 }
 
-func EmbeddedNamespace(provider *infraApi.DatabaseProvider, operatorNamespace string) string {
-	if provider != nil && provider.Spec.Embedded != nil && provider.Spec.Embedded.Namespace != "" {
-		return provider.Spec.Embedded.Namespace
+func InternalNamespace(provider *infraApi.DatabaseProvider, operatorNamespace string) string {
+	if provider != nil && provider.Spec.Internal != nil && provider.Spec.Internal.Namespace != "" {
+		return provider.Spec.Internal.Namespace
 	}
 	return operatorNamespace
 }
 
-func EmbeddedServiceHost(provider *infraApi.DatabaseProvider, operatorNamespace string) string {
+func InternalServiceHost(provider *infraApi.DatabaseProvider, operatorNamespace string) string {
 	if provider == nil {
 		return ""
 	}
 	return fmt.Sprintf(
 		"%s.%s.svc",
-		EmbeddedServiceName(provider.Name),
-		EmbeddedNamespace(provider, operatorNamespace),
+		InternalServiceName(provider.Name),
+		InternalNamespace(provider, operatorNamespace),
 	)
 }
