@@ -26,13 +26,23 @@ jobs:
           python3 - <<'PY'
           import json
           import os
+          import subprocess
 
+          module_lines = subprocess.check_output(
+              ["make", "list-modules"],
+              text=True,
+          ).splitlines()
           modules = []
-          with open(".github/module-matrix.yaml", encoding="utf-8") as handle:
-              for raw_line in handle:
-                  line = raw_line.strip()
-                  if line.startswith("- "):
-                      modules.append({"module_name": line[2:].strip()})
+          for module_line in module_lines:
+              module = module_line.strip()
+              if not module:
+                  continue
+
+              modules.append(
+                  {
+                      "module_name": module.removeprefix("modules/"),
+                  }
+              )
 
           output = json.dumps({"module": modules}, separators=(",", ":"))
           with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as handle:

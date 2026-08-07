@@ -21,7 +21,8 @@ MODULE_DIRS ?= \
 	modules/opendatahub-spark-operator \
 	modules/opendatahub-trainer-operator \
 	modules/opendatahub-trustyai-operator \
-	modules/opendatahub-workbenches-operator
+	modules/opendatahub-workbenches-operator \
+	modules/opendatahub-db-operator
 
 .PHONY: help
 help: ## Display this help.
