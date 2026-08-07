@@ -18,6 +18,7 @@ package v1alpha1
 
 import (
 	common "github.com/opendatahub-io/odh-platform-utilities/api/common"
+	fwapi "github.com/opendatahub-io/odh-platform-utilities/framework/api"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 )
@@ -38,7 +39,7 @@ const (
 )
 
 // Compile-time interface assertion.
-var _ common.PlatformObject = (*DatabaseService)(nil)
+var _ fwapi.PlatformObject = (*DatabaseService)(nil)
 
 // DatabaseServiceSpec defines the desired state of DatabaseService. No
 // custom fields: this CR's only job is to let the ODH Operator enable/gate
@@ -49,7 +50,7 @@ type DatabaseServiceSpec struct {
 
 // DatabaseServiceStatus defines the observed state of DatabaseService.
 type DatabaseServiceStatus struct {
-	common.Status                 `json:",inline"`
+	fwapi.Status                  `json:",inline"`
 	common.ComponentReleaseStatus `json:",inline"`
 }
 
@@ -70,15 +71,15 @@ type DatabaseService struct {
 	Status DatabaseServiceStatus `json:"status,omitempty"`
 }
 
-func (c *DatabaseService) GetStatus() *common.Status {
+func (c *DatabaseService) GetStatus() *fwapi.Status {
 	return &c.Status.Status
 }
 
-func (c *DatabaseService) GetConditions() []common.Condition {
+func (c *DatabaseService) GetConditions() []fwapi.Condition {
 	return c.Status.GetConditions()
 }
 
-func (c *DatabaseService) SetConditions(conditions []common.Condition) {
+func (c *DatabaseService) SetConditions(conditions []fwapi.Condition) {
 	c.Status.SetConditions(conditions)
 }
 

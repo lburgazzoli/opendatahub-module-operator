@@ -18,6 +18,7 @@ package v1alpha1
 
 import (
 	common "github.com/opendatahub-io/odh-platform-utilities/api/common"
+	fwapi "github.com/opendatahub-io/odh-platform-utilities/framework/api"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -34,7 +35,7 @@ const (
 // Compile-time interface assertion -- required because DatabaseClaim is
 // reconciled via the generic reconciler.ReconcilerFor[T api.PlatformObject]
 // builder (docs/plan.md §6), same as every other module's CRD types.
-var _ common.PlatformObject = (*DatabaseClaim)(nil)
+var _ fwapi.PlatformObject = (*DatabaseClaim)(nil)
 
 // DatabaseConnectionStatus is the resolved connection surfaced to consumers
 // once a DatabaseClaim is Provisioned (docs/plan.md §5). Deliberately not
@@ -94,7 +95,7 @@ type DatabaseClaimSpec struct {
 // never on Phase) comes from the embedded common.Status, not a redundant
 // field here.
 type DatabaseClaimStatus struct {
-	common.Status                 `json:",inline"`
+	fwapi.Status                  `json:",inline"`
 	common.ComponentReleaseStatus `json:",inline"`
 
 	// Database echoes spec.database exactly -- always identical, no default
@@ -131,15 +132,15 @@ type DatabaseClaim struct {
 	Status DatabaseClaimStatus `json:"status,omitempty"`
 }
 
-func (c *DatabaseClaim) GetStatus() *common.Status {
+func (c *DatabaseClaim) GetStatus() *fwapi.Status {
 	return &c.Status.Status
 }
 
-func (c *DatabaseClaim) GetConditions() []common.Condition {
+func (c *DatabaseClaim) GetConditions() []fwapi.Condition {
 	return c.Status.GetConditions()
 }
 
-func (c *DatabaseClaim) SetConditions(conditions []common.Condition) {
+func (c *DatabaseClaim) SetConditions(conditions []fwapi.Condition) {
 	c.Status.SetConditions(conditions)
 }
 

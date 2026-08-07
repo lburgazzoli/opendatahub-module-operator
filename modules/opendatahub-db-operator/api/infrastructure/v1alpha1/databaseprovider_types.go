@@ -18,6 +18,7 @@ package v1alpha1
 
 import (
 	common "github.com/opendatahub-io/odh-platform-utilities/api/common"
+	fwapi "github.com/opendatahub-io/odh-platform-utilities/framework/api"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -35,7 +36,7 @@ const (
 // Compile-time interface assertion -- required because DatabaseProvider is
 // reconciled via the generic reconciler.ReconcilerFor[T api.PlatformObject]
 // builder (docs/plan.md §6), same as every other module's CRD types.
-var _ common.PlatformObject = (*DatabaseProvider)(nil)
+var _ fwapi.PlatformObject = (*DatabaseProvider)(nil)
 
 // ProviderType selects which of DatabaseProviderSpec.External/Internal is
 // populated. Mutually exclusive with the other, enforced by CEL rules on
@@ -215,7 +216,7 @@ type DatabaseProviderSpec struct {
 // Unlike the two claim kinds, spec.md's status example has no phase field --
 // common.Status's own Phase/Conditions/ObservedGeneration are sufficient.
 type DatabaseProviderStatus struct {
-	common.Status                 `json:",inline"`
+	fwapi.Status                  `json:",inline"`
 	common.ComponentReleaseStatus `json:",inline"`
 
 	// Connection is the non-secret connection surface for the provider.
@@ -244,15 +245,15 @@ type DatabaseProvider struct {
 	Status DatabaseProviderStatus `json:"status,omitempty"`
 }
 
-func (c *DatabaseProvider) GetStatus() *common.Status {
+func (c *DatabaseProvider) GetStatus() *fwapi.Status {
 	return &c.Status.Status
 }
 
-func (c *DatabaseProvider) GetConditions() []common.Condition {
+func (c *DatabaseProvider) GetConditions() []fwapi.Condition {
 	return c.Status.GetConditions()
 }
 
-func (c *DatabaseProvider) SetConditions(conditions []common.Condition) {
+func (c *DatabaseProvider) SetConditions(conditions []fwapi.Condition) {
 	c.Status.SetConditions(conditions)
 }
 

@@ -41,7 +41,7 @@ func StopWithQuickRetryIfConnectionRefused(err error) error {
 
 	var opErr *net.OpError
 	if errors.As(err, &opErr) && errors.Is(opErr.Err, syscall.ECONNREFUSED) {
-		return odherrors.NewStopErrorWithRequeueAfterW(connectionRefusedRetryAfter, err)
+		return odherrors.NewStopErrorW(err).WithRequeueAfter(connectionRefusedRetryAfter)
 	}
 
 	return nil

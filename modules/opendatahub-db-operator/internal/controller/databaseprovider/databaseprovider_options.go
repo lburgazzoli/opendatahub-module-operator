@@ -45,14 +45,8 @@ type Options struct {
 }
 
 func (o Options) applyOption(target *Options) {
-	// cfg and platformRelease are included so that struct-literal Options
-	// (e.g. Options{cfg: testCfg}) work correctly in tests. In production,
-	// NewModule always sets them unconditionally before applying options.
 	if o.cfg != nil {
 		target.cfg = o.cfg
-	}
-	if o.platformRelease.Name != "" || !o.platformRelease.Version.EQ(o.platformRelease.Version) {
-		target.platformRelease = o.platformRelease
 	}
 	if o.Recorder != nil {
 		target.Recorder = o.Recorder

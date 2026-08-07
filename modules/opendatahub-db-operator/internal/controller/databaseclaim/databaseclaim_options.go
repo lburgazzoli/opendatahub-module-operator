@@ -48,9 +48,6 @@ func (o Options) applyOption(target *Options) {
 	if o.cfg != nil {
 		target.cfg = o.cfg
 	}
-	if o.platformRelease.Name != "" || !o.platformRelease.Version.EQ(o.platformRelease.Version) {
-		target.platformRelease = o.platformRelease
-	}
 	if o.Recorder != nil {
 		target.Recorder = o.Recorder
 	}

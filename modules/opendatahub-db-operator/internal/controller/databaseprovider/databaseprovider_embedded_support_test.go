@@ -37,7 +37,7 @@ import (
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/pkg/postgres"
 	pginstance "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/pkg/postgres/instance"
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/pkg/resources/gvk"
-	common "github.com/opendatahub-io/odh-platform-utilities/api/common"
+	fwapi "github.com/opendatahub-io/odh-platform-utilities/framework/api"
 )
 
 func TestResolveInternalImage(t *testing.T) {
@@ -265,8 +265,8 @@ func TestReferencedClaimNamespaces_UsesPinnedProvider(t *testing.T) {
 			},
 		},
 		Status: infraApi.SchemaClaimStatus{
-			Status: common.Status{
-				Conditions: []common.Condition{
+			Status: fwapi.Status{
+				Conditions: []fwapi.Condition{
 					{
 						Type:   "Provisioned",
 						Status: metav1.ConditionTrue,
@@ -318,8 +318,8 @@ func TestResolveInternalData_MapsProviderToTypedData(t *testing.T) {
 	claim := &infraApi.SchemaClaim{
 		ObjectMeta: metav1.ObjectMeta{Name: "claim", Namespace: "workloads"},
 		Status: infraApi.SchemaClaimStatus{
-			Status: common.Status{
-				Conditions: []common.Condition{{Type: "Provisioned", Status: metav1.ConditionTrue}},
+			Status: fwapi.Status{
+				Conditions: []fwapi.Condition{{Type: "Provisioned", Status: metav1.ConditionTrue}},
 			},
 			Provider: provider.Name,
 		},
