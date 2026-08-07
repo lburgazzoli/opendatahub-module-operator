@@ -27,6 +27,7 @@ import (
 	infraApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/api/infrastructure/v1alpha1"
 	moduleconfig "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/pkg/config"
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/pkg/postgres"
+	pginstance "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/pkg/postgres/instance"
 )
 
 const (
@@ -44,6 +45,19 @@ func OperatorNamespace(cfg *moduleconfig.Config) string {
 		return ""
 	}
 	return cfg.OperatorNamespace
+}
+
+func ProviderDefaultDatabase(provider *infraApi.DatabaseProvider) string {
+	if provider == nil {
+		return ""
+	}
+	if provider.Spec.DefaultDatabase != "" {
+		return provider.Spec.DefaultDatabase
+	}
+	if provider.Spec.Type == infraApi.ProviderTypeInternal {
+		return pginstance.DefaultAdminDatabase
+	}
+	return ""
 }
 
 func LoadProviderConfig(
@@ -78,9 +92,15 @@ func loadExternalProviderConfig(
 			return postgres.Config{}, err
 		}
 
-		cfg, err := postgres.ParseSecret(secret.Data)
+		cfg, err := postgres.ParseAdminSecret(secret.Data)
 		if err != nil {
 			return postgres.Config{}, fmt.Errorf("parsing admin Secret: %w", err)
+		}
+		if cfg.DBName == "" {
+			cfg.DBName = ProviderDefaultDatabase(provider)
+		}
+		if err := cfg.Validate(); err != nil {
+			return postgres.Config{}, fmt.Errorf("validating admin Secret: %w", err)
 		}
 
 		// Default to require when the Secret does not specify pg.sslmode.
@@ -112,6 +132,9 @@ func loadInternalProviderConfig(
 	cfg, err := postgres.ParseSecret(secret.Data)
 	if err != nil {
 		return postgres.Config{}, fmt.Errorf("parsing internal admin Secret: %w", err)
+	}
+	if cfg.DBName == "" {
+		cfg.DBName = ProviderDefaultDatabase(provider)
 	}
 
 	if provider.Spec.Internal == nil || provider.Spec.Internal.TLS == nil {

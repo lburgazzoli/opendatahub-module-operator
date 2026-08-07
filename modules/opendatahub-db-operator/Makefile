@@ -65,7 +65,7 @@ test: manifests generate fmt vet ## Run unit tests.
 
 .PHONY: test-integration
 test-integration: manifests generate ## Run integration tests.
-	INTEGRATION_TEST_NAMESPACE="$(INTEGRATION_TEST_NAMESPACE)" TEST_PLATFORM_VERSION="$(TEST_PLATFORM_VERSION)" ODH_MODULE_OPERATOR_TEST_CLUSTER_TYPE="$(INTEGRATION_TEST_CLUSTER_TYPE)" ODH_MODULE_OPERATOR_TEST_OPERATOR_INSTALL=false go test -ldflags "$(LDFLAGS)" ./test/integration/ -tags=integration -v -timeout 5m -failfast
+	INTEGRATION_TEST_NAMESPACE="$(INTEGRATION_TEST_NAMESPACE)" TEST_PLATFORM_VERSION="$(TEST_PLATFORM_VERSION)" ODH_MODULE_OPERATOR_TEST_CLUSTER_TYPE="$(INTEGRATION_TEST_CLUSTER_TYPE)" ODH_MODULE_OPERATOR_TEST_OPERATOR_INSTALL=false go test -ldflags "$(LDFLAGS)" ./test/integration/ -tags=integration -v -timeout 10m -failfast
 
 .PHONY: test-e2e-run
 test-e2e-run: ## Run e2e tests only (test bootstrap installs the operator).

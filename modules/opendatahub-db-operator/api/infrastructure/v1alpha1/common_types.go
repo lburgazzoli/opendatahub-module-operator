@@ -46,6 +46,20 @@ const (
 	DeletionPolicyDelete DeletionPolicy = "Delete"
 )
 
+// ExternalCapability declares which schema/database lifecycle operations an
+// external provider allows claims to perform.
+type ExternalCapability string
+
+const (
+	// ExternalCapabilityCreateDatabase allows claims to create databases on an
+	// external provider.
+	ExternalCapabilityCreateDatabase ExternalCapability = "CreateDatabase"
+
+	// ExternalCapabilityCreateSchema allows claims to create schemas on an
+	// external provider.
+	ExternalCapabilityCreateSchema ExternalCapability = "CreateSchema"
+)
+
 // ProviderRef selects a DatabaseProvider by exact name or by a label
 // selector matched against DatabaseProvider capability labels -- mutually
 // exclusive, enforced by the CEL rule below (mirrors PVC.spec.storageClassName

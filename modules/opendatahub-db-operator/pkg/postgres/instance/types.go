@@ -54,6 +54,7 @@ type Postgres struct {
 	Resources       *corev1.ResourceRequirements
 	Envs            []corev1.EnvVar
 	AdminSecretName string
+	DefaultDatabase string
 	InstanceHash    string
 }
 

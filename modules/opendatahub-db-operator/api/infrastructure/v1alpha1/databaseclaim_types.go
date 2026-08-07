@@ -69,17 +69,15 @@ type DatabaseClaimSpec struct {
 	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="secretName is immutable once set"
 	SecretName string `json:"secretName,omitempty"`
 
-	// Database names a pre-existing database on the provider's backend.
-	// Required, always -- unlike SchemaClaim.spec.schema, there is no
-	// "${namespace}_${name}" fallback: the caller must always know and name
-	// the exact pre-existing database. Immutable once set, for the same
-	// reason SchemaClaim.spec.schema is: changing it mid-life implies a
+	// Database selects the target database for the claim. When omitted, the
+	// provider's default database is used. When set, the controller may create
+	// the database if it does not already exist, subject to provider
+	// capabilities. Immutable once set: changing it mid-life implies a
 	// different claim, not an update to this one.
 	//
-	// +kubebuilder:validation:Required
-	// +kubebuilder:validation:MinLength=1
+	// +optional
 	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="database is immutable once set"
-	Database string `json:"database"`
+	Database string `json:"database,omitempty"`
 
 	// Access is the privilege level granted to the provisioned user.
 	// +kubebuilder:validation:Enum=ReadWrite;ReadOnly

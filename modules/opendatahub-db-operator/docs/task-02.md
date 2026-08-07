@@ -25,8 +25,8 @@ Task-01 (module scaffold).
    `common_types.go` — the fields shared by both claim kinds' connection status, all three
    `+kubebuilder:validation:Required` (once a claim's connection is populated at all, none of
    these can legitimately be empty — they're written atomically, never partially).
-2. `SchemaClaim`: `Spec{Provider ProviderRef, Schema string, Access AccessMode, DeletionPolicy
-   DeletionPolicy}`, `Status{common.Status, common.ComponentReleaseStatus, Schema string,
+2. `SchemaClaim`: `Spec{Provider ProviderRef, Schema string, Database string, Access AccessMode,
+   DeletionPolicy DeletionPolicy}`, `Status{common.Status, common.ComponentReleaseStatus, Schema string,
    Connection SchemaConnectionStatus, Provider string}`. `ProviderRef{Name string, Selector
    *metav1.LabelSelector}`. `SchemaConnectionStatus{ConnectionStatus, Database string
    (required), Schema string (required)}` — embeds `ConnectionStatus` from step 1. **No custom
@@ -36,8 +36,9 @@ Task-01 (module scaffold).
    spec.md's literal `matchedProviders: [...]` list** — a claim binds to exactly one provider, so
    surfacing the also-ran candidates that lost has no consumer (`docs/plan.md` §6 documents this
    as a deliberate, disclosed divergence from spec.md's example).
-3. `DatabaseClaim`: same shape minus `DeletionPolicy` and `Schema`, plus required
-   `Spec.Database string`; `Status.Database` echoes it. **Do not reuse `SchemaConnectionStatus`
+3. `DatabaseClaim`: same shape minus `DeletionPolicy` and `Schema`, with optional
+   `Spec.Database string`; `Status.Database` stores the resolved effective database.
+   **Do not reuse `SchemaConnectionStatus`
    for this CRD's `Status.Connection`** — spec.md's `DatabaseClaim` status example has no
    `schema` key under `connection` at all, and reusing the schema-claim struct verbatim would
    silently serialize an always-empty `schema: ""` field, contradicting the spec's shape. Define
@@ -45,10 +46,11 @@ Task-01 (module scaffold).
    embedding the same shared `ConnectionStatus` from step 1, just without the `Schema` field —
    instead of adding `omitempty` to a shared type: two small, honest types beat one type with a
    field that's meaningless for half its uses.
-4. `DatabaseProvider`: `Spec{Type ProviderType, External *ExternalProviderSpec, Embedded
+4. `DatabaseProvider`: `Spec{Type ProviderType, DefaultDatabase string, External *ExternalProviderSpec, Embedded
    *EmbeddedProviderSpec}` with a `+kubebuilder:validation:XValidation` CEL rule enforcing exactly
    one of `External`/`Embedded` is set matching `spec.type`. `ExternalProviderSpec{
-   ConnectionSecretRef corev1.SecretReference}`. `EmbeddedProviderSpec{DeletionPolicy
+   ConnectionSecretRef corev1.SecretReference, Capabilities []ExternalCapability}`.
+   `EmbeddedProviderSpec{DeletionPolicy
    DeletionPolicy, Storage StorageSpec, Resources corev1.ResourceRequirements, Extensions
    []string}` — no image field, ever (`docs/plan.md` §7.1). `Status{common.Status,
    common.ComponentReleaseStatus}` — no custom fields; spec.md's own status example for this CRD
@@ -97,11 +99,14 @@ Task-01 (module scaffold).
      (lowercase alphanumeric + underscore, must start with a letter) *when set* — this doesn't
      replace the runtime default-and-sanitize behavior for the unset case (task-06), it just
      rejects an obviously-invalid explicit value at admission time instead of at reconcile time.
-   - `DatabaseClaim.spec.database`: `+kubebuilder:validation:Required`,
-     `+kubebuilder:validation:MinLength=1` (already implied by "required, always" in
-     `docs/plan.md` §5, but must be an actual schema marker, not just a Go comment).
+  - `DatabaseClaim.spec.database`: optional, but when set should carry
+    `+kubebuilder:validation:MinLength=1`.
    - `DatabaseProvider.spec.type`: `+kubebuilder:validation:Enum=External;Embedded`,
      `+kubebuilder:validation:Required`.
+  - `DatabaseProvider.spec.defaultDatabase`: optional with
+    `+kubebuilder:validation:MinLength=1`.
+  - `ExternalProviderSpec.capabilities`: per-item enum validation for
+    `CreateDatabase` and `CreateSchema`.
    - `EmbeddedProviderSpec.extensions`: `+kubebuilder:validation:Pattern` per item restricting to
      a safe extension-name shape (defense in depth — the image-mapping table in task-08 still
      does its own exact-match validation, but garbage input shouldn't reach that logic at all).
@@ -117,8 +122,8 @@ Task-01 (module scaffold).
     cluster) and attempt to create objects violating **every** schema/CEL rule from step 9 above —
     `DatabaseProvider` with both/neither `external`/`embedded` set or a `spec.type` mismatch;
     claims with both/neither `provider.name`/`provider.selector`; an invalid `access` or
-    `deletionPolicy` enum value; a `DatabaseClaim` missing `spec.database`; a `SchemaClaim.spec.
-    schema` violating the identifier pattern or length limit; an `EmbeddedProviderSpec.extensions`
+    `deletionPolicy` enum value; a `SchemaClaim.spec.schema` violating the identifier pattern or
+    length limit; an `EmbeddedProviderSpec.extensions`
     entry violating the name-shape pattern; and, if immutability rules were added, an update
     attempting to change an immutable field. Every one of these must be rejected by
     `kube-apiserver` itself — CEL/schema validation is enforced server-side, so none of this can
@@ -145,5 +150,6 @@ Verified via `make manifests generate` (all four CRD YAMLs produced, deepcopy ge
 and `make test-integration-run` against the connected `kind` cluster: `TestCRDValidation`
 exercises every CEL/schema rule (`DatabaseProvider` external/embedded exclusivity and type
 match, both claims' `ProviderRef` exclusivity, `AccessMode`/`DeletionPolicy` enums, `schema`
-pattern/length, `database` required/immutable, `schema` immutable, `extensions` item pattern)
+pattern/length, database/schema immutability, provider default database and capabilities schema
+validation, `extensions` item pattern)
 plus the positive accept case for each kind, all rejected/accepted by `kube-apiserver` itself.

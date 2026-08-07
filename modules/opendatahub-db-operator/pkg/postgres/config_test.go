@@ -110,6 +110,17 @@ func TestParseSecret_DefaultPort(t *testing.T) {
 	g.Expect(cfg.Port).To(Equal(postgres.DefaultPort))
 }
 
+func TestParseAdminSecret_AllowsMissingDatabase(t *testing.T) {
+	g := NewWithT(t)
+	cfg, err := postgres.ParseAdminSecret(map[string][]byte{
+		postgres.SecretKeyHost:     []byte("localhost"),
+		postgres.SecretKeyUser:     []byte("u"),
+		postgres.SecretKeyPassword: []byte("p"),
+	})
+	g.Expect(err).NotTo(HaveOccurred())
+	g.Expect(cfg.DBName).To(BeEmpty())
+}
+
 func TestConfigDSN_EscapesSpecialCharacters(t *testing.T) {
 	g := NewWithT(t)
 

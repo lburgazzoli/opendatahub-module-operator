@@ -34,10 +34,16 @@ import (
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/test/support"
 )
 
+const peerTableName = "peer_table"
+
 func (st *schemaClaimSuite) Run(t *testing.T) {
 	t.Run("crd validation", st.testCRDValidation)
 	t.Run("provisioning", st.testProvisioning)
+	t.Run("database override", st.testDatabaseOverride)
+	t.Run("schema creation denied without capability", st.testSchemaCreateNotAllowed)
 	t.Run("access mode is enforced", st.testAccessModeEnforcement)
+	t.Run("schema isolation between claims", st.testSchemaIsolationBetweenClaims)
+	t.Run("schema isolation between databases", st.testSchemaIsolationBetweenDatabases)
 	t.Run("secret name override", st.testSecretNameOverride)
 	t.Run("explicit schema", st.testExplicitSchema)
 	t.Run("idempotency", st.testIdempotency)
@@ -80,6 +86,43 @@ func (st *schemaClaimSuite) testProvisioning(t *testing.T) {
 	g.Expect(err).NotTo(HaveOccurred())
 	g.Expect(credCfg.DBName).To(Equal(st.databaseName))
 	g.Expect(pingClaimConfig(ctx, st.env.ClientFactory, credCfg)).To(Succeed())
+}
+
+func (st *schemaClaimSuite) testDatabaseOverride(t *testing.T) {
+	g := NewWithT(t)
+	ctx := t.Context()
+
+	otherDatabase := "schema_" + xid.New().String()
+	st.createDatabase(t, otherDatabase)
+
+	name := "sc-" + xid.New().String()
+	claim := st.newClaim(name)
+	claim.Spec.Database = otherDatabase
+	st.createClaim(t, claim)
+	st.waitProvisioned(t, claim)
+
+	g.Eventually(ctx, k8sm.Get(st.env.Client, claim)).Should(
+		jq.Matchf(`.status.connection.database == %q`, otherDatabase),
+	)
+
+	secret := st.waitCredentialsSecretForDatabase(t, name, otherDatabase)
+	credCfg, err := postgres.ParseSecret(secret.Data)
+	g.Expect(err).NotTo(HaveOccurred())
+	g.Expect(credCfg.DBName).To(Equal(otherDatabase))
+	g.Expect(pingClaimConfig(ctx, st.env.ClientFactory, credCfg)).To(Succeed())
+}
+
+func (st *schemaClaimSuite) testSchemaCreateNotAllowed(t *testing.T) {
+	providerName := "provider-" + xid.New().String()
+	st.createExternalProvider(t, providerName, st.db.Config(), st.databaseName, nil, nil, nil)
+
+	name := "sc-" + xid.New().String()
+	claim := st.newClaim(name)
+	claim.Spec.Provider = infraApi.ProviderRef{Name: providerName}
+	st.createClaim(t, claim)
+
+	st.waitProvisioningFailure(t, claim, "SchemaCreateNotAllowed")
+	st.expectNoCredentialsSecret(t, name)
 }
 
 func (st *schemaClaimSuite) testAccessModeEnforcement(t *testing.T) {
@@ -145,7 +188,161 @@ func (st *schemaClaimSuite) testAccessModeEnforcement(t *testing.T) {
 			postgres.QuoteIdentifier("ro_claim_table"),
 		),
 	)
-	g.Expect(err).To(HaveOccurred(), "readonly schema claim must not be able to create tables")
+	g.Expect(err).To(BePermissionDenied())
+}
+
+func (st *schemaClaimSuite) testSchemaIsolationBetweenClaims(t *testing.T) {
+	g := NewWithT(t)
+	ctx := t.Context()
+
+	claimA := st.newClaim("sc-a-" + xid.New().String())
+	claimA.Spec.Schema = "schema_a_" + xid.New().String()
+	claimA.Spec.Access = infraApi.AccessModeReadWrite
+	claimB := st.newClaim("sc-b-" + xid.New().String())
+	claimB.Spec.Schema = "schema_b_" + xid.New().String()
+	claimB.Spec.Access = infraApi.AccessModeReadWrite
+
+	st.createClaim(t, claimA)
+	st.createClaim(t, claimB)
+	st.waitProvisioned(t, claimA)
+	st.waitProvisioned(t, claimB)
+
+	secretA := st.waitCredentialsSecret(t, claimA.Name)
+	secretB := st.waitCredentialsSecret(t, claimB.Name)
+
+	cfgA, err := postgres.ParseSecret(secretA.Data)
+	g.Expect(err).NotTo(HaveOccurred())
+	cfgB, err := postgres.ParseSecret(secretB.Data)
+	g.Expect(err).NotTo(HaveOccurred())
+
+	poolA, err := st.env.ClientFactory(ctx, cfgA)
+	g.Expect(err).NotTo(HaveOccurred())
+	t.Cleanup(poolA.Close)
+
+	poolB, err := st.env.ClientFactory(ctx, cfgB)
+	g.Expect(err).NotTo(HaveOccurred())
+	t.Cleanup(poolB.Close)
+
+	_, err = poolB.Exec(
+		ctx,
+		fmt.Sprintf(
+			"CREATE TABLE %s.%s (id int PRIMARY KEY)",
+			postgres.QuoteIdentifier(cfgB.Schema),
+			postgres.QuoteIdentifier(peerTableName),
+		),
+	)
+	g.Expect(err).NotTo(HaveOccurred())
+
+	_, err = poolB.Exec(
+		ctx,
+		fmt.Sprintf(
+			"INSERT INTO %s.%s VALUES (1)",
+			postgres.QuoteIdentifier(cfgB.Schema),
+			postgres.QuoteIdentifier(peerTableName),
+		),
+	)
+	g.Expect(err).NotTo(HaveOccurred())
+
+	_, err = poolA.Exec(
+		ctx,
+		fmt.Sprintf(
+			"SELECT * FROM %s.%s",
+			postgres.QuoteIdentifier(cfgB.Schema),
+			postgres.QuoteIdentifier(peerTableName),
+		),
+	)
+	g.Expect(err).To(BePermissionDenied())
+
+	_, err = poolA.Exec(
+		ctx,
+		fmt.Sprintf(
+			"CREATE TABLE %s.%s (id int PRIMARY KEY)",
+			postgres.QuoteIdentifier(cfgB.Schema),
+			postgres.QuoteIdentifier("forbidden_table"),
+		),
+	)
+	g.Expect(err).To(BePermissionDenied())
+}
+
+func (st *schemaClaimSuite) testSchemaIsolationBetweenDatabases(t *testing.T) {
+	g := NewWithT(t)
+	ctx := t.Context()
+
+	otherDatabase := "schema_" + xid.New().String()
+	st.createDatabase(t, otherDatabase)
+
+	claimA := st.newClaim("sc-a-" + xid.New().String())
+	claimA.Spec.Schema = "schema_a_" + xid.New().String()
+	claimA.Spec.Access = infraApi.AccessModeReadWrite
+
+	claimB := st.newClaim("sc-b-" + xid.New().String())
+	claimB.Spec.Database = otherDatabase
+	claimB.Spec.Schema = "schema_b_" + xid.New().String()
+	claimB.Spec.Access = infraApi.AccessModeReadWrite
+
+	st.createClaim(t, claimA)
+	st.createClaim(t, claimB)
+	st.waitProvisioned(t, claimA)
+	st.waitProvisioned(t, claimB)
+
+	secretA := st.waitCredentialsSecret(t, claimA.Name)
+	secretB := st.waitCredentialsSecretForDatabase(t, claimB.Name, otherDatabase)
+
+	cfgA, err := postgres.ParseSecret(secretA.Data)
+	g.Expect(err).NotTo(HaveOccurred())
+	cfgB, err := postgres.ParseSecret(secretB.Data)
+	g.Expect(err).NotTo(HaveOccurred())
+
+	poolB, err := st.env.ClientFactory(ctx, cfgB)
+	g.Expect(err).NotTo(HaveOccurred())
+	t.Cleanup(poolB.Close)
+
+	_, err = poolB.Exec(
+		ctx,
+		fmt.Sprintf(
+			"CREATE TABLE %s.%s (id int PRIMARY KEY)",
+			postgres.QuoteIdentifier(cfgB.Schema),
+			postgres.QuoteIdentifier(peerTableName),
+		),
+	)
+	g.Expect(err).NotTo(HaveOccurred())
+
+	_, err = poolB.Exec(
+		ctx,
+		fmt.Sprintf(
+			"INSERT INTO %s.%s VALUES (1)",
+			postgres.QuoteIdentifier(cfgB.Schema),
+			postgres.QuoteIdentifier(peerTableName),
+		),
+	)
+	g.Expect(err).NotTo(HaveOccurred())
+
+	crossCfgA := cfgA
+	crossCfgA.DBName = otherDatabase
+	crossPoolA, err := st.env.ClientFactory(ctx, crossCfgA)
+	if err == nil {
+		t.Cleanup(crossPoolA.Close)
+
+		_, err = crossPoolA.Exec(
+			ctx,
+			fmt.Sprintf(
+				"SELECT * FROM %s.%s",
+				postgres.QuoteIdentifier(cfgB.Schema),
+				postgres.QuoteIdentifier(peerTableName),
+			),
+		)
+		g.Expect(err).To(BePermissionDenied())
+
+		_, err = crossPoolA.Exec(
+			ctx,
+			fmt.Sprintf(
+				"CREATE TABLE %s.%s (id int PRIMARY KEY)",
+				postgres.QuoteIdentifier(cfgB.Schema),
+				postgres.QuoteIdentifier("forbidden_table"),
+			),
+		)
+		g.Expect(err).To(BePermissionDenied())
+	}
 }
 
 func (st *schemaClaimSuite) testSecretNameOverride(t *testing.T) {
@@ -327,9 +524,15 @@ func (st *schemaClaimSuite) testSelectorKeepsCurrentProvider(t *testing.T) {
 	claim := st.newSelectorClaim(name, selector)
 
 	currentProvider := "provider-" + xid.New().String()
-	st.createExternalProvider(t, currentProvider, st.db.Config(), st.databaseName, selector, map[string]string{
-		dbcontroller.AnnotationSelectionPriority: "0",
-	})
+	st.createExternalProvider(
+		t,
+		currentProvider,
+		st.db.Config(),
+		st.databaseName,
+		[]infraApi.ExternalCapability{infraApi.ExternalCapabilityCreateSchema},
+		selector,
+		map[string]string{dbcontroller.AnnotationSelectionPriority: "0"},
+	)
 
 	st.createClaim(t, claim)
 	st.waitProvisioned(t, claim)
@@ -343,9 +546,15 @@ func (st *schemaClaimSuite) testSelectorKeepsCurrentProvider(t *testing.T) {
 	otherDB := "schema_" + xid.New().String()
 	st.createDatabase(t, otherDB)
 	betterProvider := "provider-" + xid.New().String()
-	st.createExternalProvider(t, betterProvider, st.db.Config(), otherDB, selector, map[string]string{
-		dbcontroller.AnnotationSelectionPriority: "100",
-	})
+	st.createExternalProvider(
+		t,
+		betterProvider,
+		st.db.Config(),
+		otherDB,
+		[]infraApi.ExternalCapability{infraApi.ExternalCapabilityCreateSchema},
+		selector,
+		map[string]string{dbcontroller.AnnotationSelectionPriority: "100"},
+	)
 
 	st.waitProvisioned(t, claim)
 	st.waitSelectedProvider(t, claim, currentProvider)

@@ -26,25 +26,22 @@ import (
 
 	infraApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/api/infrastructure/v1alpha1"
 	dbcontroller "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/pkg/controller"
+	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/pkg/controller/claimerrors"
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/pkg/postgres"
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/pkg/resources/gvk"
 )
-
-// ErrDatabaseNotFound reports that the target database is missing.
-type ErrDatabaseNotFound struct {
-	Database string
-}
-
-func (e ErrDatabaseNotFound) Error() string {
-	return fmt.Sprintf("database %q not found", e.Database)
-}
 
 // DatabaseProvisioner provisions database-scoped credentials for a DatabaseClaim.
 type DatabaseProvisioner struct {
 	Client         client.Client
 	Claim          *infraApi.DatabaseClaim
+	Provider       *infraApi.DatabaseProvider
 	Postgres       postgres.Client
 	ProviderConfig postgres.Config
+}
+
+func (p DatabaseProvisioner) Database() string {
+	return dbcontroller.ResolveDatabase(p.Claim.Spec.Database, p.ProviderConfig)
 }
 
 // ConnectionStatus returns the desired connection status for the claim.
@@ -53,7 +50,7 @@ func (p DatabaseProvisioner) ConnectionStatus() infraApi.DatabaseConnectionStatu
 		SecretRef: corev1.LocalObjectReference{Name: dbcontroller.SecretNameForDatabaseClaim(p.Claim)},
 		Host:      p.ProviderConfig.Host,
 		Port:      int32(p.ProviderConfig.Port),
-		Database:  p.Claim.Spec.Database,
+		Database:  p.Database(),
 	}
 }
 
@@ -62,12 +59,21 @@ func (p DatabaseProvisioner) ConnectionStatus() infraApi.DatabaseConnectionStatu
 func (p DatabaseProvisioner) Ensure(
 	ctx context.Context,
 ) (*corev1.Secret, error) {
-	dbExists, err := postgres.DatabaseExists(ctx, p.Postgres, p.Claim.Spec.Database)
+	database := p.Database()
+	dbExists, err := postgres.DatabaseExists(ctx, p.Postgres, database)
 	if err != nil {
 		return nil, dbcontroller.WrapQuickRetry("checking database existence", err)
 	}
 	if !dbExists {
-		return nil, ErrDatabaseNotFound{Database: p.Claim.Spec.Database}
+		if p.Claim.Spec.Database == "" {
+			return nil, claimerrors.DatabaseNotFound{Database: database}
+		}
+		if !dbcontroller.ExternalProviderAllows(p.Provider, infraApi.ExternalCapabilityCreateDatabase) {
+			return nil, claimerrors.DatabaseCreateNotAllowed{Database: database}
+		}
+		if err := postgres.CreateDatabase(ctx, p.Postgres, database); err != nil {
+			return nil, dbcontroller.WrapQuickRetry("creating database", err)
+		}
 	}
 
 	role := dbcontroller.RoleNameFor(p.Claim.Namespace, p.Claim.Name)
@@ -112,11 +118,11 @@ func (p DatabaseProvisioner) Ensure(
 		p.buildCredentialsSecret(secret, role, pw)
 	}
 
-	switch ok, err := postgres.HasDatabasePrivileges(ctx, p.Postgres, p.Claim.Spec.Database, role, p.Claim.Spec.Access); {
+	switch ok, err := postgres.HasDatabasePrivileges(ctx, p.Postgres, database, role, p.Claim.Spec.Access); {
 	case err != nil:
 		return nil, dbcontroller.WrapQuickRetry("checking database privileges", err)
 	case !ok:
-		if err := postgres.GrantDatabasePrivileges(ctx, p.Postgres, p.Claim.Spec.Database, role, p.Claim.Spec.Access); err != nil {
+		if err := postgres.GrantDatabasePrivileges(ctx, p.Postgres, database, role, p.Claim.Spec.Access); err != nil {
 			return nil, dbcontroller.WrapQuickRetry("granting database privileges", err)
 		}
 	}
@@ -137,7 +143,7 @@ func (p DatabaseProvisioner) buildCredentialsSecret(
 		postgres.SecretKeyPort:     []byte(strconv.Itoa(p.ProviderConfig.Port)),
 		postgres.SecretKeyUser:     []byte(role),
 		postgres.SecretKeyPassword: []byte(password),
-		postgres.SecretKeyDatabase: []byte(p.Claim.Spec.Database),
+		postgres.SecretKeyDatabase: []byte(p.Database()),
 	}
 	if p.ProviderConfig.SSLMode != "" {
 		secret.Data[postgres.SecretKeySSLMode] = []byte(p.ProviderConfig.SSLMode)

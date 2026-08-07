@@ -144,6 +144,53 @@ func TestLoadProviderConfig_ExternalUsesConnectionSecretRef(t *testing.T) {
 	}))
 }
 
+func TestLoadProviderConfig_ExternalUsesProviderDefaultDatabase(t *testing.T) {
+	g := NewWithT(t)
+
+	provider := &infraApi.DatabaseProvider{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "sample-external",
+		},
+		Spec: infraApi.DatabaseProviderSpec{
+			Type:            infraApi.ProviderTypeExternal,
+			DefaultDatabase: "provider-default",
+			External: &infraApi.ExternalProviderSpec{
+				ConnectionSecretRef: corev1.SecretReference{
+					Namespace: "db-admin",
+					Name:      "external-admin",
+				},
+			},
+		},
+	}
+
+	secret := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "external-admin",
+			Namespace: "db-admin",
+		},
+		Data: map[string][]byte{
+			postgres.SecretKeyHost:     []byte("postgres.db-admin.svc"),
+			postgres.SecretKeyPort:     []byte("5432"),
+			postgres.SecretKeyUser:     []byte("postgres"),
+			postgres.SecretKeyPassword: []byte("secret"),
+		},
+	}
+
+	cli := fake.NewClientBuilder().
+		WithScheme(providerConfigScheme()).
+		WithObjects(secret).
+		Build()
+
+	cfg, err := controller.LoadProviderConfig(
+		context.Background(),
+		cli,
+		provider,
+		"odh-db-operator-system",
+	)
+	g.Expect(err).NotTo(HaveOccurred())
+	g.Expect(cfg.DBName).To(Equal("provider-default"))
+}
+
 func TestLoadProviderConfig_ExternalRequiresSecretNamespace(t *testing.T) {
 	g := NewWithT(t)
 

@@ -34,6 +34,7 @@ import (
 type SchemaProvisioner struct {
 	Client         client.Client
 	Claim          *infraApi.SchemaClaim
+	Provider       *infraApi.DatabaseProvider
 	Postgres       postgres.Client
 	ProviderConfig postgres.Config
 }
@@ -41,6 +42,10 @@ type SchemaProvisioner struct {
 // Schema returns the resolved schema name for the claim.
 func (p SchemaProvisioner) Schema() string {
 	return resolveSchema(p.Claim.Namespace, p.Claim.Name, p.Claim.Spec.Schema)
+}
+
+func (p SchemaProvisioner) Database() string {
+	return dbcontroller.ResolveDatabase(p.Claim.Spec.Database, p.ProviderConfig)
 }
 
 // ConnectionStatus returns the desired connection status for the claim.
@@ -51,7 +56,7 @@ func (p SchemaProvisioner) ConnectionStatus(schema string) infraApi.SchemaConnec
 			Host:      p.ProviderConfig.Host,
 			Port:      int32(p.ProviderConfig.Port),
 		},
-		Database: p.ProviderConfig.DBName,
+		Database: p.Database(),
 		Schema:   schema,
 	}
 }
@@ -62,7 +67,12 @@ func (p SchemaProvisioner) Ensure(
 	ctx context.Context,
 ) (*corev1.Secret, error) {
 	schema := p.Schema()
-	schemaExists, err := ensureSchema(ctx, p.Postgres, schema)
+	schemaExists, err := ensureSchema(
+		ctx,
+		p.Postgres,
+		schema,
+		dbcontroller.ExternalProviderAllows(p.Provider, infraApi.ExternalCapabilityCreateSchema),
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -134,7 +144,7 @@ func (p SchemaProvisioner) buildCredentialsSecret(
 		postgres.SecretKeyPort:     []byte(strconv.Itoa(p.ProviderConfig.Port)),
 		postgres.SecretKeyUser:     []byte(role),
 		postgres.SecretKeyPassword: []byte(password),
-		postgres.SecretKeyDatabase: []byte(p.ProviderConfig.DBName),
+		postgres.SecretKeyDatabase: []byte(p.Database()),
 		postgres.SecretKeySchema:   []byte(schema),
 	}
 	if p.ProviderConfig.SSLMode != "" {

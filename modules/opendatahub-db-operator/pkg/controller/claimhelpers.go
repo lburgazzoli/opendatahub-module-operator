@@ -21,6 +21,7 @@ import (
 	"crypto/sha256"
 	"fmt"
 	"regexp"
+	"slices"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
@@ -61,22 +62,53 @@ func NewClient(
 	cfg *moduleconfig.Config,
 	factory postgres.ClientFactory,
 ) (postgres.Client, postgres.Config, error) {
-	if factory == nil {
-		factory = postgres.DefaultClientFactory
-	}
-
 	providerCfg, err := LoadProviderConfig(ctx, cli, provider, cfg.OperatorNamespace)
 	if err != nil {
 		return nil, postgres.Config{}, err
 	}
+	dbClient, err := OpenClient(ctx, providerCfg, factory)
+	return dbClient, providerCfg, err
+}
+
+func OpenClient(
+	ctx context.Context,
+	providerCfg postgres.Config,
+	factory postgres.ClientFactory,
+) (postgres.Client, error) {
+	if factory == nil {
+		factory = postgres.DefaultClientFactory
+	}
 	dbClient, err := factory(ctx, providerCfg)
 	if err != nil {
-		return nil, postgres.Config{}, fmt.Errorf(
+		return nil, fmt.Errorf(
 			"opening postgres client: %w",
 			postgres.SanitizeError(err, providerCfg.Password),
 		)
 	}
-	return dbClient, providerCfg, nil
+	return dbClient, nil
+}
+
+func ResolveDatabase(
+	override string,
+	providerCfg postgres.Config,
+) string {
+	if override != "" {
+		return override
+	}
+	return providerCfg.DBName
+}
+
+func ExternalProviderAllows(
+	provider *infraApi.DatabaseProvider,
+	capability infraApi.ExternalCapability,
+) bool {
+	if provider == nil || provider.Spec.Type != infraApi.ProviderTypeExternal {
+		return true
+	}
+	if provider.Spec.External == nil {
+		return false
+	}
+	return slices.Contains(provider.Spec.External.Capabilities, capability)
 }
 
 // WrapQuickRetry wraps err with an operation label and upgrades it to a

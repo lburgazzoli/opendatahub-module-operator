@@ -17,8 +17,9 @@ Task-01 (go.mod has `jackc/pgx/v5`).
 
 - `pkg/postgres/pool.go` — `pgxpool.Pool` cache keyed by provider name + admin-secret
   resource version; invalidated when the admin secret changes.
-- `pkg/postgres/ddl.go` — statement builders: `CreateSchema`, `CreateSchemaUser`,
-  `CreateDatabaseUser`, `GrantSchemaPrivileges`, `DropSchemaCascade`, `DropRole`.
+- `pkg/postgres/ddl.go` — statement builders: `CreateSchema`, `CreateDatabase`,
+  `CreateSchemaUser`, `CreateDatabaseUser`, `GrantSchemaPrivileges`, `DropSchemaCascade`,
+  `DropRole`.
 - `pkg/postgres/quote.go` — identifier/literal quoting helpers.
 - `pkg/postgres/password.go` — `crypto/rand`-backed password generator.
 
@@ -36,6 +37,7 @@ Task-01 (go.mod has `jackc/pgx/v5`).
 3. `ddl.go` statement builders, each taking already-validated Go values (never raw user input
    bypassing `quote.go`):
    - `CreateSchema(ctx, pool, schema string) error` — `CREATE SCHEMA IF NOT EXISTS <schema>`.
+   - `CreateDatabase(ctx, pool, database string) error` — create the database if absent.
    - `CreateSchemaUser(ctx, pool, schema, user, password string, access AccessMode) error` —
      `CREATE ROLE <user> WITH LOGIN PASSWORD '<password>'` then
      grant privileges according to the effective schema contract:

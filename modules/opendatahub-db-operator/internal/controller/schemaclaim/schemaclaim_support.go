@@ -26,6 +26,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	dbcontroller "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/pkg/controller"
+	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/pkg/controller/claimerrors"
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/pkg/postgres"
 )
 
@@ -54,15 +55,26 @@ var nonIdentRe = regexp.MustCompile(`[^a-z0-9_]`)
 
 // ensureSchema creates the schema if needed and reports whether it already
 // existed before this reconciliation.
-func ensureSchema(ctx context.Context, pgClient postgres.Client, schema string) (bool, error) {
+func ensureSchema(
+	ctx context.Context,
+	pgClient postgres.Client,
+	schema string,
+	createAllowed bool,
+) (bool, error) {
 	schemaExists, err := postgres.SchemaExists(ctx, pgClient, schema)
 	if err != nil {
 		return false, dbcontroller.WrapQuickRetry("checking schema existence", err)
 	}
+	if schemaExists {
+		return true, nil
+	}
+	if !createAllowed {
+		return false, claimerrors.SchemaCreateNotAllowed{Schema: schema}
+	}
 	if err := postgres.CreateSchema(ctx, pgClient, schema); err != nil {
 		return false, dbcontroller.WrapQuickRetry("creating schema", err)
 	}
-	return schemaExists, nil
+	return false, nil
 }
 
 // resolveSchema returns the schema name to use for a claim. If spec.schema is

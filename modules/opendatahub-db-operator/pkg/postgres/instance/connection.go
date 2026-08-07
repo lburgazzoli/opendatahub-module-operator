@@ -18,6 +18,13 @@ func Host(data Data) string {
 	return fmt.Sprintf("%s.%s.svc", data.Service.Name, data.Namespace)
 }
 
+func adminDatabase(data Data) string {
+	if data.Postgres.DefaultDatabase != "" {
+		return data.Postgres.DefaultDatabase
+	}
+	return DefaultAdminDatabase
+}
+
 func AdminSecret(
 	data Data,
 	password []byte,
@@ -33,7 +40,7 @@ func AdminSecret(
 			postgres.SecretKeyPort:     fmt.Appendf(nil, "%d", postgres.DefaultPort),
 			postgres.SecretKeyUser:     []byte(DefaultAdminUser),
 			postgres.SecretKeyPassword: append([]byte(nil), password...),
-			postgres.SecretKeyDatabase: []byte(DefaultAdminDatabase),
+			postgres.SecretKeyDatabase: []byte(adminDatabase(data)),
 		},
 	}
 
@@ -59,7 +66,7 @@ func AdminConfig(
 		Port:     postgres.DefaultPort,
 		User:     DefaultAdminUser,
 		Password: password,
-		DBName:   DefaultAdminDatabase,
+		DBName:   adminDatabase(data),
 	}
 
 	if !data.TLS.Enabled {

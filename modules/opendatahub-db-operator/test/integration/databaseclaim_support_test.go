@@ -20,7 +20,6 @@ import (
 	"context"
 	"crypto/sha256"
 	"fmt"
-	"maps"
 	"regexp"
 	"testing"
 
@@ -69,22 +68,27 @@ func newDatabaseClaimSuite(t *testing.T, env *integrationEnv) (*databaseClaimSui
 }
 
 func (st *databaseClaimSuite) createProvider(t *testing.T) error {
-	return st.createExternalProvider(t, st.providerName, st.db.Config(), nil, nil)
+	return st.createExternalProvider(
+		t,
+		st.providerName,
+		st.db.Config(),
+		st.db.Config().DBName,
+		nil,
+	)
 }
 
 func (st *databaseClaimSuite) createExternalProvider(
 	t *testing.T,
 	name string,
 	cfg postgres.Config,
-	labels map[string]string,
-	annotations map[string]string,
+	defaultDatabase string,
+	capabilities []infraApi.ExternalCapability,
 ) error {
 	t.Helper()
 
-	mergedAnnotations := map[string]string{
+	annotations := map[string]string{
 		"db.infrastructure.opendatahub.io/operator-namespace": st.env.Namespace,
 	}
-	maps.Copy(mergedAnnotations, annotations)
 
 	adminSecretData := map[string]string{
 		postgres.SecretKeyHost:     cfg.Host,
@@ -115,16 +119,17 @@ func (st *databaseClaimSuite) createExternalProvider(
 	provider := &infraApi.DatabaseProvider{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:        name,
-			Labels:      labels,
-			Annotations: mergedAnnotations,
+			Annotations: annotations,
 		},
 		Spec: infraApi.DatabaseProviderSpec{
-			Type: infraApi.ProviderTypeExternal,
+			Type:            infraApi.ProviderTypeExternal,
+			DefaultDatabase: defaultDatabase,
 			External: &infraApi.ExternalProviderSpec{
 				ConnectionSecretRef: corev1.SecretReference{
 					Name:      adminSecret.Name,
 					Namespace: st.env.Namespace,
 				},
+				Capabilities: capabilities,
 			},
 		},
 	}

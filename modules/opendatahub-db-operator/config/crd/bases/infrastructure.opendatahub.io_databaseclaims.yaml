@@ -61,13 +61,11 @@ spec:
                   rule: self == oldSelf
               database:
                 description: |-
-                  Database names a pre-existing database on the provider's backend.
-                  Required, always -- unlike SchemaClaim.spec.schema, there is no
-                  "${namespace}_${name}" fallback: the caller must always know and name
-                  the exact pre-existing database. Immutable once set, for the same
-                  reason SchemaClaim.spec.schema is: changing it mid-life implies a
+                  Database selects the target database for the claim. When omitted, the
+                  provider's default database is used. When set, the controller may create
+                  the database if it does not already exist, subject to provider
+                  capabilities. Immutable once set: changing it mid-life implies a
                   different claim, not an update to this one.
-                minLength: 1
                 type: string
                 x-kubernetes-validations:
                 - message: database is immutable once set
@@ -147,7 +145,6 @@ spec:
                 - message: secretName is immutable once set
                   rule: self == oldSelf
             required:
-            - database
             - provider
             type: object
           status:

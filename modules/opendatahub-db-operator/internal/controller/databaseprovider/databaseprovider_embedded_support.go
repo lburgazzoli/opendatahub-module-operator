@@ -405,6 +405,7 @@ func desiredInternalAdminSecret(
 			},
 			Postgres: pginstance.Postgres{
 				AdminSecretName: dbcontroller.InternalAdminSecretName(provider.Name),
+				DefaultDatabase: dbcontroller.ProviderDefaultDatabase(provider),
 			},
 			TLS: pginstance.TLS{
 				Enabled: internalTLSEnabled(provider),

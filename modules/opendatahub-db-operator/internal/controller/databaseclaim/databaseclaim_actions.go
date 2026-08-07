@@ -27,6 +27,7 @@ import (
 
 	infraApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/api/infrastructure/v1alpha1"
 	dbcontroller "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/pkg/controller"
+	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/pkg/controller/claimerrors"
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/pkg/postgres"
 	api "github.com/opendatahub-io/odh-platform-utilities/framework/api"
 	odherrors "github.com/opendatahub-io/odh-platform-utilities/framework/controller/actions/errors"
@@ -37,7 +38,7 @@ import (
 // provisionAction reconciles the DatabaseClaim:
 //  1. Resolves the DatabaseProvider.
 //  2. Opens a connection to the provider's backend.
-//  3. Verifies spec.database exists (never creates it).
+//  3. Resolves the effective database and creates it only when policy allows.
 //  4. Idempotently provisions a dedicated user with database-level privileges.
 //  5. Writes the credentials Secret via rr.Resources → deploy.NewAction (SSA).
 //  6. Updates status.
@@ -107,15 +108,22 @@ func (m *Controller) provisionAction(ctx context.Context, rr *odhtypes.Reconcili
 	provisioner := DatabaseProvisioner{
 		Client:         rr.Client,
 		Claim:          obj,
+		Provider:       provider,
 		Postgres:       pgClient,
 		ProviderConfig: resolvedCfg,
 	}
 	secret, err := provisioner.Ensure(ctx)
-	if notFound, ok := errors.AsType[ErrDatabaseNotFound](err); ok {
+	if notFound, ok := errors.AsType[claimerrors.DatabaseNotFound](err); ok {
 		rr.Conditions.Mark(ConditionProvisioned, metav1.ConditionFalse,
 			conditions.WithReason("DatabaseNotFound"),
 			conditions.WithMessage("database %q does not exist on provider %q", notFound.Database, provider.Name))
 		return odherrors.NewStopError("%s", notFound.Error())
+	}
+	if denied, ok := errors.AsType[claimerrors.DatabaseCreateNotAllowed](err); ok {
+		rr.Conditions.Mark(ConditionProvisioned, metav1.ConditionFalse,
+			conditions.WithReason("DatabaseCreateNotAllowed"),
+			conditions.WithMessage("%s", denied.Error()))
+		return odherrors.NewStopError("%s", denied.Error())
 	}
 	if err != nil {
 		return err
@@ -126,7 +134,7 @@ func (m *Controller) provisionAction(ctx context.Context, rr *odhtypes.Reconcili
 		return fmt.Errorf("adding credentials Secret to resources: %w", err)
 	}
 
-	// 5. Update status -- status.database echoes spec.database exactly, no defaulting.
+	// 5. Update status with the resolved effective database.
 	connection := provisioner.ConnectionStatus()
 	obj.Status.Database = connection.Database
 	obj.Status.Connection = connection
@@ -195,8 +203,12 @@ func (m *Controller) cleanupAction(ctx context.Context, rr *odhtypes.Reconciliat
 				return nil
 			}
 
-			if err := postgres.RevokeDatabasePrivileges(ctx, pgClient, obj.Spec.Database, role); err != nil {
-				return fmt.Errorf("revoking privileges from role %q on database %q: %w", role, obj.Spec.Database, err)
+			database := obj.Status.Database
+			if database == "" {
+				database = obj.Spec.Database
+			}
+			if err := postgres.RevokeDatabasePrivileges(ctx, pgClient, database, role); err != nil {
+				return fmt.Errorf("revoking privileges from role %q on database %q: %w", role, database, err)
 			}
 
 			// Drop only the role. NEVER issue DROP DATABASE.

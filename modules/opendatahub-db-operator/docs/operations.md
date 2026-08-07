@@ -64,7 +64,7 @@ Expected keys:
 - `pg.port`
 - `pg.user`
 - `pg.password`
-- `pg.database`
+- `pg.database` optional when `DatabaseProvider.spec.defaultDatabase` is set
 
 ### Provisioned claim secret
 
@@ -134,6 +134,13 @@ Claims reconcile the database-side state they own:
 
 - `SchemaClaim` recreates missing schemas, roles, and credentials Secrets
 - `DatabaseClaim` recreates missing roles and credentials Secrets
+
+External providers can further constrain claim-side create behavior with
+`spec.external.capabilities`:
+
+- `CreateSchema` gates whether a `SchemaClaim` may create a missing schema
+- `CreateDatabase` gates whether a `DatabaseClaim` may create an explicitly
+  requested missing database
 
 Claim credentials Secrets are ordinary resources in the claim namespace. They
 are managed by reconcile/deploy, but are not owner-referenced to the claim.

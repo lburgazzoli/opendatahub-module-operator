@@ -63,6 +63,13 @@ type ExternalProviderSpec struct {
 	// namespace).
 	// +kubebuilder:validation:Required
 	ConnectionSecretRef corev1.SecretReference `json:"connectionSecretRef"`
+
+	// Capabilities declares which lifecycle operations claims may perform
+	// against this external provider.
+	// +optional
+	// +listType=atomic
+	// +kubebuilder:validation:items:Enum=CreateDatabase;CreateSchema
+	Capabilities []ExternalCapability `json:"capabilities,omitempty"`
 }
 
 // CertManagerIssuerRef identifies a cert-manager issuer resource.
@@ -200,6 +207,14 @@ type DatabaseProviderSpec struct {
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:Enum=External;Internal
 	Type ProviderType `json:"type"`
+
+	// DefaultDatabase is the database claims use when they do not specify one.
+	// For external providers, this also supplies the default database when the
+	// admin Secret omits pg.database. When unset, the provider Secret (external)
+	// or the built-in internal default database may still supply the value.
+	// +optional
+	// +kubebuilder:validation:MinLength=1
+	DefaultDatabase string `json:"defaultDatabase,omitempty"`
 
 	// External configures a provider pointing at an admin-managed instance.
 	// Mutually exclusive with Internal.

@@ -32,23 +32,28 @@ to actually run).
    added yet — nothing to clean up).
 3. Add a finalizer (`infrastructure.opendatahub.io/schemaclaim-cleanup` or similar) before any DDL
    runs, so deletion always has cleanup to do.
-4. `pkg/postgres.CreateSchema` (idempotent — succeeds whether this is the first `SchemaClaim`
-   for this schema or a second one reusing it per spec.md's multi-tenant-reuse behavior).
-5. Generate a password (`pkg/postgres.GeneratePassword`), `pkg/postgres.CreateSchemaUser`
+4. Resolve the target database from `spec.database` or the provider default. If the claim selects
+   a non-default database, verify it exists before opening the schema-scoped connection.
+5. `pkg/postgres.CreateSchema` (idempotent — succeeds whether this is the first `SchemaClaim`
+   for this schema or a second one reusing it per spec.md's multi-tenant-reuse behavior), but only
+   when the provider allows schema creation. For `External` providers, gate this with
+   `spec.external.capabilities: [CreateSchema]`; otherwise surface a
+   `SchemaCreateNotAllowed` condition.
+6. Generate a password (`pkg/postgres.GeneratePassword`), `pkg/postgres.CreateSchemaUser`
    scoped to the resolved schema with `spec.access` privileges:
    - `ReadOnly`: usable for reads only.
    - `ReadWrite`: effectively admin within that schema, including `CREATE TABLE` and normal DML,
      but not broader database-level administration outside the schema.
-6. SSA-write the credentials Secret: name `== spec.secretName` when set, else `claim.Name`,
+7. SSA-write the credentials Secret: name `== spec.secretName` when set, else `claim.Name`,
    claim's own namespace, no owner reference to the `SchemaClaim`, keys for
    host/port/database/schema/user/password (exact key names should match
    spec.md's `status.connection` shape so consumers don't need a translation
    layer).
-7. Set `status.connection` (host/port/database/schema + `secretRef`), `status.provider` (from
+8. Set `status.connection` (host/port/database/schema + `secretRef`), `status.provider` (from
    step 2, only when a selector was used), `Provisioned: True, reason: SchemaReady`. Do not set a
    custom phase string — `common.Status.Phase` (embedded, task-02) is managed generically; this
    reconciler only ever sets conditions.
-8. Deletion (finalizer logic):
+9. Deletion (finalizer logic):
    - `deletionPolicy: Retain` (default): drop only the provisioned user
      (`pkg/postgres.DropRole`) and remove the claim Secret explicitly; the Secret is not
      owner-referenced to the claim. Schema/data untouched.
@@ -58,12 +63,12 @@ to actually run).
      do not block finalizer removal indefinitely — log and remove the finalizer after a bounded
      number of retries, since a provider that's gone means the schema/user are already
      unreachable/moot (document this as an accepted edge case, not silently ignored).
-9. Do not remove or bypass the `upgradeIfNeeded` action task-03 already wired ahead of this
+10. Do not remove or bypass the `upgradeIfNeeded` action task-03 already wired ahead of this
    reconciler's real logic. If this task's DDL statements or Secret key shape differ from
    whatever a hypothetical prior controller version would have produced, that mismatch is exactly
    what the hook exists to handle in the future — leave it as the no-op task-03 built unless a
    concrete migration need is identified while implementing this task.
-10. No manual requeue needed here — task-03's `WithDefaultRequeueAfter(cfg.ClaimRetryInterval)`
+11. No manual requeue needed here — task-03's `WithDefaultRequeueAfter(cfg.ClaimRetryInterval)`
     on the `SchemaClaim` builder already re-checks a `Provisioned: True` claim on that cadence for
     every successful reconcile, so drift (e.g. the provisioned role or Secret disappearing
     outside this controller's own action) is eventually noticed without requiring a new event.
@@ -83,6 +88,8 @@ task's own tests to task-10; they belong here.
 - Integration test: create a `SchemaClaim` against an `Embedded` provider (task-08) end-to-end →
   `Provisioned: True`, Secret exists with working credentials, `status.schema` populated
   correctly for both explicit and defaulted `spec.schema`.
+- Integration test: `SchemaClaim.spec.database` overrides the provider default and the generated
+  Secret connects to that selected database.
 - Integration test: access modes are enforced with the real provisioned credentials:
   `ReadWrite` can `CREATE TABLE` inside its schema, while `ReadOnly` cannot.
 - Integration test: two `SchemaClaim`s targeting the same resolved schema name both succeed, each
@@ -93,3 +100,5 @@ task's own tests to task-10; they belong here.
 - Integration test: `deletionPolicy: Delete` removes the schema entirely.
 - Negative-path test: provider missing → `Pending` with actionable message, no panic, no
   finalizer stuck.
+- Negative-path test: external provider without `CreateSchema` capability leaves a missing schema
+  claim `Pending` with `SchemaCreateNotAllowed`.

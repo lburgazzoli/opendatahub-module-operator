@@ -59,6 +59,15 @@ spec:
                 x-kubernetes-validations:
                 - message: access is immutable once set
                   rule: self == oldSelf
+              database:
+                description: |-
+                  Database selects which database the schema should live in. When omitted,
+                  the provider's default database is used. Immutable once set for the same
+                  reason as Schema: changing it mid-life implies a different claim.
+                type: string
+                x-kubernetes-validations:
+                - message: database is immutable once set
+                  rule: self == oldSelf
               deletionPolicy:
                 default: Retain
                 description: DeletionPolicy governs schema+data lifecycle on claim

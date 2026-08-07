@@ -34,6 +34,9 @@ should have already covered.
 2. Add cross-CRD integration coverage not naturally owned by a single task:
    - One `Embedded` `DatabaseProvider` serving both a `SchemaClaim` and a `DatabaseClaim`
      concurrently, both reaching `Provisioned: True` without interfering with each other.
+   - Credential-isolation checks: a `DatabaseClaim` role cannot connect to a peer claim's
+     database, and a `SchemaClaim` role cannot read from or create objects in a peer claim's
+     schema.
    - Provider selector matching across multiple `DatabaseProvider`s with different capability
      labels and priorities, exercised through an actual `SchemaClaim` (not just the
      `providerresolve` unit test from task-03).
@@ -42,9 +45,10 @@ should have already covered.
    - Selector stickiness: once a selector-based claim has bound to a matching provider, creating a
      new higher-priority matching provider should not force rebinding while the current provider
      still exists and still matches.
-   - Full negative-path matrix: missing provider, unreachable `External` provider, unmapped
-     `Embedded` extensions, deleted admin secret post-provisioning, and claim drift scenarios
-     (missing claim secret / role / schema) repaired by normal reconciliation.
+  - Full negative-path matrix: missing provider, unreachable `External` provider, unmapped
+    `Embedded` extensions, external-provider capability denial (`CreateSchema` /
+    `CreateDatabase`), deleted admin secret post-provisioning, and claim drift scenarios (missing
+    claim secret / role / schema) repaired by normal reconciliation.
 3. Refactor the integration/e2e test foundation to match repo precedent before the suite grows
    further:
    - add `github.com/lburgazzoli/gomega-matchers`,

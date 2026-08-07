@@ -81,6 +81,14 @@ type SchemaClaimSpec struct {
 	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="schema is immutable once set"
 	Schema string `json:"schema,omitempty"`
 
+	// Database selects which database the schema should live in. When omitted,
+	// the provider's default database is used. Immutable once set for the same
+	// reason as Schema: changing it mid-life implies a different claim.
+	//
+	// +optional
+	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="database is immutable once set"
+	Database string `json:"database,omitempty"`
+
 	// Access is the privilege level granted to the provisioned user.
 	// +kubebuilder:validation:Enum=ReadWrite;ReadOnly
 	// +kubebuilder:default=ReadWrite

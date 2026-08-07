@@ -31,6 +31,7 @@ import (
 
 	infraApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/api/infrastructure/v1alpha1"
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/internal/controller/databaseclaim"
+	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/pkg/controller/claimerrors"
 	modulemanager "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/pkg/manager"
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/pkg/postgres"
 )
@@ -209,7 +210,7 @@ func TestDatabaseProvisioner_Ensure_UsesProviderConfigForStatusAndSecret(t *test
 	g.Expect(claimCfg.Port).To(Equal(5432))
 }
 
-func TestDatabaseProvisioner_Ensure_DatabaseMissing(t *testing.T) {
+func TestDatabaseProvisioner_Ensure_CreatesExplicitDatabase(t *testing.T) {
 	g := NewWithT(t)
 	cfg := startPostgres(t)
 	pgClient := openPostgresClient(t, cfg)
@@ -233,11 +234,51 @@ func TestDatabaseProvisioner_Ensure_DatabaseMissing(t *testing.T) {
 	}
 
 	_, err := provisioner.Ensure(t.Context())
+	g.Expect(err).NotTo(HaveOccurred())
+	exists, err := postgres.DatabaseExists(t.Context(), pgClient, "missingdb")
+	g.Expect(err).NotTo(HaveOccurred())
+	g.Expect(exists).To(BeTrue())
+}
+
+func TestDatabaseProvisioner_Ensure_DatabaseCreateDeniedByExternalProvider(t *testing.T) {
+	g := NewWithT(t)
+	cfg := startPostgres(t)
+	pgClient := openPostgresClient(t, cfg)
+
+	claim := &infraApi.DatabaseClaim{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "example",
+			Namespace: "test-ns",
+		},
+		Spec: infraApi.DatabaseClaimSpec{
+			Database: "missingdb",
+		},
+	}
+	provider := &infraApi.DatabaseProvider{
+		ObjectMeta: metav1.ObjectMeta{Name: "external"},
+		Spec: infraApi.DatabaseProviderSpec{
+			Type: infraApi.ProviderTypeExternal,
+			External: &infraApi.ExternalProviderSpec{
+				ConnectionSecretRef: corev1.SecretReference{Name: "admin", Namespace: "ns"},
+			},
+		},
+	}
+	cli := newFakeClient(t).Build()
+
+	provisioner := databaseclaim.DatabaseProvisioner{
+		Client:         cli,
+		Claim:          claim,
+		Provider:       provider,
+		Postgres:       pgClient,
+		ProviderConfig: cfg,
+	}
+
+	_, err := provisioner.Ensure(t.Context())
 	g.Expect(err).To(HaveOccurred())
 
-	var notFound databaseclaim.ErrDatabaseNotFound
-	g.Expect(errors.As(err, &notFound)).To(BeTrue())
-	g.Expect(notFound.Database).To(Equal("missingdb"))
+	var denied claimerrors.DatabaseCreateNotAllowed
+	g.Expect(errors.As(err, &denied)).To(BeTrue())
+	g.Expect(denied.Database).To(Equal("missingdb"))
 }
 
 func TestDatabaseProvisioner_Ensure_ReconcilesAccessChanges(t *testing.T) {

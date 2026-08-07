@@ -95,17 +95,18 @@ type secretField struct {
 	key   string
 }
 
-// Validate checks that all required Config fields are set and the port is valid.
-func (c Config) Validate() error {
+func (c Config) validate(requireDatabase bool) error {
 	for _, field := range [...]secretField{
 		{c.Host, SecretKeyHost},
 		{c.User, SecretKeyUser},
 		{c.Password, SecretKeyPassword},
-		{c.DBName, SecretKeyDatabase},
 	} {
 		if field.value == "" {
 			return fmt.Errorf("missing or empty key %q in Secret", field.key)
 		}
+	}
+	if requireDatabase && c.DBName == "" {
+		return fmt.Errorf("missing or empty key %q in Secret", SecretKeyDatabase)
 	}
 	if c.Port <= 0 || c.Port > 65535 {
 		return fmt.Errorf("invalid %s: must be a port number 1-65535, got %d", SecretKeyPort, c.Port)
@@ -113,11 +114,23 @@ func (c Config) Validate() error {
 	return nil
 }
 
+// Validate checks that all required Config fields are set and the port is valid.
+func (c Config) Validate() error {
+	return c.validate(true)
+}
+
+// ValidateWithoutDatabase checks that all required Config fields except the
+// database name are set. Use this only for provider/admin secret loading paths
+// that resolve the effective database from higher-level config.
+func (c Config) ValidateWithoutDatabase() error {
+	return c.validate(false)
+}
+
 // ParseSecret decodes a Secret's data map ([]byte values) into a Config using
 // mapstructure. The inline hook promotes []byte -> string first so that
 // WeaklyTypedInput can then handle string -> int for PGPORT. PGPORT defaults to
 // DefaultPort when absent.
-func ParseSecret(data map[string][]byte) (Config, error) {
+func parseSecret(data map[string][]byte, requireDatabase bool) (Config, error) {
 	cfg := Config{Port: DefaultPort}
 
 	dec, err := mapstructure.NewDecoder(&mapstructure.DecoderConfig{
@@ -140,7 +153,21 @@ func ParseSecret(data map[string][]byte) (Config, error) {
 		return cfg, fmt.Errorf("decoding Secret fields: %w", err)
 	}
 
-	return cfg, cfg.Validate()
+	if requireDatabase {
+		return cfg, cfg.Validate()
+	}
+	return cfg, cfg.ValidateWithoutDatabase()
+}
+
+func ParseSecret(data map[string][]byte) (Config, error) {
+	return parseSecret(data, true)
+}
+
+// ParseAdminSecret decodes a provider/admin Secret that may intentionally omit
+// pg.database. Use this only when another config source will provide the
+// effective database before the returned config is used.
+func ParseAdminSecret(data map[string][]byte) (Config, error) {
+	return parseSecret(data, false)
 }
 
 // ConfigFromDSN parses a libpq or postgres:// DSN into a Config using

@@ -35,12 +35,15 @@ import (
 func (st *databaseClaimSuite) Run(t *testing.T) {
 	t.Run("crd validation", st.testCRDValidation)
 	t.Run("provisioning", st.testProvisioning)
+	t.Run("default database fallback", st.testDefaultDatabaseFallback)
+	t.Run("creates explicit database when allowed", st.testCreatesExplicitDatabaseWhenAllowed)
+	t.Run("database creation denied without capability", st.testDatabaseCreateNotAllowed)
 	t.Run("access mode is enforced", st.testAccessModeEnforcement)
+	t.Run("database isolation between claims", st.testDatabaseIsolationBetweenClaims)
 	t.Run("secret name override", st.testSecretNameOverride)
 	t.Run("idempotency", st.testIdempotency)
 	t.Run("secret deletion rotates credentials", st.testSecretDeletionRecovery)
 	t.Run("role deletion rotates credentials", st.testRoleDeletionRecovery)
-	t.Run("database not found", st.testDatabaseNotFound)
 	t.Run("deletion keeps peer user and database", st.testDeletionKeepsPeerUserAndDatabase)
 	t.Run("provider not found", st.testProviderNotFound)
 	t.Run("provider creation wakes pending claim", st.testProviderCreationWakesPendingClaim)
@@ -78,6 +81,70 @@ func (st *databaseClaimSuite) testProvisioning(t *testing.T) {
 	g.Expect(err).NotTo(HaveOccurred())
 	g.Expect(credCfg.DBName).To(Equal(database))
 	g.Expect(pingConfig(ctx, st.env.ClientFactory, credCfg)).To(Succeed())
+}
+
+func (st *databaseClaimSuite) testDefaultDatabaseFallback(t *testing.T) {
+	g := NewWithT(t)
+	ctx := t.Context()
+
+	name := "dc-" + xid.New().String()
+	claim := st.newClaim(name, "")
+	st.createClaim(t, claim)
+	st.waitProvisioned(t, claim)
+
+	secret := st.waitCredentialsSecret(t, name, st.db.Config().DBName)
+	credCfg, err := postgres.ParseSecret(secret.Data)
+	g.Expect(err).NotTo(HaveOccurred())
+	g.Expect(credCfg.DBName).To(Equal(st.db.Config().DBName))
+	g.Expect(pingConfig(ctx, st.env.ClientFactory, credCfg)).To(Succeed())
+}
+
+func (st *databaseClaimSuite) testCreatesExplicitDatabaseWhenAllowed(t *testing.T) {
+	g := NewWithT(t)
+	ctx := t.Context()
+
+	providerName := "provider-" + xid.New().String()
+	database := "created_" + xid.New().String()
+	err := st.createExternalProvider(
+		t,
+		providerName,
+		st.db.Config(),
+		st.db.Config().DBName,
+		[]infraApi.ExternalCapability{infraApi.ExternalCapabilityCreateDatabase},
+	)
+	g.Expect(err).NotTo(HaveOccurred())
+
+	name := "dc-" + xid.New().String()
+	claim := st.newClaim(name, database)
+	claim.Spec.Provider = infraApi.ProviderRef{Name: providerName}
+	st.createClaim(t, claim)
+	st.waitProvisioned(t, claim)
+	g.Expect(st.databaseExists(t, database)).To(BeTrue())
+
+	secret := st.waitCredentialsSecret(t, name, database)
+	credCfg, err := postgres.ParseSecret(secret.Data)
+	g.Expect(err).NotTo(HaveOccurred())
+	g.Expect(credCfg.DBName).To(Equal(database))
+	g.Expect(pingConfig(ctx, st.env.ClientFactory, credCfg)).To(Succeed())
+}
+
+func (st *databaseClaimSuite) testDatabaseCreateNotAllowed(t *testing.T) {
+	g := NewWithT(t)
+
+	providerName := "provider-" + xid.New().String()
+	database := "missing_" + xid.New().String()
+	err := st.createExternalProvider(t, providerName, st.db.Config(), st.db.Config().DBName, nil)
+	g.Expect(err).NotTo(HaveOccurred())
+
+	name := "dc-" + xid.New().String()
+	claim := st.newClaim(name, database)
+	claim.Spec.Provider = infraApi.ProviderRef{Name: providerName}
+	st.createClaim(t, claim)
+
+	st.waitProvisioningFailure(t, claim, "DatabaseCreateNotAllowed", database)
+	st.expectNoCredentialsSecret(t, name)
+	g.Expect(st.roleExists(t, databaseClaimRoleName(st.env.Namespace, name))).To(BeFalse())
+	g.Expect(st.databaseExists(t, database)).To(BeFalse())
 }
 
 func (st *databaseClaimSuite) testAccessModeEnforcement(t *testing.T) {
@@ -131,7 +198,106 @@ func (st *databaseClaimSuite) testAccessModeEnforcement(t *testing.T) {
 		ctx,
 		fmt.Sprintf("CREATE SCHEMA %s", postgres.QuoteIdentifier("ro_claim_schema")),
 	)
-	g.Expect(err).To(HaveOccurred(), "readonly database claim must not be able to create schemas")
+	g.Expect(err).To(BePermissionDenied())
+}
+
+func (st *databaseClaimSuite) testDatabaseIsolationBetweenClaims(t *testing.T) {
+	g := NewWithT(t)
+	ctx := t.Context()
+
+	databaseA := "isol_a_" + xid.New().String()
+	databaseB := "isol_b_" + xid.New().String()
+	st.createDatabase(t, databaseA)
+	st.createDatabase(t, databaseB)
+
+	claimA := st.newClaim("dc-a-"+xid.New().String(), databaseA)
+	claimB := st.newClaim("dc-b-"+xid.New().String(), databaseB)
+	st.createClaim(t, claimA)
+	st.createClaim(t, claimB)
+	st.waitProvisioned(t, claimA)
+	st.waitProvisioned(t, claimB)
+
+	secretA := st.waitCredentialsSecret(t, claimA.Name, databaseA)
+	secretB := st.waitCredentialsSecret(t, claimB.Name, databaseB)
+
+	cfgA, err := postgres.ParseSecret(secretA.Data)
+	g.Expect(err).NotTo(HaveOccurred())
+	cfgB, err := postgres.ParseSecret(secretB.Data)
+	g.Expect(err).NotTo(HaveOccurred())
+
+	poolA, err := st.env.ClientFactory(ctx, cfgA)
+	g.Expect(err).NotTo(HaveOccurred())
+	t.Cleanup(poolA.Close)
+
+	poolB, err := st.env.ClientFactory(ctx, cfgB)
+	g.Expect(err).NotTo(HaveOccurred())
+	t.Cleanup(poolB.Close)
+
+	schemaA := "owned_a"
+	schemaB := "owned_b"
+	tableName := "peer_table"
+	_, err = poolA.Exec(ctx, fmt.Sprintf("CREATE SCHEMA %s", postgres.QuoteIdentifier(schemaA)))
+	g.Expect(err).NotTo(HaveOccurred())
+	_, err = poolA.Exec(
+		ctx,
+		fmt.Sprintf(
+			"CREATE TABLE %s.%s (id int PRIMARY KEY)",
+			postgres.QuoteIdentifier(schemaA),
+			postgres.QuoteIdentifier(tableName),
+		),
+	)
+	g.Expect(err).NotTo(HaveOccurred())
+	_, err = poolB.Exec(ctx, fmt.Sprintf("CREATE SCHEMA %s", postgres.QuoteIdentifier(schemaB)))
+	g.Expect(err).NotTo(HaveOccurred())
+	_, err = poolB.Exec(
+		ctx,
+		fmt.Sprintf(
+			"CREATE TABLE %s.%s (id int PRIMARY KEY)",
+			postgres.QuoteIdentifier(schemaB),
+			postgres.QuoteIdentifier(tableName),
+		),
+	)
+	g.Expect(err).NotTo(HaveOccurred())
+
+	crossCfgA := cfgA
+	crossCfgA.DBName = databaseB
+	crossCfgB := cfgB
+	crossCfgB.DBName = databaseA
+
+	g.Expect(pingConfig(ctx, st.env.ClientFactory, cfgA)).To(Succeed())
+	g.Expect(pingConfig(ctx, st.env.ClientFactory, cfgB)).To(Succeed())
+
+	crossPoolA, err := st.env.ClientFactory(ctx, crossCfgA)
+	if err == nil {
+		t.Cleanup(crossPoolA.Close)
+		_, err = crossPoolA.Exec(ctx, fmt.Sprintf("CREATE SCHEMA %s", postgres.QuoteIdentifier("forbidden_a")))
+		g.Expect(err).To(BePermissionDenied())
+		_, err = crossPoolA.Exec(
+			ctx,
+			fmt.Sprintf(
+				"SELECT * FROM %s.%s",
+				postgres.QuoteIdentifier(schemaB),
+				postgres.QuoteIdentifier(tableName),
+			),
+		)
+		g.Expect(err).To(BePermissionDenied())
+	}
+
+	crossPoolB, err := st.env.ClientFactory(ctx, crossCfgB)
+	if err == nil {
+		t.Cleanup(crossPoolB.Close)
+		_, err = crossPoolB.Exec(ctx, fmt.Sprintf("CREATE SCHEMA %s", postgres.QuoteIdentifier("forbidden_b")))
+		g.Expect(err).To(BePermissionDenied())
+		_, err = crossPoolB.Exec(
+			ctx,
+			fmt.Sprintf(
+				"SELECT * FROM %s.%s",
+				postgres.QuoteIdentifier(schemaA),
+				postgres.QuoteIdentifier(tableName),
+			),
+		)
+		g.Expect(err).To(BePermissionDenied())
+	}
 }
 
 func (st *databaseClaimSuite) testSecretNameOverride(t *testing.T) {
@@ -252,19 +418,6 @@ func (st *databaseClaimSuite) testRoleDeletionRecovery(t *testing.T) {
 	g.Expect(pingConfig(ctx, st.env.ClientFactory, oldCfg)).To(HaveOccurred())
 }
 
-func (st *databaseClaimSuite) testDatabaseNotFound(t *testing.T) {
-	g := NewWithT(t)
-
-	database := "missing_" + xid.New().String()
-	name := "dc-" + xid.New().String()
-	claim := st.newClaim(name, database)
-	st.createClaim(t, claim)
-
-	st.waitProvisioningFailure(t, claim, "DatabaseNotFound", database)
-	st.expectNoCredentialsSecret(t, name)
-	g.Expect(st.roleExists(t, databaseClaimRoleName(st.env.Namespace, name))).To(BeFalse())
-}
-
 func (st *databaseClaimSuite) testDeletionKeepsPeerUserAndDatabase(t *testing.T) {
 	g := NewWithT(t)
 	ctx := t.Context()
@@ -337,7 +490,7 @@ func (st *databaseClaimSuite) testProviderCreationWakesPendingClaim(t *testing.T
 	st.waitProvisioningFailure(t, claim, "ProviderNotFound", providerName)
 	st.expectNoCredentialsSecret(t, name)
 
-	err := st.createExternalProvider(t, providerName, st.db.Config(), nil, nil)
+	err := st.createExternalProvider(t, providerName, st.db.Config(), st.db.Config().DBName, nil)
 	g.Expect(err).NotTo(HaveOccurred())
 
 	st.waitProvisioned(t, claim)
@@ -380,13 +533,18 @@ func (st *databaseClaimSuite) testCRDValidation(t *testing.T) {
 		g.Expect(cli.Create(ctx, obj)).To(HaveOccurred())
 	})
 
-	t.Run("rejects-missing-database", func(t *testing.T) {
+	t.Run("accepts-missing-database-and-uses-provider-default", func(t *testing.T) {
 		g := NewWithT(t)
 		obj := &infraApi.DatabaseClaim{
-			ObjectMeta: metav1.ObjectMeta{Name: "dc-missing-db", Namespace: ns},
-			Spec:       infraApi.DatabaseClaimSpec{Provider: infraApi.ProviderRef{Name: "p"}},
+			ObjectMeta: metav1.ObjectMeta{Name: "dc-default-db", Namespace: ns},
+			Spec:       infraApi.DatabaseClaimSpec{Provider: infraApi.ProviderRef{Name: st.providerName}},
 		}
-		g.Expect(cli.Create(ctx, obj)).To(HaveOccurred())
+		g.Expect(cli.Create(ctx, obj)).To(Succeed())
+		t.Cleanup(func() {
+			if err := support.DeleteAndWait(context.Background(), st.env.Client, obj); err != nil {
+				t.Errorf("deleting database claim: %v", err)
+			}
+		})
 	})
 
 	t.Run("accepts-valid-and-database-is-immutable", func(t *testing.T) {

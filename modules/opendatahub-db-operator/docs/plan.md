@@ -16,7 +16,7 @@ source of implementation progress:
 | 04 | `DatabaseProvider` — `External` | Connectivity-check action, `Reachable` condition, admin-secret parsing | Done |
 | 05 | PostgreSQL DDL layer (`pkg/postgres`) | `pgxpool` management, identifier/literal quoting, password generation, schema/role/grant/drop statement builders | Done |
 | 06 | `SchemaClaim` reconciler | Idempotent schema+user provisioning, SSA Secret write, `Retain`/`Delete` finalizer logic, conditions/status | Done |
-| 07 | `DatabaseClaim` reconciler | Dedicated-user provisioning against a pre-existing database, SSA Secret write, always-Retain finalizer, conditions/status | Done |
+| 07 | `DatabaseClaim` reconciler | Dedicated-user provisioning using the provider default or an explicit database, optional database creation, SSA Secret write, always-Retain finalizer, conditions/status | Done |
 | 08 | `DatabaseProvider` — `Embedded` (focus task) | Image mapping via config keys, templated StatefulSet/PVC/Service/`initdb`-ConfigMap/NetworkPolicy, admin-secret get-or-create, readiness, capability labels, idle cleanup, configurable embedded target namespace | Done |
 | 09 | RBAC, packaging, Helm chart | Kubebuilder RBAC markers, `make manifests generate helm`, chart installability, consumer-facing RBAC examples | Done |
 | 10 | Tests | Cross-cutting, whole-module integration scenarios not owned by any single task; cleanup scripts | Done |
@@ -225,6 +225,7 @@ itself. Task-02 enumerates the specific schema/CEL rules for each CRD.
 |---|---|
 | `spec.provider.name` / `spec.provider.selector` | mutually exclusive; selector matched against `DatabaseProvider` capability labels |
 | `spec.schema` | optional; defaults to `${namespace}_${name}`, sanitized to a valid PostgreSQL identifier |
+| `spec.database` | optional; when unset, use the provider default database |
 | `spec.access` | `ReadWrite` (default) \| `ReadOnly` |
 | `spec.deletionPolicy` | `Retain` (default) \| `Delete` |
 | `status.schema` | always populated, whether from `spec.schema` or the default |
@@ -236,16 +237,19 @@ itself. Task-02 enumerates the specific schema/CEL rules for each CRD.
 | Field | Notes |
 |---|---|
 | `spec.provider.name` / `spec.provider.selector` | same as `SchemaClaim` |
-| `spec.database` | **required, always** — no default; must name a pre-existing database |
+| `spec.database` | optional; when unset, use the provider default database. When explicitly set, the claim may create that database if the provider allows it |
 | `spec.access` | `ReadWrite` (default) \| `ReadOnly` |
 | (no `deletionPolicy`) | always `Retain` semantics — the database pre-exists and isn't exclusively owned by this claim |
-| `status.database` | echoes `spec.database` |
+| `status.database` | resolved effective database name |
 | `status.connection.secretRef` | same shape as `SchemaClaim` |
 | `status.provider` | same as `SchemaClaim.status.provider` — surfaced for selector-based resolution |
 
 ### `DatabaseProvider` (cluster-scoped)
 
-`spec.type: External | Embedded`, mutually exclusive sub-specs. Capability labels
+`spec.type: External | Embedded`, mutually exclusive sub-specs. `spec.defaultDatabase` supplies the
+fallback database for claims and for external admin connectivity when the referenced Secret omits
+`pg.database`. External providers may also declare `spec.external.capabilities` (`CreateDatabase`,
+`CreateSchema`) to gate claim-driven create operations. Capability labels
 (`db.infrastructure.opendatahub.io/capability-*`) advertise what a provider supports; claims
 select a provider by `spec.provider.name` (exact) or `spec.provider.selector` (label match).
 Multiple matches are resolved by highest `db.infrastructure.opendatahub.io/selection-priority`
@@ -323,10 +327,12 @@ provisioned user + Secret (schema/data persist); `Delete` drops the schema
 (`DROP SCHEMA ... CASCADE`) and all its data, then the user + Secret. Both paths use a finalizer
 so the claim's DDL cleanup runs before the object is removed.
 
-**`DatabaseClaim` reconcile** (task-07): resolve provider → verify `spec.database` exists (else
-`Pending` naming the missing database) → provision a dedicated user (broader privileges, can
-`CREATE SCHEMA`) → SSA-write Secret → `Provisioned: True`. Always-`Retain` semantics via
-finalizer: only the provisioned user (+ its Secret) is dropped on deletion, never the database.
+**`DatabaseClaim` reconcile** (task-07): resolve provider → determine the effective database from
+`spec.database` or the provider default → if the effective database is missing, create it only
+when it was explicitly requested and the provider allows `CreateDatabase`, otherwise stay pending
+with an actionable condition → provision a dedicated user (broader privileges, can `CREATE
+SCHEMA`) → SSA-write Secret → `Provisioned: True`. Always-`Retain` semantics via finalizer: only
+the provisioned user (+ its Secret) is dropped on deletion, never the database.
 
 **`DatabaseProvider` reconcile**: dispatch on `spec.type`.
 - `External` (task-04): validate connectivity using `spec.external.connectionSecretRef`; set

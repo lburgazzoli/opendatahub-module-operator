@@ -82,8 +82,17 @@ func loadExternalConfig(
 		}
 	}
 
-	cfg, err := postgres.ParseSecret(secret.Data)
+	cfg, err := postgres.ParseAdminSecret(secret.Data)
 	if err != nil {
+		return postgres.Config{}, ErrConnectionSecretInvalid{
+			Name:  fmt.Sprintf("%s/%s", secret.Namespace, secret.Name),
+			Cause: err,
+		}
+	}
+	if cfg.DBName == "" {
+		cfg.DBName = dbcontroller.ProviderDefaultDatabase(provider)
+	}
+	if err := cfg.Validate(); err != nil {
 		return postgres.Config{}, ErrConnectionSecretInvalid{
 			Name:  fmt.Sprintf("%s/%s", secret.Namespace, secret.Name),
 			Cause: err,

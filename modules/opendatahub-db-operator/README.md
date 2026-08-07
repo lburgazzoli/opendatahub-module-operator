@@ -5,9 +5,11 @@ operator monorepo.
 
 It gives other controllers a Kubernetes-native way to ask for PostgreSQL access:
 
-- `SchemaClaim` provisions a schema and a dedicated user inside an existing
-  database.
-- `DatabaseClaim` provisions a dedicated user for a pre-existing database.
+- `SchemaClaim` provisions a schema and a dedicated user inside the provider's
+  default database or an explicitly selected one.
+- `DatabaseClaim` provisions a dedicated user for a database, using the
+  provider default when `spec.database` is omitted and creating an explicitly
+  named database when the provider allows it.
 - `DatabaseProvider` describes where claims should be provisioned:
   - `External`: a PostgreSQL instance managed outside this operator.
   - `Embedded`: a controller-managed single-instance PostgreSQL convenience
@@ -103,7 +105,13 @@ The referenced Secret must contain:
 - `pg.port`
 - `pg.user`
 - `pg.password`
-- `pg.database`
+- `pg.database`, or `spec.defaultDatabase` must be set on the provider
+
+External providers can also declare claim-side lifecycle permissions through
+`spec.external.capabilities`:
+
+- `CreateDatabase`
+- `CreateSchema`
 
 #### Embedded
 
@@ -149,6 +157,7 @@ Key fields:
 - `spec.provider`
 - `spec.secretName` optional override for the projected credentials Secret name
 - `spec.schema` optional, immutable
+- `spec.database` optional, immutable override for the target database
 - `spec.access`: `ReadWrite` or `ReadOnly`
 - `spec.deletionPolicy`: `Retain` or `Delete`
 
@@ -165,7 +174,8 @@ Key fields:
 
 - `spec.provider`
 - `spec.secretName` optional override for the projected credentials Secret name
-- `spec.database` required, immutable
+- `spec.database` optional, immutable; when omitted, the provider default is
+  used
 - `spec.access`: `ReadWrite` or `ReadOnly`
 
 Status highlights:
@@ -180,7 +190,11 @@ Status highlights:
 Key fields:
 
 - `spec.type`: `External` or `Embedded`
+- `spec.defaultDatabase` optional default database for both claim kinds and
+  provider admin connectivity
 - `spec.external.connectionSecretRef`
+- `spec.external.capabilities` optional claim-side create permissions for
+  external providers
 - `spec.embedded.storage`
 - `spec.embedded.resources`
 - `spec.embedded.extensions`
@@ -215,7 +229,6 @@ stringData:
   pg.port: "5432"
   pg.user: postgres
   pg.password: secret
-  pg.database: postgres
 ---
 apiVersion: infrastructure.opendatahub.io/v1alpha1
 kind: DatabaseProvider
@@ -223,10 +236,14 @@ metadata:
   name: shared-external
 spec:
   type: External
+  defaultDatabase: postgres
   external:
     connectionSecretRef:
       name: external-postgres-admin
       namespace: opendatahub-db
+    capabilities:
+    - CreateDatabase
+    - CreateSchema
 ```
 
 ### Internal provider
@@ -264,6 +281,7 @@ spec:
   provider:
     name: shared-internal
   secretName: notebooks-credentials
+  database: appdb
   access: ReadWrite
   deletionPolicy: Retain
 ```
@@ -283,7 +301,6 @@ spec:
   provider:
     name: shared-external
   secretName: ml-metadata-credentials
-  database: mlmd
   access: ReadWrite
 ```
 
@@ -301,8 +318,9 @@ connection information for the provisioned database user.
 
 ### Use `DatabaseClaim` when
 
-- the database already exists
-- the application needs its own role on that database
+- the application needs either the provider default database or a dedicated
+  database selected in the claim
+- the provider may allow the claim to create that explicit database for you
 - the operator must not delete the database itself
 
 ### Use `External` provider when

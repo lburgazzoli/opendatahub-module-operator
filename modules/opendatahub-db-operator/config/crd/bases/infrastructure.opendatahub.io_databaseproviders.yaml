@@ -56,11 +56,33 @@ spec:
           spec:
             description: DatabaseProviderSpec defines the desired state of DatabaseProvider.
             properties:
+              defaultDatabase:
+                description: |-
+                  DefaultDatabase is the database claims use when they do not specify one.
+                  For external providers, this also supplies the default database when the
+                  admin Secret omits pg.database. When unset, the provider Secret (external)
+                  or the built-in internal default database may still supply the value.
+                minLength: 1
+                type: string
               external:
                 description: |-
                   External configures a provider pointing at an admin-managed instance.
                   Mutually exclusive with Internal.
                 properties:
+                  capabilities:
+                    description: |-
+                      Capabilities declares which lifecycle operations claims may perform
+                      against this external provider.
+                    items:
+                      description: |-
+                        ExternalCapability declares which schema/database lifecycle operations an
+                        external provider allows claims to perform.
+                      enum:
+                      - CreateDatabase
+                      - CreateSchema
+                      type: string
+                    type: array
+                    x-kubernetes-list-type: atomic
                   connectionSecretRef:
                     description: |-
                       ConnectionSecretRef points at a Secret holding admin-level connection

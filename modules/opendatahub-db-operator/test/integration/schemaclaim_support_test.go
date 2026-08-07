@@ -92,7 +92,15 @@ func (st *schemaClaimSuite) openProviderAdminClient(ctx context.Context) (postgr
 }
 
 func (st *schemaClaimSuite) createProvider(t *testing.T) {
-	st.createExternalProvider(t, st.providerName, st.db.Config(), st.databaseName, nil, nil)
+	st.createExternalProvider(
+		t,
+		st.providerName,
+		st.db.Config(),
+		st.databaseName,
+		[]infraApi.ExternalCapability{infraApi.ExternalCapabilityCreateSchema},
+		nil,
+		nil,
+	)
 }
 
 func (st *schemaClaimSuite) createExternalProvider(
@@ -100,6 +108,7 @@ func (st *schemaClaimSuite) createExternalProvider(
 	name string,
 	cfg postgres.Config,
 	database string,
+	capabilities []infraApi.ExternalCapability,
 	labels map[string]string,
 	annotations map[string]string,
 ) {
@@ -143,12 +152,14 @@ func (st *schemaClaimSuite) createExternalProvider(
 			Annotations: mergedAnnotations,
 		},
 		Spec: infraApi.DatabaseProviderSpec{
-			Type: infraApi.ProviderTypeExternal,
+			Type:            infraApi.ProviderTypeExternal,
+			DefaultDatabase: database,
 			External: &infraApi.ExternalProviderSpec{
 				ConnectionSecretRef: corev1.SecretReference{
 					Name:      adminSecret.Name,
 					Namespace: st.env.Namespace,
 				},
+				Capabilities: capabilities,
 			},
 		},
 	}
@@ -239,6 +250,14 @@ func (st *schemaClaimSuite) waitProvisioningFailure(
 }
 
 func (st *schemaClaimSuite) waitCredentialsSecret(t *testing.T, name string) *corev1.Secret {
+	return st.waitCredentialsSecretForDatabase(t, name, st.databaseName)
+}
+
+func (st *schemaClaimSuite) waitCredentialsSecretForDatabase(
+	t *testing.T,
+	name string,
+	expectedDatabase string,
+) *corev1.Secret {
 	t.Helper()
 
 	g := NewWithT(t)
@@ -253,7 +272,7 @@ func (st *schemaClaimSuite) waitCredentialsSecret(t *testing.T, name string) *co
 				HaveKey(postgres.SecretKeyHost),
 				HaveKey(postgres.SecretKeyUser),
 				HaveKey(postgres.SecretKeyPassword),
-				HaveKeyWithValue(postgres.SecretKeyDatabase, []byte(st.databaseName)),
+				HaveKeyWithValue(postgres.SecretKeyDatabase, []byte(expectedDatabase)),
 				HaveKey(postgres.SecretKeySchema),
 			),
 		),

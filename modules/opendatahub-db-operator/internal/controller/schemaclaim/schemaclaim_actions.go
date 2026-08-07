@@ -28,6 +28,7 @@ import (
 
 	infraApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/api/infrastructure/v1alpha1"
 	dbcontroller "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/pkg/controller"
+	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/pkg/controller/claimerrors"
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/pkg/postgres"
 	api "github.com/opendatahub-io/odh-platform-utilities/framework/api"
 	odherrors "github.com/opendatahub-io/odh-platform-utilities/framework/controller/actions/errors"
@@ -69,14 +70,19 @@ func (m *Controller) provisionAction(ctx context.Context, rr *odhtypes.Reconcili
 		obj.Status.Provider = provider.Name
 	}
 
-	// 2. Open connection to provider.
-	pgClient, resolvedCfg, err := dbcontroller.NewClient(
-		ctx,
-		rr.Client,
-		provider,
-		m.cfg,
-		m.PostgresClientFactory,
-	)
+	// 2. Load provider config and open a connection.
+	resolvedCfg, err := dbcontroller.LoadProviderConfig(ctx, rr.Client, provider, m.cfg.OperatorNamespace)
+	if err != nil {
+		rr.Conditions.Mark(ConditionProvisioned, metav1.ConditionFalse,
+			conditions.WithError(err))
+		rr.Conditions.Mark(ConditionTLSConfiguration, metav1.ConditionUnknown,
+			conditions.WithReason(dbcontroller.ReasonTLSProvisioning),
+			conditions.WithMessage("%s", err.Error()))
+		return odherrors.NewStopErrorW(err)
+	}
+
+	effectiveDatabase := dbcontroller.ResolveDatabase(obj.Spec.Database, resolvedCfg)
+	pgClient, err := dbcontroller.OpenClient(ctx, resolvedCfg, m.PostgresClientFactory)
 	if err != nil {
 		rr.Conditions.Mark(ConditionProvisioned, metav1.ConditionFalse,
 			conditions.WithError(err))
@@ -89,6 +95,37 @@ func (m *Controller) provisionAction(ctx context.Context, rr *odhtypes.Reconcili
 		return odherrors.NewStopErrorW(err)
 	}
 	defer pgClient.Close()
+
+	if effectiveDatabase != resolvedCfg.DBName {
+		dbExists, err := postgres.DatabaseExists(ctx, pgClient, effectiveDatabase)
+		if err != nil {
+			return dbcontroller.WrapQuickRetry("checking database existence", err)
+		}
+		if !dbExists {
+			rr.Conditions.Mark(ConditionProvisioned, metav1.ConditionFalse,
+				conditions.WithReason("DatabaseNotFound"),
+				conditions.WithMessage("database %q does not exist on provider %q", effectiveDatabase, provider.Name))
+			return odherrors.NewStopError("%s", claimerrors.DatabaseNotFound{Database: effectiveDatabase}.Error())
+		}
+
+		targetCfg := resolvedCfg
+		targetCfg.DBName = effectiveDatabase
+		pgClient.Close()
+		pgClient, err = dbcontroller.OpenClient(ctx, targetCfg, m.PostgresClientFactory)
+		if err != nil {
+			rr.Conditions.Mark(ConditionProvisioned, metav1.ConditionFalse,
+				conditions.WithError(err))
+			rr.Conditions.Mark(ConditionTLSConfiguration, metav1.ConditionUnknown,
+				conditions.WithReason(dbcontroller.ReasonTLSProvisioning),
+				conditions.WithMessage("%s", err.Error()))
+			if retryErr := dbcontroller.StopWithQuickRetryIfConnectionRefused(err); retryErr != nil {
+				return retryErr
+			}
+			return odherrors.NewStopErrorW(err)
+		}
+		defer pgClient.Close()
+		resolvedCfg = targetCfg
+	}
 
 	cfg := pgClient.Config()
 
@@ -112,11 +149,24 @@ func (m *Controller) provisionAction(ctx context.Context, rr *odhtypes.Reconcili
 	provisioner := SchemaProvisioner{
 		Client:         rr.Client,
 		Claim:          obj,
+		Provider:       provider,
 		Postgres:       pgClient,
 		ProviderConfig: resolvedCfg,
 	}
 
 	secret, err := provisioner.Ensure(ctx)
+	if notFound, ok := errors.AsType[claimerrors.DatabaseNotFound](err); ok {
+		rr.Conditions.Mark(ConditionProvisioned, metav1.ConditionFalse,
+			conditions.WithReason("DatabaseNotFound"),
+			conditions.WithMessage("database %q does not exist on provider %q", notFound.Database, provider.Name))
+		return odherrors.NewStopError("%s", notFound.Error())
+	}
+	if denied, ok := errors.AsType[claimerrors.SchemaCreateNotAllowed](err); ok {
+		rr.Conditions.Mark(ConditionProvisioned, metav1.ConditionFalse,
+			conditions.WithReason("SchemaCreateNotAllowed"),
+			conditions.WithMessage("%s", denied.Error()))
+		return odherrors.NewStopError("%s", denied.Error())
+	}
 	if err != nil {
 		return err
 	}
@@ -180,13 +230,16 @@ func (m *Controller) cleanupAction(ctx context.Context, rr *odhtypes.Reconciliat
 				return err
 			}
 
-			pgClient, _, err := dbcontroller.NewClient(
-				ctx,
-				rr.Client,
-				provider,
-				m.cfg,
-				m.PostgresClientFactory,
-			)
+			providerCfg, err := dbcontroller.LoadProviderConfig(ctx, rr.Client, provider, m.cfg.OperatorNamespace)
+			if err != nil {
+				return err
+			}
+			effectiveDatabase := obj.Status.Connection.Database
+			if effectiveDatabase == "" {
+				effectiveDatabase = dbcontroller.ResolveDatabase(obj.Spec.Database, providerCfg)
+			}
+			providerCfg.DBName = effectiveDatabase
+			pgClient, err := dbcontroller.OpenClient(ctx, providerCfg, m.PostgresClientFactory)
 			if err != nil {
 				return fmt.Errorf("opening postgres client for provider %q: %w", provider.Name, err)
 			}

@@ -29,6 +29,7 @@ import (
 // every %s argument must come from QuoteIdentifier or QuoteLiteral.
 const (
 	sqlCreateSchemaIfNotExists = "CREATE SCHEMA IF NOT EXISTS %s"
+	sqlCreateDatabase          = "CREATE DATABASE %s"
 	sqlDropSchemaCascade       = "DROP SCHEMA IF EXISTS %s CASCADE"
 	sqlDropRole                = "DROP ROLE IF EXISTS %s"
 	sqlGrantUsageOnSchema      = "GRANT USAGE ON SCHEMA %s TO %s"
@@ -65,6 +66,19 @@ $$`
 // CreateSchema creates a schema if it doesn't already exist. Idempotent.
 func CreateSchema(ctx context.Context, cli Client, schema string) error {
 	_, err := cli.Exec(ctx, fmt.Sprintf(sqlCreateSchemaIfNotExists, QuoteIdentifier(schema)))
+	return err
+}
+
+// CreateDatabase creates a database if it doesn't already exist. Idempotent.
+func CreateDatabase(ctx context.Context, cli Client, database string) error {
+	exists, err := DatabaseExists(ctx, cli, database)
+	if err != nil {
+		return err
+	}
+	if exists {
+		return nil
+	}
+	_, err = cli.Exec(ctx, fmt.Sprintf(sqlCreateDatabase, QuoteIdentifier(database)))
 	return err
 }
 
