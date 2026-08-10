@@ -21,8 +21,6 @@ import (
 	"fmt"
 	"slices"
 
-	ofVersion "github.com/operator-framework/api/pkg/lib/version"
-
 	componentApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-trainer-operator/api/components/v1alpha1"
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-trainer-operator/pkg/module"
 	common "github.com/opendatahub-io/odh-platform-utilities/api/common"
@@ -99,7 +97,7 @@ func (m *Module) reportStatus(_ context.Context, rr *odhtypes.ReconciliationRequ
 
 	obj.Status.Release = componentApi.Release{
 		Name:    componentApi.Platform(rr.Release.Name),
-		Version: ofVersion.OperatorVersion{Version: rr.Release.Version},
+		Version: rr.Release.Version,
 	}
 
 	return nil

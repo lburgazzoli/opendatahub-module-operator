@@ -18,6 +18,7 @@ package v1alpha1
 
 import (
 	common "github.com/opendatahub-io/odh-platform-utilities/api/common"
+	fwapi "github.com/opendatahub-io/odh-platform-utilities/framework/api"
 	ofVersion "github.com/operator-framework/api/pkg/lib/version"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -39,7 +40,7 @@ type Release struct {
 	Version ofVersion.OperatorVersion `json:"version,omitempty"`
 }
 
-var _ common.PlatformObject = (*Trainer)(nil)
+var _ fwapi.PlatformObject = (*Trainer)(nil)
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
@@ -67,22 +68,22 @@ type TrainerCommonSpec struct{}
 
 // TrainerStatus defines the observed state of Trainer.
 type TrainerStatus struct {
-	common.Status                 `json:",inline"`
+	fwapi.Status                  `json:",inline"`
 	common.ComponentReleaseStatus `json:",inline"`
 
 	// Release reports the operator version and platform.
 	Release Release `json:"release,omitempty"`
 }
 
-func (c *Trainer) GetStatus() *common.Status {
+func (c *Trainer) GetStatus() *fwapi.Status {
 	return &c.Status.Status
 }
 
-func (c *Trainer) GetConditions() []common.Condition {
+func (c *Trainer) GetConditions() []fwapi.Condition {
 	return c.Status.GetConditions()
 }
 
-func (c *Trainer) SetConditions(conditions []common.Condition) {
+func (c *Trainer) SetConditions(conditions []fwapi.Condition) {
 	c.Status.SetConditions(conditions)
 }
 

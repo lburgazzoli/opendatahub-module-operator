@@ -24,6 +24,7 @@ import (
 
 	"github.com/blang/semver/v4"
 	"github.com/go-viper/mapstructure/v2"
+	operatorversion "github.com/operator-framework/api/pkg/lib/version"
 	"github.com/spf13/viper"
 
 	common "github.com/opendatahub-io/odh-platform-utilities/api/common"
@@ -161,7 +162,7 @@ func (c *Config) ComponentRelease() common.ComponentRelease {
 func (c *Config) PlatformRelease() fwapi.Release {
 	return fwapi.Release{
 		Name:    fwapi.Platform(c.PlatformType),
-		Version: c.PlatformVersion.Version, // semver.Version embedded in PlatformVersion
+		Version: operatorversion.OperatorVersion{Version: c.PlatformVersion.Version},
 	}
 }
 
