@@ -12,10 +12,12 @@ It gives other controllers a Kubernetes-native way to ask for PostgreSQL access:
   named database when the provider allows it.
 - `DatabaseProvider` describes where claims should be provisioned:
   - `External`: a PostgreSQL instance managed outside this operator.
-  - `Embedded`: a controller-managed single-instance PostgreSQL convenience
+  - `Internal`: a controller-managed single-instance PostgreSQL convenience
     backend.
-- `DatabaseService` is the module-enablement CR used by the platform/operator
-  layer.
+- `DatabaseService` is the cluster-scoped module-enablement CR used by the
+  platform/operator layer. It lives in
+  `services.platform.opendatahub.io/v1alpha1`, has an empty `spec`, and must be
+  named `default-db-operator`.
 
 The intent is similar to storage classes and PVCs:
 
@@ -33,7 +35,7 @@ The normal flow is:
 3. wait for the claim to become `Provisioned=True`
 4. read the generated Secret in the claim namespace
 
-For an embedded provider, the operator also creates the backing PostgreSQL
+For an internal provider, the operator also creates the backing PostgreSQL
 resources for you. For an external provider, the PostgreSQL instance already
 exists and the operator only validates connectivity and provisions access.
 
@@ -44,7 +46,7 @@ The following diagram illustrates how cluster-scoped database providers reconcil
 ```text
             ┌───────────────────────────────┐
             │   DatabaseProvider (Supply)   │  ◄─── [ Cluster-scoped ]
-            │    (Embedded or External)     │
+            │    (Internal or External)     │
             └───────────────┬───────────────┘
                             ▲
                             │ (References via spec.provider)
@@ -85,6 +87,7 @@ Both claims:
 - surface the selected provider in `status.provider` when selection happened by
   label selector
 - use `status.conditions[type=Provisioned]` as the main machine-readable signal
+- surface TLS state via `status.conditions[type=TLSConfiguration]`
 
 Use `SchemaClaim` when the consumer needs its own schema. Use `DatabaseClaim`
 when the consumer needs access to a whole existing database.
@@ -107,15 +110,18 @@ The referenced Secret must contain:
 - `pg.password`
 - `pg.database`, or `spec.defaultDatabase` must be set on the provider
 
+It may also include `pg.sslmode` and `ca.crt` when the external instance
+requires TLS verification.
+
 External providers can also declare claim-side lifecycle permissions through
 `spec.external.capabilities`:
 
 - `CreateDatabase`
 - `CreateSchema`
 
-#### Embedded
+#### Internal
 
-An `Embedded` provider creates and manages:
+An `Internal` provider creates and manages:
 
 - a `StatefulSet`
 - a `PersistentVolumeClaim`
@@ -124,11 +130,11 @@ An `Embedded` provider creates and manages:
 - a `NetworkPolicy`
 - an admin Secret
 
-The embedded provider defaults to creating these resources in the operator
-namespace, but `spec.embedded.namespace` can override that. Claim connections
-still resolve through the embedded Service DNS name:
+The internal provider defaults to creating these resources in the operator
+namespace, but `spec.internal.namespace` can override that. Claim connections
+resolve through the internal Service DNS name:
 
-`<provider-name>.<target-namespace>.svc.cluster.local`
+`<provider-name>.<target-namespace>.svc`
 
 This is a convenience backend, not a full database service:
 
@@ -137,7 +143,12 @@ This is a convenience backend, not a full database service:
 - no backup/restore workflow here
 - no arbitrary image override in the CRD
 
-If `spec.embedded.extensions` requests `vector`, the operator selects the
+Internal providers can also opt into cert-manager-backed TLS with
+`spec.internal.tls`. When TLS is enabled, the provider exposes `status.tls`,
+providers publish `status.conditions[type=TLSConfiguration]`, and claim Secrets
+include the TLS connection keys described below.
+
+If `spec.internal.extensions` requests `vector`, the operator selects the
 configured pgvector image. Otherwise it uses the configured stock PostgreSQL
 image.
 
@@ -145,7 +156,7 @@ image.
 
 Because `DatabaseProvider` is cluster-scoped and claims are namespace-scoped, security and tenant isolation are enforced by default:
 
-- **Dynamic Network Isolation (`Embedded` only):** For `Embedded` providers, the operator automatically discovers all namespaces with successfully provisioned claims referencing that provider, and dynamically configures the PostgreSQL `NetworkPolicy` to allow ingress traffic *only* from those specific namespaces.
+- **Dynamic Network Isolation (`Internal` only):** For `Internal` providers, the operator automatically discovers all namespaces with successfully provisioned claims referencing that provider, and dynamically configures the PostgreSQL `NetworkPolicy` to allow ingress traffic *only* from those specific namespaces.
 - **Tenant Credential Isolation:** Generated connection Secrets are created directly in the consumer claim's own namespace. A tenant in namespace `A` cannot access or view the connection credentials generated for a tenant in namespace `B`.
 
 ## API Summary
@@ -167,6 +178,7 @@ Status highlights:
 - `status.connection`
 - `status.provider` when the claim resolved a provider by selector
 - `status.conditions[type=Provisioned]`
+- `status.conditions[type=TLSConfiguration]`
 
 ### DatabaseClaim
 
@@ -180,37 +192,42 @@ Key fields:
 
 Status highlights:
 
-- `status.database`
+- `status.database` resolved effective database, including the provider default
+  when `spec.database` is omitted
 - `status.connection`
 - `status.provider` when the claim resolved a provider by selector
 - `status.conditions[type=Provisioned]`
+- `status.conditions[type=TLSConfiguration]`
 
 ### DatabaseProvider
 
 Key fields:
 
-- `spec.type`: `External` or `Embedded`
+- `spec.type`: `External` or `Internal`
 - `spec.defaultDatabase` optional default database for both claim kinds and
   provider admin connectivity
 - `spec.external.connectionSecretRef`
 - `spec.external.capabilities` optional claim-side create permissions for
   external providers
-- `spec.embedded.storage`
-- `spec.embedded.resources`
-- `spec.embedded.extensions`
-- `spec.embedded.namespace` optional override for embedded resources
-- `spec.embedded.deletionPolicy`
+- `spec.internal.storage`
+- `spec.internal.resources`
+- `spec.internal.extensions`: `vector`, `pg_trgm`, `uuid_ossp`, `pgcrypto`
+- `spec.internal.namespace` optional override for internal resources
+- `spec.internal.tls` optional TLS configuration for the internal instance
 
 Status highlights:
 
+- `status.connection`
+- `status.tls`
 - `status.conditions[type=Reachable]`
+- `status.conditions[type=TLSConfiguration]`
 
 ## Examples
 
-Ready-to-apply sample manifests also live in `config/samples/`:
+Repository sample manifests live in `config/samples/`:
 
 - `config/samples/services_v1alpha1_databaseservice.yaml`
-- `config/samples/infrastructure_v1alpha1_databaseprovider_embedded.yaml`
+- `config/samples/infrastructure_v1alpha1_databaseprovider_internal.yaml`
 - `config/samples/infrastructure_v1alpha1_databaseprovider_external.yaml`
 - `config/samples/infrastructure_v1alpha1_schemaclaim.yaml`
 - `config/samples/infrastructure_v1alpha1_databaseclaim.yaml`
@@ -259,7 +276,6 @@ spec:
   type: Internal
   internal:
     namespace: opendatahub-db
-    deletionPolicy: Retain
     storage:
       size: 10Gi
     extensions:
@@ -350,8 +366,18 @@ the standard PostgreSQL keys used by this module:
 
 - `pg.schema`
 
+When TLS is active for the selected provider, claim Secrets may also include:
+
+- `pg.sslmode`
+- `ca.crt`
+
 The Secret name defaults to the claim name, but `spec.secretName` can override
-it.
+it. These claim Secrets are reconciled in the claim namespace, but they are not
+owner-referenced to the claim.
+
+For `Internal` providers, the operator also manages an admin Secret in the
+provider namespace using `POSTGRES_USER`, `POSTGRES_PASSWORD`, and
+`POSTGRES_DB`.
 
 More operational details, including resource ownership and internal namespace
 resolution, are in `docs/operations.md`.
@@ -408,6 +434,14 @@ Claims repair the resources they own when drift is detected:
 Repairs amend the existing claim Secret in place when possible. Credentials only
 rotate when the controller has to reprovision the missing database-side state.
 
+## Conditions
+
+Primary conditions to watch:
+
+- claims: `Provisioned`, `TLSConfiguration`, and aggregate `Ready`
+- providers: `Reachable`, `TLSConfiguration`
+- module CR: `Ready`
+
 ## Local Development
 
 Run commands from `modules/opendatahub-db-operator/`.
@@ -416,7 +450,7 @@ Run commands from `modules/opendatahub-db-operator/`.
 
 To build, run, and test the operator locally, you will need:
 
-- **Go:** `1.26.4` or later (as specified in `go.mod`)
+- **Go:** `1.26.5` or later (as specified in `go.mod`)
 - **Container Tool:** `podman` (default) or `docker` (configured via `CONTAINER_TOOL` environment variable)
 - **Kubernetes Cluster:** A running local cluster (such as Kind, Minikube, or OpenShift Local) with `kubectl` configured and targeted by your active context
 
@@ -427,13 +461,17 @@ Useful targets:
 - `make manifests generate`
 - `make fmt`
 - `make lint`
+- `make lint-fix`
 - `make test`
-- `make test-integration` (defaults to `k3s`)
-- `make test-e2e` (defaults to `k3s`)
+- `make test-integration` (defaults to `kind`)
+- `make test-e2e` (defaults to `kind`)
+- `make test-integration-cleanup`
+- `make test-e2e-cleanup`
 - `make install`
 - `make run`
 - `make helm`
 - `make deploy-helm`
+- `make undeploy-helm`
 
 To run integration tests against another supported cluster backend, override the
 default cluster type:
@@ -465,6 +503,17 @@ Configuration is loaded from:
 Important keys:
 
 - `operator-namespace`
+- `platformType`
+- `platformVersion`
+- `controller.metrics.bind-address`
+- `controller.health.bind-address`
+- `controller.leader-election.enabled`
+- `controller.leader-election.id`
+- `controller.zap.level`
+- `controller.zap.dev-mode`
+- `controller.zap.encoder`
+- `controller.pprof.enabled`
+- `controller.pprof.bind-address`
 - `internal.postgres-image`
 - `internal.pgvector-image`
 - `grace-period`
@@ -478,8 +527,8 @@ Example overrides:
 ```bash
 export ODH_MODULE_OPERATOR_OPERATOR_NAMESPACE=odh-db-operator-system
 export ODH_MODULE_OPERATOR_DATABASEPROVIDER_RETRY_INTERVAL=2m
-export ODH_MODULE_OPERATOR_EMBEDDED_POSTGRES_IMAGE=postgres:16
-export ODH_MODULE_OPERATOR_EMBEDDED_PGVECTOR_IMAGE=pgvector/pgvector:pg16
+export ODH_MODULE_OPERATOR_INTERNAL_POSTGRES_IMAGE=postgres:16
+export ODH_MODULE_OPERATOR_INTERNAL_PGVECTOR_IMAGE=pgvector/pgvector:pg16
 ```
 
 ## Without Cloning
@@ -489,22 +538,22 @@ You can also use the module directly from GitHub.
 Install CRDs from the repo:
 
 ```bash
-kubectl apply -k "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/config/crd?ref=db-service"
+kubectl apply -k "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/config/crd?ref=<branch-or-tag>"
 ```
 
 Apply the sample resources from the repo:
 
 ```bash
-kubectl apply -k "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/config/samples?ref=db-service"
+kubectl apply -k "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator/config/samples?ref=<branch-or-tag>"
 ```
 
 Run the operator directly with Go:
 
 ```bash
-go run github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator@db-service operator
+go run github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-db-operator@<branch-or-tag> operator
 ```
 
-If you use a different branch or tag, replace `db-service` with that ref.
+Replace `<branch-or-tag>` with the branch or tag you want to run.
 
 ## Notes For Maintainers
 

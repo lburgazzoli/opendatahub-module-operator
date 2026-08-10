@@ -6,7 +6,6 @@ spec:
   type: Internal
   internal:
     namespace: opendatahub-db
-    deletionPolicy: Retain
     storage:
       size: 10Gi
     extensions:
