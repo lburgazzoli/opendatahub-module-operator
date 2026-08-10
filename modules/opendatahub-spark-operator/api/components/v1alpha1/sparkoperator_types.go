@@ -18,6 +18,7 @@ package v1alpha1
 
 import (
 	common "github.com/opendatahub-io/odh-platform-utilities/api/common"
+	fwapi "github.com/opendatahub-io/odh-platform-utilities/framework/api"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -36,14 +37,14 @@ const (
 )
 
 // Compile-time interface assertion.
-var _ common.PlatformObject = (*SparkOperator)(nil)
+var _ fwapi.PlatformObject = (*SparkOperator)(nil)
 
 // SparkOperatorSpec defines the desired state of SparkOperator.
 type SparkOperatorSpec struct{}
 
 // SparkOperatorStatus defines the observed state of SparkOperator.
 type SparkOperatorStatus struct {
-	common.Status                 `json:",inline"`
+	fwapi.Status                  `json:",inline"`
 	common.ComponentReleaseStatus `json:",inline"`
 }
 
@@ -64,15 +65,15 @@ type SparkOperator struct {
 	Status SparkOperatorStatus `json:"status,omitempty"`
 }
 
-func (c *SparkOperator) GetStatus() *common.Status {
+func (c *SparkOperator) GetStatus() *fwapi.Status {
 	return &c.Status.Status
 }
 
-func (c *SparkOperator) GetConditions() []common.Condition {
+func (c *SparkOperator) GetConditions() []fwapi.Condition {
 	return c.Status.GetConditions()
 }
 
-func (c *SparkOperator) SetConditions(conditions []common.Condition) {
+func (c *SparkOperator) SetConditions(conditions []fwapi.Condition) {
 	c.Status.SetConditions(conditions)
 }
 
