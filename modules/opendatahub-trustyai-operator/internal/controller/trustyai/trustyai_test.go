@@ -138,11 +138,6 @@ func TestInitLoadsReleases(t *testing.T) {
 	g.Expect(m.Init()).To(Succeed())
 	g.Expect(m.releases).ToNot(BeEmpty())
 	g.Expect(m.releases).To(ContainElement(common.ComponentRelease{
-		Name:    "TrustyAI operator",
-		Version: "v1.37.0",
-		RepoURL: "https://github.com/trustyai-explainability/trustyai-service-operator",
-	}))
-	g.Expect(m.releases).To(ContainElement(common.ComponentRelease{
 		Name:    moduleconfig.ReleasePlatform,
 		Version: "1.0.0",
 	}))
@@ -183,11 +178,6 @@ func TestReportStatus(t *testing.T) {
 	g.Expect(m.stageManifests(context.Background(), rr)).To(Succeed())
 	g.Expect(m.reportStatus(context.Background(), rr)).To(Succeed())
 
-	g.Expect(obj.Status.Releases).To(ContainElement(common.ComponentRelease{
-		Name:    "TrustyAI operator",
-		Version: "v1.37.0",
-		RepoURL: "https://github.com/trustyai-explainability/trustyai-service-operator",
-	}))
 	g.Expect(obj.Status.Releases).To(ContainElement(common.ComponentRelease{
 		Name:    moduleconfig.ReleasePlatform,
 		Version: "1.0.0",

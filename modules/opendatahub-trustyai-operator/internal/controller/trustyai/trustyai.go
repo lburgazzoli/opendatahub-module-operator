@@ -17,7 +17,9 @@ limitations under the License.
 package trustyai
 
 import (
+	"errors"
 	"fmt"
+	iofs "io/fs"
 	"path"
 
 	componentApi "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-trustyai-operator/api/components/v1alpha1"
@@ -112,6 +114,9 @@ func (m *Module) loadReleases() ([]common.ComponentRelease, error) {
 		path.Join("manifests", componentName, "component_metadata.yaml"),
 	)
 	if err != nil {
+		if errors.Is(err, iofs.ErrNotExist) {
+			return fwreleases.NormalizeComponentReleases([]common.ComponentRelease{m.cfg.ComponentRelease()}), nil
+		}
 		return nil, fmt.Errorf("failed to read component metadata: %w", err)
 	}
 

@@ -18,6 +18,7 @@ package v1alpha1
 
 import (
 	common "github.com/opendatahub-io/odh-platform-utilities/api/common"
+	fwapi "github.com/opendatahub-io/odh-platform-utilities/framework/api"
 	ofVersion "github.com/operator-framework/api/pkg/lib/version"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -81,7 +82,7 @@ type Release struct {
 
 // TrustyAIStatus defines the observed state of TrustyAI.
 type TrustyAIStatus struct {
-	common.Status                 `json:",inline"`
+	fwapi.Status                  `json:",inline"`
 	common.ComponentReleaseStatus `json:",inline"`
 
 	// Release reports the operator version and platform.
@@ -89,7 +90,7 @@ type TrustyAIStatus struct {
 }
 
 // Compile-time interface assertion.
-var _ common.PlatformObject = (*TrustyAI)(nil)
+var _ fwapi.PlatformObject = (*TrustyAI)(nil)
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
@@ -108,9 +109,11 @@ type TrustyAI struct {
 	Status TrustyAIStatus `json:"status,omitempty"`
 }
 
-func (c *TrustyAI) GetStatus() *common.Status         { return &c.Status.Status }
-func (c *TrustyAI) GetConditions() []common.Condition { return c.Status.GetConditions() }
-func (c *TrustyAI) SetConditions(conditions []common.Condition) {
+func (c *TrustyAI) GetStatus() *fwapi.Status { return &c.Status.Status }
+func (c *TrustyAI) GetConditions() []fwapi.Condition {
+	return c.Status.GetConditions()
+}
+func (c *TrustyAI) SetConditions(conditions []fwapi.Condition) {
 	c.Status.SetConditions(conditions)
 }
 func (c *TrustyAI) GetReleaseStatus() *common.ComponentReleaseStatus {
