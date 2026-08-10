@@ -18,6 +18,7 @@ package v1alpha1
 
 import (
 	common "github.com/opendatahub-io/odh-platform-utilities/api/common"
+	fwapi "github.com/opendatahub-io/odh-platform-utilities/framework/api"
 	ofVersion "github.com/operator-framework/api/pkg/lib/version"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -40,14 +41,14 @@ type Release struct {
 }
 
 // Compile-time interface assertion.
-var _ common.PlatformObject = (*MLflowOperator)(nil)
+var _ fwapi.PlatformObject = (*MLflowOperator)(nil)
 
 // MLflowOperatorSpec defines the desired state of MLflowOperator.
 type MLflowOperatorSpec struct{}
 
 // MLflowOperatorStatus defines the observed state of MLflowOperator.
 type MLflowOperatorStatus struct {
-	common.Status                 `json:",inline"`
+	fwapi.Status                  `json:",inline"`
 	common.ComponentReleaseStatus `json:",inline"`
 
 	// Release reports the operator version and platform.
@@ -71,9 +72,9 @@ type MLflowOperator struct {
 	Status MLflowOperatorStatus `json:"status,omitempty"`
 }
 
-func (c *MLflowOperator) GetStatus() *common.Status         { return &c.Status.Status }
-func (c *MLflowOperator) GetConditions() []common.Condition { return c.Status.GetConditions() }
-func (c *MLflowOperator) SetConditions(conditions []common.Condition) {
+func (c *MLflowOperator) GetStatus() *fwapi.Status         { return &c.Status.Status }
+func (c *MLflowOperator) GetConditions() []fwapi.Condition { return c.Status.GetConditions() }
+func (c *MLflowOperator) SetConditions(conditions []fwapi.Condition) {
 	c.Status.SetConditions(conditions)
 }
 func (c *MLflowOperator) GetReleaseStatus() *common.ComponentReleaseStatus {

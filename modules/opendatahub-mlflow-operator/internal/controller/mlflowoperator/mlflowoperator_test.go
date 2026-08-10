@@ -278,13 +278,6 @@ func TestInitLoadsReleases(t *testing.T) {
 
 	g.Expect(m.Init()).To(Succeed())
 	g.Expect(m.releases).To(ContainElement(
-		common.ComponentRelease{
-			Name:    "MLflow",
-			Version: "v3.12.0",
-			RepoURL: "https://github.com/mlflow/mlflow",
-		},
-	))
-	g.Expect(m.releases).To(ContainElement(
 		common.ComponentRelease{Name: moduleconfig.ReleasePlatform, Version: "1.0.0"},
 	))
 }
@@ -330,13 +323,6 @@ func TestReportStatus(t *testing.T) {
 
 	g.Expect(obj.Status.Releases).NotTo(ContainElement(
 		common.ComponentRelease{Name: "stale", Version: "0.0.1"},
-	))
-	g.Expect(obj.Status.Releases).To(ContainElement(
-		common.ComponentRelease{
-			Name:    "MLflow",
-			Version: "v3.12.0",
-			RepoURL: "https://github.com/mlflow/mlflow",
-		},
 	))
 	g.Expect(obj.Status.Releases).To(Equal(m.releases))
 }

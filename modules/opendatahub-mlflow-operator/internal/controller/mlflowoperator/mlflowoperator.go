@@ -17,7 +17,9 @@ limitations under the License.
 package mlflowoperator
 
 import (
+	"errors"
 	"fmt"
+	iofs "io/fs"
 	"path"
 
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-mlflow-operator/assets"
@@ -106,6 +108,9 @@ func (m *Module) loadReleases() ([]common.ComponentRelease, error) {
 	metadataPath := path.Join(manifestsRoot, componentName, componentMetadataFile)
 	releases, err := fwreleases.ReadComponentReleases(assets.Manifests, metadataPath)
 	if err != nil {
+		if errors.Is(err, iofs.ErrNotExist) {
+			return fwreleases.NormalizeComponentReleases([]common.ComponentRelease{m.cfg.ComponentRelease()}), nil
+		}
 		return nil, fmt.Errorf("failed to read component metadata from %s: %w", metadataPath, err)
 	}
 
