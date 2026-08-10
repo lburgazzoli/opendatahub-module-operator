@@ -39,7 +39,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
 	"github.com/opendatahub-io/odh-platform-utilities/framework/resources"
-	infrav1 "github.com/opendatahub-io/opendatahub-operator/v2/api/infrastructure/v1"
+	infrav1 "github.com/opendatahub-io/opendatahub-operator/v2/api/infrastructure/v1alpha1"
 
 	module "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-workbenches-operator/pkg/module"
 	gvk "github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-workbenches-operator/pkg/resources/gvk"

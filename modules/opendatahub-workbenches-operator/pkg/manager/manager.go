@@ -43,7 +43,7 @@ import (
 	fwresources "github.com/opendatahub-io/odh-platform-utilities/framework/resources"
 	libcache "github.com/opendatahub-io/odh-platform-utilities/pkg/cache"
 	"github.com/opendatahub-io/odh-platform-utilities/pkg/metadata/labels"
-	infrav1 "github.com/opendatahub-io/opendatahub-operator/v2/api/infrastructure/v1"
+	infrav1 "github.com/opendatahub-io/opendatahub-operator/v2/api/infrastructure/v1alpha1"
 	imagev1 "github.com/openshift/api/image/v1"
 )
 

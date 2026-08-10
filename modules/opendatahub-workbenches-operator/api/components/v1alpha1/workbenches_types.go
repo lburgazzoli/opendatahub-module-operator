@@ -18,6 +18,7 @@ package v1alpha1
 
 import (
 	common "github.com/opendatahub-io/odh-platform-utilities/api/common"
+	fwapi "github.com/opendatahub-io/odh-platform-utilities/framework/api"
 	ofVersion "github.com/operator-framework/api/pkg/lib/version"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -46,7 +47,7 @@ type Release struct {
 
 // Compile-time interface assertions.
 var (
-	_ common.PlatformObject = (*Workbenches)(nil)
+	_ fwapi.PlatformObject = (*Workbenches)(nil)
 )
 
 // WorkbenchesSpec defines the desired state of Workbenches.
@@ -62,7 +63,7 @@ type WorkbenchesCommonStatus struct {
 
 // WorkbenchesStatus defines the observed state of Workbenches.
 type WorkbenchesStatus struct {
-	common.Status           `json:",inline"`
+	fwapi.Status            `json:",inline"`
 	WorkbenchesCommonStatus `json:",inline"`
 
 	// Release reports the operator version and platform.
@@ -96,15 +97,15 @@ type Workbenches struct {
 	Status WorkbenchesStatus `json:"status,omitempty"`
 }
 
-func (c *Workbenches) GetStatus() *common.Status {
+func (c *Workbenches) GetStatus() *fwapi.Status {
 	return &c.Status.Status
 }
 
-func (c *Workbenches) GetConditions() []common.Condition {
+func (c *Workbenches) GetConditions() []fwapi.Condition {
 	return c.Status.GetConditions()
 }
 
-func (c *Workbenches) SetConditions(conditions []common.Condition) {
+func (c *Workbenches) SetConditions(conditions []fwapi.Condition) {
 	c.Status.SetConditions(conditions)
 }
 

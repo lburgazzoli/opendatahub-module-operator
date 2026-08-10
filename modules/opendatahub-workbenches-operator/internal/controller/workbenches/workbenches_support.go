@@ -18,7 +18,9 @@ package workbenches
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	iofs "io/fs"
 	"path"
 	"sort"
 	"strconv"
@@ -119,6 +121,9 @@ func newKustomizeFS() (filesys.FileSystem, error) {
 func loadReleases(cfg *moduleconfig.Config) ([]common.ComponentRelease, error) {
 	releases, err := fwreleases.ReadComponentReleases(assets.Manifests, metadataFilePath(nil))
 	if err != nil {
+		if errors.Is(err, iofs.ErrNotExist) {
+			return fwreleases.NormalizeComponentReleases([]common.ComponentRelease{cfg.ComponentRelease()}), nil
+		}
 		return nil, fmt.Errorf("read component metadata: %w", err)
 	}
 

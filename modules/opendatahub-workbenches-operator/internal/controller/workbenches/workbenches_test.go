@@ -142,5 +142,5 @@ func TestReportStatus(t *testing.T) {
 	g.Expect(obj.Status.Releases).To(ContainElement(
 		common.ComponentRelease{Name: moduleconfig.ReleasePlatform, Version: "1.0.0"},
 	))
-	g.Expect(len(obj.Status.Releases)).To(BeNumerically(">", 1))
+	g.Expect(obj.Status.Releases).To(Equal(m.releases))
 }

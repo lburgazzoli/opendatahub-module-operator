@@ -19,7 +19,7 @@ import (
 
 	"github.com/lburgazzoli/gomega-matchers/pkg/matchers/jq"
 	k8sm "github.com/lburgazzoli/gomega-matchers/pkg/matchers/k8s"
-	infrav1 "github.com/opendatahub-io/opendatahub-operator/v2/api/infrastructure/v1"
+	infrav1 "github.com/opendatahub-io/opendatahub-operator/v2/api/infrastructure/v1alpha1"
 
 	"github.com/lburgazzoli/opendatahub-module-operator/modules/opendatahub-workbenches-operator/test/support"
 )
