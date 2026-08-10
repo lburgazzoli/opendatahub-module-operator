@@ -49,6 +49,16 @@ func newTestModule(t *testing.T) *Module {
 
 	m, err := NewModule(cfg)
 	NewWithT(t).Expect(err).NotTo(HaveOccurred())
+	NewWithT(t).Expect(m.renderFS.MkdirAll("manifests/datasciencepipelines/base")).To(Succeed())
+	NewWithT(t).Expect(m.renderFS.WriteFile(
+		"manifests/datasciencepipelines/base/params.env",
+		[]byte("IMAGES_DSPO=\nIMAGES_ARGO_WORKFLOWCONTROLLER=\nPLATFORMVERSION=\nFIPSENABLED=\nARGOWORKFLOWSCONTROLLERS=\n"),
+	)).To(Succeed())
+	NewWithT(t).Expect(module.ApplyStaticParams(m.renderFS, m.variant.Kustomize)).To(Succeed())
+	NewWithT(t).Expect(module.ApplyRuntimeParams(m.renderFS, m.variant.Kustomize, map[string]string{
+		platformVersionParamsKey: cfg.PlatformVersion.String(),
+		fipsEnabledParamsKey:     "false",
+	})).To(Succeed())
 
 	return m
 }

@@ -41,8 +41,8 @@ import (
 type fakePlatformObject struct {
 	metav1.TypeMeta
 	metav1.ObjectMeta
-	status        common.Status
-	conditions    []common.Condition
+	status        fwapi.Status
+	conditions    []fwapi.Condition
 	releaseStatus common.ComponentReleaseStatus
 }
 
@@ -51,15 +51,15 @@ func (f *fakePlatformObject) DeepCopyObject() runtime.Object {
 	return &out
 }
 
-func (f *fakePlatformObject) GetStatus() *common.Status {
+func (f *fakePlatformObject) GetStatus() *fwapi.Status {
 	return &f.status
 }
 
-func (f *fakePlatformObject) GetConditions() []common.Condition {
+func (f *fakePlatformObject) GetConditions() []fwapi.Condition {
 	return f.conditions
 }
 
-func (f *fakePlatformObject) SetConditions(newConditions []common.Condition) {
+func (f *fakePlatformObject) SetConditions(newConditions []fwapi.Condition) {
 	f.conditions = newConditions
 }
 
@@ -231,7 +231,7 @@ func TestCheckPreConditions(t *testing.T) {
 			rr := fwtypes.ReconciliationRequest{
 				Client:     cli,
 				Instance:   tt.instance,
-				Conditions: conditions.NewManager(tt.instance, string(fwapi.ConditionTypeReady)),
+				Conditions: conditions.NewManager(tt.instance, string(common.ConditionTypeReady)),
 			}
 
 			m := &Module{}
@@ -275,7 +275,7 @@ func TestCheckPreConditionsWrongInstanceType(t *testing.T) {
 	rr := fwtypes.ReconciliationRequest{
 		Client:     cli,
 		Instance:   wrongInstance,
-		Conditions: conditions.NewManager(wrongInstance, string(fwapi.ConditionTypeReady)),
+		Conditions: conditions.NewManager(wrongInstance, string(common.ConditionTypeReady)),
 	}
 
 	m := &Module{}
@@ -287,7 +287,7 @@ func TestCheckPreConditionsWrongInstanceType(t *testing.T) {
 func TestArgoWorkflowsControllersOptions(t *testing.T) {
 	tests := []struct {
 		name          string
-		instance      common.PlatformObject
+		instance      fwapi.PlatformObject
 		expectedState string
 		expectedError bool
 	}{

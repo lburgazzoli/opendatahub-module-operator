@@ -18,6 +18,7 @@ package v1alpha1
 
 import (
 	common "github.com/opendatahub-io/odh-platform-utilities/api/common"
+	fwapi "github.com/opendatahub-io/odh-platform-utilities/framework/api"
 	operatorv1 "github.com/openshift/api/operator/v1"
 	ofVersion "github.com/operator-framework/api/pkg/lib/version"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -41,7 +42,7 @@ type Release struct {
 	Version ofVersion.OperatorVersion `json:"version,omitempty"`
 }
 
-var _ common.PlatformObject = (*DataSciencePipelines)(nil)
+var _ fwapi.PlatformObject = (*DataSciencePipelines)(nil)
 
 type DataSciencePipelinesSpec struct {
 	DataSciencePipelinesCommonSpec `json:",inline"`
@@ -64,7 +65,7 @@ type DataSciencePipelinesCommonStatus struct {
 }
 
 type DataSciencePipelinesStatus struct {
-	common.Status                    `json:",inline"`
+	fwapi.Status                     `json:",inline"`
 	DataSciencePipelinesCommonStatus `json:",inline"`
 
 	// Release reports the operator version and platform.
@@ -86,15 +87,15 @@ type DataSciencePipelines struct {
 	Status DataSciencePipelinesStatus `json:"status,omitempty"`
 }
 
-func (c *DataSciencePipelines) GetStatus() *common.Status {
+func (c *DataSciencePipelines) GetStatus() *fwapi.Status {
 	return &c.Status.Status
 }
 
-func (c *DataSciencePipelines) GetConditions() []common.Condition {
+func (c *DataSciencePipelines) GetConditions() []fwapi.Condition {
 	return c.Status.GetConditions()
 }
 
-func (c *DataSciencePipelines) SetConditions(conditions []common.Condition) {
+func (c *DataSciencePipelines) SetConditions(conditions []fwapi.Condition) {
 	c.Status.SetConditions(conditions)
 }
 
