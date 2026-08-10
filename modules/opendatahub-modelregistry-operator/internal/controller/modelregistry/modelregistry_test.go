@@ -120,22 +120,7 @@ func TestInitLoadsReleases(t *testing.T) {
 	m := newTestModule(t)
 
 	g.Expect(m.Init()).To(Succeed())
-	g.Expect(m.releases).To(Equal([]common.ComponentRelease{
-		{
-			Name:    "Kubeflow Model Registry",
-			Version: "latest",
-			RepoURL: "https://github.com/kubeflow/model-registry",
-		},
-		{
-			Name:    "Open Data Hub Model Registry Operator",
-			Version: "latest",
-			RepoURL: "https://github.com/opendatahub-io/model-registry-operator",
-		},
-		{
-			Name:    moduleconfig.ReleasePlatform,
-			Version: "1.0.0",
-		},
-	}))
+	g.Expect(m.releases).To(Equal([]common.ComponentRelease{{Name: moduleconfig.ReleasePlatform, Version: "1.0.0"}}))
 }
 
 func TestComputeRuntimeParamsRequiresGatewayDomain(t *testing.T) {
@@ -207,20 +192,5 @@ func TestReportStatus(t *testing.T) {
 	g.Expect(m.reportStatus(context.Background(), rr)).To(Succeed())
 
 	g.Expect(obj.Status.RegistriesNamespace).To(Equal("odh-model-registries"))
-	g.Expect(obj.Status.Releases).To(Equal([]common.ComponentRelease{
-		{
-			Name:    "Kubeflow Model Registry",
-			Version: "latest",
-			RepoURL: "https://github.com/kubeflow/model-registry",
-		},
-		{
-			Name:    "Open Data Hub Model Registry Operator",
-			Version: "latest",
-			RepoURL: "https://github.com/opendatahub-io/model-registry-operator",
-		},
-		{
-			Name:    moduleconfig.ReleasePlatform,
-			Version: "1.0.0",
-		},
-	}))
+	g.Expect(obj.Status.Releases).To(Equal([]common.ComponentRelease{{Name: moduleconfig.ReleasePlatform, Version: "1.0.0"}}))
 }

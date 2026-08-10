@@ -19,6 +19,7 @@ package modelregistry
 import (
 	"errors"
 	"fmt"
+	iofs "io/fs"
 
 	"sigs.k8s.io/kustomize/kyaml/filesys"
 
@@ -47,6 +48,9 @@ func newKustomizeFS() (filesys.FileSystem, error) {
 func (m *Module) loadReleases() ([]common.ComponentRelease, error) {
 	releases, err := fwreleases.ReadComponentReleases(assets.Manifests, componentMetadataPath)
 	if err != nil {
+		if errors.Is(err, iofs.ErrNotExist) {
+			return fwreleases.NormalizeComponentReleases([]common.ComponentRelease{m.cfg.ComponentRelease()}), nil
+		}
 		return nil, fmt.Errorf("read component metadata: %w", err)
 	}
 

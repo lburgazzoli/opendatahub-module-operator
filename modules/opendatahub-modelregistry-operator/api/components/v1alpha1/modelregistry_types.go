@@ -18,6 +18,7 @@ package v1alpha1
 
 import (
 	common "github.com/opendatahub-io/odh-platform-utilities/api/common"
+	fwapi "github.com/opendatahub-io/odh-platform-utilities/framework/api"
 	ofVersion "github.com/operator-framework/api/pkg/lib/version"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -55,7 +56,7 @@ type GatewaySpec struct {
 }
 
 // Compile-time interface assertion.
-var _ common.PlatformObject = (*ModelRegistry)(nil)
+var _ fwapi.PlatformObject = (*ModelRegistry)(nil)
 
 // ModelRegistrySpec defines the desired state of ModelRegistry.
 type ModelRegistrySpec struct {
@@ -73,7 +74,7 @@ type ModelRegistryCommonStatus struct {
 
 // ModelRegistryStatus defines the observed state of ModelRegistry.
 type ModelRegistryStatus struct {
-	common.Status                 `json:",inline"`
+	fwapi.Status                  `json:",inline"`
 	common.ComponentReleaseStatus `json:",inline"`
 	ModelRegistryCommonStatus     `json:",inline"`
 
@@ -99,15 +100,15 @@ type ModelRegistry struct {
 	Status ModelRegistryStatus `json:"status,omitempty"`
 }
 
-func (c *ModelRegistry) GetStatus() *common.Status {
+func (c *ModelRegistry) GetStatus() *fwapi.Status {
 	return &c.Status.Status
 }
 
-func (c *ModelRegistry) GetConditions() []common.Condition {
+func (c *ModelRegistry) GetConditions() []fwapi.Condition {
 	return c.Status.GetConditions()
 }
 
-func (c *ModelRegistry) SetConditions(conditions []common.Condition) {
+func (c *ModelRegistry) SetConditions(conditions []fwapi.Condition) {
 	c.Status.SetConditions(conditions)
 }
 
