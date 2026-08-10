@@ -18,6 +18,7 @@ package v1alpha1
 
 import (
 	common "github.com/opendatahub-io/odh-platform-utilities/api/common"
+	fwapi "github.com/opendatahub-io/odh-platform-utilities/framework/api"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -30,7 +31,7 @@ const (
 )
 
 // Compile-time interface assertion.
-var _ common.PlatformObject = (*FeastOperator)(nil)
+var _ fwapi.PlatformObject = (*FeastOperator)(nil)
 
 // FeastOperatorSpec defines the desired state of FeastOperator.
 type FeastOperatorSpec struct {
@@ -53,7 +54,7 @@ type GatewayOIDCSpec struct {
 
 // FeastOperatorStatus defines the observed state of FeastOperator.
 type FeastOperatorStatus struct {
-	common.Status                 `json:",inline"`
+	fwapi.Status                  `json:",inline"`
 	common.ComponentReleaseStatus `json:",inline"`
 }
 
@@ -74,15 +75,15 @@ type FeastOperator struct {
 	Status FeastOperatorStatus `json:"status,omitempty"`
 }
 
-func (c *FeastOperator) GetStatus() *common.Status {
+func (c *FeastOperator) GetStatus() *fwapi.Status {
 	return &c.Status.Status
 }
 
-func (c *FeastOperator) GetConditions() []common.Condition {
+func (c *FeastOperator) GetConditions() []fwapi.Condition {
 	return c.Status.GetConditions()
 }
 
-func (c *FeastOperator) SetConditions(conditions []common.Condition) {
+func (c *FeastOperator) SetConditions(conditions []fwapi.Condition) {
 	c.Status.SetConditions(conditions)
 }
 
