@@ -18,6 +18,7 @@ package v1alpha1
 
 import (
 	common "github.com/opendatahub-io/odh-platform-utilities/api/common"
+	fwapi "github.com/opendatahub-io/odh-platform-utilities/framework/api"
 	ofVersion "github.com/operator-framework/api/pkg/lib/version"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -39,14 +40,14 @@ type Release struct {
 }
 
 // Compile-time interface assertion.
-var _ common.PlatformObject = (*OGX)(nil)
+var _ fwapi.PlatformObject = (*OGX)(nil)
 
 // OGXSpec defines the desired state of OGX.
 type OGXSpec struct{}
 
 // OGXStatus defines the observed state of OGX.
 type OGXStatus struct {
-	common.Status                 `json:",inline"`
+	fwapi.Status                  `json:",inline"`
 	common.ComponentReleaseStatus `json:",inline"`
 
 	// Release reports the operator version and platform.
@@ -70,15 +71,15 @@ type OGX struct {
 	Status OGXStatus `json:"status,omitempty"`
 }
 
-func (c *OGX) GetStatus() *common.Status {
+func (c *OGX) GetStatus() *fwapi.Status {
 	return &c.Status.Status
 }
 
-func (c *OGX) GetConditions() []common.Condition {
+func (c *OGX) GetConditions() []fwapi.Condition {
 	return c.Status.GetConditions()
 }
 
-func (c *OGX) SetConditions(conditions []common.Condition) {
+func (c *OGX) SetConditions(conditions []fwapi.Condition) {
 	c.Status.SetConditions(conditions)
 }
 
