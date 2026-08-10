@@ -18,6 +18,7 @@ package v1alpha1
 
 import (
 	common "github.com/opendatahub-io/odh-platform-utilities/api/common"
+	fwapi "github.com/opendatahub-io/odh-platform-utilities/framework/api"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -37,7 +38,7 @@ const (
 
 // Compile-time interface assertions.
 var (
-	_ common.PlatformObject = (*Ray)(nil)
+	_ fwapi.PlatformObject = (*Ray)(nil)
 )
 
 // RaySpec defines the desired state of Ray.
@@ -47,7 +48,7 @@ type RaySpec struct {
 
 // RayStatus defines the observed state of Ray.
 type RayStatus struct {
-	common.Status                 `json:",inline"`
+	fwapi.Status                  `json:",inline"`
 	common.ComponentReleaseStatus `json:",inline"`
 }
 
@@ -68,15 +69,15 @@ type Ray struct {
 	Status RayStatus `json:"status,omitempty"`
 }
 
-func (c *Ray) GetStatus() *common.Status {
+func (c *Ray) GetStatus() *fwapi.Status {
 	return &c.Status.Status
 }
 
-func (c *Ray) GetConditions() []common.Condition {
+func (c *Ray) GetConditions() []fwapi.Condition {
 	return c.Status.GetConditions()
 }
 
-func (c *Ray) SetConditions(conditions []common.Condition) {
+func (c *Ray) SetConditions(conditions []fwapi.Condition) {
 	c.Status.SetConditions(conditions)
 }
 
